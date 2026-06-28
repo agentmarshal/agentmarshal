@@ -1,0 +1,45 @@
+role: backend
+display_name: Backend Developer
+active: false                  # зарезервировано — онбордим после CI/scope-guard (см. codex_session)
+
+# Таблица personas.md: backend partial — src/backend ЗА ИСКЛЮЧЕНИЕМ
+# app/tenants/, app/accounts/ (auth/security держит Lead). Не frontend/infra.
+branch_prefix: be
+scope_allow:
+  - src/backend/app/cars/
+  - src/backend/app/orders/
+  - src/backend/app/payments/
+  - src/backend/tests/
+  - .agents/handoffs/        # impl-роль (ADR-0003)
+  - .agents/events/
+scope_deny:
+  - src/backend/app/tenants/
+  - src/backend/app/accounts/
+  - src/backend/config/settings.py
+  - src/frontend/
+  - src/frontend-manager/
+  - infrastructure/
+  - .gitflic-ci.yml
+  - agentmarshal/                # фреймворк/свой промпт — Lead-owned
+  - .agents/tasks/
+  - .agents/decisions/
+  - .agents/reviews/
+
+tools:
+  - git
+  - pytest
+  - python
+
+prompt: prompts/backend.md
+
+vendor:
+  preferred: codex
+  model: gpt-5.5-medium
+  reviewer_must_differ: true   # ревью — Claude Opus/Sonnet или Lead
+
+trial:
+  enabled: false
+
+human_gate:
+  - migration-on-prod
+  - tenant-or-auth-change

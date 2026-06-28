@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "id": "gitlab-provider",
+  "version": "0.1.0",
+  "api_version": "1",
+  "type": "provider",
+  "distribution": "bundled",
+  "description": "GitLab provider capability stub.",
+  "capabilities": [
+    "provider.refs",
+    "provider.merge_request",
+    "provider.compare",
+    "provider.pipeline"
+  ],
+  "entrypoints": {
+    "doctor": "scripts/doctor.sh",
+    "validate": "scripts/validate.sh",
+    "execute": "scripts/execute.sh"
+  },
+  "permissions": {
+    "network": false,
+    "git_write": false,
+    "secrets": []
+  },
+  "requires": {
+    "agentmarshal": ">=0.1.0 <0.2.0",
+    "commands": ["bash", "jq", "readlink"]
+  }
+}

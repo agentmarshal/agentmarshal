@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentmarshal.local/schemas/plugin-manifest.schema.json",
+  "title": "AgentMarshal plugin manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "version",
+    "api_version",
+    "type",
+    "distribution",
+    "description",
+    "capabilities",
+    "entrypoints",
+    "permissions",
+    "requires"
+  ],
+  "properties": {
+    "schema": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{1,62}[a-z0-9]$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$"
+    },
+    "api_version": {
+      "const": "1"
+    },
+    "type": {
+      "enum": ["provider", "framework", "host"]
+    },
+    "distribution": {
+      "enum": ["bundled", "official", "community", "host-local"]
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^\\r\\n]+$"
+    },
+    "capabilities": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "provider.refs",
+          "provider.merge_request",
+          "provider.compare",
+          "provider.pipeline",
+          "ci.gate",
+          "policy.scope",
+          "policy.merge",
+          "review.triage",
+          "worktree.manage",
+          "stats.record",
+          "contribution.export"
+        ]
+      }
+    },
+    "entrypoints": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "doctor": {
+          "$ref": "#/$defs/relativePath"
+        },
+        "validate": {
+          "$ref": "#/$defs/relativePath"
+        },
+        "execute": {
+          "$ref": "#/$defs/relativePath"
+        }
+      }
+    },
+    "config_schema": {
+      "$ref": "#/$defs/relativePath"
+    },
+    "permissions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["network", "git_write", "secrets"],
+      "properties": {
+        "network": {
+          "type": "boolean"
+        },
+        "git_write": {
+          "type": "boolean"
+        },
+        "secrets": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]*$"
+          }
+        }
+      }
+    },
+    "requires": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agentmarshal", "commands"],
+      "properties": {
+        "agentmarshal": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[^\\r\\n]+$"
+        },
+        "commands": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._+-]+$"
+          }
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "commit", "sha256"],
+      "properties": {
+        "url": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[^\\r\\n]+$"
+        },
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "distribution": {
+            "enum": ["official", "community"]
+          }
+        }
+      },
+      "then": {
+        "required": ["source"]
+      }
+    }
+  ],
+  "$defs": {
+    "relativePath": {
+      "type": "string",
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._/-]+$"
+    }
+  }
+}

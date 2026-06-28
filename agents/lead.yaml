@@ -1,0 +1,35 @@
+role: lead
+display_name: Lead / Architect
+active: true
+branch_prefix: lead
+
+# Lead — полный доступ (таблица personas.md: всё ✅, merge ✅, secrets ✅).
+# Пустой scope_allow = без ограничений (scope-guard роль lead не лимитирует).
+scope_allow: []
+scope_deny: []
+
+tools:
+  - git
+  - docker
+  - python
+  - mr            # шлюз MR (создание/merge)
+  - ci            # запуск/просмотр пайплайнов
+
+prompt: prompts/lead.md
+
+vendor:
+  preferred: codex          # Codex силён как Lead/reviewer/merge-gate (см. codex_session)
+  model: gpt-5.5-high
+  reviewer_must_differ: true
+
+trial:
+  enabled: false
+
+# Lead — оркестратор: decomposition, contract, review, merge. Эти действия
+# человек оставляет за собой (Lead готовит, человек апрувит):
+human_gate:
+  - prod-deploy
+  - prod-secrets
+  - destructive-infra
+  - enable-new-tenant
+  - pricing-legal-text

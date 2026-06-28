@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "id": "gitflic-provider",
+  "version": "0.1.0",
+  "api_version": "1",
+  "type": "provider",
+  "distribution": "bundled",
+  "description": "GitFlic provider facade over existing AgentMarshal transport scripts.",
+  "capabilities": [
+    "provider.compare",
+    "provider.pipeline"
+  ],
+  "entrypoints": {
+    "doctor": "scripts/doctor.sh",
+    "validate": "scripts/validate.sh",
+    "execute": "scripts/execute.sh"
+  },
+  "permissions": {
+    "network": true,
+    "git_write": false,
+    "secrets": ["GITFLIC_API_TOKEN", "AGENTMARSHAL_GITFLIC_API_TOKEN", "AGENTOPS_GITFLIC_API_TOKEN", "CI_JOB_TOKEN"]
+  },
+  "requires": {
+    "agentmarshal": ">=0.1.0 <0.2.0",
+    "commands": ["bash", "curl", "jq", "readlink"]
+  }
+}

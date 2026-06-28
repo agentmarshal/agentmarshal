@@ -1,0 +1,21 @@
+profile: <profile-id>
+display_name: <Human Name>
+role: <lead|frontend|backend|qa|release>
+active: false
+mode: <review|implementation|analysis|operations>
+
+# none = без записи; role_scope = только scope роли; workspace = весь worktree.
+write_policy: <none|role_scope|workspace>
+network_policy: <none|read_only|allowed>
+session_persistence: false
+
+tools:
+  - <read|grep|glob|shell|edit|write|browser|computer|git-read|git-write|network>
+
+prompt: prompts/<profile-id>.md
+output_recorder: <launcher|dispatcher|agent>
+output_directory: .agents/runs/
+
+vendor:
+  preferred: <claude|codex|gemini>
+  model: <model-id>

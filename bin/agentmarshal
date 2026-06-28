@@ -1,0 +1,690 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FRAMEWORK_ROOT="$(cd "$HERE/.." && pwd)"
+# shellcheck source=agentmarshal/lib/project-config.sh
+source "$FRAMEWORK_ROOT/lib/project-config.sh"
+
+TEMPLATE_DIR="$FRAMEWORK_ROOT/templates"
+PRESET_DIR="$FRAMEWORK_ROOT/presets"
+
+usage() {
+  cat <<'EOF'
+usage: agentmarshal <command> [options]
+
+commands:
+  init       create or adopt bootstrap config
+  doctor     check bootstrap health
+  validate   validate bootstrap config
+  stats      summarize recorded stats
+EOF
+}
+
+note() {
+  printf '%s\n' "$*"
+}
+
+fail() {
+  aops_project_error "$*"
+  exit 1
+}
+
+bool() {
+  [[ "${1:-}" == "yes" ]]
+}
+
+render_template() {
+  local template="$1"
+  shift
+  local data
+  data="$(cat "$template")"
+  while [[ $# -gt 0 ]]; do
+    local key="$1" value="$2"
+    data="${data//__${key}__/$value}"
+    shift 2
+  done
+  printf '%s' "$data"
+}
+
+require_confirmation() {
+  local prompt="$1"
+  if [[ ! -t 0 ]]; then
+    fail "$prompt (use --non-interactive or --dry-run)"
+  fi
+  printf '%s [y/N] ' "$prompt" >&2
+  local answer
+  IFS= read -r answer
+  [[ "$answer" == "y" || "$answer" == "Y" ]] || fail "aborted"
+}
+
+write_file() {
+  local target="$1" content="$2" dry_run="$3"
+  local dir tmp
+  dir="$(dirname "$target")"
+  if bool "$dry_run"; then
+    note "DRY-RUN write $target"
+    return 0
+  fi
+  mkdir -p "$dir"
+  tmp="$(mktemp)"
+  trap 'rm -f "$tmp"' RETURN
+  printf '%s' "$content" >"$tmp"
+  if [[ -f "$target" ]] && cmp -s "$tmp" "$target"; then
+    note "unchanged $target"
+    return 0
+  fi
+  if [[ -f "$target" ]]; then
+    fail "refusing to overwrite existing file: $target"
+  fi
+  mv "$tmp" "$target"
+  trap - RETURN
+  note "created $target"
+}
+
+resolve_plugin_entrypoint_path() {
+  local root="$1" rel="$2" require_runtime="$3"
+  local root_real candidate resolved
+  root_real="$(_aops_realpath_existing "$root")" || fail "cannot resolve plugin root: $root"
+  candidate="$root_real/$rel"
+  if [[ -e "$candidate" || -L "$candidate" ]]; then
+    resolved="$(_aops_realpath_existing "$candidate")" \
+      || fail "cannot resolve plugin entrypoint: $candidate"
+    [[ "$resolved" == "$root_real/"* ]] \
+      || fail "plugin entrypoint escapes plugin root: $candidate"
+    if bool "$require_runtime"; then
+      [[ -x "$resolved" ]] || fail "plugin entrypoint missing or not executable: $resolved"
+    fi
+    printf '%s\n' "$resolved"
+    return 0
+  fi
+  bool "$require_runtime" && fail "plugin entrypoint missing or not executable: $candidate"
+  return 0
+}
+
+ensure_dir() {
+  local target="$1" dry_run="$2"
+  if bool "$dry_run"; then
+    note "DRY-RUN mkdir -p $target"
+    return 0
+  fi
+  mkdir -p "$target"
+  note "ready $target"
+}
+
+load_runtime_from_project() {
+  local root="$1" config="$2"
+  aops_project_load "$root" "$config"
+  AGENTMARSHAL_RUNTIME_CONFIG="$(aops_project_path runtime_config)"
+  export AGENTMARSHAL_RUNTIME_CONFIG
+  aops_config_init "$root"
+}
+
+require_interactive_adoption() {
+  local legacy_dir="$1"
+  if [[ ! -t 0 ]]; then
+    fail "legacy journal found at $legacy_dir; rerun with --adopt-existing or --non-interactive after cleanup"
+  fi
+  printf 'Legacy journal found at %s. Adopt existing layout? [y/N] ' "$legacy_dir" >&2
+  local answer
+  IFS= read -r answer
+  [[ "$answer" == "y" || "$answer" == "Y" ]] || fail "aborted"
+}
+
+cmd_init() {
+  local project_root_arg="" project_config_arg="" preset="minimal"
+  local dry_run="no" non_interactive="no" adopt_existing="no"
+  local legacy_archive_arg=""
+  local language="ru"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --project-root) project_root_arg="${2:?}"; shift 2 ;;
+      --project-config) project_config_arg="${2:?}"; shift 2 ;;
+      --preset) preset="${2:?}"; shift 2 ;;
+      --language) language="${2:?}"; shift 2 ;;
+      --dry-run) dry_run="yes"; shift ;;
+      --non-interactive) non_interactive="yes"; shift ;;
+      --adopt-existing) adopt_existing="yes"; shift ;;
+      --legacy-archive) legacy_archive_arg="${2:?}"; shift 2 ;;
+      -h|--help) usage; return 0 ;;
+      *) fail "unknown init argument: $1" ;;
+    esac
+  done
+
+  local project_root project_config preset_file legacy_dir mode
+  [[ "$language" =~ ^[a-z]{2}(-[A-Z]{2})?$ ]] || fail "invalid --language value: $language"
+  if [[ -n "$legacy_archive_arg" ]]; then
+    [[ "$legacy_archive_arg" =~ ^[A-Za-z0-9._/-]+$ ]] || fail "invalid --legacy-archive value: $legacy_archive_arg"
+    [[ "$legacy_archive_arg" != /* ]] || fail "--legacy-archive must be project-relative"
+    [[ "$legacy_archive_arg" != *".."* ]] || fail "--legacy-archive must not contain '..'"
+  fi
+  project_root="$(aops_project_discover_root "$project_root_arg" "$project_config_arg")"
+  project_config="$(aops_project_discover_config "$project_root" "$project_config_arg")"
+  preset_file="$(aops_project_read_preset "$PRESET_DIR" "$preset")"
+  legacy_dir="$project_root/.agents"
+
+  if [[ -f "$project_config" ]]; then
+    note "bootstrap config already exists: $project_config"
+    "$0" doctor --project-root "$project_root" --project-config "$project_config"
+    return
+  fi
+
+  mode="fresh"
+  if [[ -d "$legacy_dir" ]]; then
+    if bool "$adopt_existing" && [[ -n "$legacy_archive_arg" ]]; then
+      fail "--adopt-existing and --legacy-archive are mutually exclusive"
+    elif bool "$adopt_existing"; then
+      mode="adopt-existing"
+    elif [[ -n "$legacy_archive_arg" ]]; then
+      [[ -d "$project_root/$legacy_archive_arg" ]] || fail "legacy archive not found: $legacy_archive_arg"
+      mode="fresh-with-legacy-archive"
+    elif bool "$non_interactive"; then
+      fail "legacy journal found at $legacy_dir; rerun with --adopt-existing or --legacy-archive .agents"
+    else
+      require_interactive_adoption "$legacy_dir"
+      mode="adopt-existing"
+    fi
+  fi
+
+  local runtime_rel journal_rel agents_rel prompts_rel default_provider provider_secret_bindings bundled_root host_local_root
+  local resolved_plugins legacy_journal_block=""
+  if [[ "$mode" == "adopt-existing" ]]; then
+    runtime_rel="$(jq -r '.adoption.runtime_config' "$preset_file")"
+    journal_rel="$(jq -r '.adoption.journal_root' "$preset_file")"
+    if [[ ! -f "$project_root/$runtime_rel" && -f "$project_root/.agents/config/agentops.conf" ]]; then
+      runtime_rel=".agents/config/agentops.conf"
+    fi
+    legacy_journal_block=',"legacy_journal":".agents"'
+  elif [[ "$mode" == "fresh-with-legacy-archive" ]]; then
+    runtime_rel="$(jq -r '.defaults.runtime_config' "$preset_file")"
+    journal_rel="$(jq -r '.defaults.journal_root' "$preset_file")"
+    legacy_journal_block=',"legacy_archive":"'"$legacy_archive_arg"'"'
+  else
+    runtime_rel="$(jq -r '.defaults.runtime_config' "$preset_file")"
+    journal_rel="$(jq -r '.defaults.journal_root' "$preset_file")"
+  fi
+  agents_rel="$(jq -r '.defaults.agents_dir' "$preset_file")"
+  prompts_rel="$(jq -r '.defaults.prompts_dir' "$preset_file")"
+  default_provider="$(jq -r '.defaults.provider.default' "$preset_file")"
+  provider_secret_bindings="$(jq -c '.defaults.provider.secret_bindings' "$preset_file")"
+  bundled_root="$(jq -r '.defaults.plugins.roots.bundled' "$preset_file")"
+  host_local_root="$(jq -r '.defaults.plugins.roots.host_local' "$preset_file")"
+  resolved_plugins="$(jq -c '.defaults.plugins.resolved' "$preset_file")"
+
+  local config_content runtime_content gitignore_content
+  config_content="$(render_template "$TEMPLATE_DIR/project.json.template" \
+    PRESET "$preset" \
+    RUNTIME_CONFIG "$runtime_rel" \
+    JOURNAL_ROOT "$journal_rel" \
+    AGENTS_DIR "$agents_rel" \
+    PROMPTS_DIR "$prompts_rel" \
+    DEFAULT_PROVIDER "$default_provider" \
+    PROVIDER_SECRET_BINDINGS "$provider_secret_bindings" \
+    BUNDLED_PLUGINS_ROOT "$bundled_root" \
+    HOST_LOCAL_PLUGINS_ROOT "$host_local_root" \
+    ADOPTION_MODE "$mode" \
+    LEGACY_JOURNAL_BLOCK "$legacy_journal_block" \
+    RESOLVED_PLUGINS "$resolved_plugins"
+  )"
+
+  if [[ "$mode" == "fresh" || "$mode" == "fresh-with-legacy-archive" ]]; then
+    runtime_content="$(render_template "$TEMPLATE_DIR/runtime.conf.template" REVIEW_LANGUAGE "$language")"
+    gitignore_content="$(cat "$TEMPLATE_DIR/journal.gitignore.template")"
+  fi
+
+  note "preset $preset resolved deterministically"
+  note "review language: $language"
+  note "default provider: $default_provider"
+  note "resolved plugin plan: $resolved_plugins"
+  note "plugin roots: bundled=$bundled_root host-local=$host_local_root"
+
+  if ! bool "$dry_run" && ! bool "$non_interactive"; then
+    require_confirmation "Create bootstrap config at $project_config?"
+  fi
+
+  if [[ "$mode" == "fresh" || "$mode" == "fresh-with-legacy-archive" ]]; then
+    ensure_dir "$project_root/.agentmarshal/config" "$dry_run"
+    ensure_dir "$project_root/.agentmarshal/journal/tasks/open" "$dry_run"
+    ensure_dir "$project_root/.agentmarshal/journal/tasks/done" "$dry_run"
+    ensure_dir "$project_root/.agentmarshal/journal/tasks/abandoned" "$dry_run"
+    ensure_dir "$project_root/.agentmarshal/journal/events" "$dry_run"
+    ensure_dir "$project_root/.agentmarshal/journal/handoffs" "$dry_run"
+    ensure_dir "$project_root/.agentmarshal/journal/reviews" "$dry_run"
+    ensure_dir "$project_root/.agentmarshal/journal/decisions" "$dry_run"
+    ensure_dir "$project_root/.agentmarshal/journal/stats/runs" "$dry_run"
+    ensure_dir "$project_root/.agentmarshal/journal/stats/evaluations" "$dry_run"
+    ensure_dir "$project_root/.agentmarshal/journal/runs" "$dry_run"
+    ensure_dir "$project_root/.agentmarshal/journal/tmp" "$dry_run"
+    write_file "$project_root/.agentmarshal/config/runtime.conf" "$runtime_content" "$dry_run"
+    write_file "$project_root/.agentmarshal/journal/.gitignore" "$gitignore_content" "$dry_run"
+    if [[ "$mode" == "fresh-with-legacy-archive" ]]; then
+      ensure_dir "$project_root/.agentmarshal/integrations/git" "$dry_run"
+      ensure_dir "$project_root/.agentmarshal/integrations/ci" "$dry_run"
+      ensure_dir "$project_root/.agentmarshal/integrations/provider" "$dry_run"
+      write_file "$project_root/.agentmarshal/LEGACY_ARCHIVE.md" \
+        "# Legacy AgentMarshal Archive
+
+This host has a legacy AgentMarshal archive at \`$legacy_archive_arg\`.
+
+The active runtime journal for new host work is configured in
+\`.agentmarshal/project.json\` and must not use this archive path.
+" "$dry_run"
+    fi
+  else
+    ensure_dir "$project_root/.agentmarshal" "$dry_run"
+  fi
+  ensure_dir "$project_root/.agentmarshal/plugins" "$dry_run"
+  write_file "$project_config" "$config_content" "$dry_run"
+
+  if ! bool "$dry_run"; then
+    "$0" validate --project-root "$project_root" --project-config "$project_config"
+  fi
+}
+
+validate_plugin_manifest_shape() {
+  local manifest="$1" root
+  root="$(cd "$(dirname "$manifest")" && pwd)"
+  jq -e '
+    def relpath:
+      type == "string"
+      and length > 0
+      and test("^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._/-]+$");
+    def capability:
+      . == "provider.refs"
+      or . == "provider.merge_request"
+      or . == "provider.compare"
+      or . == "provider.pipeline"
+      or . == "ci.gate"
+      or . == "policy.scope"
+      or . == "policy.merge"
+      or . == "review.triage"
+      or . == "worktree.manage"
+      or . == "stats.record"
+      or . == "contribution.export";
+    (.schema == 1)
+    and (.id | type == "string" and test("^[a-z][a-z0-9-]{1,62}[a-z0-9]$"))
+    and (.version | type == "string" and test("^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$"))
+    and (.api_version == "1")
+    and ((.type == "provider") or (.type == "framework") or (.type == "host"))
+    and ((.distribution == "bundled")
+      or (.distribution == "official")
+      or (.distribution == "community")
+      or (.distribution == "host-local"))
+    and (.description | type == "string" and length > 0 and test("^[^\\r\\n]+$"))
+    and (.capabilities | type == "array" and length > 0 and all(capability))
+    and (.entrypoints | type == "object" and length > 0)
+    and (.entrypoints | keys - ["doctor", "execute", "validate"] | length == 0)
+    and (.entrypoints | all(.[]; relpath))
+    and (.permissions.network | type == "boolean")
+    and (.permissions.git_write | type == "boolean")
+    and (.permissions.secrets | type == "array")
+    and (.requires.agentmarshal | type == "string")
+    and (.requires.commands | type == "array")
+    and (
+      ((.distribution == "official") or (.distribution == "community")) | not
+      or (
+        .source.url | type == "string" and length > 0
+        and (.source.commit | type == "string" and test("^[0-9a-f]{40}$"))
+        and (.source.sha256 | type == "string" and test("^[0-9a-f]{64}$"))
+      )
+    )
+  ' "$manifest" >/dev/null || fail "invalid plugin manifest: $manifest"
+
+  local rel entrypoint resolved
+  for entrypoint in doctor validate execute; do
+    rel="$(jq -r --arg entrypoint "$entrypoint" '.entrypoints[$entrypoint] // empty' "$manifest")"
+    if [[ -n "$rel" ]]; then
+      resolve_plugin_entrypoint_path "$root" "$rel" no >/dev/null
+    fi
+  done
+}
+
+validate_plugin_manifest_runtime() {
+  local manifest="$1" root
+  root="$(cd "$(dirname "$manifest")" && pwd)"
+  validate_plugin_manifest_shape "$manifest"
+
+  local rel entrypoint resolved
+  for entrypoint in doctor validate execute; do
+    rel="$(jq -r --arg entrypoint "$entrypoint" '.entrypoints[$entrypoint] // empty' "$manifest")"
+    if [[ -n "$rel" ]]; then
+      resolve_plugin_entrypoint_path "$root" "$rel" yes >/dev/null
+    fi
+  done
+
+  while IFS= read -r entrypoint; do
+    [[ -n "$entrypoint" ]] || continue
+    command -v "$entrypoint" >/dev/null 2>&1 || fail "plugin dependency missing: $entrypoint"
+  done < <(jq -r '.requires.commands[]?' "$manifest" | sort -u)
+}
+
+validate_plugin_inventory_root() {
+  local root="$1" distribution="$2"
+  [[ -d "$root" ]] || return 0
+  while IFS= read -r manifest; do
+    [[ -n "$manifest" ]] || continue
+    validate_plugin_manifest_shape "$manifest"
+    [[ "$(jq -r '.distribution' "$manifest")" == "$distribution" ]] \
+      || fail "unexpected plugin distribution in $manifest"
+  done < <(find "$root" -mindepth 2 -name plugin.json -type f -print | sort)
+}
+
+validate_resolved_plugins() {
+  local config="$1"
+  local count
+  count="$(jq '.plugins.resolved | length' "$config")"
+  [[ "$count" -eq 0 ]] && return 0
+
+  local project_root bundled_root host_local_root
+  project_root="$(aops_project_get root)"
+  bundled_root="$(aops_project_path bundled_plugins_root)"
+  host_local_root="$(aops_project_path host_local_plugins_root)"
+
+  local row id type distribution rel_root plugin_root manifest expected_root
+  while IFS= read -r row; do
+    [[ -n "$row" ]] || continue
+    id="$(jq -r '.id' <<<"$row")"
+    type="$(jq -r '.type' <<<"$row")"
+    distribution="$(jq -r '.distribution' <<<"$row")"
+    rel_root="$(jq -r '.root' <<<"$row")"
+    plugin_root="$(_aops_canonical_path "$project_root/$rel_root")"
+
+    case "$distribution" in
+      bundled) expected_root="$bundled_root" ;;
+      host-local) expected_root="$host_local_root" ;;
+      official|community)
+        fail "external plugin distribution is not supported by local bootstrap yet: $id"
+        ;;
+      *) fail "unknown resolved plugin distribution: $distribution" ;;
+    esac
+
+    [[ "$plugin_root" == "$expected_root/"* ]] || \
+      fail "resolved plugin root escapes $distribution plugin root: $rel_root"
+    manifest="$plugin_root/plugin.json"
+    [[ -f "$manifest" ]] || fail "resolved plugin manifest missing: $manifest"
+    validate_plugin_manifest_runtime "$manifest"
+    [[ "$(jq -r '.permissions.git_write' "$manifest")" == "false" ]] \
+      || fail "resolved plugin requires git_write permission: $manifest"
+    run_plugin_doctor "$manifest" "$config"
+    [[ "$(jq -r '.id' "$manifest")" == "$id" ]] || fail "resolved plugin id mismatch: $manifest"
+    [[ "$(jq -r '.type' "$manifest")" == "$type" ]] || fail "resolved plugin type mismatch: $manifest"
+    [[ "$(jq -r '.distribution' "$manifest")" == "$distribution" ]] || \
+      fail "resolved plugin distribution mismatch: $manifest"
+    note "OK resolved-plugin $id"
+  done < <(jq -c '.plugins.resolved[]' "$config")
+}
+
+validate_default_provider() {
+  local provider="$1" bundled_root="$2" host_local_root="$3" config="$4"
+  [[ "$provider" =~ ^[a-z][a-z0-9-]*$ ]] || fail "invalid default provider: $provider"
+
+  local roots=("$bundled_root" "$host_local_root")
+  local root candidate manifest found="no"
+  for root in "${roots[@]}"; do
+    for candidate in "$root/providers/$provider-provider" "$root/providers/$provider" \
+                     "$root/$provider-provider" "$root/$provider"; do
+      if [[ -d "$candidate" ]]; then
+        manifest="$candidate/plugin.json"
+        [[ -f "$manifest" ]] || fail "default provider manifest missing: $manifest"
+        validate_plugin_manifest_runtime "$manifest"
+        [[ "$(jq -r '.permissions.git_write' "$manifest")" == "false" ]] \
+          || fail "default provider requires git_write permission: $manifest"
+        [[ "$(jq -r '.type' "$manifest")" == "provider" ]] \
+          || fail "default provider is not provider type: $manifest"
+        validate_provider_secret_bindings "$provider" "$manifest" "$config"
+        run_plugin_doctor "$manifest" "$config"
+        note "OK default-provider $provider"
+        found="yes"
+        break 2
+      fi
+    done
+  done
+  [[ "$found" == yes ]] || fail "default provider plugin not found: $provider"
+}
+
+run_plugin_doctor() {
+  local manifest="$1" config="$2" root rel doctor
+  root="$(cd "$(dirname "$manifest")" && pwd)"
+  rel="$(jq -r '.entrypoints.doctor // empty' "$manifest")"
+  [[ -n "$rel" ]] || return 0
+  doctor="$(resolve_plugin_entrypoint_path "$root" "$rel" yes)"
+
+  local env_args=() required bound_name
+  while IFS= read -r required; do
+    [[ -n "$required" ]] || continue
+    if [[ -z "${!required:-}" ]]; then
+      bound_name="$(jq -r --arg key "$required" '.provider.secret_bindings[$key] // empty' "$config")"
+      if [[ -n "$bound_name" && -n "${!bound_name:-}" ]]; then
+        env_args+=("$required=${!bound_name}")
+      fi
+    fi
+  done < <(jq -r '.permissions.secrets[]?' "$manifest")
+
+  env "${env_args[@]}" "$doctor" >/dev/null
+}
+
+validate_provider_secret_bindings() {
+  local provider="$1" manifest="$2" config="$3"
+  local required required_count env_name bound_name present="no"
+  required_count="$(jq '.permissions.secrets | length' "$manifest")"
+  [[ "$required_count" -eq 0 ]] && return 0
+
+  while IFS= read -r required; do
+    [[ -n "$required" ]] || continue
+    bound_name="$(jq -r --arg key "$required" '.provider.secret_bindings[$key] // empty' "$config")"
+    for env_name in "$required" "$bound_name"; do
+      [[ -n "$env_name" ]] || continue
+      if [[ -n "${!env_name:-}" ]]; then
+        present="yes"
+        break 2
+      fi
+    done
+  done < <(jq -r '.permissions.secrets[]' "$manifest")
+
+  [[ "$present" == yes ]] || \
+    fail "default provider '$provider' requires one of its declared secret env vars"
+}
+
+cmd_validate() {
+  local project_root_arg="" project_config_arg=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --project-root) project_root_arg="${2:?}"; shift 2 ;;
+      --project-config) project_config_arg="${2:?}"; shift 2 ;;
+      -h|--help) usage; return 0 ;;
+      *) fail "unknown validate argument: $1" ;;
+    esac
+  done
+
+  local root config
+  root="$(aops_project_discover_root "$project_root_arg" "$project_config_arg")"
+  config="$(aops_project_discover_config "$root" "$project_config_arg")"
+  aops_project_load "$root" "$config"
+
+  load_runtime_from_project "$root" "$config"
+  note "project config valid: $config"
+}
+
+cmd_doctor() {
+  local project_root_arg="" project_config_arg=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --project-root) project_root_arg="${2:?}"; shift 2 ;;
+      --project-config) project_config_arg="${2:?}"; shift 2 ;;
+      -h|--help) usage; return 0 ;;
+      *) fail "unknown doctor argument: $1" ;;
+    esac
+  done
+
+  local root config
+  root="$(aops_project_discover_root "$project_root_arg" "$project_config_arg")"
+  config="$(aops_project_discover_config "$root" "$project_config_arg")"
+  aops_project_load "$root" "$config"
+  load_runtime_from_project "$root" "$config"
+
+  note "OK project-config $config"
+  note "OK preset $(aops_project_get preset)"
+  [[ -d "$(aops_project_path journal_root)" ]] || fail "journal root missing: $(aops_project_path journal_root)"
+  note "OK journal-root $(aops_project_get journal_root)"
+  [[ -d "$(aops_project_path agents_dir)" ]] || fail "agents dir missing: $(aops_project_path agents_dir)"
+  note "OK agents-dir $(aops_project_get agents_dir)"
+  note "OK default-provider $(aops_project_get default_provider)"
+  [[ -d "$(aops_project_path host_local_plugins_root)" ]] || fail "host-local plugin root missing: $(aops_project_path host_local_plugins_root)"
+  note "OK host-local-plugins $(aops_project_get host_local_plugins_root)"
+  [[ -d "$(aops_project_path bundled_plugins_root)" || ! -e "$(aops_project_path bundled_plugins_root)" ]] || \
+    fail "bundled plugin root path invalid: $(aops_project_path bundled_plugins_root)"
+  validate_plugin_inventory_root "$(aops_project_path bundled_plugins_root)" bundled
+  validate_plugin_inventory_root "$(aops_project_path host_local_plugins_root)" host-local
+  validate_default_provider "$(aops_project_get default_provider)" \
+    "$(aops_project_path bundled_plugins_root)" \
+    "$(aops_project_path host_local_plugins_root)" \
+    "$config"
+  validate_resolved_plugins "$config"
+  note "OK runtime-config $(aops_project_get runtime_config)"
+}
+
+stats_jq_filter() {
+  cat <<'EOF'
+map(select(($role == "" or .role == $role)
+  and ($vendor == "" or .vendor == $vendor)
+  and ($model == "" or .model == $model)
+  and ($trial == "all" or (.trial == ($trial == "true")))))
+EOF
+}
+
+cmd_stats() {
+  local project_root_arg="" project_config_arg="" command="summary"
+  local json="no" role="" vendor="" model="" trial="all" task_class=""
+  if [[ $# -gt 0 && "$1" != --* ]]; then
+    command="$1"
+    shift
+  fi
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --project-root) project_root_arg="${2:?}"; shift 2 ;;
+      --project-config) project_config_arg="${2:?}"; shift 2 ;;
+      --json) json="yes"; shift ;;
+      --role) role="${2:?}"; shift 2 ;;
+      --vendor) vendor="${2:?}"; shift 2 ;;
+      --model) model="${2:?}"; shift 2 ;;
+      --trial) trial="${2:?}"; shift 2 ;;
+      --task-class) task_class="${2:?}"; shift 2 ;;
+      -h|--help) usage; return 0 ;;
+      *) fail "unknown stats argument: $1" ;;
+    esac
+  done
+
+  local root config store eval_store work filter ranking summary
+  root="$(aops_project_discover_root "$project_root_arg" "$project_config_arg")"
+  config="$(aops_project_discover_config "$root" "$project_config_arg")"
+  load_runtime_from_project "$root" "$config"
+
+  store="$(aops_config_path stats_store)"
+  eval_store="$(aops_config_path evaluation_store)"
+  work="$(mktemp)"
+  eval_tmp=""
+  declare -g __AOPS_STATS_WORK="$work"
+  declare -g __AOPS_STATS_EVAL_TMP=""
+  trap 'rm -f "${__AOPS_STATS_WORK:-}" "${__AOPS_STATS_EVAL_TMP:-}"' RETURN
+  find "$store" -type f -name 'RUN-*.json' -print0 2>/dev/null | xargs -0 -r jq -c . >"$work"
+  filter="$(stats_jq_filter)"
+
+  case "$command" in
+    list)
+      jq -s --arg role "$role" --arg vendor "$vendor" --arg model "$model" --arg trial "$trial" \
+        "$filter | sort_by(.recorded_at)" "$work"
+      ;;
+    ranking)
+      local eval_tmp
+      eval_tmp="$(mktemp)"
+      declare -g __AOPS_STATS_EVAL_TMP="$eval_tmp"
+      find "$eval_store" -type f -name 'EVAL-*.json' -print0 2>/dev/null | xargs -0 -r jq -c . >"$eval_tmp"
+      ranking="$(jq -s --arg class "$task_class" '
+        def median:
+          sort as $s | length as $n
+          | if $n == 0 then 0
+            elif ($n % 2) == 1 then $s[($n / 2 | floor)]
+            else (($s[$n / 2 - 1] + $s[$n / 2]) / 2) end;
+        map(select(.adjudication_status == "confirmed"
+                   and ($class == "" or .task_class == $class))) as $rows
+        | (
+            $rows
+            | group_by([.task_class,.executor_vendor,.executor_model])
+            | map({
+                activity: "implementation", task_class: .[0].task_class,
+                vendor: .[0].executor_vendor, model: .[0].executor_model,
+                score_status: "full", samples: length,
+                median_score: (map(.implementation_score) | median),
+                stable: (length >= 3)
+              })
+          ) + (
+            $rows
+            | map(select(.review_score != null))
+            | group_by([.task_class,.reviewer_vendor,.reviewer_model,.review_score_status])
+            | map({
+                activity: "review", task_class: .[0].task_class,
+                vendor: .[0].reviewer_vendor, model: .[0].reviewer_model,
+                score_status: .[0].review_score_status, samples: length,
+                median_score: (map(.review_score) | median),
+                stable: (length >= 3 and .[0].review_score_status == "full")
+              })
+          )
+        | sort_by(.activity,.task_class,-.median_score)
+      ' "$eval_tmp")"
+      if bool "$json"; then
+        printf '%s\n' "$ranking" | jq .
+      else
+        printf 'ACTIVITY\tTASK_CLASS\tVENDOR\tMODEL\tSTATUS\tSAMPLES\tMEDIAN\tSTABLE\n'
+        printf '%s\n' "$ranking" | jq -r '.[] | [
+          .activity,.task_class,.vendor,.model,.score_status,.samples,.median_score,.stable
+        ] | @tsv'
+      fi
+      ;;
+    summary)
+      summary="$(jq -s --arg role "$role" --arg vendor "$vendor" --arg model "$model" --arg trial "$trial" \
+        "$filter | group_by([.role,.vendor,.model,.activity]) |
+        map({
+          role: .[0].role, vendor: .[0].vendor, model: .[0].model,
+          activity: .[0].activity, runs: length,
+          successful: map(select(.outcome == \"success\" or .outcome == \"approved\")) | length,
+          avg_duration_seconds: ((map(.duration_seconds) | add // 0) / length | floor),
+          human_interventions: (map(.human_interventions) | add // 0),
+          retries: (map(.retries) | add // 0),
+          scope_violations: (map(.scope_violations) | add // 0),
+          tests_failed: (map(.tests_failed) | add // 0),
+          findings: (map(.findings_count) | add // 0),
+          cost_usd: (map(.cost_usd) | add // 0)
+        })" "$work")"
+      if bool "$json"; then
+        printf '%s\n' "$summary" | jq .
+      else
+        printf 'ROLE\tVENDOR\tMODEL\tACTIVITY\tRUNS\tOK\tAVG_SEC\tHUMAN\tRETRIES\tSCOPE\tTEST_FAIL\tFINDINGS\tCOST_USD\n'
+        printf '%s\n' "$summary" | jq -r '.[] | [
+          .role,.vendor,.model,.activity,.runs,.successful,.avg_duration_seconds,
+          .human_interventions,.retries,.scope_violations,.tests_failed,.findings,
+          (.cost_usd * 10000 | round / 10000)
+        ] | @tsv'
+      fi
+      ;;
+    *)
+      fail "unknown stats command: $command"
+      ;;
+  esac
+}
+
+main() {
+  local command="${1:-}"
+  [[ -n "$command" ]] || { usage; exit 2; }
+  shift || true
+  case "$command" in
+    init) cmd_init "$@" ;;
+    doctor) cmd_doctor "$@" ;;
+    validate) cmd_validate "$@" ;;
+    stats) cmd_stats "$@" ;;
+    -h|--help|help) usage ;;
+    *) fail "unknown command: $command" ;;
+  esac
+}
+
+main "$@"

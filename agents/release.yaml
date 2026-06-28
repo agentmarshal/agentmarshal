@@ -1,0 +1,41 @@
+role: release
+display_name: Release / Ops
+active: false                  # зарезервировано — вводим позже, без prod-секретов на старте
+
+# Таблица personas.md (DevOps): infrastructure ✅, app-код ❌, secrets partial
+# (staging, но НЕ production без Lead approval).
+branch_prefix: infra
+scope_allow:
+  - infrastructure/
+  - .gitflic-ci.yml
+  - .agents/handoffs/        # impl-роль (ADR-0003)
+  - .agents/events/
+scope_deny:
+  - src/backend/app/
+  - src/frontend/
+  - src/frontend-manager/
+  - agentmarshal/                # фреймворк/свой промпт — Lead-owned (R-006)
+  - .agents/tasks/
+  - .agents/decisions/
+  - .agents/reviews/
+
+tools:
+  - git
+  - docker
+  - tofu                       # terraform/opentofu (только plan без approval)
+  - ssh                        # деплой через шлюз, не прямые prod-команды
+
+prompt: prompts/release.md
+
+vendor:
+  preferred: codex
+  model: gpt-5.5-high
+  reviewer_must_differ: true
+
+trial:
+  enabled: false
+
+human_gate:
+  - prod-deploy
+  - prod-secrets
+  - destructive-infra          # tofu apply/destroy, db drop — только с approval

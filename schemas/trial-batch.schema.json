@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentmarshal.local/schemas/trial-batch.schema.json",
+  "title": "AgentMarshal trial batch",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "id", "created_at", "base_commit", "scoring_version",
+    "minimum_stable_sample", "assignments"
+  ],
+  "properties": {
+    "schema": {"const": 1},
+    "id": {"type": "string", "pattern": "^TRIAL-[0-9]{8}-[0-9]+$"},
+    "created_at": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"},
+    "base_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "scoring_version": {"const": "trial-v1"},
+    "minimum_stable_sample": {"type": "integer", "minimum": 3},
+    "assignments": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "task", "task_class", "difficulty", "executor_vendor",
+          "executor_model", "reviewer_vendor", "reviewer_model", "scope"
+        ],
+        "properties": {
+          "task": {"type": "string", "pattern": "^CR-[0-9]+$"},
+          "task_class": {
+            "enum": ["documentation", "ci", "frontend", "backend", "review", "operations"]
+          },
+          "difficulty": {"type": "integer", "minimum": 1, "maximum": 5},
+          "executor_vendor": {"enum": ["claude", "codex"]},
+          "executor_model": {"type": "string", "minLength": 1},
+          "reviewer_vendor": {"enum": ["claude", "codex"]},
+          "reviewer_model": {"type": "string", "minLength": 1},
+          "scope": {
+            "type": "array",
+            "minItems": 1,
+            "items": {"type": "string", "minLength": 1}
+          }
+        }
+      }
+    }
+  }
+}

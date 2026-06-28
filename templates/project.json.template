@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "preset": "__PRESET__",
+  "runtime_config": "__RUNTIME_CONFIG__",
+  "journal_root": "__JOURNAL_ROOT__",
+  "agents_dir": "__AGENTS_DIR__",
+  "prompts_dir": "__PROMPTS_DIR__",
+  "provider": {
+    "default": "__DEFAULT_PROVIDER__",
+    "secret_bindings": __PROVIDER_SECRET_BINDINGS__
+  },
+  "plugins": {
+    "roots": {
+      "bundled": "__BUNDLED_PLUGINS_ROOT__",
+      "host_local": "__HOST_LOCAL_PLUGINS_ROOT__"
+    },
+    "resolved": __RESOLVED_PLUGINS__
+  },
+  "adoption": {
+    "mode": "__ADOPTION_MODE__"__LEGACY_JOURNAL_BLOCK__
+  }
+}

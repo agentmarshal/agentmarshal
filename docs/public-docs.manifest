@@ -1,0 +1,12 @@
+# AgentMarshal public bilingual documentation manifest.
+# Format:
+# document_id|version|ru_path|en_path|required_section_ids
+agentmarshal-readme|1|agentmarshal/README.ru.md|agentmarshal/README.en.md|overview,quick-start,contracts,docs-map,status
+agentmarshal-adopt|1|agentmarshal/ADOPT.ru.md|agentmarshal/ADOPT.en.md|overview,install,init,configure,validate,next
+agentmarshal-startup-guide|1|agentmarshal/docs/startup-guide.ru.md|agentmarshal/docs/startup-guide.en.md|overview,when-to-use,install,init,first-task,update
+agentmarshal-operations|1|agentmarshal/docs/operations.ru.md|agentmarshal/docs/operations.en.md|overview,lead-cycle,runner,review,completion,stats
+agentmarshal-host-integration|1|agentmarshal/docs/host-integration.ru.md|agentmarshal/docs/host-integration.en.md|overview,layout,config,bootstrap,ci,providers,versioning
+agentmarshal-host-adapter-boundary|1|agentmarshal/docs/host-adapter-boundary.ru.md|agentmarshal/docs/host-adapter-boundary.en.md|overview,principles,layout,provider,ci,custom-gates
+agentmarshal-public-release-readiness|1|agentmarshal/docs/public-release-readiness.ru.md|agentmarshal/docs/public-release-readiness.en.md|overview,private-to-public,sanitization,prompts,github,release-branch
+agentmarshal-public-repository-policy|1|agentmarshal/docs/public-repository-policy.ru.md|agentmarshal/docs/public-repository-policy.en.md|overview,public-scope,private-scope,sanitization,github-ci,release-branches
+agentmarshal-methodology|1|agentmarshal/methodology/README.ru.md|agentmarshal/methodology/README.en.md|overview,documents,workflow,roles,reviews

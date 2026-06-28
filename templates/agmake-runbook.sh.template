@@ -1,0 +1,421 @@
+#!/usr/bin/env bash
+# AgentMarshal AgMake task-local runbook.
+# Concrete runbooks belong in ignored host runtime state:
+#   <journal_root>/tmp/runner/CR-NNN-runbook.sh
+set -euo pipefail
+
+TASK_ID="__TASK_ID__"
+BRANCH="__BRANCH__"
+BASE_REF="${BASE_REF:-__BASE_REF__}"
+TARGET_BRANCH="${TARGET_BRANCH:-__TARGET_BRANCH__}"
+JOURNAL_ROOT_REL="__JOURNAL_ROOT__"
+REVIEW_VENDOR="${REVIEW_VENDOR:-__REVIEW_VENDOR__}"
+REVIEW_MODEL="${REVIEW_MODEL:-__REVIEW_MODEL__}"
+MAX_REVIEW_LOOPS="${MAX_REVIEW_LOOPS:-3}"
+PIPELINE_TIMEOUT="${PIPELINE_TIMEOUT:-1800}"
+PIPELINE_POLL="${PIPELINE_POLL:-15}"
+RUNBOOK_FROM="${RUNBOOK_FROM:-00}"
+
+IMPLEMENTATION_TITLE="__IMPLEMENTATION_TITLE__"
+COMPLETION_BRANCH="__COMPLETION_BRANCH__"
+COMPLETION_TITLE="__COMPLETION_TITLE__"
+COMPLETION_COMMIT_MESSAGE="__COMPLETION_COMMIT_MESSAGE__"
+EVENT_ID="__EVENT_ID__"
+EVENT_FILE="__EVENT_FILE__"
+EVENT_ACTION="__EVENT_ACTION__"
+
+ROOT="$(git rev-parse --show-toplevel)"
+JOURNAL_ROOT="$ROOT/$JOURNAL_ROOT_REL"
+RUN_ROOT="$JOURNAL_ROOT/runs/runner/$TASK_ID"
+TMP_ROOT="$JOURNAL_ROOT/tmp/runner/$TASK_ID"
+TASKS_OPEN_REL="$JOURNAL_ROOT_REL/tasks/open"
+TASKS_DONE_REL="$JOURNAL_ROOT_REL/tasks/done"
+REVIEWS_REL="$JOURNAL_ROOT_REL/reviews"
+EVENTS_REL="$JOURNAL_ROOT_REL/events"
+mkdir -p "$RUN_ROOT" "$TMP_ROOT"
+LOG_FILE="$RUN_ROOT/$(date -u +%Y%m%dT%H%M%SZ)-runbook.log"
+STATE_FILE="$RUN_ROOT/state.env"
+RUN_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+CURRENT_SECTION="bootstrap"
+SECTION_TMP=""
+
+section() {
+  printf '\n== %s ==\n' "$*" | tee -a "$LOG_FILE"
+}
+
+note() {
+  printf '%s\n' "$*" | tee -a "$LOG_FILE"
+}
+
+fail() {
+  local section_name="$1" reason="$2"
+  {
+    printf '\nAGENTMARSHAL_RUNBOOK_FAILURE\n'
+    printf 'Task: %s\n' "$TASK_ID"
+    printf 'Section: %s\n' "$section_name"
+    printf 'Branch: %s\n' "$BRANCH"
+    printf 'SHA: %s\n' "${IMPLEMENTATION_SHA:-n/a}"
+    printf 'MR: %s\n' "${MR_ID:-n/a}"
+    printf 'Pipeline: %s\n' "${PIPELINE_ID:-n/a}"
+    printf 'Review-File: %s\n' "${REVIEW_FILE:-n/a}"
+    printf 'Completion-SHA: %s\n' "${COMPLETION_SHA:-n/a}"
+    printf 'Completion-MR: %s\n' "${COMPLETION_MR_ID:-n/a}"
+    printf 'Log: %s\n' "$LOG_FILE"
+    printf 'State: %s\n' "$STATE_FILE"
+    printf 'Reason: %s\n' "$reason"
+    printf 'Next-Hint: Re-open a model session with this block and the log path.\n'
+  } | tee -a "$LOG_FILE" >&2
+  exit 1
+}
+
+section_fail() {
+  local reason="$1"
+  section_cleanup || true
+  fail "$CURRENT_SECTION" "$reason"
+}
+
+on_error() {
+  local line="$1" command="$2"
+  section_fail "command failed at line $line: $command"
+}
+
+trap 'on_error "$LINENO" "$BASH_COMMAND"' ERR
+
+section_prepare() {
+  local step="$1" title="$2"
+  CURRENT_SECTION="$step $title"
+  SECTION_TMP="$TMP_ROOT/section-$step"
+  mkdir -p "$SECTION_TMP"
+  note "prepare: $CURRENT_SECTION"
+}
+
+section_cleanup() {
+  if [[ -n "${SECTION_TMP:-}" && "$SECTION_TMP" == "$TMP_ROOT/"* ]]; then
+    rm -rf "$SECTION_TMP"
+  fi
+  SECTION_TMP=""
+}
+
+should_run() {
+  local step="$1"
+  (( 10#$step >= 10#$RUNBOOK_FROM ))
+}
+
+safe_section() {
+  local step="$1" title="$2"
+  section "$step $title"
+  if ! should_run "$step"; then
+    note "skipped by RUNBOOK_FROM=$RUNBOOK_FROM"
+    return 1
+  fi
+  section_prepare "$step" "$title"
+  return 0
+}
+
+run() {
+  note "+ $*"
+  "$@" 2>&1 | tee -a "$LOG_FILE"
+}
+
+load_state() {
+  [[ -f "$STATE_FILE" ]] || return 0
+  # shellcheck disable=SC1090
+  source "$STATE_FILE"
+}
+
+write_state() {
+  umask 077
+  {
+    printf 'IMPLEMENTATION_SHA=%q\n' "${IMPLEMENTATION_SHA:-}"
+    printf 'MR_ID=%q\n' "${MR_ID:-}"
+    printf 'PIPELINE_ID=%q\n' "${PIPELINE_ID:-}"
+    printf 'REVIEW_FILE=%q\n' "${REVIEW_FILE:-}"
+    printf 'IMPLEMENTATION_REVIEW_FILE=%q\n' "${IMPLEMENTATION_REVIEW_FILE:-}"
+    printf 'COMPLETION_BRANCH=%q\n' "${COMPLETION_BRANCH:-}"
+    printf 'COMPLETION_SHA=%q\n' "${COMPLETION_SHA:-}"
+    printf 'COMPLETION_MR_ID=%q\n' "${COMPLETION_MR_ID:-}"
+    printf 'COMPLETION_REVIEW_FILE=%q\n' "${COMPLETION_REVIEW_FILE:-}"
+  } > "$STATE_FILE"
+}
+
+review_field() {
+  local file="$1" key="$2"
+  awk -v wanted="$key" '
+    {
+      line=$0
+      gsub(/\*\*/, "", line)
+      sub(/^[[:space:]#>*-]+/, "", line)
+      pos=index(line, ":")
+      if (!pos) next
+      name=substr(line, 1, pos-1)
+      value=substr(line, pos+1)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", name)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+      if (tolower(name) == tolower(wanted)) {
+        print value
+        exit
+      }
+    }
+  ' "$file"
+}
+
+latest_review_for_sha() {
+  local short_sha="$1"
+  ls -t "$JOURNAL_ROOT/runs/${TASK_ID}-qa-review-${short_sha}"*.md 2>/dev/null | head -1
+}
+
+validate_host() {
+  if [[ "$JOURNAL_ROOT_REL" == ".agents" && -x "$ROOT/agentmarshal/scripts/validate.sh" ]]; then
+    run bash agentmarshal/scripts/validate.sh
+  else
+    run agentmarshal/bin/agentmarshal validate --project-root "$ROOT"
+  fi
+}
+
+find_pipeline_id() {
+  local sha="$1" out="$RUN_ROOT/pipelines-$sha.json"
+  agentmarshal/scripts/gitflic-ci.sh sha "$sha" > "$out"
+  jq -r 'sort_by(.localId) | reverse | .[0].localId // empty' "$out"
+}
+
+wait_pipeline_for_sha() {
+  local sha="$1" label="$2" attempt pipeline_id
+  for attempt in 1 2 3; do
+    section "$label pipeline lookup attempt $attempt"
+    pipeline_id="$(find_pipeline_id "$sha" || true)"
+    if [[ "$pipeline_id" =~ ^[0-9]+$ ]]; then
+      PIPELINE_ID="$pipeline_id"
+      run agentmarshal/scripts/gitflic-ci.sh wait "$pipeline_id" "$PIPELINE_TIMEOUT" "$PIPELINE_POLL"
+      return 0
+    fi
+    sleep "$PIPELINE_POLL"
+  done
+  fail "$label pipeline" "pipeline for SHA $sha was not found"
+}
+
+run_review_loop() {
+  local sha="$1" label="$2" loop short_sha verdict reviewed
+  short_sha="${sha:0:7}"
+  for ((loop = 1; loop <= MAX_REVIEW_LOOPS; loop++)); do
+    section "$label review loop $loop/$MAX_REVIEW_LOOPS"
+    run agentmarshal/scripts/review-readonly.sh \
+      --task "$TASK_ID" \
+      --sha "$sha" \
+      --base "$BASE_REF" \
+      --vendor "$REVIEW_VENDOR" \
+      --model "$REVIEW_MODEL"
+    REVIEW_FILE="$(latest_review_for_sha "$short_sha")"
+    [[ -n "${REVIEW_FILE:-}" && -f "$REVIEW_FILE" ]] \
+      || fail "$label review" "review artifact for $short_sha was not found"
+    reviewed="$(review_field "$REVIEW_FILE" Reviewed-Commit | tr -d ' ')"
+    verdict="$(review_field "$REVIEW_FILE" Verdict | tr '[:upper:]' '[:lower:]' | tr '-' '_' | tr -d ' *`')"
+    [[ "$reviewed" == "$sha" ]] \
+      || fail "$label review" "reviewed commit '$reviewed' does not match '$sha'"
+    case "$verdict" in
+      approved|approve|ok|lgtm)
+        note "review approved: $REVIEW_FILE"
+        return 0
+        ;;
+      changes_required|blocked|rejected)
+        fail "$label review" "review returned $verdict: $REVIEW_FILE"
+        ;;
+      *)
+        fail "$label review" "unknown review verdict '$verdict': $REVIEW_FILE"
+        ;;
+    esac
+  done
+  fail "$label review" "review loop limit exceeded"
+}
+
+create_mr() {
+  local branch="$1" title="$2" out="$3"
+  infrastructure/scripts/mr.sh create --from "$branch" "$title" "$TARGET_BRANCH" > "$out" 2>&1
+  cat "$out" | tee -a "$LOG_FILE" >&2
+  grep -oE 'MR #[0-9]+' "$out" | grep -oE '[0-9]+' | tail -1
+}
+
+write_completion_event() {
+  local event_dir="$JOURNAL_ROOT/events/$(date -u +%Y)/$TASK_ID"
+  local event_file="$event_dir/$EVENT_FILE"
+  mkdir -p "$event_dir"
+  find "$event_dir" -maxdepth 1 -type f -name '*-runner-runbook.md' ! -name "$EVENT_FILE" -delete
+  cat > "$event_file" <<EOF
+id: $EVENT_ID
+task: $TASK_ID
+type: runner
+created_at: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+status: done
+
+Runner-Mode: agmake
+Runner-ID: $JOURNAL_ROOT_REL/tmp/runner/$TASK_ID-runbook.sh
+Action: $EVENT_ACTION
+State: succeeded
+Target-SHA: $IMPLEMENTATION_SHA
+Base-Ref: $BASE_REF
+MR: $MR_ID
+Started-At: $RUN_STARTED_AT
+Finished-At: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+Exit-Code: 0
+Artifacts:
+- ${IMPLEMENTATION_REVIEW_FILE#$ROOT/}
+- ${LOG_FILE#$ROOT/}
+
+# $TASK_ID AgMake runbook
+
+The task-local AgMake runbook executed the implementation and completion
+protocol outside the model session. Pipeline polling and review waiting happened
+in the terminal process.
+EOF
+  note "completion event: ${event_file#$ROOT/}"
+}
+
+load_state
+
+if safe_section 00 "preflight"; then
+  git diff --quiet || fail "00 preflight" "working tree has unstaged changes"
+  git diff --cached --quiet || fail "00 preflight" "index has staged changes"
+  current_branch="$(git branch --show-current)"
+  [[ "$current_branch" == "$BRANCH" ]] \
+    || fail "00 preflight" "expected branch $BRANCH, got $current_branch"
+  validate_host
+  IMPLEMENTATION_SHA="$(git rev-parse HEAD)"
+  write_state
+  section_cleanup
+else
+  [[ -n "${IMPLEMENTATION_SHA:-}" ]] || IMPLEMENTATION_SHA="$(git rev-parse HEAD)"
+fi
+note "Task: $TASK_ID"
+note "Branch: $BRANCH"
+note "Implementation-SHA: $IMPLEMENTATION_SHA"
+
+if safe_section 10 "push and MR"; then
+  run git push -u origin "$BRANCH"
+  mr_output="$RUN_ROOT/mr-create.txt"
+  MR_ID="${MR_ID:-}"
+  if [[ -z "$MR_ID" ]]; then
+    MR_ID="$(create_mr "$BRANCH" "$IMPLEMENTATION_TITLE" "$mr_output")"
+  fi
+  [[ "$MR_ID" =~ ^[0-9]+$ ]] || fail "10 push and MR" "MR_ID is not numeric"
+  write_state
+  section_cleanup
+fi
+[[ "${MR_ID:-}" =~ ^[0-9]+$ ]] || fail "10 push and MR" "MR_ID is required for later sections"
+note "MR: $MR_ID"
+
+if safe_section 20 "pipeline"; then
+  wait_pipeline_for_sha "$IMPLEMENTATION_SHA" "implementation"
+  write_state
+  section_cleanup
+fi
+
+if safe_section 30 "review loop"; then
+  run_review_loop "$IMPLEMENTATION_SHA" "implementation"
+  IMPLEMENTATION_REVIEW_FILE="$REVIEW_FILE"
+  write_state
+  section_cleanup
+fi
+IMPLEMENTATION_REVIEW_FILE="${IMPLEMENTATION_REVIEW_FILE:-${REVIEW_FILE:-}}"
+[[ -n "$IMPLEMENTATION_REVIEW_FILE" ]] || fail "30 review loop" "IMPLEMENTATION_REVIEW_FILE is required"
+
+if safe_section 40 "merge policy"; then
+  run env AGENTMARSHAL_PIPELINE_OK_SHA="$IMPLEMENTATION_SHA" \
+    AGENTMARSHAL_REVIEW_FILE="${IMPLEMENTATION_REVIEW_FILE#$ROOT/}" \
+    agentmarshal/scripts/merge-policy.sh \
+      --branch "$BRANCH" \
+      --head "$IMPLEMENTATION_SHA" \
+      --base "$BASE_REF" \
+      --task "$TASK_ID" \
+      --review-file "${IMPLEMENTATION_REVIEW_FILE#$ROOT/}"
+  section_cleanup
+fi
+
+if safe_section 50 "merge"; then
+  run env AGENTMARSHAL_PIPELINE_OK_SHA="$IMPLEMENTATION_SHA" \
+    AGENTMARSHAL_REVIEW_FILE="${IMPLEMENTATION_REVIEW_FILE#$ROOT/}" \
+    infrastructure/scripts/mr.sh merge "$MR_ID" "$TASK_ID"
+  section_cleanup
+fi
+
+if safe_section 60 "completion transaction"; then
+  current_branch="$(git branch --show-current)"
+  done_file="$(find "$JOURNAL_ROOT/tasks/done" -maxdepth 2 -type f -name "$TASK_ID-*.md" 2>/dev/null | head -1)"
+  canonical_review="$JOURNAL_ROOT/reviews/$(date -u +%Y)/${TASK_ID}-completion-${IMPLEMENTATION_SHA:0:12}.md"
+  if [[ "$current_branch" == "$COMPLETION_BRANCH" && -n "$done_file" && -f "$canonical_review" ]]; then
+    note "completion transaction already present in working tree"
+  else
+    run git fetch origin
+    run git switch "$TARGET_BRANCH"
+    run git merge --ff-only "origin/$TARGET_BRANCH"
+    if git rev-parse --verify --quiet "$COMPLETION_BRANCH" >/dev/null; then
+      run git switch "$COMPLETION_BRANCH"
+    else
+      run git switch -c "$COMPLETION_BRANCH"
+    fi
+    run agentmarshal/scripts/task-lifecycle.sh complete \
+      --task "$TASK_ID" \
+      --review-task "$TASK_ID" \
+      --review-file "${IMPLEMENTATION_REVIEW_FILE#$ROOT/}" \
+      --reviewed-commit "$IMPLEMENTATION_SHA" \
+      --target-ref "$TARGET_BRANCH"
+  fi
+  write_completion_event
+  validate_host
+  run git add "$TASKS_OPEN_REL" "$TASKS_DONE_REL" "$REVIEWS_REL" "$EVENTS_REL"
+  if git diff --cached --quiet; then
+    note "completion transaction has no staged changes; reusing HEAD"
+  else
+    run git commit -m "$COMPLETION_COMMIT_MESSAGE"
+  fi
+  COMPLETION_SHA="$(git rev-parse HEAD)"
+  write_state
+  section_cleanup
+fi
+[[ -n "${COMPLETION_SHA:-}" ]] || fail "60 completion transaction" "COMPLETION_SHA is required"
+note "Completion-SHA: $COMPLETION_SHA"
+
+if safe_section 70 "completion push and MR"; then
+  run git push -u origin "$COMPLETION_BRANCH"
+  completion_mr_output="$RUN_ROOT/completion-mr-create.txt"
+  COMPLETION_MR_ID="${COMPLETION_MR_ID:-}"
+  if [[ -z "$COMPLETION_MR_ID" ]]; then
+    COMPLETION_MR_ID="$(create_mr "$COMPLETION_BRANCH" "$COMPLETION_TITLE" "$completion_mr_output")"
+  fi
+  [[ "$COMPLETION_MR_ID" =~ ^[0-9]+$ ]] \
+    || fail "70 completion push and MR" "COMPLETION_MR_ID is not numeric"
+  write_state
+  section_cleanup
+fi
+[[ "${COMPLETION_MR_ID:-}" =~ ^[0-9]+$ ]] \
+  || fail "70 completion push and MR" "COMPLETION_MR_ID is required for later sections"
+
+if safe_section 80 "completion pipeline"; then
+  wait_pipeline_for_sha "$COMPLETION_SHA" "completion"
+  write_state
+  section_cleanup
+fi
+
+if safe_section 90 "completion review"; then
+  run_review_loop "$COMPLETION_SHA" "completion"
+  COMPLETION_REVIEW_FILE="$REVIEW_FILE"
+  write_state
+  section_cleanup
+fi
+[[ -n "${COMPLETION_REVIEW_FILE:-}" ]] || fail "90 completion review" "COMPLETION_REVIEW_FILE is required"
+
+if safe_section 95 "completion merge"; then
+  run env AGENTMARSHAL_PIPELINE_OK_SHA="$COMPLETION_SHA" \
+    AGENTMARSHAL_REVIEW_FILE="${COMPLETION_REVIEW_FILE#$ROOT/}" \
+    infrastructure/scripts/mr.sh merge "$COMPLETION_MR_ID" "$TASK_ID"
+  section_cleanup
+fi
+
+section "99 summary"
+note "AGENTMARSHAL_RUNBOOK_SUCCESS"
+note "Task: $TASK_ID"
+note "Implementation-SHA: $IMPLEMENTATION_SHA"
+note "Implementation-MR: $MR_ID"
+note "Implementation-Review: ${IMPLEMENTATION_REVIEW_FILE#$ROOT/}"
+note "Completion-SHA: $COMPLETION_SHA"
+note "Completion-MR: $COMPLETION_MR_ID"
+note "Completion-Review: ${COMPLETION_REVIEW_FILE#$ROOT/}"
+note "Log: $LOG_FILE"

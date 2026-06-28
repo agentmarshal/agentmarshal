@@ -1,0 +1,55 @@
+name: AgentMarshal CI
+
+on:
+  push:
+    branches:
+      - master
+      - dev
+      - next
+      - 'docs/**'
+      - 'fix/**'
+      - 'feat/**'
+      - 'ci/**'
+  pull_request:
+    branches:
+      - master
+      - dev
+      - next
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    name: Core checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq ripgrep
+
+      - name: Shell syntax
+        run: |
+          bash -n bin/agentmarshal bin/agmake
+          find scripts tests -type f -name '*.sh' -print0 | xargs -0 -r bash -n
+
+      - name: Public docs parity
+        run: bash scripts/check-doc-parity.sh
+
+      - name: Bootstrap tests
+        run: bash tests/bootstrap.sh
+
+      - name: Provider SPI tests
+        run: bash tests/provider-spi.sh
+
+      - name: Resource routing tests
+        run: bash tests/resource-routing.sh
+
+      - name: Negative tests
+        run: bash tests/negative.sh

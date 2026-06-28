@@ -1,0 +1,184 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FRAMEWORK_ROOT="$(cd "$HERE/.." && pwd)"
+TEMPLATE="$FRAMEWORK_ROOT/templates/agmake-runbook.sh.template"
+# shellcheck source=agentmarshal/lib/project-config.sh
+source "$FRAMEWORK_ROOT/lib/project-config.sh"
+
+usage() {
+  cat <<'EOF'
+usage: agmake <command> [options]
+
+commands:
+  init       generate a task-local runbook in ignored host runtime state
+  lint       check a generated runbook for required AgMake rails
+  state      print saved runner state for a task
+
+examples:
+  agentmarshal/bin/agmake init --task CR-031 --branch docs/CR-031-agmake
+  agentmarshal/bin/agmake init --project-root /path/to/host --task CR-031 --branch docs/CR-031-agmake
+  agentmarshal/bin/agmake lint .agentmarshal/journal/tmp/runner/CR-031-runbook.sh
+  agentmarshal/bin/agmake state CR-031
+EOF
+}
+
+fail() {
+  printf 'agmake: %s\n' "$*" >&2
+  exit 1
+}
+
+require_root() {
+  local explicit_root="${1:-}"
+  if [[ -n "$explicit_root" ]]; then
+    aops_project_abs_path "$explicit_root"
+    return 0
+  fi
+  git rev-parse --show-toplevel 2>/dev/null || fail "not inside a git repository"
+}
+
+load_project_context() {
+  local root="$1" config
+  config="$(aops_project_discover_config "$root")" || fail "cannot discover AgentMarshal project config"
+  aops_project_load "$root" "$config" || fail "cannot load AgentMarshal project config"
+}
+
+journal_root_rel() {
+  local rel
+  rel="$(aops_project_get journal_root)"
+  [[ -n "$rel" ]] || fail "project config has no journal_root"
+  printf '%s\n' "$rel"
+}
+
+render_template() {
+  local data="$1"
+  shift
+  while [[ $# -gt 0 ]]; do
+    local key="$1" value="$2"
+    data="${data//__${key}__/$value}"
+    shift 2
+  done
+  printf '%s' "$data"
+}
+
+cmd_init() {
+  local task="" branch="" target="master" base_ref="origin/master"
+  local title="" review_vendor="claude" review_model="claude-sonnet-4-5"
+  local output="" event_id="" event_file="" project_root=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --project-root) project_root="${2:?}"; shift 2 ;;
+      --task) task="${2:?}"; shift 2 ;;
+      --branch) branch="${2:?}"; shift 2 ;;
+      --target|--target-branch) target="${2:?}"; shift 2 ;;
+      --base|--base-ref) base_ref="${2:?}"; shift 2 ;;
+      --title) title="${2:?}"; shift 2 ;;
+      --review-vendor) review_vendor="${2:?}"; shift 2 ;;
+      --review-model) review_model="${2:?}"; shift 2 ;;
+      --event-id) event_id="${2:?}"; shift 2 ;;
+      --event-file) event_file="${2:?}"; shift 2 ;;
+      --output) output="${2:?}"; shift 2 ;;
+      -h|--help) usage; return 0 ;;
+      *) fail "unknown init argument: $1" ;;
+    esac
+  done
+
+  [[ "$task" =~ ^CR-[0-9]{3,}$ ]] || fail "--task must look like CR-031"
+  [[ -n "$branch" ]] || fail "--branch is required"
+  [[ "$branch" != /* && "$branch" != *".."* ]] || fail "unsafe branch: $branch"
+  [[ "$target" != /* && "$target" != *".."* ]] || fail "unsafe target branch: $target"
+  [[ "$base_ref" != /* && "$base_ref" != *".."* ]] || fail "unsafe base ref: $base_ref"
+  [[ -f "$TEMPLATE" ]] || fail "template not found: $TEMPLATE"
+
+  local root content task_lower
+  root="$(require_root "$project_root")"
+  load_project_context "$root"
+  local journal_rel
+  journal_rel="$(journal_root_rel)"
+  output="${output:-$root/$journal_rel/tmp/runner/$task-runbook.sh}"
+  title="${title:-$task: AgentMarshal task runbook}"
+  task_lower="$(printf '%s' "$task" | tr 'A-Z' 'a-z')"
+  event_id="${event_id:-$task-EV-002}"
+  event_file="${event_file:-$task-EV-002-runner-runbook.md}"
+
+  mkdir -p "$(dirname "$output")"
+  if [[ -e "$output" ]]; then
+    fail "refusing to overwrite existing runbook: $output"
+  fi
+
+  content="$(cat "$TEMPLATE")"
+  render_template "$content" \
+    TASK_ID "$task" \
+    BRANCH "$branch" \
+    TARGET_BRANCH "$target" \
+    BASE_REF "$base_ref" \
+    JOURNAL_ROOT "$journal_rel" \
+    REVIEW_VENDOR "$review_vendor" \
+    REVIEW_MODEL "$review_model" \
+    IMPLEMENTATION_TITLE "$title" \
+    COMPLETION_BRANCH "completion/${task_lower}-agmake-runbook" \
+    COMPLETION_TITLE "$task: completion journal" \
+    EVENT_ID "$event_id" \
+    EVENT_FILE "$event_file" \
+    EVENT_ACTION "agmake-runbook" \
+    COMPLETION_COMMIT_MESSAGE "chore(agentmarshal): complete $task AgMake runbook" \
+    > "$output"
+  chmod +x "$output"
+  printf 'created %s\n' "$output"
+}
+
+require_pattern() {
+  local file="$1" pattern="$2"
+  grep -q -- "$pattern" "$file" || fail "lint failed: missing pattern '$pattern' in $file"
+}
+
+cmd_lint() {
+  local file="${1:-}"
+  [[ -n "$file" ]] || fail "lint requires a runbook path"
+  [[ -f "$file" ]] || fail "runbook not found: $file"
+  bash -n "$file"
+  require_pattern "$file" 'AGENTMARSHAL_RUNBOOK_FAILURE'
+  require_pattern "$file" 'AGENTMARSHAL_RUNBOOK_SUCCESS'
+  require_pattern "$file" 'RUNBOOK_FROM'
+  require_pattern "$file" 'STATE_FILE'
+  require_pattern "$file" 'section_prepare'
+  require_pattern "$file" 'section_cleanup'
+  require_pattern "$file" 'section_fail'
+  require_pattern "$file" 'safe_section'
+  require_pattern "$file" 'write_state'
+  require_pattern "$file" 'write_completion_event'
+  require_pattern "$file" 'run_review_loop'
+  printf 'agmake lint ok: %s\n' "$file"
+}
+
+cmd_state() {
+  local task="" project_root=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --project-root) project_root="${2:?}"; shift 2 ;;
+      -h|--help) usage; return 0 ;;
+      *)
+        [[ -z "$task" ]] || fail "state accepts one task id"
+        task="$1"
+        shift
+        ;;
+    esac
+  done
+  [[ "$task" =~ ^CR-[0-9]{3,}$ ]] || fail "state requires task id like CR-031"
+  local root state
+  root="$(require_root "$project_root")"
+  load_project_context "$root"
+  state="$root/$(journal_root_rel)/runs/runner/$task/state.env"
+  [[ -f "$state" ]] || fail "state not found: $state"
+  sed -n '1,200p' "$state"
+}
+
+case "${1:-}" in
+  init) shift; cmd_init "$@" ;;
+  lint) shift; cmd_lint "$@" ;;
+  state) shift; cmd_state "$@" ;;
+  -h|--help|"") usage ;;
+  *) fail "unknown command: $1" ;;
+esac

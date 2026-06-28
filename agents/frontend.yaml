@@ -1,0 +1,48 @@
+role: frontend
+display_name: Frontend Developer
+active: true
+branch_prefix: fe
+
+# Из docs/handbook/07-team/personas.md «Сводная таблица доступов»:
+# Frontend: src/frontend* ✅, backend/infra ❌, docs partial (свой scope).
+scope_allow:
+  - src/frontend/
+  - src/frontend-manager/
+  - docs/handbook/04-code-patterns/frontend
+  - .agents/handoffs/        # impl-роль создаёт handoff (ADR-0003)
+  - .agents/events/          # append-only прогресс (без конфликтов на task-файле)
+scope_deny:
+  - src/backend/
+  - infrastructure/
+  - .gitflic-ci.yml
+  - agentmarshal/                # фреймворк (вкл. свой промпт/спеку) — Lead-owned
+  - docs/handbook/07-team/
+  - .agents/tasks/           # task lifecycle — Lead
+  - .agents/decisions/       # ADR — Lead
+  - .agents/reviews/         # ревью — QA (reviewer ≠ writer)
+
+tools:
+  - git                      # status/diff/add/commit + push origin fe/*
+  - npm
+  - npx
+  - docker-compose-dev       # docker compose -f docker-compose.yml -f docker-compose.dev.yml
+  - browser                  # для visual verification (если vendor умеет)
+
+prompt: prompts/frontend.md
+
+vendor:
+  preferred: claude
+  model: claude-sonnet-4-6
+  reviewer_must_differ: true   # MR от fe ревьюит НЕ Claude (Codex/Lead)
+
+trial:
+  enabled: false
+  restrictions:
+    - no-merge
+    - no-push-protected
+    - read-only-secrets
+  benchmark: methodology/trial-agents.md
+
+human_gate:
+  - large-ui-redesign
+  - prod-deploy

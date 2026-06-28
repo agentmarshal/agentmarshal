@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentmarshal.local/schemas/agent-evaluation.schema.json",
+  "title": "AgentMarshal adjudicated agent evaluation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "id", "recorded_at", "batch_id", "task", "task_class",
+    "difficulty", "executor_run_id", "reviewer_run_id", "executor_vendor",
+    "executor_model", "reviewer_vendor", "reviewer_model",
+    "acceptance_passed", "pipeline_passed", "provenance_valid",
+    "scope_violations", "confirmed_findings", "false_positive_findings",
+    "implementation_findings",
+    "known_defects", "detected_known_defects",
+    "severity_calibration_errors", "actionable_findings", "total_findings",
+    "rework_cycles", "human_interventions", "duration_seconds", "cost_usd",
+    "diff_discipline_points", "efficiency_points", "implementation_score",
+    "review_score", "review_score_status", "scoring_version",
+    "adjudication_status", "evidence"
+  ],
+  "properties": {
+    "schema": {"const": 1},
+    "id": {"type": "string", "pattern": "^EVAL-[0-9]{8}T[0-9]{6}Z-[A-Za-z0-9._-]+-[0-9a-f]{8}$"},
+    "recorded_at": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"},
+    "batch_id": {"type": "string", "pattern": "^TRIAL-[0-9]{8}-[0-9]+$"},
+    "task": {"type": "string", "pattern": "^CR-[0-9]+$"},
+    "task_class": {
+      "enum": ["documentation", "ci", "frontend", "backend", "review", "operations"]
+    },
+    "difficulty": {"type": "integer", "minimum": 1, "maximum": 5},
+    "executor_run_id": {"type": "string", "pattern": "^RUN-[0-9]{8}T[0-9]{6}Z-[a-z0-9-]+-[0-9a-f]{8}$"},
+    "reviewer_run_id": {
+      "type": "string",
+      "pattern": "^(none|RUN-[0-9]{8}T[0-9]{6}Z-[a-z0-9-]+-[0-9a-f]{8})$"
+    },
+    "executor_vendor": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
+    "executor_model": {"type": "string", "minLength": 1},
+    "reviewer_vendor": {"type": "string", "pattern": "^(none|[a-z][a-z0-9-]*)$"},
+    "reviewer_model": {"type": "string", "minLength": 1},
+    "acceptance_passed": {"type": "boolean"},
+    "pipeline_passed": {"type": "boolean"},
+    "provenance_valid": {"type": "boolean"},
+    "scope_violations": {"type": "integer", "minimum": 0},
+    "confirmed_findings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["blocking", "p2", "p3"],
+      "properties": {
+        "blocking": {"type": "integer", "minimum": 0},
+        "p2": {"type": "integer", "minimum": 0},
+        "p3": {"type": "integer", "minimum": 0}
+      }
+    },
+    "implementation_findings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["blocking", "p2", "p3"],
+      "properties": {
+        "blocking": {"type": "integer", "minimum": 0},
+        "p2": {"type": "integer", "minimum": 0},
+        "p3": {"type": "integer", "minimum": 0}
+      }
+    },
+    "false_positive_findings": {"type": "integer", "minimum": 0},
+    "known_defects": {"type": "integer", "minimum": 0},
+    "detected_known_defects": {"type": "integer", "minimum": 0},
+    "severity_calibration_errors": {"type": "integer", "minimum": 0},
+    "actionable_findings": {"type": "integer", "minimum": 0},
+    "total_findings": {"type": "integer", "minimum": 0},
+    "rework_cycles": {"type": "integer", "minimum": 0},
+    "human_interventions": {"type": "integer", "minimum": 0},
+    "duration_seconds": {"type": "integer", "minimum": 0},
+    "cost_usd": {"type": "number", "minimum": 0},
+    "diff_discipline_points": {"type": "integer", "minimum": 0, "maximum": 15},
+    "efficiency_points": {"type": "integer", "minimum": 0, "maximum": 10},
+    "implementation_score": {"type": "integer", "minimum": 0, "maximum": 100},
+    "review_score": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "maximum": 100
+    },
+    "review_score_status": {"enum": ["full", "provisional", "unavailable"]},
+    "scoring_version": {"const": "trial-v1"},
+    "adjudication_status": {"enum": ["pending", "confirmed", "disputed", "excluded"]},
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "minLength": 1}
+    }
+  }
+}

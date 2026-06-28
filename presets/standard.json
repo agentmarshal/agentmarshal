@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "id": "standard",
+  "description": "Deterministic standard preset with the same bootstrap surface and explicit empty plugin plan.",
+  "defaults": {
+    "runtime_config": ".agentmarshal/config/runtime.conf",
+    "journal_root": ".agentmarshal/journal",
+    "agents_dir": "agentmarshal/agents",
+    "prompts_dir": "agentmarshal/agents/prompts",
+    "provider": {
+      "default": "mock",
+      "secret_bindings": {}
+    },
+    "plugins": {
+      "roots": {
+        "bundled": "agentmarshal/plugins",
+        "host_local": ".agentmarshal/plugins"
+      },
+      "resolved": []
+    }
+  },
+  "adoption": {
+    "runtime_config": ".agents/config/agentmarshal.conf",
+    "journal_root": ".agents"
+  }
+}

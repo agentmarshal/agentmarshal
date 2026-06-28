@@ -1,0 +1,47 @@
+role: qa
+display_name: QA / Reviewer
+active: true                   # активна через qa-readonly; write-capable QA profiles ещё reserved
+
+# Таблица personas.md: QA — tests only (backend/frontend tests), без prod-кода.
+# Роль: пишет/гоняет проверки, evidence-based review, E2E/regression.
+branch_prefix: qa
+scope_allow:
+  - src/backend/tests/
+  - src/frontend/tests/
+  - src/frontend-manager/tests/
+  - tests/
+  - .agents/reviews/         # QA владеет ревью-отчётами (ADR-0003)
+  - .agents/handoffs/
+  - .agents/events/
+scope_deny:
+  - src/backend/app/
+  - src/frontend/src/
+  - infrastructure/
+  - .gitflic-ci.yml
+  - agentmarshal/                # фреймворк/свой промпт — Lead-owned
+  - .agents/tasks/
+  - .agents/decisions/
+
+tools:
+  - git
+  - pytest
+  - npm
+  - browser                    # Playwright smoke / visual
+
+prompt: prompts/qa.md
+
+vendor:
+  preferred: codex             # + Antigravity для visual QA (codex_session)
+  model: gpt-5.5-medium
+  reviewer_must_differ: true
+
+trial:
+  enabled: true                # QA — удобная первая роль для обкатки trial-механизма
+  restrictions:
+    - no-merge
+    - no-prod-code
+    - read-only-secrets
+  benchmark: methodology/trial-agents.md
+
+human_gate:
+  - merge

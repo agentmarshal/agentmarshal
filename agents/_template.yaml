@@ -1,0 +1,42 @@
+# Role-спека агента — ИСТОЧНИК ИСТИНЫ (vendor-agnostic).
+# Per-vendor адаптеры (agentmarshal/adapters/*) рендерят это в нативный конфиг
+# (Claude → .claude/agents/<role>.md, Codex → .codex/…, Gemini → …).
+# scope_allow/scope_deny парсятся scope-guard.sh БЕЗ yq (простой список `  - `).
+
+role: <role-id>                # lead | frontend | backend | qa | release | <new>
+display_name: <Human Name>
+active: true                   # false = зарезервированная роль (спека есть, агент не онбордён)
+branch_prefix: <prefix>        # ветки роли: <prefix>/<task>; scope-guard матчит по нему
+
+# Что роль ИМЕЕТ ПРАВО трогать (пути-префиксы; пустой allow у lead = всё).
+scope_allow:
+  - <path/prefix/>
+# Явные запреты внутри allow (важнее allow).
+scope_deny:
+  - <path/prefix/>
+
+# Инструменты, нужные роли (vendor-нейтральные имена; адаптер маппит в native).
+tools:
+  - <tool>                     # git, npm, docker-compose-dev, pytest, browser, …
+
+# Промпт роли (файл в agents/prompts/ или inline).
+prompt: prompts/<role>.md
+
+# Предпочтительный исполнитель. Адаптер выбирает по доступности.
+vendor:
+  preferred: <claude|codex|gemini>
+  model: <model-id>            # подсказка; не жёстко
+  reviewer_must_differ: true   # ревьюер — ДРУГОЙ vendor/модель, не writer
+
+# Trial-режим: кандидата пробуют изолированно перед закреплением роли.
+trial:
+  enabled: false
+  restrictions:                # доп.ограничения сверх scope (для непроверенного агента)
+    - no-merge
+    - no-push-protected
+    - read-only-secrets
+  benchmark: methodology/trial-agents.md   # как оцениваем
+
+# Что человек НЕ отдаёт этой роли (gate на approval).
+human_gate:
+  - <action>                   # prod-deploy, prod-secrets, destructive-infra, …

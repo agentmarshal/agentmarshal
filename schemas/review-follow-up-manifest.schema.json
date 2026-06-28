@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentmarshal.local/schemas/review-follow-up-manifest.schema.json",
+  "title": "AgentMarshal approved review follow-up manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "review_findings", "tasks", "non_task"],
+  "properties": {
+    "schema": {
+      "const": 1
+    },
+    "review_findings": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/task"
+      }
+    },
+    "non_task": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/nonTask"
+      }
+    }
+  },
+  "$defs": {
+    "finding": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9.-]*$"
+    },
+    "sourceFindings": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    },
+    "singleLine": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^\\r\\n]+$"
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "title",
+        "type",
+        "priority",
+        "owner",
+        "source_findings",
+        "due_before",
+        "risk",
+        "acceptance_criteria",
+        "scope"
+      ],
+      "properties": {
+        "title": {
+          "$ref": "#/$defs/singleLine"
+        },
+        "type": {
+          "enum": [
+            "feature",
+            "bug",
+            "refactor",
+            "documentation",
+            "technical_debt",
+            "security",
+            "operations",
+            "process"
+          ]
+        },
+        "priority": {
+          "enum": ["P1", "P2", "P3"]
+        },
+        "owner": {
+          "enum": ["lead", "frontend", "backend", "qa", "release"]
+        },
+        "source_findings": {
+          "$ref": "#/$defs/sourceFindings"
+        },
+        "due_before": {
+          "type": "string",
+          "pattern": "^(none|[0-9]{4}-[0-9]{2}-[0-9]{2}|CR-[0-9]+|[a-z0-9][a-z0-9._-]*)$"
+        },
+        "risk": {
+          "$ref": "#/$defs/singleLine"
+        },
+        "acceptance_criteria": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/singleLine"
+          }
+        },
+        "scope": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/singleLine"
+          }
+        }
+      }
+    },
+    "nonTask": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_findings", "disposition", "rationale"],
+      "properties": {
+        "source_findings": {
+          "$ref": "#/$defs/sourceFindings"
+        },
+        "disposition": {
+          "enum": [
+            "existing_task",
+            "debt_bundle",
+            "duplicate",
+            "post_cutoff",
+            "accepted_risk",
+            "wont_fix"
+          ]
+        },
+        "rationale": {
+          "$ref": "#/$defs/singleLine"
+        },
+        "target": {
+          "$ref": "#/$defs/singleLine"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "disposition": {
+                "enum": ["existing_task", "debt_bundle", "duplicate"]
+              }
+            }
+          },
+          "then": {
+            "required": ["target"]
+          }
+        }
+      ]
+    }
+  }
+}

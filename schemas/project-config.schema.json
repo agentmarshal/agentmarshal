@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentmarshal.local/schemas/project-config.schema.json",
+  "title": "AgentMarshal project bootstrap config",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "preset",
+    "runtime_config",
+    "journal_root",
+    "agents_dir",
+    "prompts_dir",
+    "provider",
+    "plugins",
+    "adoption"
+  ],
+  "properties": {
+    "schema": {
+      "const": 1
+    },
+    "preset": {
+      "type": "string",
+      "enum": [
+        "minimal",
+        "standard",
+        "strict"
+      ]
+    },
+    "runtime_config": {
+      "$ref": "#/$defs/relativePath"
+    },
+    "journal_root": {
+      "$ref": "#/$defs/relativePath"
+    },
+    "agents_dir": {
+      "$ref": "#/$defs/relativePath"
+    },
+    "prompts_dir": {
+      "$ref": "#/$defs/relativePath"
+    },
+    "provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "default",
+        "secret_bindings"
+      ],
+      "properties": {
+        "default": {
+          "$ref": "#/$defs/providerName"
+        },
+        "secret_bindings": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/envName"
+          },
+          "propertyNames": {
+            "$ref": "#/$defs/envName"
+          }
+        }
+      }
+    },
+    "plugins": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "roots",
+        "resolved"
+      ],
+      "properties": {
+        "roots": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "bundled",
+            "host_local"
+          ],
+          "properties": {
+            "bundled": {
+              "$ref": "#/$defs/relativePath"
+            },
+            "host_local": {
+              "$ref": "#/$defs/relativePath"
+            }
+          }
+        },
+        "resolved": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "type",
+              "distribution",
+              "root"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{1,62}[a-z0-9]$"
+              },
+              "type": {
+                "enum": [
+                  "provider",
+                  "framework",
+                  "host"
+                ]
+              },
+              "distribution": {
+                "enum": [
+                  "bundled",
+                  "official",
+                  "community",
+                  "host-local"
+                ]
+              },
+              "root": {
+                "$ref": "#/$defs/relativePath"
+              }
+            }
+          }
+        }
+      }
+    },
+    "adoption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "fresh",
+            "adopt-existing"
+          ]
+        },
+        "legacy_journal": {
+          "$ref": "#/$defs/relativePath"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "relativePath": {
+      "type": "string",
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._/-]+$"
+    },
+    "providerName": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "envName": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]*$"
+    }
+  }
+}

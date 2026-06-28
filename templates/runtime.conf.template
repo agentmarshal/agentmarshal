@@ -1,0 +1,15 @@
+# AgentMarshal host runtime configuration.
+# Safe key=value data file: it is parsed, never sourced as shell.
+schema=1
+review_language=__REVIEW_LANGUAGE__
+active_roles=lead,frontend,qa
+operating_mode=normal
+active_milestone=none
+backlog_amplification_limit=0.3
+worktree_root=../worktrees
+worktree_pattern={repo}.{alias}
+stats_enabled=true
+stats_store=.agentmarshal/journal/stats/runs
+evaluation_store=.agentmarshal/journal/stats/evaluations
+stats_raw_store=.agentmarshal/journal/runs/stats
+stats_retention_days=365

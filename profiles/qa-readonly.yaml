@@ -1,0 +1,24 @@
+profile: qa-readonly
+display_name: QA Read-only Reviewer
+role: qa
+active: true
+mode: review
+
+# Reviewer анализирует конкретный SHA. Запись файлов, shell и git-write
+# отсутствуют на уровне launcher, а не только запрещены текстом prompt.
+write_policy: none
+network_policy: none
+session_persistence: false
+
+tools:
+  - read
+  - grep
+  - glob
+
+prompt: prompts/qa-readonly.md
+output_recorder: launcher
+output_directory: .agents/runs/
+
+vendor:
+  preferred: claude
+  model: claude-opus-4-8
