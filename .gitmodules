@@ -1,0 +1,3 @@
+[submodule "agentmarshal"]
+	path = agentmarshal
+	url = https://github.com/AgentMarshal/agentmarshal-v1.git
