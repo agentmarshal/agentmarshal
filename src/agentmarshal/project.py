@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import errno
 import json
+import os
 import subprocess
 from pathlib import Path
-from typing import cast
+from typing import TextIO, cast
 
 from agentmarshal import __version__
 
@@ -116,14 +118,53 @@ def initial_project_data() -> JsonObject:
     }
 
 
+_DIR_FD_SUPPORTED = (
+    os.open in os.supports_dir_fd
+    and hasattr(os, "O_DIRECTORY")
+    and hasattr(os, "O_NOFOLLOW")
+)
+
+
+def _create_exclusive(path: Path) -> TextIO:
+    """Exclusively create *path* for text writing, refusing symlinks.
+
+    Where the platform supports it (POSIX), the file is created relative
+    to a descriptor of its parent opened with ``O_DIRECTORY|O_NOFOLLOW``,
+    so the parent cannot be swapped for a symlink between validation and
+    creation. Elsewhere (Windows) creation is pathname-based: the caller's
+    symlink checks defend against hostile checkout contents, while races
+    with concurrently running processes of the same user are outside the
+    threat model — they cross no privilege boundary.
+    """
+
+    file_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if not _DIR_FD_SUPPORTED:
+        fd = os.open(path, file_flags, 0o666)
+        return os.fdopen(fd, "w", encoding="utf-8", newline="\n")
+    try:
+        dir_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    except OSError as error:
+        if error.errno in (errno.ELOOP, errno.ENOTDIR):
+            msg = f"refusing to write through a symlink: {path.parent}"
+            raise UnsafeProjectPathError(msg) from error
+        raise
+    try:
+        fd = os.open(path.name, file_flags | os.O_NOFOLLOW, 0o666, dir_fd=dir_fd)
+    finally:
+        os.close(dir_fd)
+    return os.fdopen(fd, "w", encoding="utf-8", newline="\n")
+
+
 def write_project_file(path: Path, data: JsonObject) -> None:
     """Create the project file as UTF-8 without BOM, LF-terminated.
 
     ``path`` must be built from a resolved project root. Symlinked
-    destinations are refused and the file is created exclusively, so a
+    destinations are refused and the file is created exclusively — on
+    dir_fd platforms anchored to a no-follow handle of its parent — so a
     hostile checkout cannot redirect the write outside the repository and
-    a concurrent initializer is never overwritten (``FileExistsError``
-    propagates to the caller).
+    a concurrent initializer surfaces as ``FileExistsError`` for the
+    caller instead of being overwritten. See ``_create_exclusive`` for
+    the platform-specific guarantee.
     """
 
     parent = path.parent
@@ -143,7 +184,7 @@ def write_project_file(path: Path, data: JsonObject) -> None:
         )
         raise UnsafeProjectPathError(msg)
     content = json.dumps(data, indent=2, sort_keys=True)
-    with path.open("x", encoding="utf-8", newline="\n") as project_file:
+    with _create_exclusive(path) as project_file:
         project_file.write(f"{content}\n")
 
 

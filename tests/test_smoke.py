@@ -1,6 +1,7 @@
 """Smoke tests for the initial package surface."""
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -10,6 +11,8 @@ import pytest
 import agentmarshal
 from agentmarshal.cli import main
 from agentmarshal.project import (
+    UnsafeProjectPathError,
+    _create_exclusive,
     find_project_root,
     initial_project_data,
     read_project_file,
@@ -250,6 +253,21 @@ def test_init_rejects_broken_project_file_symlink(
     assert "symlink" in capsys.readouterr().err
     assert not target.exists()
     assert not target.parent.exists()
+
+
+@pytest.mark.skipif(
+    os.open not in os.supports_dir_fd, reason="dir_fd is not supported here"
+)
+def test_exclusive_create_refuses_symlinked_parent(tmp_path: Path) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    parent = tmp_path / ".agentmarshal"
+    parent.symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(UnsafeProjectPathError):
+        _create_exclusive(parent / "project.json")
+
+    assert list(outside.iterdir()) == []
 
 
 def test_write_project_file_never_overwrites(tmp_path: Path) -> None:
