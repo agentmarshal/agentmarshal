@@ -26,7 +26,10 @@ Design constraints that apply to all v2 code, starting now:
 
 - Standard library only; no new runtime dependencies in this task.
 - No shell-outs to POSIX utilities. The only external process core code
-  may ever invoke is `git`; this task needs none.
+  may ever invoke is `git`. This task invokes it: repository detection is
+  delegated to `git rev-parse` — git is the sole authority on what
+  constitutes a repository — which makes the `git` executable a
+  documented runtime prerequisite of `agentmarshal init`.
 - `pathlib` for all path handling; every `open()` passes `encoding=`.
 - Files are written as UTF-8 without BOM with LF line endings; reads
   tolerate UTF-8 with BOM.
