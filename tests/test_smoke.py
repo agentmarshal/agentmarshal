@@ -16,6 +16,9 @@ def create_git_marker(repo: Path) -> None:
     git_dir = repo / ".git"
     git_dir.mkdir()
     (git_dir / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+    (git_dir / "config").write_text("[core]\n", encoding="utf-8")
+    (git_dir / "objects").mkdir()
+    (git_dir / "refs").mkdir()
 
 
 def test_version_is_declared() -> None:
@@ -102,6 +105,29 @@ def test_init_outside_git_fails_closed(
 
     output = capsys.readouterr()
     assert "inside a git repository" in output.err
+    assert not (workspace / ".agentmarshal").exists()
+
+
+@pytest.mark.parametrize("marker_kind", ["file", "incomplete_directory"])
+def test_init_rejects_invalid_git_markers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    marker_kind: str,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    git_path = workspace / ".git"
+    if marker_kind == "file":
+        git_path.write_text("not a gitdir\n", encoding="utf-8")
+    else:
+        git_path.mkdir()
+        (git_path / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+    monkeypatch.chdir(workspace)
+
+    assert main(["init"]) == 1
+
+    assert "inside a git repository" in capsys.readouterr().err
     assert not (workspace / ".agentmarshal").exists()
 
 

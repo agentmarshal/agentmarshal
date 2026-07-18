@@ -56,13 +56,64 @@ def find_project_root(start: Path | None = None, stop_at: Path | None = None) ->
     return None
 
 
+def _is_main_git_directory(git_dir: Path) -> bool:
+    """Return whether *git_dir* has the required structure of a Git directory."""
+
+    return (
+        (git_dir / "HEAD").is_file()
+        and (git_dir / "config").is_file()
+        and (git_dir / "objects").is_dir()
+        and (git_dir / "refs").is_dir()
+    )
+
+
+def _path_from_git_file(git_file: Path, prefix: str = "") -> Path | None:
+    """Resolve a path stored in a Git metadata file."""
+
+    try:
+        lines = git_file.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        return None
+    if len(lines) != 1 or not lines[0].startswith(prefix):
+        return None
+
+    stored_path = lines[0].removeprefix(prefix)
+    if not stored_path:
+        return None
+    target = Path(stored_path)
+    if not target.is_absolute():
+        target = git_file.parent / target
+    try:
+        return target.resolve()
+    except OSError:
+        return None
+
+
+def _is_git_repository_marker(git_path: Path) -> bool:
+    """Return whether a .git path identifies a usable Git working tree."""
+
+    if git_path.is_dir():
+        return _is_main_git_directory(git_path)
+    if not git_path.is_file():
+        return False
+
+    git_dir = _path_from_git_file(git_path, "gitdir: ")
+    if git_dir is None or not (git_dir / "HEAD").is_file():
+        return False
+    common_dir_file = git_dir / "commondir"
+    if not common_dir_file.is_file():
+        return False
+    common_dir = _path_from_git_file(common_dir_file)
+    return common_dir is not None and _is_main_git_directory(common_dir)
+
+
 def find_git_root(start: Path | None = None) -> Path | None:
     """Find the nearest git repository root."""
 
     search_start = Path.cwd() if start is None else start
     for candidate in _ancestors_from(search_start):
         git_path = candidate / ".git"
-        if git_path.is_file() or (git_path / "HEAD").is_file():
+        if _is_git_repository_marker(git_path):
             return candidate
     return None
 
