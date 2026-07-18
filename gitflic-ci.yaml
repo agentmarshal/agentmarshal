@@ -22,12 +22,13 @@ governance:
 
 python:
   stage: test
-  image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+  image: python:3.12-slim
   tags:
     - docker
   variables:
     PYTHONUTF8: "1"
   script:
+    - pip install --no-cache-dir uv
     - uv sync --locked
     - uv run pytest
     - uv run ruff check
