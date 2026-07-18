@@ -4,7 +4,14 @@ Owner: lead
 Type: feat
 Priority: P1
 Created: 2026-07-19
-Status: in_review
+Status: done
+Completion-Review: CR-001
+Reviewed-Commit: 71c4a98426320d87bb326cff9f3fdc8799c982d2
+Target-Branch: master
+Merged-Commit: 3438b674e632d2dc86227d7d3e569d35147c147b
+Completed-At: 2026-07-18T19:07:59Z
+Completion-Review-Artifact: .agentmarshal/journal/reviews/2026/CR-001-completion-71c4a9842632.md
+Completion-Review-SHA256: sha256:7e193e6d607f72e923de15c5d0858f3fbe47c0b820e4722228f3c9e0860e24e7
 Scope:
 - .agentmarshal/journal/tasks/open/CR-001-init-vertical-slice.md
 - gitflic-ci.yaml
