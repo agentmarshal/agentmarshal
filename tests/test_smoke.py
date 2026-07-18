@@ -9,7 +9,12 @@ import pytest
 
 import agentmarshal
 from agentmarshal.cli import main
-from agentmarshal.project import find_project_root, read_project_file
+from agentmarshal.project import (
+    find_project_root,
+    initial_project_data,
+    read_project_file,
+    write_project_file,
+)
 
 
 def run_git(*args: str, cwd: Path) -> None:
@@ -211,6 +216,73 @@ def test_init_in_submodule_working_tree(
 
     assert (submodule / ".agentmarshal" / "project.json").is_file()
     assert not (parent / ".agentmarshal").exists()
+
+
+def test_init_rejects_symlinked_agentmarshal_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = tmp_path / "repo"
+    init_git_repo(repo)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (repo / ".agentmarshal").symlink_to(outside, target_is_directory=True)
+    monkeypatch.chdir(repo)
+
+    assert main(["init"]) == 1
+
+    assert "symlink" in capsys.readouterr().err
+    assert list(outside.iterdir()) == []
+
+
+def test_init_rejects_broken_project_file_symlink(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = tmp_path / "repo"
+    init_git_repo(repo)
+    marshal_dir = repo / ".agentmarshal"
+    marshal_dir.mkdir()
+    target = tmp_path / "elsewhere" / "project.json"
+    (marshal_dir / "project.json").symlink_to(target)
+    monkeypatch.chdir(repo)
+
+    assert main(["init"]) == 1
+
+    assert "symlink" in capsys.readouterr().err
+    assert not target.exists()
+    assert not target.parent.exists()
+
+
+def test_write_project_file_never_overwrites(tmp_path: Path) -> None:
+    target = tmp_path / ".agentmarshal" / "project.json"
+    target.parent.mkdir()
+    target.write_text('{"schema": 1}\n', encoding="utf-8")
+    before = target.read_bytes()
+
+    with pytest.raises(FileExistsError):
+        write_project_file(target, initial_project_data())
+
+    assert target.read_bytes() == before
+
+
+def test_init_race_reports_already_initialized(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = tmp_path / "repo"
+    init_git_repo(repo)
+    project_file = repo / ".agentmarshal" / "project.json"
+    project_file.parent.mkdir()
+    project_file.write_text('{"schema": 1}\n', encoding="utf-8")
+    before = project_file.read_bytes()
+    # Simulate the project file appearing between discovery and creation.
+    monkeypatch.setattr(
+        "agentmarshal.project.find_project_root", lambda *args, **kwargs: None
+    )
+    monkeypatch.chdir(repo)
+
+    assert main(["init"]) == 1
+
+    assert "already initialized" in capsys.readouterr().err
+    assert project_file.read_bytes() == before
 
 
 def test_project_discovery_through_cyrillic_directory(tmp_path: Path) -> None:

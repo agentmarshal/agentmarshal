@@ -35,6 +35,10 @@ class GitNotAvailableError(AgentMarshalProjectError):
     """Raised when the git executable cannot be invoked."""
 
 
+class UnsafeProjectPathError(AgentMarshalProjectError):
+    """Raised when the project file destination is not safe to write."""
+
+
 def _ancestors_from(start: Path) -> tuple[Path, ...]:
     current = start.resolve()
     if not current.is_dir():
@@ -113,11 +117,34 @@ def initial_project_data() -> JsonObject:
 
 
 def write_project_file(path: Path, data: JsonObject) -> None:
-    """Write a project file as UTF-8 without BOM, LF-terminated."""
+    """Create the project file as UTF-8 without BOM, LF-terminated.
 
-    path.parent.mkdir(parents=True, exist_ok=True)
+    ``path`` must be built from a resolved project root. Symlinked
+    destinations are refused and the file is created exclusively, so a
+    hostile checkout cannot redirect the write outside the repository and
+    a concurrent initializer is never overwritten (``FileExistsError``
+    propagates to the caller).
+    """
+
+    parent = path.parent
+    if parent.is_symlink() or path.is_symlink():
+        offender = parent if parent.is_symlink() else path
+        msg = f"refusing to write through a symlink: {offender}"
+        raise UnsafeProjectPathError(msg)
+    if parent.exists() and not parent.is_dir():
+        msg = f"project directory path exists and is not a directory: {parent}"
+        raise UnsafeProjectPathError(msg)
+    parent.mkdir(exist_ok=True)
+    resolved_parent = parent.resolve()
+    if resolved_parent != parent:
+        msg = (
+            "project directory resolves outside its expected location: "
+            f"{parent} -> {resolved_parent}"
+        )
+        raise UnsafeProjectPathError(msg)
     content = json.dumps(data, indent=2, sort_keys=True)
-    path.write_text(f"{content}\n", encoding="utf-8", newline="\n")
+    with path.open("x", encoding="utf-8", newline="\n") as project_file:
+        project_file.write(f"{content}\n")
 
 
 def initialize_project(start: Path | None = None) -> Path:
@@ -133,5 +160,8 @@ def initialize_project(start: Path | None = None) -> Path:
     if existing_root is not None:
         raise AlreadyInitializedError(existing_root)
 
-    write_project_file(project_file_path(git_root), initial_project_data())
+    try:
+        write_project_file(project_file_path(git_root), initial_project_data())
+    except FileExistsError as error:
+        raise AlreadyInitializedError(git_root) from error
     return git_root
