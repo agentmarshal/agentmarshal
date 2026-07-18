@@ -18,5 +18,8 @@
   },
   "adoption": {
     "mode": "fresh"
+  },
+  "agmake": {
+    "implementation_mode": "managed"
   }
 }
