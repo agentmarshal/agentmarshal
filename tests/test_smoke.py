@@ -12,13 +12,28 @@ from agentmarshal.cli import main
 from agentmarshal.project import find_project_root, read_project_file
 
 
-def create_git_marker(repo: Path) -> None:
-    git_dir = repo / ".git"
-    git_dir.mkdir()
-    (git_dir / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
-    (git_dir / "config").write_text("[core]\n", encoding="utf-8")
-    (git_dir / "objects").mkdir()
-    (git_dir / "refs").mkdir()
+def run_git(*args: str, cwd: Path) -> None:
+    subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True)
+
+
+def init_git_repo(repo: Path) -> None:
+    repo.mkdir(parents=True, exist_ok=True)
+    run_git("init", "--quiet", cwd=repo)
+
+
+def commit_empty(repo: Path) -> None:
+    run_git(
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.com",
+        "commit",
+        "--allow-empty",
+        "--quiet",
+        "-m",
+        "init",
+        cwd=repo,
+    )
 
 
 def test_version_is_declared() -> None:
@@ -40,8 +55,7 @@ def test_init_creates_project_file_at_git_root(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     repo = tmp_path / "repo"
-    repo.mkdir()
-    create_git_marker(repo)
+    init_git_repo(repo)
     monkeypatch.chdir(repo)
 
     assert main(["init"]) == 0
@@ -62,9 +76,9 @@ def test_init_refuses_existing_project_from_subdirectory(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     repo = tmp_path / "repo"
+    init_git_repo(repo)
     subdir = repo / "a" / "b"
     subdir.mkdir(parents=True)
-    create_git_marker(repo)
     project_file = repo / ".agentmarshal" / "project.json"
     project_file.parent.mkdir()
     project_file.write_text('{"schema": 1}\n', encoding="utf-8")
@@ -83,9 +97,9 @@ def test_init_from_subdirectory_writes_to_git_root(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repo = tmp_path / "repo"
+    init_git_repo(repo)
     subdir = repo / "nested"
     subdir.mkdir(parents=True)
-    create_git_marker(repo)
     monkeypatch.chdir(subdir)
 
     assert main(["init"]) == 0
@@ -129,6 +143,74 @@ def test_init_rejects_invalid_git_markers(
 
     assert "inside a git repository" in capsys.readouterr().err
     assert not (workspace / ".agentmarshal").exists()
+
+
+def test_init_in_separate_git_dir_repository(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(
+        [
+            "git",
+            "init",
+            "--quiet",
+            "--separate-git-dir",
+            str(tmp_path / "meta.git"),
+            str(repo),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    monkeypatch.chdir(repo)
+
+    assert main(["init"]) == 0
+
+    assert (repo / ".agentmarshal" / "project.json").is_file()
+
+
+def test_init_in_linked_worktree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    init_git_repo(repo)
+    commit_empty(repo)
+    worktree = tmp_path / "worktree"
+    run_git("worktree", "add", "--quiet", str(worktree), cwd=repo)
+    monkeypatch.chdir(worktree)
+
+    assert main(["init"]) == 0
+
+    assert (worktree / ".agentmarshal" / "project.json").is_file()
+    assert not (repo / ".agentmarshal").exists()
+
+
+def test_init_in_submodule_working_tree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    child = tmp_path / "child"
+    init_git_repo(child)
+    commit_empty(child)
+    parent = tmp_path / "parent"
+    init_git_repo(parent)
+    commit_empty(parent)
+    run_git(
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        "--quiet",
+        str(child),
+        "sub",
+        cwd=parent,
+    )
+    submodule = parent / "sub"
+    monkeypatch.chdir(submodule)
+
+    assert main(["init"]) == 0
+
+    assert (submodule / ".agentmarshal" / "project.json").is_file()
+    assert not (parent / ".agentmarshal").exists()
 
 
 def test_project_discovery_through_cyrillic_directory(tmp_path: Path) -> None:
