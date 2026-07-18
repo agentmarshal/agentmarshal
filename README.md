@@ -11,9 +11,10 @@ an ephemeral session log.
 
 ## Status
 
-**Pre-alpha.** This repository is a project skeleton: there is no usable
-functionality yet, and everything — APIs, schemas, CLI — is subject to
-change without notice.
+**Pre-alpha.** This repository contains the first Python CLI slice:
+`agentmarshal init` writes AgentMarshal project metadata into a git
+repository. Everything else — APIs, schemas, CLI — is subject to change
+without notice.
 
 The [agentmarshal/](agentmarshal/) submodule pins the archived v1
 implementation (bash), kept read-only for reference during the rewrite.
@@ -26,7 +27,14 @@ Requires Python >= 3.12 and [uv](https://docs.astral.sh/uv/).
 uv sync
 uv run pytest
 uv run ruff check
+uv run ruff format --check
 uv run mypy
+```
+
+Initialize a git repository for AgentMarshal:
+
+```sh
+uv run agentmarshal init
 ```
 
 ## License

@@ -19,3 +19,21 @@ governance:
     - if: $CI_COMMIT_REF_NAME == "master"
     - if: $CI_COMMIT_REF_NAME =~ /^(docs|fix|feat|ci|completion)\//
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+python:
+  stage: test
+  image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+  tags:
+    - docker
+  variables:
+    PYTHONUTF8: "1"
+  script:
+    - uv sync --locked
+    - uv run pytest
+    - uv run ruff check
+    - uv run ruff format --check
+    - uv run mypy
+  rules:
+    - if: $CI_COMMIT_REF_NAME == "master"
+    - if: $CI_COMMIT_REF_NAME =~ /^(docs|fix|feat|ci|completion)\//
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"

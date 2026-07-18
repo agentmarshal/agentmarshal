@@ -9,6 +9,9 @@ authors = [{ name = "Andrei Tropichev" }]
 requires-python = ">=3.12"
 dependencies = []
 
+[project.scripts]
+agentmarshal = "agentmarshal.cli:main"
+
 [dependency-groups]
 dev = [
     "mypy>=1.16",
