@@ -7,7 +7,7 @@ Created: 2026-07-19
 Status: open
 Scope:
 - .agentmarshal/journal/tasks/open/CR-001-init-vertical-slice.md
-- gitflic-ci.yml
+- gitflic-ci.yaml
 - pyproject.toml
 - uv.lock
 - README.md
@@ -57,7 +57,7 @@ fail-closed behavior; the package checks run in CI.
 - [ ] Tests cover: fresh init; re-init refusal; init from a subdirectory;
       outside-git failure; discovery through a directory with a Cyrillic
       name; reading a `project.json` that starts with a UTF-8 BOM.
-- [ ] `gitflic-ci.yml` gains a `python` job running, under `PYTHONUTF8=1`:
+- [ ] `gitflic-ci.yaml` gains a `python` job running, under `PYTHONUTF8=1`:
       `uv sync --locked`, `pytest`, `ruff check`, `ruff format --check`,
       `mypy` — with the same branch/MR rules as the governance job.
 - [ ] All checks are green locally and the MR pipeline is green on the
