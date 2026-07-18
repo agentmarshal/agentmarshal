@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "preset": "minimal",
+  "runtime_config": ".agentmarshal/config/runtime.conf",
+  "journal_root": ".agentmarshal/journal",
+  "agents_dir": "agentmarshal/agents",
+  "prompts_dir": "agentmarshal/agents/prompts",
+  "provider": {
+    "default": "gitflic",
+    "secret_bindings": {}
+  },
+  "plugins": {
+    "roots": {
+      "bundled": "agentmarshal/plugins",
+      "host_local": ".agentmarshal/plugins"
+    },
+    "resolved": []
+  },
+  "adoption": {
+    "mode": "fresh"
+  }
+}

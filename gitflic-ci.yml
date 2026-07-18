@@ -1,0 +1,21 @@
+# GitFlic CI for the AgentMarshal repository.
+#
+# governance: v1 rails from the pinned submodule — bootstrap config validation.
+# The python package job is introduced by CR-001.
+
+stages:
+  - test
+
+governance:
+  stage: test
+  image: alpine:latest
+  tags:
+    - docker
+  script:
+    - apk add --no-cache bash ca-certificates curl git jq
+    - git submodule update --init
+    - ./agentmarshal/bin/agentmarshal validate --project-root .
+  rules:
+    - if: $CI_COMMIT_REF_NAME == "master"
+    - if: $CI_COMMIT_REF_NAME =~ /^(docs|fix|feat|ci|completion)\//
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
