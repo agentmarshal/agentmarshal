@@ -28,6 +28,9 @@ python:
   variables:
     PYTHONUTF8: "1"
   script:
+    # The slim image ships without git, which both the package under test
+    # and the test fixtures require.
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends git
     - pip install --no-cache-dir uv
     - uv sync --locked
     - uv run pytest
