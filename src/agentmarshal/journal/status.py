@@ -9,6 +9,7 @@ from pathlib import Path
 from agentmarshal.journal.contracts import ContractHeader, parse_contract
 from agentmarshal.journal.records import (
     JournalRecordError,
+    ensure_journal_root_is_real,
     read_records,
     validate_task_id,
 )
@@ -57,6 +58,7 @@ def load_task_status(journal_root: Path, task_id: str) -> TaskStatus:
     except JournalRecordError as error:
         raise TaskStatusError(str(error)) from error
     task_directory = journal_root / "tasks" / task_id
+    records = tuple(read_records(journal_root, task_id))
     if not task_directory.is_dir() or task_directory.is_symlink():
         raise TaskStatusError(f"unknown task id: {task_id}")
     contract = parse_contract(task_directory / "contract.md")
@@ -64,13 +66,13 @@ def load_task_status(journal_root: Path, task_id: str) -> TaskStatus:
         raise TaskStatusError(
             f"contract id does not match its task directory: {task_directory / 'contract.md'}"
         )
-    records = tuple(read_records(journal_root, task_id))
     return TaskStatus(task_id, contract, records, project_status(records))
 
 
 def list_task_statuses(journal_root: Path) -> list[TaskStatus]:
     """Load all task statuses ordered by their canonical identifiers."""
 
+    ensure_journal_root_is_real(journal_root)
     tasks_directory = journal_root / "tasks"
     if not tasks_directory.exists():
         return []

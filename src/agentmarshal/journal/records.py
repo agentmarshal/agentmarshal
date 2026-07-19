@@ -126,7 +126,7 @@ def _record_path(
     )
 
 
-def _ensure_journal_root_is_real(journal_root: Path) -> None:
+def ensure_journal_root_is_real(journal_root: Path) -> None:
     """Reject a journal root reachable through a symlinked ancestor.
 
     ``journal_root`` must be built from a resolved project root; a resolve
@@ -144,7 +144,7 @@ def _ensure_journal_root_is_real(journal_root: Path) -> None:
 
 
 def _prepare_record_directory(journal_root: Path, task_id: str) -> Path:
-    _ensure_journal_root_is_real(journal_root)
+    ensure_journal_root_is_real(journal_root)
     paths = (journal_root, journal_root / "tasks", journal_root / "tasks" / task_id)
     for path in paths:
         if path.is_symlink():
@@ -215,7 +215,7 @@ def read_records(journal_root: Path, task_id: str) -> list[dict[str, object]]:
     """Load and validate all evidence records for one task in path order."""
 
     validate_task_id(task_id)
-    _ensure_journal_root_is_real(journal_root)
+    ensure_journal_root_is_real(journal_root)
     if journal_root.is_symlink():
         raise JournalRecordError(f"refusing to read through a symlink: {journal_root}")
     tasks_directory = journal_root / "tasks"
@@ -235,9 +235,11 @@ def read_records(journal_root: Path, task_id: str) -> list[dict[str, object]]:
             f"record directory is not a directory: {records_directory}"
         )
     records: list[dict[str, object]] = []
-    for path in sorted(records_directory.glob("*.json")):
+    for path in sorted(records_directory.iterdir()):
         if path.is_symlink():
             raise JournalRecordError(f"refusing to read through a symlink: {path}")
+        if not path.is_file():
+            raise JournalRecordError(f"record path is not a file: {path}")
         filename = _RECORD_FILENAME_PATTERN.fullmatch(path.name)
         if filename is None:
             raise JournalRecordError(f"record filename is malformed: {path}")

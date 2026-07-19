@@ -62,6 +62,26 @@ def test_read_records_rejects_symlinked_journal_ancestor(tmp_path: Path) -> None
         read_records(journal, "CR-001")
 
 
+@pytest.mark.parametrize("name", ["unexpected.txt", "invalid.json"])
+def test_read_records_rejects_non_record_files(tmp_path: Path, name: str) -> None:
+    records_directory = tmp_path / "journal" / "tasks" / "CR-001" / "records"
+    records_directory.mkdir(parents=True)
+    invalid_record = records_directory / name
+    invalid_record.write_text("not a record\n", encoding="utf-8")
+
+    with pytest.raises(JournalRecordError, match=str(invalid_record)):
+        read_records(tmp_path / "journal", "CR-001")
+
+
+def test_read_records_rejects_nested_directory(tmp_path: Path) -> None:
+    records_directory = tmp_path / "journal" / "tasks" / "CR-001" / "records"
+    nested_directory = records_directory / "nested"
+    nested_directory.mkdir(parents=True)
+
+    with pytest.raises(JournalRecordError, match=str(nested_directory)):
+        read_records(tmp_path / "journal", "CR-001")
+
+
 def test_generate_ulids_are_unique_and_lexicographically_ordered() -> None:
     identifiers = [generate_ulid() for _ in range(100)]
 
@@ -405,6 +425,49 @@ def test_status_reports_malformed_record_path(
     assert main(["status"]) == 1
 
     assert str(malformed) in capsys.readouterr().err
+
+
+def test_status_rejects_symlinked_contract(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = tmp_path / "repo"
+    root = initialize_status_repo(repo)
+    task_directory = root / "tasks" / "CR-001"
+    task_directory.mkdir(parents=True)
+    external_contract = tmp_path / "contract.md"
+    external_contract.write_text(
+        "+++\nschema = 1\nid = 'CR-001'\ntitle = 'Task'\nscope = []\n"
+        "acceptance = []\n+++\n",
+        encoding="utf-8",
+    )
+    (task_directory / "contract.md").symlink_to(external_contract)
+    write_record(root, "CR-001", create_opened_record("CR-001", "1.0"))
+    monkeypatch.chdir(repo)
+
+    assert main(["status"]) == 1
+
+    assert str(task_directory / "contract.md") in capsys.readouterr().err
+
+
+def test_status_rejects_symlinked_journal_ancestor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = tmp_path / "repo"
+    init_git_repo(repo)
+    external = tmp_path / "external"
+    (external / "journal" / "tasks" / "CR-001").mkdir(parents=True)
+    (external / "project.json").write_text('{"schema": 1}\n', encoding="utf-8")
+    (external / "journal" / "tasks" / "CR-001" / "contract.md").write_text(
+        "+++\nschema = 1\nid = 'CR-001'\ntitle = 'Task'\nscope = []\n"
+        "acceptance = []\n+++\n",
+        encoding="utf-8",
+    )
+    (repo / ".agentmarshal").symlink_to(external, target_is_directory=True)
+    monkeypatch.chdir(repo)
+
+    assert main(["status"]) == 1
+
+    assert "symlink" in capsys.readouterr().err
 
 
 def test_status_accepts_bom_prefixed_contract(

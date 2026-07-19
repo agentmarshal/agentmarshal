@@ -41,9 +41,24 @@ def _require_string_array(data: dict[str, object], field: str) -> tuple[str, ...
     return tuple(cast(list[str], value))
 
 
+def _ensure_contract_path_is_real(path: Path) -> None:
+    """Reject a contract path reachable through a symlink.
+
+    Journal callers build contract paths from resolved project roots. Comparing
+    that lexical path with its resolved target detects a symlink in any
+    ancestor as well as a symlinked contract file before it can be opened.
+    """
+
+    expected_path = path.absolute()
+    resolved_path = path.resolve()
+    if resolved_path != expected_path:
+        raise JournalContractError(f"refusing to read through a symlink: {path}")
+
+
 def parse_contract(path: Path) -> ContractHeader:
     """Parse and validate the TOML header from a contract markdown file."""
 
+    _ensure_contract_path_is_real(path)
     with path.open("r", encoding="utf-8-sig", newline=None) as contract_file:
         lines = contract_file.readlines()
     if not lines or lines[0].strip() != "+++":
