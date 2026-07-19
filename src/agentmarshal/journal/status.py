@@ -43,6 +43,8 @@ def project_status(records: Sequence[Mapping[str, object]]) -> str:
         if not isinstance(record_type, str) or record_type not in _RECORD_TYPE_STATES:
             raise TaskStatusError(f"record has no status projection: {record_type!r}")
         if record_type == "opened":
+            if has_opened_record:
+                raise TaskStatusError("task records contain multiple opened records")
             has_opened_record = True
         state = _RECORD_TYPE_STATES[record_type]
     if not has_opened_record or state is None:
@@ -87,4 +89,9 @@ def list_task_statuses(journal_root: Path) -> list[TaskStatus]:
         except JournalRecordError as error:
             raise TaskStatusError(f"invalid task directory: {path}") from error
         task_ids.append(path.name)
-    return [load_task_status(journal_root, task_id) for task_id in sorted(task_ids)]
+    return [
+        load_task_status(journal_root, task_id)
+        for task_id in sorted(
+            task_ids, key=lambda task_id: int(task_id.removeprefix("CR-"))
+        )
+    ]

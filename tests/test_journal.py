@@ -15,6 +15,7 @@ from agentmarshal.journal import (
     create_opened_record,
     generate_ulid,
     parse_contract,
+    project_status,
     read_records,
     write_record,
 )
@@ -403,6 +404,59 @@ def test_status_rejects_task_without_opened_record(
     assert main(["status", "CR-001"]) == 1
 
     assert "do not contain an opened record" in capsys.readouterr().err
+
+
+def test_project_status_rejects_duplicate_opened_records() -> None:
+    records = [
+        create_opened_record("CR-001", "1.0"),
+        create_opened_record("CR-001", "1.0"),
+    ]
+
+    with pytest.raises(ValueError, match="multiple opened records"):
+        project_status(records)
+
+
+def test_status_rejects_duplicate_opened_records(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = tmp_path / "repo"
+    root = initialize_status_repo(repo)
+    task_directory = root / "tasks" / "CR-001"
+    task_directory.mkdir(parents=True)
+    (task_directory / "contract.md").write_text(
+        "+++\nschema = 1\nid = 'CR-001'\ntitle = 'Task'\nscope = []\n"
+        "acceptance = []\n+++\n",
+        encoding="utf-8",
+    )
+    write_record(root, "CR-001", create_opened_record("CR-001", "1.0"))
+    write_record(root, "CR-001", create_opened_record("CR-001", "1.0"))
+    monkeypatch.chdir(repo)
+
+    assert main(["status", "CR-001"]) == 1
+
+    assert "multiple opened records" in capsys.readouterr().err
+
+
+def test_status_lists_task_ids_in_numeric_order(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = tmp_path / "repo"
+    root = initialize_status_repo(repo)
+    for task_id in ("CR-999", "CR-1000"):
+        task_directory = root / "tasks" / task_id
+        task_directory.mkdir(parents=True)
+        (task_directory / "contract.md").write_text(
+            f"+++\nschema = 1\nid = '{task_id}'\ntitle = 'Task'\nscope = []\n"
+            "acceptance = []\n+++\n",
+            encoding="utf-8",
+        )
+        write_record(root, task_id, create_opened_record(task_id, "1.0"))
+    monkeypatch.chdir(repo)
+
+    assert main(["status"]) == 0
+
+    output = capsys.readouterr().out
+    assert output.index("CR-999") < output.index("CR-1000")
 
 
 def test_status_reports_malformed_record_path(
