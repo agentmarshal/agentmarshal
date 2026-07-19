@@ -14,8 +14,9 @@ from agentmarshal.journal.records import (
     validate_task_id,
 )
 
-_RECORD_TYPE_STATES: Mapping[str, str] = {
+_RECORD_TYPE_STATES: Mapping[str, str | None] = {
     "opened": "open",
+    "review": None,
 }
 
 
@@ -46,7 +47,9 @@ def project_status(records: Sequence[Mapping[str, object]]) -> str:
             if has_opened_record:
                 raise TaskStatusError("task records contain multiple opened records")
             has_opened_record = True
-        state = _RECORD_TYPE_STATES[record_type]
+        record_state = _RECORD_TYPE_STATES[record_type]
+        if record_state is not None:
+            state = record_state
     if not has_opened_record or state is None:
         raise TaskStatusError("task records do not contain an opened record")
     return state

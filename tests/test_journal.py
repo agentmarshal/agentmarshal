@@ -13,6 +13,7 @@ from agentmarshal.journal import (
     JournalContractError,
     JournalRecordError,
     create_opened_record,
+    create_review_record,
     generate_ulid,
     parse_contract,
     project_status,
@@ -140,6 +141,147 @@ def test_write_record_is_exclusive_and_preserves_original_content(
 
     assert path.read_bytes() == original
     assert read_records(root, "CR-001") == [record | {"id": identifier}]
+
+
+def test_review_record_round_trip_and_status_detail(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = tmp_path / "repo"
+    root = initialize_status_repo(repo)
+    monkeypatch.chdir(repo)
+    assert main(["open", "--title", "Task"]) == 0
+    capsys.readouterr()
+
+    assert (
+        main(
+            [
+                "submit-review",
+                "--task",
+                "CR-001",
+                "--commit",
+                "a" * 40,
+                "--verdict",
+                "changes_required",
+                "--finding",
+                "F-001",
+                "--role",
+                "reviewer",
+                "--vendor",
+                "test",
+                "--model",
+                "test-model",
+            ]
+        )
+        == 0
+    )
+    records = read_records(root, "CR-001")
+    assert records[-1]["reviewed_commit"] == "a" * 40
+    assert records[-1]["findings"] == ["F-001"]
+
+    capsys.readouterr()
+    assert main(["status", "CR-001"]) == 0
+    output = capsys.readouterr().out
+    assert "reviewed_commit=aaaaaaa" in output
+    assert "verdict=changes_required findings=1" in output
+
+
+@pytest.mark.parametrize(
+    ("reviewed_commit", "verdict", "findings", "reviewer", "error"),
+    [
+        ("a" * 40, "approved", ["F-001"], ("r", "v", "m"), "approved"),
+        (
+            "a" * 40,
+            "changes_required",
+            [],
+            ("r", "v", "m"),
+            "non-approved",
+        ),
+        ("a" * 39, "approved", [], ("r", "v", "m"), "reviewed_commit"),
+        ("g" * 40, "approved", [], ("r", "v", "m"), "reviewed_commit"),
+        (
+            "a" * 40,
+            "changes_required",
+            ["F-001", "F-001"],
+            ("r", "v", "m"),
+            "unique",
+        ),
+        ("a" * 40, "approved", [], ("", "v", "m"), "reviewer field 'role'"),
+    ],
+)
+def test_review_record_rejects_inconsistent_data_on_write(
+    tmp_path: Path,
+    reviewed_commit: str,
+    verdict: str,
+    findings: list[str],
+    reviewer: tuple[str, str, str],
+    error: str,
+) -> None:
+    record = create_review_record(
+        "CR-001", "1.0", reviewed_commit, verdict, *reviewer, findings
+    )
+
+    with pytest.raises(JournalRecordError, match=error):
+        write_record(tmp_path / "journal", "CR-001", record)
+
+
+def test_read_records_rejects_inconsistent_review(tmp_path: Path) -> None:
+    root = tmp_path / "journal"
+    record = create_review_record(
+        "CR-001", "1.0", "a" * 40, "approved", "r", "v", "m", ["F-001"]
+    )
+    records_directory = root / "tasks" / "CR-001" / "records"
+    records_directory.mkdir(parents=True)
+    (records_directory / "01J00000000000000000000000-review.json").write_text(
+        json.dumps(record), encoding="utf-8"
+    )
+
+    with pytest.raises(JournalRecordError, match="approved"):
+        read_records(root, "CR-001")
+
+
+def test_submit_review_rejects_unknown_and_unopened_tasks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = tmp_path / "repo"
+    root = initialize_status_repo(repo)
+    monkeypatch.chdir(repo)
+    arguments = [
+        "submit-review",
+        "--task",
+        "CR-001",
+        "--commit",
+        "a" * 40,
+        "--verdict",
+        "approved",
+        "--role",
+        "r",
+        "--vendor",
+        "v",
+        "--model",
+        "m",
+    ]
+    assert main(arguments) == 1
+    assert "unknown task id" in capsys.readouterr().err
+
+    task_directory = root / "tasks" / "CR-001"
+    task_directory.mkdir(parents=True)
+    (task_directory / "contract.md").write_text(
+        "+++\nschema = 1\nid = 'CR-001'\ntitle = 'Task'\nscope = []\n"
+        "acceptance = []\n+++\n",
+        encoding="utf-8",
+    )
+    assert main(arguments) == 1
+    assert "do not contain an opened record" in capsys.readouterr().err
+    assert not (task_directory / "records").exists()
+
+
+def test_review_records_do_not_change_projected_status() -> None:
+    records = [
+        create_opened_record("CR-001", "1.0"),
+        create_review_record("CR-001", "1.0", "a" * 40, "approved", "r", "v", "m", []),
+    ]
+
+    assert project_status(records) == "open"
 
 
 @pytest.mark.parametrize(

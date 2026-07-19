@@ -6,7 +6,7 @@ import argparse
 import sys
 from collections.abc import Sequence
 from pathlib import Path
-from typing import TextIO
+from typing import TextIO, cast
 
 from agentmarshal import __version__
 from agentmarshal.journal.open_task import TaskOpenError, open_task
@@ -16,6 +16,7 @@ from agentmarshal.journal.status import (
     list_task_statuses,
     load_task_status,
 )
+from agentmarshal.journal.submit_review import ReviewSubmitError, submit_review
 from agentmarshal.project import (
     AgentMarshalProjectError,
     AlreadyInitializedError,
@@ -43,6 +44,18 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     status_parser = subparsers.add_parser("status", help="show journal task status")
     status_parser.add_argument("task_id", nargs="?", help="task identifier")
+    review_parser = subparsers.add_parser(
+        "submit-review", help="record a task review verdict"
+    )
+    review_parser.add_argument("--task", required=True, help="task identifier")
+    review_parser.add_argument("--commit", required=True, help="reviewed commit SHA")
+    review_parser.add_argument("--verdict", required=True, help="review verdict")
+    review_parser.add_argument(
+        "--finding", action="append", default=[], help="finding id (repeatable)"
+    )
+    review_parser.add_argument("--role", required=True, help="reviewer role")
+    review_parser.add_argument("--vendor", required=True, help="reviewer vendor")
+    review_parser.add_argument("--model", required=True, help="reviewer model")
     return parser
 
 
@@ -89,7 +102,41 @@ def _print_task_detail(task: TaskStatus) -> None:
         print("- (none)")
     print("Records:")
     for record in task.records:
-        print(f"- {record['id']} {record['record_type']} {record['created_at']}")
+        if record["record_type"] == "review":
+            findings = cast(list[object], record["findings"])
+            print(
+                f"- {record['id']} review {record['created_at']} "
+                f"reviewed_commit={str(record['reviewed_commit'])[:7]} "
+                f"verdict={record['verdict']} findings={len(findings)}"
+            )
+        else:
+            print(f"- {record['id']} {record['record_type']} {record['created_at']}")
+
+
+def _run_submit_review(args: argparse.Namespace, stderr: TextIO) -> int:
+    project_root = find_project_root(Path.cwd())
+    if project_root is None:
+        print(
+            "agentmarshal submit-review must be run inside an initialized project",
+            file=stderr,
+        )
+        return 1
+    try:
+        submitted = submit_review(
+            project_root / ".agentmarshal" / "journal",
+            args.task,
+            args.commit,
+            args.verdict,
+            args.role,
+            args.vendor,
+            args.model,
+            args.finding,
+        )
+    except ReviewSubmitError as error:
+        print(error, file=stderr)
+        return 1
+    print(submitted.record_path)
+    return 0
 
 
 def _run_status(task_id: str | None, stderr: TextIO) -> int:
@@ -128,5 +175,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_open(args.title, args.scope, sys.stderr)
     if args.command == "status":
         return _run_status(args.task_id, sys.stderr)
+    if args.command == "submit-review":
+        return _run_submit_review(args, sys.stderr)
 
     parser.error(f"unknown command: {args.command}")

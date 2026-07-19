@@ -27,7 +27,22 @@ _RECORD_FIELDS = {
     "opened": frozenset(
         {"schema", "record_type", "task", "created_at", "tool_version"}
     ),
+    "review": frozenset(
+        {
+            "schema",
+            "record_type",
+            "task",
+            "created_at",
+            "tool_version",
+            "reviewed_commit",
+            "verdict",
+            "reviewer",
+            "findings",
+        }
+    ),
 }
+_REVIEWED_COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}$")
+_REVIEW_VERDICTS = frozenset({"approved", "changes_required", "blocked", "rejected"})
 _ulid_lock = threading.Lock()
 _last_timestamp = -1
 _last_randomness = 0
@@ -110,9 +125,56 @@ def _validate_record(record: Mapping[str, object]) -> dict[str, object]:
     tool_version = data.get("tool_version")
     if not isinstance(tool_version, str) or not tool_version:
         raise JournalRecordError(
-            "opened record field 'tool_version' must be a non-empty string"
+            "record field 'tool_version' must be a non-empty string"
         )
+    if record_type == "review":
+        _validate_review_record(data)
     return data
+
+
+def _validate_review_record(data: Mapping[str, object]) -> None:
+    reviewed_commit = data.get("reviewed_commit")
+    if (
+        not isinstance(reviewed_commit, str)
+        or _REVIEWED_COMMIT_PATTERN.fullmatch(reviewed_commit) is None
+    ):
+        raise JournalRecordError(
+            "review record field 'reviewed_commit' must be exactly 40 lowercase hex characters"
+        )
+    verdict = data.get("verdict")
+    if not isinstance(verdict, str) or verdict not in _REVIEW_VERDICTS:
+        raise JournalRecordError(
+            "review record field 'verdict' must be one of approved, changes_required, "
+            "blocked, or rejected"
+        )
+    reviewer = data.get("reviewer")
+    if not isinstance(reviewer, dict):
+        raise JournalRecordError("review record field 'reviewer' must be an object")
+    for field in ("role", "vendor", "model"):
+        value = reviewer.get(field)
+        if not isinstance(value, str) or not value:
+            raise JournalRecordError(
+                f"review record reviewer field {field!r} must be a non-empty string"
+            )
+    if reviewer.keys() != {"role", "vendor", "model"}:
+        raise JournalRecordError(
+            "review record field 'reviewer' must contain only role, vendor, and model"
+        )
+    findings = data.get("findings")
+    if not isinstance(findings, list) or not all(
+        isinstance(finding, str) and finding for finding in findings
+    ):
+        raise JournalRecordError(
+            "review record field 'findings' must be an array of non-empty finding ids"
+        )
+    if len(set(findings)) != len(findings):
+        raise JournalRecordError("review record findings must have unique finding ids")
+    if verdict == "approved" and findings:
+        raise JournalRecordError("approved review records must have no findings")
+    if verdict != "approved" and not findings:
+        raise JournalRecordError(
+            "non-approved review records must have at least one finding id"
+        )
 
 
 def _record_path(
@@ -208,6 +270,35 @@ def create_opened_record(task_id: str, tool_version: str) -> dict[str, object]:
         "task": task_id,
         "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "tool_version": tool_version,
+    }
+
+
+def create_review_record(
+    task_id: str,
+    tool_version: str,
+    reviewed_commit: str,
+    verdict: str,
+    reviewer_role: str,
+    reviewer_vendor: str,
+    reviewer_model: str,
+    findings: list[str],
+) -> dict[str, object]:
+    """Build the review evidence record submitted by a reviewer."""
+
+    return {
+        "schema": 1,
+        "record_type": "review",
+        "task": task_id,
+        "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "tool_version": tool_version,
+        "reviewed_commit": reviewed_commit,
+        "verdict": verdict,
+        "reviewer": {
+            "role": reviewer_role,
+            "vendor": reviewer_vendor,
+            "model": reviewer_model,
+        },
+        "findings": findings,
     }
 
 
