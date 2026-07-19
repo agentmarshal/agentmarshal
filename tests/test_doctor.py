@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+import agentmarshal.doctor as doctor
 from agentmarshal.cli import main
 from agentmarshal.doctor import run_doctor
 
@@ -95,3 +96,26 @@ def test_doctor_reports_missing_git_executable(tmp_path: Path) -> None:
     git_result = results[0]
     assert not git_result.ok
     assert git_result.name == "git"
+
+
+def test_doctor_handles_git_discovery_decode_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = tmp_path / "repo"
+    init_git_repo(repo)
+    write_project_file(repo, '{"schema": 1}\n')
+    monkeypatch.chdir(repo)
+
+    def raise_decode_error(_start: Path) -> Path | None:
+        raise UnicodeDecodeError("utf-8", b"\\xff", 0, 1, "invalid start byte")
+
+    monkeypatch.setattr(doctor, "find_git_root", raise_decode_error)
+
+    assert main(["doctor"]) == 1
+
+    output = capsys.readouterr()
+    assert output.out.count("FAIL:") == 3
+    assert "FAIL: git repository — cannot determine git repository" in output.out
+    assert "FAIL: project schema — cannot determine project location" in output.out
+    assert "Summary: 3 check(s) failed" in output.out
+    assert "Traceback" not in output.err

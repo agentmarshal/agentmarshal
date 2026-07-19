@@ -57,7 +57,7 @@ def _check_git_available(resolver: ExecutableResolver) -> tuple[bool, str]:
 def _check_git_repository(start: Path) -> tuple[bool, str]:
     try:
         git_root = find_git_root(start)
-    except GitNotAvailableError as error:
+    except (GitNotAvailableError, OSError, RuntimeError, UnicodeError) as error:
         return False, f"cannot determine git repository; {error}"
     if git_root is None:
         return False, "not inside a git repository; run this command from a repository"
@@ -67,11 +67,14 @@ def _check_git_repository(start: Path) -> tuple[bool, str]:
 def _find_project_root(start: Path) -> tuple[Path | None, str | None]:
     try:
         git_root = find_git_root(start)
-    except GitNotAvailableError as error:
-        return None, f"cannot determine git repository; {error}"
-    if git_root is None:
-        return None, "not inside a git repository; run this command from a repository"
-    project_root = find_project_root(start, stop_at=git_root)
+        if git_root is None:
+            return (
+                None,
+                "not inside a git repository; run this command from a repository",
+            )
+        project_root = find_project_root(start, stop_at=git_root)
+    except (GitNotAvailableError, OSError, RuntimeError, UnicodeError) as error:
+        return None, f"cannot determine project location; {error}"
     if project_root is None:
         return None, "no .agentmarshal/project.json found; run agentmarshal init"
     return project_root, None
@@ -127,7 +130,12 @@ def run_doctor(
 ) -> Sequence[DoctorResult]:
     """Run onboarding health checks without changing project state."""
 
-    return tuple(
-        DoctorResult(check.name, *check.run())
-        for check in doctor_checks(start, resolver)
-    )
+    results: list[DoctorResult] = []
+    for check in doctor_checks(start, resolver):
+        try:
+            ok, detail = check.run()
+        except Exception as error:
+            ok = False
+            detail = f"check could not run; verify repository access and retry ({error})"
+        results.append(DoctorResult(check.name, ok, detail))
+    return tuple(results)
