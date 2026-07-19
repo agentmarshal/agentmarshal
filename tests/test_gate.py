@@ -250,6 +250,69 @@ def test_gate_detects_record_path_collision(
     assert "already exist" in output
 
 
+def _candidate_head(repo: Path, branch: str, base: str, mutate: object) -> str:
+    """Commit a candidate on its own branch, evaluate from a clean master."""
+
+    _git(repo, "switch", "--quiet", "-c", branch, base)
+    mutate()  # type: ignore[operator]
+    head = _commit_all(repo, branch)
+    _git(repo, "switch", "--quiet", "master")
+    return head
+
+
+def test_gate_refuses_record_tampering(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    records = repo / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "records"
+    opened = next(records.glob("*-opened.json"))
+
+    def modify() -> None:
+        opened.write_text(opened.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+
+    head = _candidate_head(repo, "tamperer", base, modify)
+    passed, output = _run(repo, head, base, head)
+    assert not passed
+    assert "append-only" in output
+
+    def delete() -> None:
+        _git(repo, "rm", "--quiet", str(opened.relative_to(repo)))
+
+    head = _candidate_head(repo, "deleter", base, delete)
+    passed, output = _run(repo, head, base, head)
+    assert not passed
+    assert "append-only" in output
+
+
+def test_gate_refuses_invalid_added_records(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    records = repo / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "records"
+    opened = next(records.glob("*-opened.json"))
+    crafted_name = "01" + "A" * 24 + "-opened.json"
+
+    def add_malformed() -> None:
+        (records / crafted_name).write_text("not json\n", encoding="utf-8")
+
+    head = _candidate_head(repo, "malformed", base, add_malformed)
+    passed, output = _run(repo, head, base, head)
+    assert not passed
+    assert "invalid added records" in output
+
+    original = opened.read_text(encoding="utf-8")
+
+    def add_mismatched() -> None:
+        (records / crafted_name).write_text(
+            original.replace("CR-001", "CR-002"), encoding="utf-8"
+        )
+
+    head = _candidate_head(repo, "mismatched", base, add_mismatched)
+    passed, output = _run(repo, head, base, head)
+    assert not passed
+    assert "does not match its directory" in output
+
+
 def test_gate_requires_contract_in_base_tree(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -310,6 +310,24 @@ def create_review_record(
     }
 
 
+def validate_record_content(filename: str, content: str) -> dict[str, object]:
+    """Validate a record file's name and JSON content; return the record."""
+
+    match = _RECORD_FILENAME_PATTERN.fullmatch(filename)
+    if match is None:
+        raise JournalRecordError(f"record filename is malformed: {filename}")
+    try:
+        loaded = json.loads(content)
+    except json.JSONDecodeError as error:
+        raise JournalRecordError(f"invalid JSON record: {filename}") from error
+    if not isinstance(loaded, dict):
+        raise JournalRecordError(f"record must contain a JSON object: {filename}")
+    record = _validate_record(cast(dict[str, object], loaded))
+    if record["record_type"] != match["record_type"]:
+        raise JournalRecordError(f"record type does not match its filename: {filename}")
+    return record
+
+
 def read_records(journal_root: Path, task_id: str) -> list[dict[str, object]]:
     """Load and validate all evidence records for one task in path order."""
 

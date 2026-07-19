@@ -18,7 +18,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from agentmarshal.journal.contracts import parse_contract_text
-from agentmarshal.journal.records import read_records
+from agentmarshal.journal.records import (
+    JournalRecordError,
+    read_records,
+    validate_record_content,
+)
 from agentmarshal.journal.status import TaskStatusError, load_task_status
 
 _JOURNAL_PREFIX = ".agentmarshal/journal/"
@@ -69,12 +73,34 @@ def _changed_paths(project_root: Path, merge_base: str, commit: str) -> list[str
     return [path for path in output.split("\0") if path]
 
 
-def _added_paths(project_root: Path, merge_base: str, commit: str) -> list[str]:
+def _changed_with_status(
+    project_root: Path, merge_base: str, commit: str
+) -> list[tuple[str, str]]:
+    """Return (status, path) pairs for the range; renames yield the new path."""
+
     output = _run_git(
-        project_root,
-        ["diff", "--name-only", "--diff-filter=A", "-z", f"{merge_base}..{commit}"],
+        project_root, ["diff", "--name-status", "-z", f"{merge_base}..{commit}"]
     )
-    return [path for path in output.split("\0") if path]
+    tokens = [token for token in output.split("\0") if token]
+    pairs: list[tuple[str, str]] = []
+    index = 0
+    while index < len(tokens):
+        status = tokens[index]
+        if status[0] in "RC":
+            if index + 2 >= len(tokens):
+                raise GateError("unparseable rename entry in candidate diff")
+            pairs.append((status[0], tokens[index + 2]))
+            index += 3
+        else:
+            if index + 1 >= len(tokens):
+                raise GateError("unparseable entry in candidate diff")
+            pairs.append((status[0], tokens[index + 1]))
+            index += 2
+    return pairs
+
+
+def _is_record_path(path: str) -> bool:
+    return path.startswith(_JOURNAL_PREFIX) and "/records/" in path
 
 
 def _range_emails(project_root: Path, merge_base: str, commit: str) -> set[str]:
@@ -199,6 +225,44 @@ def run_gate(
         else "pipeline attestation missing or for a different commit",
     )
 
+    # Evidence records are append-only for every candidate: any
+    # modification, deletion or rename of an existing record rewrites
+    # history at the merge boundary and is refused (ADR-0004).
+    record_changes = [
+        (status, path)
+        for status, path in _changed_with_status(
+            project_root, merge_base, resolved_commit
+        )
+        if _is_record_path(path)
+    ]
+    tampered = sorted(path for status, path in record_changes if status != "A")
+    check(
+        not tampered,
+        "evidence records are append-only"
+        if not tampered
+        else "append-only violation, records modified, deleted or renamed: "
+        + ", ".join(tampered),
+    )
+
+    added_records = [path for status, path in record_changes if status == "A"]
+    invalid: list[str] = []
+    for path in added_records:
+        try:
+            content = _run_git(project_root, ["show", f"{resolved_commit}:{path}"])
+            record = validate_record_content(Path(path).name, content)
+        except (GateError, JournalRecordError) as error:
+            invalid.append(f"{path}: {error}")
+            continue
+        expected_task = path.removeprefix(f"{_JOURNAL_PREFIX}tasks/").split("/", 1)[0]
+        if record.get("task") != expected_task:
+            invalid.append(f"{path}: record task does not match its directory")
+    check(
+        not invalid,
+        "added records are valid"
+        if not invalid
+        else f"invalid added records: {'; '.join(sorted(invalid))}",
+    )
+
     # Collisions are checked against the merge target's tip: a record
     # path independently created on both sides would collide at merge.
     base_tree = set(
@@ -206,13 +270,7 @@ def run_gate(
             project_root, ["ls-tree", "-r", "--name-only", base_commit]
         ).splitlines()
     )
-    colliding = [
-        path
-        for path in _added_paths(project_root, merge_base, resolved_commit)
-        if path.startswith(_JOURNAL_PREFIX)
-        and "/records/" in path
-        and path in base_tree
-    ]
+    colliding = [path for path in added_records if path in base_tree]
     check(
         not colliding,
         "no record-path collisions with the base tree"
