@@ -45,12 +45,15 @@ is a model that avoids cross-branch mutation, not a database.
      content-addressed and captured by the launcher at launch time),
      and measurements. One file per record, JSON, written exactly once
      by a trusted recorder, never edited. Record identity is
-     unconditionally unique: every record path embeds the task id and a
-     recorder-generated sortable unique identifier (ULID-class), plus
-     the reviewed commit where applicable; records are created with
-     exclusive-create semantics, and an already-existing path is an
-     error, never an overwrite. Parallel branches therefore cannot
-     collide on a path.
+     collision-resistant by construction: every record path embeds the
+     task id and a recorder-generated sortable collision-resistant
+     identifier (ULID-class), plus the reviewed commit where
+     applicable. Records are created with exclusive-create semantics —
+     an already-existing path is an error, never an overwrite — and the
+     merge gate performs fail-closed collision detection at
+     integration: a merge candidate introducing a record path that
+     already exists on the target branch does not merge. Collisions are
+     therefore detected at the boundary, not assumed away.
 
 2. **State is a projection.** A task's status is computed
    deterministically from its records — opened, review recorded,
@@ -94,9 +97,10 @@ is a model that avoids cross-branch mutation, not a database.
 
 ## Consequences
 
-- Journal transactions from parallel tasks merge without conflicts by
-  construction; the only serialized journal write remains task creation
-  (ADR-0002).
+- Journal transactions from parallel tasks never contend over shared
+  mutable files; identifier collisions are statistically negligible and
+  caught fail-closed at the merge boundary if they ever occur. The only
+  serialized journal write remains task creation (ADR-0002).
 - Gates read state from records reachable from the merge candidate
   instead of the checked-out working tree, removing a whole class of
   checkout-order traps observed on the v1 rails.
