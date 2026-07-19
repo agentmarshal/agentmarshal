@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 from typing import cast
 
-from agentmarshal.journal.records import JournalRecordError, read_records
-from agentmarshal.journal.status import TaskStatusError, list_task_statuses
+from pathlib import Path
+
+from agentmarshal.journal.records import JournalRecordError
+from agentmarshal.journal.status import TaskStatus, TaskStatusError, list_task_statuses
 
 
 class ReportError(Exception):
@@ -33,15 +34,15 @@ class JournalReport:
     tokens: int
 
 
-def _task_report(journal_root: Path, task_id: str, state: str) -> TaskReport:
-    records = read_records(journal_root, task_id)
+def _task_report(status: TaskStatus) -> TaskReport:
+    records = status.records
     review_cycles = sum(record["record_type"] == "review" for record in records)
     tokens = sum(
         sum(cast(dict[str, int], record["tokens"]).values())
         for record in records
         if record["record_type"] == "session"
     )
-    return TaskReport(task_id, state, review_cycles, tokens)
+    return TaskReport(status.task_id, status.state, review_cycles, tokens)
 
 
 def build_report(journal_root: Path, task_id: str | None = None) -> JournalReport:
@@ -54,8 +55,7 @@ def build_report(journal_root: Path, task_id: str | None = None) -> JournalRepor
             if not statuses:
                 raise ReportError(f"unknown task id: {task_id}")
         tasks = tuple(
-            _task_report(journal_root, status.task_id, status.state)
-            for status in statuses
+            _task_report(status) for status in statuses
         )
     except (JournalRecordError, TaskStatusError, OSError, ValueError) as error:
         raise ReportError(str(error)) from error

@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from agentmarshal.cli import main
+from agentmarshal.journal import status
 from agentmarshal.journal.records import (
     JournalRecordError,
     create_abandoned_record,
@@ -17,6 +18,7 @@ from agentmarshal.journal.records import (
     read_records,
     write_record,
 )
+from agentmarshal.journal.report import build_report
 
 
 def _initialize_repo(repo: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
@@ -202,3 +204,23 @@ def test_report_for_one_task_and_empty_journal(
     capsys.readouterr()
     assert main(["report", "--task", "CR-001"]) == 0
     assert capsys.readouterr().out == "CR-001\topen\treviews=0\ttokens=0\n"
+
+
+def test_report_uses_each_task_status_record_snapshot_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = tmp_path / "repo"
+    journal = _initialize_repo(repo, monkeypatch)
+    _open_tasks()
+    capsys.readouterr()
+    calls: list[str] = []
+
+    def track_read_records(journal_root: Path, task_id: str) -> list[dict[str, object]]:
+        calls.append(task_id)
+        return read_records(journal_root, task_id)
+
+    monkeypatch.setattr(status, "read_records", track_read_records)
+
+    build_report(journal)
+
+    assert calls == ["CR-001", "CR-002"]
