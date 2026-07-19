@@ -22,7 +22,15 @@ _VERDICT_BEGIN = "AGENTMARSHAL_VERDICT_BEGIN"
 _VERDICT_END = "AGENTMARSHAL_VERDICT_END"
 _VERDICT_FIELDS = {"reviewed_commit", "verdict", "findings"}
 _DEFAULT_REVIEWER_COMMANDS: Mapping[str, tuple[str, ...]] = {
-    "codex": ("codex", "exec", "--model", "{model}", "{prompt_file}"),
+    "codex": (
+        "codex",
+        "exec",
+        "--sandbox",
+        "read-only",
+        "--model",
+        "{model}",
+        "-",
+    ),
 }
 
 
@@ -105,7 +113,7 @@ def _reviewer_command(vendor: str, model: str, prompt_file: Path) -> list[str]:
         ) from error
 
 
-def _run_reviewer(command: list[str], snapshot: Path) -> str:
+def _run_reviewer(command: list[str], snapshot: Path, prompt: str) -> str:
     """Execute the reviewer adapter; this is the sole non-git subprocess boundary."""
 
     try:
@@ -114,6 +122,7 @@ def _run_reviewer(command: list[str], snapshot: Path) -> str:
             cwd=snapshot,
             capture_output=True,
             encoding="utf-8",
+            input=prompt,
             check=False,
         )
     except OSError as error:
@@ -172,6 +181,7 @@ def launch_review(
         encoding="utf-8"
     )
 
+    review_result: tuple[str, str, list[str]]
     with tempfile.TemporaryDirectory(
         prefix="agentmarshal-review-"
     ) as temporary_directory:
@@ -185,31 +195,32 @@ def launch_review(
                 ["worktree", "add", "--detach", str(snapshot), resolved_commit],
             )
             snapshot_added = True
-            prompt_file.write_text(
-                _review_prompt(contract, diff, resolved_commit), encoding="utf-8"
-            )
+            prompt = _review_prompt(contract, diff, resolved_commit)
+            prompt_file.write_text(prompt, encoding="utf-8")
             output = _run_reviewer(
                 _reviewer_command(reviewer_vendor, reviewer_model, prompt_file),
                 snapshot,
+                prompt,
             )
             reviewed_commit, verdict, findings = _parse_verdict(output)
             if reviewed_commit != resolved_commit:
                 raise ReviewLaunchError(
                     "reviewer verdict reviewed_commit does not match commit"
                 )
-            try:
-                return submit_review(
-                    journal_root,
-                    task_id,
-                    reviewed_commit,
-                    verdict,
-                    reviewer_role,
-                    reviewer_vendor,
-                    reviewer_model,
-                    findings,
-                )
-            except ReviewSubmitError as error:
-                raise ReviewLaunchError(str(error)) from error
+            review_result = reviewed_commit, verdict, findings
         finally:
             if snapshot_added:
                 _run_git(project_root, ["worktree", "remove", "--force", str(snapshot)])
+    try:
+        return submit_review(
+            journal_root,
+            task_id,
+            review_result[0],
+            review_result[1],
+            reviewer_role,
+            reviewer_vendor,
+            reviewer_model,
+            review_result[2],
+        )
+    except ReviewSubmitError as error:
+        raise ReviewLaunchError(str(error)) from error

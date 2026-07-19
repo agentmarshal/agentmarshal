@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from agentmarshal.cli import main
+from agentmarshal.journal import review
 from agentmarshal.journal.records import read_records
 
 
@@ -81,6 +82,46 @@ def _verdict(commit: str, verdict: str, findings: list[str]) -> str:
 
 def _assert_no_snapshot(repo: Path) -> None:
     assert _git(repo, "worktree", "list", "--porcelain").count("worktree ") == 1
+
+
+def test_default_codex_adapter_uses_read_only_stdin_prompt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("AGENTMARSHAL_REVIEWER_CMD", raising=False)
+    prompt_file = tmp_path / "review-prompt.txt"
+
+    assert review._reviewer_command("codex", "test-model", prompt_file) == [
+        "codex",
+        "exec",
+        "--sandbox",
+        "read-only",
+        "--model",
+        "test-model",
+        "-",
+    ]
+
+
+def test_review_cleanup_failure_does_not_record_verdict(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    stub = _reviewer_stub(tmp_path, _verdict(commit, "approved", []))
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+    original_run_git = review._run_git
+
+    def cleanup_then_fail(project_root: Path, arguments: list[str]) -> str:
+        result = original_run_git(project_root, arguments)
+        if arguments[:3] == ["worktree", "remove", "--force"]:
+            raise review.ReviewLaunchError("worktree cleanup could not be confirmed")
+        return result
+
+    monkeypatch.setattr(review, "_run_git", cleanup_then_fail)
+
+    assert main(_review_args(commit)) == 1
+
+    assert len(read_records(repo / ".agentmarshal" / "journal", "CR-001")) == 1
+    _assert_no_snapshot(repo)
 
 
 @pytest.mark.parametrize(
