@@ -4,7 +4,7 @@ Owner: lead
 Type: docs
 Priority: P2
 Created: 2026-07-19
-Status: open
+Status: in_review
 Scope:
 - .agentmarshal/journal/tasks/open/CR-004-adr-isolation-and-scope.md
 - docs/adr/
