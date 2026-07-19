@@ -41,14 +41,38 @@ def _review_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path,
     monkeypatch.chdir(repo)
     assert main(["init"]) == 0
     assert main(["open", "--title", "Review task"]) == 0
+    _git(repo, "add", ".agentmarshal")
+    _git(
+        repo,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.com",
+        "commit",
+        "--quiet",
+        "-m",
+        "open review task",
+    )
     return repo, _git(repo, "rev-parse", "HEAD")
 
 
-def _reviewer_stub(tmp_path: Path, output: str, exit_code: int = 0) -> Path:
+def _reviewer_stub(
+    tmp_path: Path,
+    output: str,
+    exit_code: int = 0,
+    prompt_output: Path | None = None,
+) -> Path:
     stub = tmp_path / "reviewer.py"
+    capture_prompt = (
+        ""
+        if prompt_output is None
+        else "from pathlib import Path\n"
+        f"Path({str(prompt_output)!r}).write_text(sys.stdin.read(), encoding='utf-8')\n"
+    )
     stub.write_text(
         "#!/usr/bin/env python3\n"
         "import sys\n"
+        f"{capture_prompt}"
         f"sys.stdout.write({output!r})\n"
         f"raise SystemExit({exit_code})\n",
         encoding="utf-8",
@@ -146,6 +170,34 @@ def test_default_codex_adapter_uses_read_only_stdin_prompt(
         "test-model",
         "-",
     ]
+
+
+def test_review_uses_contract_from_reviewed_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    prompt_output = tmp_path / "review-prompt.txt"
+    stub = _reviewer_stub(
+        tmp_path,
+        _verdict(commit, "approved", []),
+        prompt_output=prompt_output,
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+    contract_path = (
+        repo / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "contract.md"
+    )
+    contract_path.write_text(
+        f"{contract_path.read_text(encoding='utf-8')}\nUNCOMMITTED CONTRACT CHANGE\n",
+        encoding="utf-8",
+    )
+
+    assert main(_review_args(commit)) == 0
+
+    prompt = prompt_output.read_text(encoding="utf-8")
+    assert "Review task" in prompt
+    assert "UNCOMMITTED CONTRACT CHANGE" not in prompt
+    _assert_no_snapshot(repo)
 
 
 @pytest.mark.parametrize(

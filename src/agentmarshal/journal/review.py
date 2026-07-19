@@ -222,9 +222,6 @@ def launch_review(
     resolved_commit = _resolve_commit(project_root, commit)
     merge_base = _run_git(project_root, ["merge-base", base, resolved_commit]).strip()
     diff = _run_git(project_root, ["diff", f"{merge_base}..{resolved_commit}"])
-    contract = (journal_root / "tasks" / task.task_id / "contract.md").read_text(
-        encoding="utf-8"
-    )
 
     review_result: tuple[str, str, list[str]]
     with tempfile.TemporaryDirectory(
@@ -240,6 +237,19 @@ def launch_review(
                 ["worktree", "add", "--detach", str(snapshot), resolved_commit],
             )
             snapshot_added = True
+            try:
+                contract = (
+                    snapshot
+                    / ".agentmarshal"
+                    / "journal"
+                    / "tasks"
+                    / task.task_id
+                    / "contract.md"
+                ).read_text(encoding="utf-8")
+            except OSError as error:
+                raise ReviewLaunchError(
+                    f"cannot read task contract from reviewed commit: {error}"
+                ) from error
             prompt = _review_prompt(contract, diff, resolved_commit)
             prompt_file.write_text(prompt, encoding="utf-8")
             output = _run_reviewer(
