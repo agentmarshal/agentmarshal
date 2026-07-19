@@ -12,6 +12,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
+# Reuse the hardened no-follow exclusive creator from project.py so record
+# files get the same symlink/race guarantees as the project file.
+from agentmarshal.project import UnsafeProjectPathError, _create_exclusive
+
 _CROCKFORD_BASE32 = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 _ULID_RANDOM_MASK = (1 << 80) - 1
 _TASK_ID_PATTERN = re.compile(r"CR-[0-9]+$")
@@ -108,7 +112,25 @@ def _record_path(journal_root: Path, task_id: str, record_id: str, record_type: 
     return journal_root / "tasks" / task_id / "records" / f"{record_id}-{record_type}.json"
 
 
+def _ensure_journal_root_is_real(journal_root: Path) -> None:
+    """Reject a journal root reachable through a symlinked ancestor.
+
+    ``journal_root`` must be built from a resolved project root; a resolve
+    mismatch means some ancestor (for example the project metadata
+    directory itself) is a symlink and evidence I/O would escape the
+    repository.
+    """
+
+    resolved_root = journal_root.resolve()
+    if resolved_root != journal_root:
+        raise JournalRecordError(
+            "journal root resolves outside its expected location: "
+            f"{journal_root} -> {resolved_root}"
+        )
+
+
 def _prepare_record_directory(journal_root: Path, task_id: str) -> Path:
+    _ensure_journal_root_is_real(journal_root)
     paths = (journal_root, journal_root / "tasks", journal_root / "tasks" / task_id)
     for path in paths:
         if path.is_symlink():
@@ -122,6 +144,12 @@ def _prepare_record_directory(journal_root: Path, task_id: str) -> Path:
     if records_directory.exists() and not records_directory.is_dir():
         raise JournalRecordError(f"record path is not a directory: {records_directory}")
     records_directory.mkdir(exist_ok=True)
+    resolved_directory = records_directory.resolve()
+    if resolved_directory != records_directory:
+        raise JournalRecordError(
+            "record directory resolves outside its expected location: "
+            f"{records_directory} -> {resolved_directory}"
+        )
     return records_directory
 
 
@@ -144,7 +172,11 @@ def write_record(
     path = _record_path(journal_root, task_id, identifier, record_type)
     _prepare_record_directory(journal_root, task_id)
     content = json.dumps(data, indent=2, sort_keys=True, ensure_ascii=False)
-    with path.open("x", encoding="utf-8", newline="\n") as record_file:
+    try:
+        record_file = _create_exclusive(path)
+    except UnsafeProjectPathError as error:
+        raise JournalRecordError(str(error)) from error
+    with record_file:
         record_file.write(f"{content}\n")
     return path
 
@@ -165,6 +197,7 @@ def read_records(journal_root: Path, task_id: str) -> list[dict[str, object]]:
     """Load and validate all evidence records for one task in path order."""
 
     validate_task_id(task_id)
+    _ensure_journal_root_is_real(journal_root)
     if journal_root.is_symlink():
         raise JournalRecordError(f"refusing to read through a symlink: {journal_root}")
     tasks_directory = journal_root / "tasks"

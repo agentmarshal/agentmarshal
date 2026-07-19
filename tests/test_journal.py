@@ -28,6 +28,32 @@ def init_git_repo(repo: Path) -> None:
     )
 
 
+def test_write_record_rejects_symlinked_journal_ancestor(tmp_path: Path) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".agentmarshal").symlink_to(outside, target_is_directory=True)
+    journal = repo / ".agentmarshal" / "journal"
+
+    with pytest.raises(JournalRecordError):
+        write_record(journal, "CR-001", create_opened_record("CR-001", "0.1.0.dev0"))
+
+    assert list(outside.iterdir()) == []
+
+
+def test_read_records_rejects_symlinked_journal_ancestor(tmp_path: Path) -> None:
+    outside = tmp_path / "outside"
+    (outside / "journal" / "tasks" / "CR-001" / "records").mkdir(parents=True)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".agentmarshal").symlink_to(outside, target_is_directory=True)
+    journal = repo / ".agentmarshal" / "journal"
+
+    with pytest.raises(JournalRecordError):
+        read_records(journal, "CR-001")
+
+
 def test_generate_ulids_are_unique_and_lexicographically_ordered() -> None:
     identifiers = [generate_ulid() for _ in range(100)]
 
