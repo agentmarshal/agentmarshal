@@ -20,6 +20,7 @@
     "mode": "fresh"
   },
   "agmake": {
-    "implementation_mode": "managed"
+    "implementation_mode": "managed",
+    "review_autofix_loops": 2
   }
 }
