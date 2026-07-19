@@ -92,7 +92,9 @@ def open_task(project_root: Path, title: str, scope: list[str]) -> OpenedTask:
     root = journal_root(project_root)
     metadata_directory = root.parent
     if metadata_directory.is_symlink():
-        raise TaskOpenError(f"refusing to write through a symlink: {metadata_directory}")
+        raise TaskOpenError(
+            f"refusing to write through a symlink: {metadata_directory}"
+        )
     if root.is_symlink():
         raise TaskOpenError(f"refusing to write through a symlink: {root}")
     if root.exists() and not root.is_dir():
@@ -113,7 +115,9 @@ def open_task(project_root: Path, title: str, scope: list[str]) -> OpenedTask:
     staged_contract_path = staged_task_directory / "contract.md"
     try:
         staged_task_directory.mkdir(parents=True)
-        with staged_contract_path.open("x", encoding="utf-8", newline="\n") as contract_file:
+        with staged_contract_path.open(
+            "x", encoding="utf-8", newline="\n"
+        ) as contract_file:
             contract_file.write(_contract_content(task_id, title, scope))
         staged_record_path = write_record(
             staging_root,

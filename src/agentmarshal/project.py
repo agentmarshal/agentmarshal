@@ -54,7 +54,9 @@ def project_file_path(project_root: Path) -> Path:
     return project_root / PROJECT_DIR_NAME / PROJECT_FILE_NAME
 
 
-def find_project_root(start: Path | None = None, stop_at: Path | None = None) -> Path | None:
+def find_project_root(
+    start: Path | None = None, stop_at: Path | None = None
+) -> Path | None:
     """Find the nearest initialized AgentMarshal project root."""
 
     search_start = Path.cwd() if start is None else start

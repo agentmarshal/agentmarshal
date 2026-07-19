@@ -21,6 +21,14 @@ from agentmarshal.journal import (
 from agentmarshal.journal.open_task import TaskOpenError, journal_root, open_task
 
 
+def initialize_status_repo(repo: Path) -> Path:
+    init_git_repo(repo)
+    project_file = repo / ".agentmarshal" / "project.json"
+    project_file.parent.mkdir()
+    project_file.write_text('{"schema": 1}\n', encoding="utf-8")
+    return journal_root(repo)
+
+
 def init_git_repo(repo: Path) -> None:
     repo.mkdir(parents=True, exist_ok=True)
     subprocess.run(
@@ -110,7 +118,7 @@ def test_write_record_is_exclusive_and_preserves_original_content(
         write_record(root, "CR-001", record, record_id=identifier)
 
     assert path.read_bytes() == original
-    assert read_records(root, "CR-001") == [record]
+    assert read_records(root, "CR-001") == [record | {"id": identifier}]
 
 
 @pytest.mark.parametrize(
@@ -291,3 +299,129 @@ def test_open_allocates_an_id_after_legacy_tasks(
     assert main(["open", "--title", "Task"]) == 0
 
     assert (journal_root(repo) / "tasks" / "CR-008" / "contract.md").is_file()
+
+
+def test_status_lists_opened_tasks_with_cyrillic_titles(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = tmp_path / "repo"
+    initialize_status_repo(repo)
+    monkeypatch.chdir(repo)
+
+    assert main(["open", "--title", "Задача", "--scope", "src/"]) == 0
+    capsys.readouterr()
+    assert main(["status"]) == 0
+
+    output = capsys.readouterr().out
+    assert "CR-001\topen\t" in output
+    assert output.endswith("Задача\n")
+
+
+def test_status_shows_task_detail(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = tmp_path / "repo"
+    initialize_status_repo(repo)
+    monkeypatch.chdir(repo)
+
+    assert (
+        main(["open", "--title", "Task", "--scope", "src/", "--scope", "tests/"]) == 0
+    )
+    capsys.readouterr()
+    assert main(["status", "CR-001"]) == 0
+
+    output = capsys.readouterr().out
+    record = read_records(journal_root(repo), "CR-001")[0]
+    assert "ID: CR-001" in output
+    assert "Status: open" in output
+    assert "Title: Task" in output
+    assert "- src/" in output
+    assert "- tests/" in output
+    assert str(record["id"]) in output
+    assert str(record["record_type"]) in output
+    assert str(record["created_at"]) in output
+
+
+def test_status_reports_empty_journal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = tmp_path / "repo"
+    initialize_status_repo(repo)
+    monkeypatch.chdir(repo)
+
+    assert main(["status"]) == 0
+
+    assert "no tasks" in capsys.readouterr().out.lower()
+
+
+def test_status_rejects_unknown_task_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = tmp_path / "repo"
+    initialize_status_repo(repo)
+    monkeypatch.chdir(repo)
+
+    assert main(["status", "CR-999"]) == 1
+
+    assert "unknown task id: CR-999" in capsys.readouterr().err
+
+
+def test_status_rejects_task_without_opened_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = tmp_path / "repo"
+    root = initialize_status_repo(repo)
+    task_directory = root / "tasks" / "CR-001"
+    (task_directory / "records").mkdir(parents=True)
+    (task_directory / "contract.md").write_text(
+        "+++\nschema = 1\nid = 'CR-001'\ntitle = 'Task'\nscope = []\n"
+        "acceptance = []\n+++\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(repo)
+
+    assert main(["status", "CR-001"]) == 1
+
+    assert "do not contain an opened record" in capsys.readouterr().err
+
+
+def test_status_reports_malformed_record_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = tmp_path / "repo"
+    root = initialize_status_repo(repo)
+    task_directory = root / "tasks" / "CR-001"
+    records_directory = task_directory / "records"
+    records_directory.mkdir(parents=True)
+    (task_directory / "contract.md").write_text(
+        "+++\nschema = 1\nid = 'CR-001'\ntitle = 'Task'\nscope = []\n"
+        "acceptance = []\n+++\n",
+        encoding="utf-8",
+    )
+    malformed = records_directory / "01J00000000000000000000000-opened.json"
+    malformed.write_text("{", encoding="utf-8")
+    monkeypatch.chdir(repo)
+
+    assert main(["status"]) == 1
+
+    assert str(malformed) in capsys.readouterr().err
+
+
+def test_status_accepts_bom_prefixed_contract(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = tmp_path / "repo"
+    root = initialize_status_repo(repo)
+    task_directory = root / "tasks" / "CR-001"
+    task_directory.mkdir(parents=True)
+    (task_directory / "contract.md").write_text(
+        "\ufeff+++\nschema = 1\nid = 'CR-001'\ntitle = 'Задача'\nscope = []\n"
+        "acceptance = []\n+++\n",
+        encoding="utf-8",
+    )
+    write_record(root, "CR-001", create_opened_record("CR-001", "1.0"))
+    monkeypatch.chdir(repo)
+
+    assert main(["status"]) == 0
+
+    assert "Задача" in capsys.readouterr().out

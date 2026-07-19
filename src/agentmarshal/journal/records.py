@@ -24,7 +24,9 @@ _RECORD_FILENAME_PATTERN = re.compile(
     r"(?P<record_type>[a-z]+)\.json$"
 )
 _RECORD_FIELDS = {
-    "opened": frozenset({"schema", "record_type", "task", "created_at", "tool_version"}),
+    "opened": frozenset(
+        {"schema", "record_type", "task", "created_at", "tool_version"}
+    ),
 }
 _ulid_lock = threading.Lock()
 _last_timestamp = -1
@@ -92,24 +94,36 @@ def _validate_record(record: Mapping[str, object]) -> dict[str, object]:
     for field in ("record_type", "task", "created_at"):
         value = data.get(field)
         if not isinstance(value, str) or not value:
-            raise JournalRecordError(f"record field {field!r} must be a non-empty string")
+            raise JournalRecordError(
+                f"record field {field!r} must be a non-empty string"
+            )
     try:
-        created_at = datetime.fromisoformat(cast(str, data["created_at"]).replace("Z", "+00:00"))
+        created_at = datetime.fromisoformat(
+            cast(str, data["created_at"]).replace("Z", "+00:00")
+        )
     except ValueError as error:
-        raise JournalRecordError("record field 'created_at' must be an ISO-8601 timestamp") from error
+        raise JournalRecordError(
+            "record field 'created_at' must be an ISO-8601 timestamp"
+        ) from error
     if created_at.tzinfo is None or created_at.utcoffset() != UTC.utcoffset(created_at):
         raise JournalRecordError("record field 'created_at' must be a UTC timestamp")
     tool_version = data.get("tool_version")
     if not isinstance(tool_version, str) or not tool_version:
-        raise JournalRecordError("opened record field 'tool_version' must be a non-empty string")
+        raise JournalRecordError(
+            "opened record field 'tool_version' must be a non-empty string"
+        )
     return data
 
 
-def _record_path(journal_root: Path, task_id: str, record_id: str, record_type: str) -> Path:
+def _record_path(
+    journal_root: Path, task_id: str, record_id: str, record_type: str
+) -> Path:
     validate_task_id(task_id)
     if not record_type or Path(record_type).name != record_type:
         raise JournalRecordError("record type must be a single path component")
-    return journal_root / "tasks" / task_id / "records" / f"{record_id}-{record_type}.json"
+    return (
+        journal_root / "tasks" / task_id / "records" / f"{record_id}-{record_type}.json"
+    )
 
 
 def _ensure_journal_root_is_real(journal_root: Path) -> None:
@@ -140,7 +154,9 @@ def _prepare_record_directory(journal_root: Path, task_id: str) -> Path:
         path.mkdir(exist_ok=True)
     records_directory = paths[-1] / "records"
     if records_directory.is_symlink():
-        raise JournalRecordError(f"refusing to write through a symlink: {records_directory}")
+        raise JournalRecordError(
+            f"refusing to write through a symlink: {records_directory}"
+        )
     if records_directory.exists() and not records_directory.is_dir():
         raise JournalRecordError(f"record path is not a directory: {records_directory}")
     records_directory.mkdir(exist_ok=True)
@@ -168,7 +184,9 @@ def write_record(
     record_type = cast(str, data["record_type"])
     identifier = generate_ulid() if record_id is None else record_id
     if not _is_ulid(identifier):
-        raise JournalRecordError("record id must be a 26-character Crockford base32 ULID")
+        raise JournalRecordError(
+            "record id must be a 26-character Crockford base32 ULID"
+        )
     path = _record_path(journal_root, task_id, identifier, record_type)
     _prepare_record_directory(journal_root, task_id)
     content = json.dumps(data, indent=2, sort_keys=True, ensure_ascii=False)
@@ -207,11 +225,15 @@ def read_records(journal_root: Path, task_id: str) -> list[dict[str, object]]:
             raise JournalRecordError(f"refusing to read through a symlink: {path}")
     records_directory = journal_root / "tasks" / task_id / "records"
     if records_directory.is_symlink():
-        raise JournalRecordError(f"refusing to read through a symlink: {records_directory}")
+        raise JournalRecordError(
+            f"refusing to read through a symlink: {records_directory}"
+        )
     if not records_directory.exists():
         return []
     if not records_directory.is_dir():
-        raise JournalRecordError(f"record directory is not a directory: {records_directory}")
+        raise JournalRecordError(
+            f"record directory is not a directory: {records_directory}"
+        )
     records: list[dict[str, object]] = []
     for path in sorted(records_directory.glob("*.json")):
         if path.is_symlink():
@@ -226,10 +248,16 @@ def read_records(journal_root: Path, task_id: str) -> list[dict[str, object]]:
                 raise JournalRecordError(f"invalid JSON record: {path}") from error
         if not isinstance(loaded, dict):
             raise JournalRecordError(f"record must contain a JSON object: {path}")
-        record = _validate_record(cast(dict[str, object], loaded))
+        try:
+            record = _validate_record(cast(dict[str, object], loaded))
+        except JournalRecordError as error:
+            raise JournalRecordError(f"{error}: {path}") from error
         if record["task"] != task_id:
-            raise JournalRecordError(f"record task does not match its directory: {path}")
+            raise JournalRecordError(
+                f"record task does not match its directory: {path}"
+            )
         if record["record_type"] != filename["record_type"]:
             raise JournalRecordError(f"record type does not match its filename: {path}")
+        record["id"] = filename["record_id"]
         records.append(record)
     return records
