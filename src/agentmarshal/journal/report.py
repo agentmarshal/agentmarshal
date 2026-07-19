@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import cast
-
 from pathlib import Path
+from typing import cast
 
 from agentmarshal.journal.records import JournalRecordError
 from agentmarshal.journal.status import TaskStatus, TaskStatusError, list_task_statuses
@@ -54,9 +53,7 @@ def build_report(journal_root: Path, task_id: str | None = None) -> JournalRepor
             statuses = [status for status in statuses if status.task_id == task_id]
             if not statuses:
                 raise ReportError(f"unknown task id: {task_id}")
-        tasks = tuple(
-            _task_report(status) for status in statuses
-        )
+        tasks = tuple(_task_report(status) for status in statuses)
     except (JournalRecordError, TaskStatusError, OSError, ValueError) as error:
         raise ReportError(str(error)) from error
     return JournalReport(
