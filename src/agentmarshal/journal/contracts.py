@@ -26,28 +26,53 @@ class ContractHeader:
 def _require_string(data: dict[str, object], field: str) -> str:
     value = data.get(field)
     if not isinstance(value, str) or not value:
-        raise JournalContractError(f"contract header field {field!r} must be a non-empty string")
+        raise JournalContractError(
+            f"contract header field {field!r} must be a non-empty string"
+        )
     return value
 
 
 def _require_string_array(data: dict[str, object], field: str) -> tuple[str, ...]:
     value = data.get(field)
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
-        raise JournalContractError(f"contract header field {field!r} must be an array of strings")
+        raise JournalContractError(
+            f"contract header field {field!r} must be an array of strings"
+        )
     return tuple(cast(list[str], value))
+
+
+def _ensure_contract_path_is_real(path: Path) -> None:
+    """Reject a contract path reachable through a symlink.
+
+    Journal callers build contract paths from resolved project roots. Comparing
+    that lexical path with its resolved target detects a symlink in any
+    ancestor as well as a symlinked contract file before it can be opened.
+    """
+
+    expected_path = path.absolute()
+    resolved_path = path.resolve()
+    if resolved_path != expected_path:
+        raise JournalContractError(f"refusing to read through a symlink: {path}")
 
 
 def parse_contract(path: Path) -> ContractHeader:
     """Parse and validate the TOML header from a contract markdown file."""
 
+    _ensure_contract_path_is_real(path)
     with path.open("r", encoding="utf-8-sig", newline=None) as contract_file:
         lines = contract_file.readlines()
     if not lines or lines[0].strip() != "+++":
-        raise JournalContractError(f"contract must start with a +++ header delimiter: {path}")
+        raise JournalContractError(
+            f"contract must start with a +++ header delimiter: {path}"
+        )
     try:
-        end = next(index for index, line in enumerate(lines[1:], 1) if line.strip() == "+++")
+        end = next(
+            index for index, line in enumerate(lines[1:], 1) if line.strip() == "+++"
+        )
     except StopIteration as error:
-        raise JournalContractError(f"contract header is missing its closing delimiter: {path}") from error
+        raise JournalContractError(
+            f"contract header is missing its closing delimiter: {path}"
+        ) from error
     try:
         parsed = tomllib.loads("".join(lines[1:end]))
     except tomllib.TOMLDecodeError as error:
@@ -58,11 +83,16 @@ def parse_contract(path: Path) -> ContractHeader:
     data = cast(dict[str, object], parsed)
     schema = data.get("schema")
     if type(schema) is not int or schema != 1:
-        raise JournalContractError("contract header has an unknown or missing schema version")
-    return ContractHeader(
-        schema=schema,
-        id=_require_string(data, "id"),
-        title=_require_string(data, "title"),
-        scope=_require_string_array(data, "scope"),
-        acceptance=_require_string_array(data, "acceptance"),
-    )
+        raise JournalContractError(
+            f"contract header has an unknown or missing schema version: {path}"
+        )
+    try:
+        return ContractHeader(
+            schema=schema,
+            id=_require_string(data, "id"),
+            title=_require_string(data, "title"),
+            scope=_require_string_array(data, "scope"),
+            acceptance=_require_string_array(data, "acceptance"),
+        )
+    except JournalContractError as error:
+        raise JournalContractError(f"{error}: {path}") from error
