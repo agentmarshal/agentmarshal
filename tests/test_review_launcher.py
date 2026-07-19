@@ -105,49 +105,76 @@ def _verdict(commit: str, verdict: str, findings: list[str]) -> str:
 
 
 def _assert_no_snapshot(repo: Path) -> None:
+    import tempfile as _tempfile
+
+    leftovers = list(Path(_tempfile.gettempdir()).glob("agentmarshal-review-*"))
+    assert leftovers == []
     assert _git(repo, "worktree", "list", "--porcelain").count("worktree ") == 1
 
 
-def test_failed_worktree_add_leaves_no_snapshot_or_record(
+def _metadata_probe_reviewer_stub(tmp_path: Path, output: str) -> Path:
+    """Stub failing if the snapshot exposes git metadata; writes into the
+    snapshot to prove writes stay in the ephemeral copy."""
+
+    stub = tmp_path / "probing-reviewer.py"
+    stub.write_text(
+        "#!/usr/bin/env python3\n"
+        "from pathlib import Path\n"
+        "import sys\n"
+        "if Path('.git').exists():\n"
+        "    raise SystemExit('snapshot exposes git metadata')\n"
+        "Path('reviewer-scratch.txt').write_text('ephemeral', encoding='utf-8')\n"
+        f"sys.stdout.write({output!r})\n",
+        encoding="utf-8",
+    )
+    stub.chmod(0o755)
+    return stub
+
+
+def test_snapshot_has_no_git_metadata_and_writes_stay_ephemeral(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repo, commit = _review_repo(tmp_path, monkeypatch)
-    stub = _reviewer_stub(tmp_path, _verdict(commit, "approved", []))
+    stub = _metadata_probe_reviewer_stub(tmp_path, _verdict(commit, "approved", []))
     monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
-    original_run_git = review._run_git
 
-    def add_then_fail(project_root: Path, arguments: list[str]) -> str:
-        result = original_run_git(project_root, arguments)
-        if arguments[:2] == ["worktree", "add"]:
-            raise review.ReviewLaunchError("worktree add exited non-zero")
-        return result
+    assert main(_review_args(commit)) == 0
 
-    monkeypatch.setattr(review, "_run_git", add_then_fail)
+    assert len(read_records(repo / ".agentmarshal" / "journal", "CR-001")) == 2
+    assert not (repo / "reviewer-scratch.txt").exists()
+    _assert_no_snapshot(repo)
 
-    assert main(_review_args(commit)) == 1
 
-    monkeypatch.setattr(review, "_run_git", original_run_git)
+def test_review_of_commit_without_contract_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, _commit = _review_repo(tmp_path, monkeypatch)
+    first_commit = _git(repo, "rev-list", "--max-parents=0", "HEAD")
+    stub = _reviewer_stub(tmp_path, _verdict(first_commit, "approved", []))
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    # The root commit has an empty tree: no contract, and its archive is
+    # a lone pax_global_header — both must fail closed, not crash.
+    assert main(_review_args(first_commit)) == 1
+
     assert len(read_records(repo / ".agentmarshal" / "journal", "CR-001")) == 1
     _assert_no_snapshot(repo)
 
 
-def test_review_cleanup_failure_does_not_record_verdict(
+def test_snapshot_extraction_failure_leaves_no_record(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repo, commit = _review_repo(tmp_path, monkeypatch)
     stub = _reviewer_stub(tmp_path, _verdict(commit, "approved", []))
     monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
-    original_run_git = review._run_git
 
-    def cleanup_then_fail(project_root: Path, arguments: list[str]) -> str:
-        result = original_run_git(project_root, arguments)
-        if arguments[:3] == ["worktree", "remove", "--force"]:
-            raise review.ReviewLaunchError("worktree cleanup could not be confirmed")
-        return result
+    def failing_extract(project_root: Path, sha: str, snapshot: Path) -> None:
+        raise review.ReviewLaunchError("git archive failed: simulated")
 
-    monkeypatch.setattr(review, "_run_git", cleanup_then_fail)
+    monkeypatch.setattr(review, "_extract_snapshot", failing_extract)
 
     assert main(_review_args(commit)) == 1
 
