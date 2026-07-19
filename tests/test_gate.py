@@ -409,6 +409,68 @@ def test_gate_reports_malformed_base_contract_without_traceback(
     assert "Traceback" not in error_output
 
 
+def test_gate_refuses_second_opened_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    records = repo / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "records"
+    opened = next(records.glob("*-opened.json"))
+    original = opened.read_text(encoding="utf-8")
+
+    # A second, individually valid opened record: passes isolation checks
+    # but makes the task unreadable after merge.
+    def add_second_opened() -> None:
+        (records / ("01" + "B" * 24 + "-opened.json")).write_text(
+            original, encoding="utf-8"
+        )
+
+    head = _candidate_head(repo, "double-open", base, add_second_opened)
+    passed, output = _run(repo, head, base, head)
+
+    assert not passed
+    assert "multiple opened records" in output
+
+
+def test_gate_refuses_non_utf8_git_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import os
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    src_bytes = os.fsencode(repo / "src")
+    os.makedirs(src_bytes, exist_ok=True)
+    # A genuinely non-UTF-8 filename (raw 0xFF byte), created at the OS
+    # level so git stores and emits the raw bytes.
+    bad_path = src_bytes + b"/\xff.py"
+    with open(bad_path, "wb") as bad_file:
+        bad_file.write(b"code\n")
+    head = _commit_all(repo, "non-utf8 path")
+    capsys.readouterr()
+
+    assert (
+        main(
+            [
+                "gate",
+                "--task",
+                "CR-001",
+                "--commit",
+                head,
+                "--base",
+                base,
+                "--pipeline-sha",
+                head,
+            ]
+        )
+        == 1
+    )
+
+    error_output = capsys.readouterr().err
+    assert "non-UTF-8" in error_output
+    assert "Traceback" not in error_output
+
+
 def test_gate_requires_contract_in_base_tree(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

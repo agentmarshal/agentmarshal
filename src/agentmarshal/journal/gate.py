@@ -46,15 +46,21 @@ def _run_git(project_root: Path, arguments: list[str]) -> str:
             ["git", *arguments],
             cwd=project_root,
             capture_output=True,
-            encoding="utf-8",
             check=False,
         )
     except OSError as error:
         raise GateError(f"cannot run git: {error}") from error
+    try:
+        stdout = result.stdout.decode("utf-8")
+        stderr = result.stderr.decode("utf-8")
+    except UnicodeDecodeError as error:
+        # git permits arbitrary non-NUL bytes in path names; a non-UTF-8
+        # path is a controlled refusal, never a traceback.
+        raise GateError(f"git produced non-UTF-8 output: {error}") from error
     if result.returncode != 0:
-        detail = result.stderr.strip() or result.stdout.strip()
+        detail = stderr.strip() or stdout.strip()
         raise GateError(f"git {' '.join(arguments)} failed: {detail}")
-    return result.stdout
+    return stdout
 
 
 def _resolve_commit(project_root: Path, reference: str) -> str:
@@ -281,19 +287,51 @@ def run_gate(
         else f"invalid added records: {'; '.join(sorted(invalid))}",
     )
 
-    # Collisions are checked against the merge target's tip: a record
-    # path independently created on both sides would collide at merge.
     base_tree = set(
         _run_git(
             project_root, ["ls-tree", "-r", "--name-only", base_commit]
         ).splitlines()
     )
+
+    # Collisions are checked against the merge target's tip: a record
+    # path independently created on both sides would collide at merge.
     colliding = [path for path in added_records if path in base_tree]
     check(
         not colliding,
         "no record-path collisions with the base tree"
         if not colliding
         else f"record paths already exist on the base: {', '.join(sorted(colliding))}",
+    )
+
+    # A single record is valid in isolation yet corrupts the lifecycle
+    # projection in aggregate — a second 'opened' record makes the task
+    # unreadable after merge. Reject a task ending up with more than one
+    # opened record across the target tip and the candidate's additions.
+    def _task_of(path: str) -> str:
+        return path.removeprefix(f"{_JOURNAL_PREFIX}tasks/").split("/", 1)[0]
+
+    duplicate_opened: set[str] = set()
+    affected_tasks = {_task_of(path) for path in added_records}
+    for affected in affected_tasks:
+        prefix = f"{_JOURNAL_PREFIX}tasks/{affected}/records/"
+        opened_paths = {
+            path
+            for path in base_tree
+            if path.startswith(prefix) and path.endswith("-opened.json")
+        }
+        opened_paths.update(
+            path
+            for path in added_records
+            if path.startswith(prefix) and path.endswith("-opened.json")
+        )
+        if len(opened_paths) > 1:
+            duplicate_opened.add(affected)
+    check(
+        not duplicate_opened,
+        "task lifecycle records are consistent"
+        if not duplicate_opened
+        else "multiple opened records after merge for: "
+        + ", ".join(sorted(duplicate_opened)),
     )
 
     return GateReport(passed=violations == 0, lines=lines)
