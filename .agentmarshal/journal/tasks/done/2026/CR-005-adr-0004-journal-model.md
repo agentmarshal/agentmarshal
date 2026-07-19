@@ -4,7 +4,14 @@ Owner: lead
 Type: docs
 Priority: P1
 Created: 2026-07-19
-Status: in_review
+Status: done
+Completion-Review: CR-005
+Reviewed-Commit: 0aa372c183637c055a1a80d1e217b8e2cb9588a8
+Target-Branch: master
+Merged-Commit: b8e08f6c96ebc16dde25474bdde7c1d87e7d701e
+Completed-At: 2026-07-19T03:12:41Z
+Completion-Review-Artifact: .agentmarshal/journal/reviews/2026/CR-005-completion-0aa372c18363.md
+Completion-Review-SHA256: sha256:f9ec8f5a3badcf04b2552f1c2c367891f9e2e75ebe1c0f54877c738f577d289a
 Scope:
 - .agentmarshal/journal/tasks/open/CR-005-adr-0004-journal-model.md
 - docs/adr/
