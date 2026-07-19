@@ -117,9 +117,7 @@ def _range_emails(project_root: Path, merge_base: str, commit: str) -> set[str]:
     return {line.strip() for line in output.splitlines() if line.strip()}
 
 
-def _scope_covers(scope: tuple[str, ...], task_id: str, path: str) -> bool:
-    if path.startswith(f"{_JOURNAL_PREFIX}tasks/{task_id}/"):
-        return True  # a task's own journal area is implicitly in scope
+def _scope_covers(scope: tuple[str, ...], path: str) -> bool:
     for entry in scope:
         if entry.endswith("/"):
             if path == entry.rstrip("/") or path.startswith(entry):
@@ -191,7 +189,7 @@ def run_gate(
         except JournalContractError as error:
             raise GateError(f"contract in the base tree is invalid: {error}") from error
         outside = [
-            path for path in changed if not _scope_covers(contract.scope, task_id, path)
+            path for path in changed if not _scope_covers(contract.scope, path)
         ]
         check(
             not outside,

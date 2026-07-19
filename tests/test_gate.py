@@ -114,6 +114,26 @@ def test_gate_refuses_path_outside_scope(
     assert "outside contract scope" in output
 
 
+def test_gate_refuses_undeclared_journal_change_in_mixed_candidate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    (repo / "src").mkdir(exist_ok=True)
+    (repo / "src" / "module.py").write_text("code\n", encoding="utf-8")
+    # A journal document under the task dir that the base contract scope
+    # does not list, bundled with the in-scope code change.
+    (repo / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "extra.md").write_text(
+        "undeclared\n", encoding="utf-8"
+    )
+    head = _commit_all(repo, "mixed candidate with undeclared journal change")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    assert not passed
+    assert "outside contract scope" in output
+
+
 def test_gate_refuses_missing_and_stale_reviews(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
