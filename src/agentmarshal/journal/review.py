@@ -116,11 +116,32 @@ def _reviewer_command(vendor: str, model: str, prompt_file: Path) -> list[str]:
 
 
 def _run_reviewer(command: list[str], snapshot: Path, prompt: str) -> str:
-    """Execute the reviewer adapter; this is the sole non-git subprocess boundary."""
+    """Execute the reviewer adapter in a filesystem read-only sandbox."""
+
+    sandbox = shutil.which("bwrap")
+    if sandbox is None:
+        raise ReviewLaunchError(
+            "cannot run reviewer: bubblewrap (bwrap) is required for read-only reviews"
+        )
+    sandboxed_command = [
+        sandbox,
+        "--die-with-parent",
+        "--ro-bind",
+        "/",
+        "/",
+        "--dev",
+        "/dev",
+        "--proc",
+        "/proc",
+        "--chdir",
+        str(snapshot),
+        "--",
+        *command,
+    ]
 
     try:
         result = subprocess.run(
-            command,
+            sandboxed_command,
             cwd=snapshot,
             capture_output=True,
             encoding="utf-8",
@@ -130,7 +151,11 @@ def _run_reviewer(command: list[str], snapshot: Path, prompt: str) -> str:
     except OSError as error:
         raise ReviewLaunchError(f"cannot run reviewer: {error}") from error
     if result.returncode != 0:
-        raise ReviewLaunchError(f"reviewer exited with status {result.returncode}")
+        detail = result.stderr.strip() or result.stdout.strip()
+        message = f"reviewer exited with status {result.returncode}"
+        if detail:
+            message = f"{message}: {detail}"
+        raise ReviewLaunchError(message)
     return result.stdout
 
 

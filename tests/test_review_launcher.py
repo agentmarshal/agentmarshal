@@ -57,6 +57,31 @@ def _reviewer_stub(tmp_path: Path, output: str, exit_code: int = 0) -> Path:
     return stub
 
 
+def _write_attempting_reviewer_stub(tmp_path: Path, output: str) -> Path:
+    stub = tmp_path / "attempting-reviewer.py"
+    stub.write_text(
+        "#!/usr/bin/env python3\n"
+        "import os\n"
+        "from pathlib import Path\n"
+        "import sys\n"
+        "targets = [\n"
+        "    Path('reviewer-snapshot-write'),\n"
+        "    Path(os.environ['AGENTMARSHAL_TEST_REPOSITORY']) / '.git' / "
+        "'reviewer-git-write',\n"
+        "]\n"
+        "for target in targets:\n"
+        "    try:\n"
+        "        target.write_text('attempted', encoding='utf-8')\n"
+        "    except OSError:\n"
+        "        continue\n"
+        "    raise SystemExit('reviewer write unexpectedly succeeded')\n"
+        f"sys.stdout.write({output!r})\n",
+        encoding="utf-8",
+    )
+    stub.chmod(0o755)
+    return stub
+
+
 def _review_args(commit: str) -> list[str]:
     return [
         "review",
@@ -125,6 +150,21 @@ def test_default_codex_adapter_uses_read_only_stdin_prompt(
         "test-model",
         "-",
     ]
+
+
+def test_reviewer_cannot_write_snapshot_or_git_metadata(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    stub = _write_attempting_reviewer_stub(tmp_path, _verdict(commit, "approved", []))
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+    monkeypatch.setenv("AGENTMARSHAL_TEST_REPOSITORY", str(repo))
+
+    assert main(_review_args(commit)) == 0
+
+    assert not (repo / ".git" / "reviewer-git-write").exists()
+    _assert_no_snapshot(repo)
 
 
 def test_review_cleanup_failure_does_not_record_verdict(
