@@ -4,7 +4,7 @@ Owner: lead
 Type: chore
 Priority: P2
 Created: 2026-07-19
-Status: open
+Status: in_review
 Scope:
 - .agentmarshal/journal/tasks/open/CR-002-autofix-budget-python-pin.md
 - .agentmarshal/project.json
