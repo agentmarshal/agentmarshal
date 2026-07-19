@@ -355,9 +355,16 @@ def test_gate_reports_malformed_base_contract_without_traceback(
 ) -> None:
     repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
     contract = repo / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "contract.md"
+    valid_contract = contract.read_text(encoding="utf-8")
+
+    # The base tree carries a malformed contract; the candidate restores
+    # a valid one in the working tree, so the failure is reached only at
+    # the base-tree scope check, not at working-tree status loading.
     contract.write_text("no header here\n", encoding="utf-8")
     base = _commit_all(repo, "corrupt contract on base")
-    head = _implement(repo, "src/module.py")
+    _implement(repo, "src/module.py")
+    contract.write_text(valid_contract, encoding="utf-8")
+    head = _commit_all(repo, "restore valid contract in working tree")
     capsys.readouterr()
 
     assert (
