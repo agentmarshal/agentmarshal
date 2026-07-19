@@ -284,6 +284,41 @@ def test_gate_refuses_record_tampering(
     assert "append-only" in output
 
 
+def test_gate_refuses_record_rename_out_of_records(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    records = repo / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "records"
+    opened = next(records.glob("*-opened.json"))
+
+    def rename_out() -> None:
+        _git(
+            repo,
+            "mv",
+            str(opened.relative_to(repo)),
+            ".agentmarshal/journal/tasks/CR-001/evacuated.json",
+        )
+
+    head = _candidate_head(repo, "evacuator", base, rename_out)
+    passed, output = _run(repo, head, base, head)
+
+    assert not passed
+    assert "append-only" in output
+
+
+def test_gate_refuses_case_variant_reviewer_email(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    head = _implement(repo, "src/module.py")
+    _approve(repo, head, email="Worker@Test.INVALID")
+
+    passed, output = _run(repo, head, base, head)
+
+    assert not passed
+    assert "independent" in output
+
+
 def test_gate_refuses_invalid_added_records(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

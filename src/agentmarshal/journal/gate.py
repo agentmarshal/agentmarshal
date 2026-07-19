@@ -76,7 +76,12 @@ def _changed_paths(project_root: Path, merge_base: str, commit: str) -> list[str
 def _changed_with_status(
     project_root: Path, merge_base: str, commit: str
 ) -> list[tuple[str, str]]:
-    """Return (status, path) pairs for the range; renames yield the new path."""
+    """Return (status, path) pairs for the range.
+
+    A rename decomposes into a deletion of its source and an addition of
+    its destination, so moving a file out of a protected location is
+    seen as removing it there; a copy contributes only the addition.
+    """
 
     output = _run_git(
         project_root, ["diff", "--name-status", "-z", f"{merge_base}..{commit}"]
@@ -89,7 +94,9 @@ def _changed_with_status(
         if status[0] in "RC":
             if index + 2 >= len(tokens):
                 raise GateError("unparseable rename entry in candidate diff")
-            pairs.append((status[0], tokens[index + 2]))
+            if status[0] == "R":
+                pairs.append(("D", tokens[index + 1]))
+            pairs.append(("A", tokens[index + 2]))
             index += 3
         else:
             if index + 1 >= len(tokens):
@@ -209,11 +216,21 @@ def run_gate(
             reviewer_email = (
                 reviewer.get("email") if isinstance(reviewer, dict) else None
             )
-            writer_emails = _range_emails(project_root, merge_base, resolved_commit)
+            # Identity comparison is case-insensitive: the reviewer
+            # controls its own identity string and must not evade the
+            # check through casing.
+            normalized_reviewer = (
+                reviewer_email.strip().casefold()
+                if isinstance(reviewer_email, str)
+                else ""
+            )
+            writer_emails = {
+                email.strip().casefold()
+                for email in _range_emails(project_root, merge_base, resolved_commit)
+            }
             check(
-                isinstance(reviewer_email, str)
-                and bool(reviewer_email)
-                and reviewer_email not in writer_emails,
+                bool(normalized_reviewer)
+                and normalized_reviewer not in writer_emails,
                 "reviewer is independent of the candidate's writers",
             )
 
