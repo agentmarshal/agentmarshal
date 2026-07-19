@@ -84,6 +84,32 @@ def _assert_no_snapshot(repo: Path) -> None:
     assert _git(repo, "worktree", "list", "--porcelain").count("worktree ") == 1
 
 
+def test_failed_worktree_add_leaves_no_snapshot_or_record(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    stub = _reviewer_stub(tmp_path, _verdict(commit, "approved", []))
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+    original_run_git = review._run_git
+
+    # Simulate git creating/registering the worktree and then exiting
+    # non-zero: the real add runs, the wrapper still reports failure.
+    def add_then_fail(project_root: Path, arguments: list[str]) -> str:
+        result = original_run_git(project_root, arguments)
+        if arguments[:2] == ["worktree", "add"]:
+            raise review.ReviewLaunchError("worktree add exited non-zero")
+        return result
+
+    monkeypatch.setattr(review, "_run_git", add_then_fail)
+
+    assert main(_review_args(commit)) == 1
+
+    monkeypatch.setattr(review, "_run_git", original_run_git)
+    assert len(read_records(repo / ".agentmarshal" / "journal", "CR-001")) == 1
+    _assert_no_snapshot(repo)
+
+
 def test_default_codex_adapter_uses_read_only_stdin_prompt(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

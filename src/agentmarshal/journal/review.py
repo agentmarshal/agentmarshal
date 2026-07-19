@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import shlex
@@ -184,6 +185,20 @@ def _remove_snapshot(project_root: Path, snapshot: Path) -> None:
         raise ReviewLaunchError("worktree cleanup failed") from remove_error
 
 
+def _cleanup_partial_snapshot(project_root: Path, snapshot: Path) -> None:
+    """Best-effort cleanup after a failed ``worktree add``.
+
+    A non-zero ``worktree add`` may still have created the directory or
+    registered the worktree. The add failure is already propagating, so
+    this must never raise and mask it: leftovers are removed if present
+    and stale registrations pruned.
+    """
+
+    shutil.rmtree(snapshot, ignore_errors=True)
+    with contextlib.suppress(ReviewLaunchError):
+        _run_git(project_root, ["worktree", "prune"])
+
+
 def launch_review(
     project_root: Path,
     task_id: str,
@@ -237,6 +252,8 @@ def launch_review(
         finally:
             if snapshot_added:
                 _remove_snapshot(project_root, snapshot)
+            else:
+                _cleanup_partial_snapshot(project_root, snapshot)
     try:
         return submit_review(
             journal_root,
