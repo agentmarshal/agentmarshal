@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "_comment": "Starting-point allowlist for running the AgentMarshal rails. Copy to .claude/settings.local.json and adapt paths and command families to your project. Keep this file out of version control.",
+  "permissions": {
+    "allow": [
+      "Bash(git *)",
+      "Bash(uv *)",
+      "Bash(pytest *)",
+      "Bash(ruff *)",
+      "Bash(mypy *)",
+      "Bash(ls *)",
+      "Bash(cat *)",
+      "Bash(mkdir *)",
+      "Bash(cp *)",
+      "Bash(mv *)",
+      "Bash(./agentmarshal/scripts/*)",
+      "Bash(./agentmarshal/bin/*)",
+      "Bash(<your-rails-wrapper> *)"
+    ],
+    "additionalDirectories": [
+      "<your-working-temp-directory>"
+    ]
+  }
+}
