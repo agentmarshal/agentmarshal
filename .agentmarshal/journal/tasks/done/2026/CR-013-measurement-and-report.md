@@ -4,7 +4,14 @@ Owner: lead
 Type: feat
 Priority: P1
 Created: 2026-07-19
-Status: in_review
+Status: done
+Completion-Review: CR-013
+Reviewed-Commit: 643515e3a5e8aae95e3e670809a2c5f36c87809a
+Target-Branch: master
+Merged-Commit: c42a15df19c5b866aee63bafa7d6ce506ae53d00
+Completed-At: 2026-07-19T10:30:40Z
+Completion-Review-Artifact: .agentmarshal/journal/reviews/2026/CR-013-completion-643515e3a5e8.md
+Completion-Review-SHA256: sha256:6d2f00c38bdd2a3c9a4eb3a9e785f4cb90fdb7e4d81fd41af54b488dd18a28aa
 Scope:
 - .agentmarshal/journal/tasks/open/CR-013-measurement-and-report.md
 - src/agentmarshal/
