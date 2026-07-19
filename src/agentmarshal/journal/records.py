@@ -15,6 +15,13 @@ from typing import cast
 _CROCKFORD_BASE32 = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 _ULID_RANDOM_MASK = (1 << 80) - 1
 _TASK_ID_PATTERN = re.compile(r"CR-[0-9]+$")
+_RECORD_FILENAME_PATTERN = re.compile(
+    r"(?P<record_id>[0-7][0123456789ABCDEFGHJKMNPQRSTVWXYZ]{25})-"
+    r"(?P<record_type>[a-z]+)\.json$"
+)
+_RECORD_FIELDS = {
+    "opened": frozenset({"schema", "record_type", "task", "created_at", "tool_version"}),
+}
 _ulid_lock = threading.Lock()
 _last_timestamp = -1
 _last_randomness = 0
@@ -58,10 +65,26 @@ def generate_ulid() -> str:
     return _encode_base32(timestamp, 10) + _encode_base32(randomness, 16)
 
 
+def _is_ulid(value: str) -> bool:
+    return (
+        len(value) == 26
+        and value[0] in "01234567"
+        and all(character in _CROCKFORD_BASE32 for character in value)
+    )
+
+
 def _validate_record(record: Mapping[str, object]) -> dict[str, object]:
     data = dict(record)
     if type(data.get("schema")) is not int or data["schema"] != 1:
         raise JournalRecordError("record has an unknown or missing schema version")
+    record_type = data.get("record_type")
+    if not isinstance(record_type, str) or record_type not in _RECORD_FIELDS:
+        raise JournalRecordError("record has an unknown or missing record type")
+    unexpected_fields = data.keys() - _RECORD_FIELDS[record_type]
+    if unexpected_fields:
+        raise JournalRecordError(
+            f"record has unsupported fields: {', '.join(sorted(unexpected_fields))}"
+        )
     for field in ("record_type", "task", "created_at"):
         value = data.get(field)
         if not isinstance(value, str) or not value:
@@ -72,10 +95,9 @@ def _validate_record(record: Mapping[str, object]) -> dict[str, object]:
         raise JournalRecordError("record field 'created_at' must be an ISO-8601 timestamp") from error
     if created_at.tzinfo is None or created_at.utcoffset() != UTC.utcoffset(created_at):
         raise JournalRecordError("record field 'created_at' must be a UTC timestamp")
-    if data["record_type"] == "opened":
-        tool_version = data.get("tool_version")
-        if not isinstance(tool_version, str) or not tool_version:
-            raise JournalRecordError("opened record field 'tool_version' must be a non-empty string")
+    tool_version = data.get("tool_version")
+    if not isinstance(tool_version, str) or not tool_version:
+        raise JournalRecordError("opened record field 'tool_version' must be a non-empty string")
     return data
 
 
@@ -117,7 +139,7 @@ def write_record(
         raise JournalRecordError("record task does not match its destination")
     record_type = cast(str, data["record_type"])
     identifier = generate_ulid() if record_id is None else record_id
-    if len(identifier) != 26 or any(char not in _CROCKFORD_BASE32 for char in identifier):
+    if not _is_ulid(identifier):
         raise JournalRecordError("record id must be a 26-character Crockford base32 ULID")
     path = _record_path(journal_root, task_id, identifier, record_type)
     _prepare_record_directory(journal_root, task_id)
@@ -161,6 +183,9 @@ def read_records(journal_root: Path, task_id: str) -> list[dict[str, object]]:
     for path in sorted(records_directory.glob("*.json")):
         if path.is_symlink():
             raise JournalRecordError(f"refusing to read through a symlink: {path}")
+        filename = _RECORD_FILENAME_PATTERN.fullmatch(path.name)
+        if filename is None:
+            raise JournalRecordError(f"record filename is malformed: {path}")
         with path.open("r", encoding="utf-8-sig") as record_file:
             try:
                 loaded = json.load(record_file)
@@ -171,5 +196,7 @@ def read_records(journal_root: Path, task_id: str) -> list[dict[str, object]]:
         record = _validate_record(cast(dict[str, object], loaded))
         if record["task"] != task_id:
             raise JournalRecordError(f"record task does not match its directory: {path}")
+        if record["record_type"] != filename["record_type"]:
+            raise JournalRecordError(f"record type does not match its filename: {path}")
         records.append(record)
     return records

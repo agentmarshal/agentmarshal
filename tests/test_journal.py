@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -84,6 +85,51 @@ def test_write_record_is_exclusive_and_preserves_original_content(
 
     assert path.read_bytes() == original
     assert read_records(root, "CR-001") == [record]
+
+
+@pytest.mark.parametrize(
+    "record",
+    [
+        {
+            "schema": 1,
+            "record_type": "unknown",
+            "task": "CR-001",
+            "created_at": "2026-07-19T00:00:00Z",
+        },
+        {
+            "schema": 1,
+            "record_type": "opened",
+            "task": "CR-001",
+            "created_at": "2026-07-19T00:00:00Z",
+        },
+    ],
+)
+def test_write_record_rejects_unsupported_or_incomplete_types(
+    tmp_path: Path, record: dict[str, object]
+) -> None:
+    with pytest.raises(JournalRecordError):
+        write_record(tmp_path / "journal", "CR-001", record)
+
+
+@pytest.mark.parametrize(
+    ("filename", "record"),
+    [
+        ("invalid.json", create_opened_record("CR-001", "1.0")),
+        (
+            "01J00000000000000000000000-closed.json",
+            create_opened_record("CR-001", "1.0"),
+        ),
+    ],
+)
+def test_read_records_rejects_invalid_filename_or_type(
+    tmp_path: Path, filename: str, record: dict[str, object]
+) -> None:
+    records_directory = tmp_path / "journal" / "tasks" / "CR-001" / "records"
+    records_directory.mkdir(parents=True)
+    (records_directory / filename).write_text(json.dumps(record), encoding="utf-8")
+
+    with pytest.raises(JournalRecordError):
+        read_records(tmp_path / "journal", "CR-001")
 
 
 @pytest.mark.parametrize("task_id", [".", "..", "CR-001/records"])
@@ -196,6 +242,24 @@ def test_open_allocates_an_id_after_existing_tasks(
     project_file.parent.mkdir()
     project_file.write_text('{"schema": 1}\n', encoding="utf-8")
     (journal_root(repo) / "tasks" / "CR-007").mkdir(parents=True)
+    monkeypatch.chdir(repo)
+
+    assert main(["open", "--title", "Task"]) == 0
+
+    assert (journal_root(repo) / "tasks" / "CR-008" / "contract.md").is_file()
+
+
+def test_open_allocates_an_id_after_legacy_tasks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    init_git_repo(repo)
+    project_file = repo / ".agentmarshal" / "project.json"
+    project_file.parent.mkdir()
+    project_file.write_text('{"schema": 1}\n', encoding="utf-8")
+    legacy_task = journal_root(repo) / "tasks" / "done" / "2026" / "CR-007-task.md"
+    legacy_task.parent.mkdir(parents=True)
+    legacy_task.write_text("# CR-007\n", encoding="utf-8")
     monkeypatch.chdir(repo)
 
     assert main(["open", "--title", "Task"]) == 0

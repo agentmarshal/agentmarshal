@@ -19,6 +19,7 @@ from agentmarshal.journal.records import (
 
 JOURNAL_ROOT_PARTS = (".agentmarshal", "journal")
 _TASK_ID_PATTERN = re.compile(r"CR-(\d+)$")
+_LEGACY_TASK_ID_PATTERN = re.compile(r"CR-(\d+)-.+\.md$")
 
 
 class TaskOpenError(Exception):
@@ -51,8 +52,10 @@ def next_task_id(root: Path) -> str:
     if not tasks_directory.is_dir():
         raise TaskOpenError(f"task path is not a directory: {tasks_directory}")
     highest = 0
-    for path in tasks_directory.iterdir():
+    for path in tasks_directory.rglob("*"):
         match = _TASK_ID_PATTERN.fullmatch(path.name)
+        if match is None and path.is_file():
+            match = _LEGACY_TASK_ID_PATTERN.fullmatch(path.name)
         if match is not None:
             highest = max(highest, int(match.group(1)))
     return f"CR-{highest + 1:03d}"
