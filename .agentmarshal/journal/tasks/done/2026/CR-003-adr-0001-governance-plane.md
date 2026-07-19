@@ -4,7 +4,14 @@ Owner: lead
 Type: docs
 Priority: P2
 Created: 2026-07-19
-Status: in_review
+Status: done
+Completion-Review: CR-003
+Reviewed-Commit: 4b94bf22cfb5832234e5c26940876dd43343295b
+Target-Branch: master
+Merged-Commit: ef15ed4f4449652be8b9237dae2d40e0710b3d1c
+Completed-At: 2026-07-19T01:03:26Z
+Completion-Review-Artifact: .agentmarshal/journal/reviews/2026/CR-003-completion-4b94bf22cfb5.md
+Completion-Review-SHA256: sha256:751e7d0a969c827cafadf408983bd2b661376ca08ed0ec91c1be2a2ca6514226
 Scope:
 - .agentmarshal/journal/tasks/open/CR-003-adr-0001-governance-plane.md
 - docs/adr/
