@@ -170,6 +170,8 @@ def test_review_record_round_trip_and_status_detail(
                 "test",
                 "--model",
                 "test-model",
+                "--email",
+                "reviewer@test.invalid",
             ]
         )
         == 0
@@ -188,24 +190,26 @@ def test_review_record_round_trip_and_status_detail(
 @pytest.mark.parametrize(
     ("reviewed_commit", "verdict", "findings", "reviewer", "error"),
     [
-        ("a" * 40, "approved", ["F-001"], ("r", "v", "m"), "approved"),
+        ("a" * 40, "approved", ["F-001"], ("r", "v", "m", "r@t.i"), "approved"),
         (
             "a" * 40,
             "changes_required",
             [],
-            ("r", "v", "m"),
+            ("r", "v", "m", "r@t.i"),
             "non-approved",
         ),
-        ("a" * 39, "approved", [], ("r", "v", "m"), "reviewed_commit"),
-        ("g" * 40, "approved", [], ("r", "v", "m"), "reviewed_commit"),
+        ("a" * 39, "approved", [], ("r", "v", "m", "r@t.i"), "reviewed_commit"),
+        ("g" * 40, "approved", [], ("r", "v", "m", "r@t.i"), "reviewed_commit"),
         (
             "a" * 40,
             "changes_required",
             ["F-001", "F-001"],
-            ("r", "v", "m"),
+            ("r", "v", "m", "r@t.i"),
             "unique",
         ),
-        ("a" * 40, "approved", [], ("", "v", "m"), "reviewer field 'role'"),
+        ("a" * 40, "approved", [], ("", "v", "m", "r@t.i"), "reviewer field 'role'"),
+        ("a" * 40, "approved", [], ("r", "v", "m", ""), "reviewer field 'email'"),
+        ("a" * 40, "approved", [], ("r", "v", "m", "no-at"), "must contain '@'"),
     ],
 )
 def test_review_record_rejects_inconsistent_data_on_write(
@@ -213,7 +217,7 @@ def test_review_record_rejects_inconsistent_data_on_write(
     reviewed_commit: str,
     verdict: str,
     findings: list[str],
-    reviewer: tuple[str, str, str],
+    reviewer: tuple[str, str, str, str],
     error: str,
 ) -> None:
     record = create_review_record(
@@ -227,7 +231,7 @@ def test_review_record_rejects_inconsistent_data_on_write(
 def test_read_records_rejects_inconsistent_review(tmp_path: Path) -> None:
     root = tmp_path / "journal"
     record = create_review_record(
-        "CR-001", "1.0", "a" * 40, "approved", "r", "v", "m", ["F-001"]
+        "CR-001", "1.0", "a" * 40, "approved", "r", "v", "m", "r@t.i", ["F-001"]
     )
     records_directory = root / "tasks" / "CR-001" / "records"
     records_directory.mkdir(parents=True)
@@ -259,6 +263,8 @@ def test_submit_review_rejects_unknown_and_unopened_tasks(
         "v",
         "--model",
         "m",
+        "--email",
+        "r@t.i",
     ]
     assert main(arguments) == 1
     assert "unknown task id" in capsys.readouterr().err
@@ -278,7 +284,9 @@ def test_submit_review_rejects_unknown_and_unopened_tasks(
 def test_review_records_do_not_change_projected_status() -> None:
     records = [
         create_opened_record("CR-001", "1.0"),
-        create_review_record("CR-001", "1.0", "a" * 40, "approved", "r", "v", "m", []),
+        create_review_record(
+            "CR-001", "1.0", "a" * 40, "approved", "r", "v", "m", "r@t.i", []
+        ),
     ]
 
     assert project_status(records) == "open"

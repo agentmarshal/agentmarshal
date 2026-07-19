@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from collections.abc import Sequence
 from pathlib import Path
 from typing import TextIO, cast
 
 from agentmarshal import __version__
+from agentmarshal.journal.gate import GateError, run_gate
 from agentmarshal.journal.open_task import TaskOpenError, open_task
 from agentmarshal.journal.review import ReviewLaunchError, launch_review
 from agentmarshal.journal.status import (
@@ -57,6 +59,7 @@ def _build_parser() -> argparse.ArgumentParser:
     review_parser.add_argument("--role", required=True, help="reviewer role")
     review_parser.add_argument("--vendor", required=True, help="reviewer vendor")
     review_parser.add_argument("--model", required=True, help="reviewer model")
+    review_parser.add_argument("--email", required=True, help="reviewer email")
     launch_parser = subparsers.add_parser(
         "review", help="run and record a read-only task review"
     )
@@ -66,6 +69,18 @@ def _build_parser() -> argparse.ArgumentParser:
     launch_parser.add_argument("--role", required=True, help="reviewer role")
     launch_parser.add_argument("--vendor", required=True, help="reviewer vendor")
     launch_parser.add_argument("--model", required=True, help="reviewer model")
+    launch_parser.add_argument("--email", required=True, help="reviewer email")
+    gate_parser = subparsers.add_parser(
+        "gate", help="verify a merge candidate against the journal"
+    )
+    gate_parser.add_argument("--task", required=True, help="task identifier")
+    gate_parser.add_argument("--commit", required=True, help="candidate head SHA")
+    gate_parser.add_argument("--base", required=True, help="merge target ref")
+    gate_parser.add_argument(
+        "--pipeline-sha",
+        default=None,
+        help="attested pipeline SHA (defaults to AGENTMARSHAL_PIPELINE_OK_SHA)",
+    )
     return parser
 
 
@@ -140,6 +155,7 @@ def _run_submit_review(args: argparse.Namespace, stderr: TextIO) -> int:
             args.role,
             args.vendor,
             args.model,
+            args.email,
             args.finding,
         )
     except ReviewSubmitError as error:
@@ -166,11 +182,34 @@ def _run_review(args: argparse.Namespace, stderr: TextIO) -> int:
             args.role,
             args.vendor,
             args.model,
+            args.email,
         )
     except ReviewLaunchError as error:
         print(error, file=stderr)
         return 1
     print(submitted.record_path)
+    return 0
+
+
+def _run_gate(args: argparse.Namespace, stderr: TextIO) -> int:
+    project_root = find_project_root(Path.cwd())
+    if project_root is None:
+        print(
+            "agentmarshal gate must be run inside an initialized project", file=stderr
+        )
+        return 1
+    pipeline_sha = args.pipeline_sha or os.environ.get("AGENTMARSHAL_PIPELINE_OK_SHA")
+    try:
+        report = run_gate(project_root, args.task, args.commit, args.base, pipeline_sha)
+    except GateError as error:
+        print(error, file=stderr)
+        return 1
+    for line in report.lines:
+        print(line)
+    if not report.passed:
+        print("gate: refused", file=stderr)
+        return 1
+    print("gate: passed")
     return 0
 
 
@@ -214,5 +253,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_submit_review(args, sys.stderr)
     if args.command == "review":
         return _run_review(args, sys.stderr)
+    if args.command == "gate":
+        return _run_gate(args, sys.stderr)
 
     parser.error(f"unknown command: {args.command}")

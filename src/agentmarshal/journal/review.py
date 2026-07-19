@@ -216,6 +216,7 @@ def launch_review(
     reviewer_role: str,
     reviewer_vendor: str,
     reviewer_model: str,
+    reviewer_email: str,
 ) -> SubmittedReview:
     """Review an exact commit in a temporary metadata-free snapshot and record it."""
 
@@ -271,6 +272,7 @@ def launch_review(
             reviewer_role,
             reviewer_vendor,
             reviewer_model,
+            reviewer_email,
             review_result[2],
         )
     except ReviewSubmitError as error:

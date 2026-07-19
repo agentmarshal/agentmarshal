@@ -150,15 +150,21 @@ def _validate_review_record(data: Mapping[str, object]) -> None:
     reviewer = data.get("reviewer")
     if not isinstance(reviewer, dict):
         raise JournalRecordError("review record field 'reviewer' must be an object")
-    for field in ("role", "vendor", "model"):
+    for field in ("role", "vendor", "model", "email"):
         value = reviewer.get(field)
         if not isinstance(value, str) or not value:
             raise JournalRecordError(
                 f"review record reviewer field {field!r} must be a non-empty string"
             )
-    if reviewer.keys() != {"role", "vendor", "model"}:
+    email = reviewer["email"]
+    if not isinstance(email, str) or "@" not in email:
         raise JournalRecordError(
-            "review record field 'reviewer' must contain only role, vendor, and model"
+            "review record reviewer field 'email' must contain '@'"
+        )
+    if reviewer.keys() != {"role", "vendor", "model", "email"}:
+        raise JournalRecordError(
+            "review record field 'reviewer' must contain only role, vendor, "
+            "model, and email"
         )
     findings = data.get("findings")
     if not isinstance(findings, list) or not all(
@@ -281,6 +287,7 @@ def create_review_record(
     reviewer_role: str,
     reviewer_vendor: str,
     reviewer_model: str,
+    reviewer_email: str,
     findings: list[str],
 ) -> dict[str, object]:
     """Build the review evidence record submitted by a reviewer."""
@@ -297,6 +304,7 @@ def create_review_record(
             "role": reviewer_role,
             "vendor": reviewer_vendor,
             "model": reviewer_model,
+            "email": reviewer_email,
         },
         "findings": findings,
     }
