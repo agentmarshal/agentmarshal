@@ -4,7 +4,7 @@ Owner: lead
 Type: feat
 Priority: P1
 Created: 2026-07-19
-Status: open
+Status: in_review
 Scope:
 - .agentmarshal/journal/tasks/open/CR-013-measurement-and-report.md
 - src/agentmarshal/
