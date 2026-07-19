@@ -13,6 +13,7 @@ from agentmarshal.journal.records import (
     read_records,
     write_record,
 )
+from agentmarshal.journal.review import ReviewLaunchError, launch_review
 from agentmarshal.journal.status import (
     TaskStatus,
     TaskStatusError,
@@ -30,6 +31,7 @@ __all__ = [
     "ContractHeader",
     "JournalContractError",
     "JournalRecordError",
+    "ReviewLaunchError",
     "ReviewSubmitError",
     "SubmittedReview",
     "TaskStatus",
@@ -37,6 +39,7 @@ __all__ = [
     "create_opened_record",
     "create_review_record",
     "generate_ulid",
+    "launch_review",
     "list_task_statuses",
     "load_task_status",
     "parse_contract",
