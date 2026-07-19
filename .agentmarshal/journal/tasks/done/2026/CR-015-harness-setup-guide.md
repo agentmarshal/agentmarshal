@@ -4,7 +4,14 @@ Owner: lead
 Type: docs
 Priority: P2
 Created: 2026-07-19
-Status: in_review
+Status: done
+Completion-Review: CR-015
+Reviewed-Commit: 6e108ae3a88ff0b84116d60a36ff636ef555eb3a
+Target-Branch: master
+Merged-Commit: 5d424a6df77ca365e8658620d7ad877b41b7eb01
+Completed-At: 2026-07-19T11:40:43Z
+Completion-Review-Artifact: .agentmarshal/journal/reviews/2026/CR-015-completion-6e108ae3a88f.md
+Completion-Review-SHA256: sha256:76be6a00218d2eb9f558877b3dad3655025aef320d2e5d49267414f18fc3502f
 Scope:
 - .agentmarshal/journal/tasks/open/CR-015-harness-setup-guide.md
 - docs/
