@@ -4,7 +4,14 @@ Owner: lead
 Type: feat
 Priority: P1
 Created: 2026-07-19
-Status: in_review
+Status: done
+Completion-Review: CR-011
+Reviewed-Commit: 6ddfe986f5d06b5b31672c30378d1628eb22ade8
+Target-Branch: master
+Merged-Commit: 8ffca9538cc6e9328289a8e0db8de7ffac961bf5
+Completed-At: 2026-07-19T09:16:00Z
+Completion-Review-Artifact: .agentmarshal/journal/reviews/2026/CR-011-completion-6ddfe986f5d0.md
+Completion-Review-SHA256: sha256:c5208471b8ec0dda618625e73e594a97779ea45a99222469ff39b3c56a5b2c7b
 Scope:
 - .agentmarshal/journal/tasks/open/CR-011-merge-gate.md
 - src/agentmarshal/
