@@ -17,6 +17,7 @@ from agentmarshal.journal.records import (
 _RECORD_TYPE_STATES: Mapping[str, str | None] = {
     "opened": "open",
     "review": None,
+    "session": None,
     "completed": "done",
     "abandoned": "abandoned",
 }

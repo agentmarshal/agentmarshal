@@ -60,9 +60,24 @@ _RECORD_FIELDS = {
             "reason",
         }
     ),
+    "session": frozenset(
+        {
+            "schema",
+            "record_type",
+            "task",
+            "created_at",
+            "tool_version",
+            "role",
+            "actor",
+            "activity",
+            "outcome",
+            "tokens",
+        }
+    ),
 }
 _REVIEWED_COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}$")
 _REVIEW_VERDICTS = frozenset({"approved", "changes_required", "blocked", "rejected"})
+_SESSION_ACTIVITIES = frozenset({"implementation", "review", "other"})
 _ulid_lock = threading.Lock()
 _last_timestamp = -1
 _last_randomness = 0
@@ -165,6 +180,8 @@ def _validate_record(record: Mapping[str, object]) -> dict[str, object]:
             raise JournalRecordError(
                 "abandoned record field 'reason' must be a non-empty string"
             )
+    elif record_type == "session":
+        _validate_session_record(data)
     return data
 
 
@@ -217,6 +234,32 @@ def _validate_review_record(data: Mapping[str, object]) -> None:
         raise JournalRecordError(
             "non-approved review records must have at least one finding id"
         )
+
+
+def _validate_session_record(data: Mapping[str, object]) -> None:
+    for field in ("role", "actor", "outcome"):
+        value = data.get(field)
+        if not isinstance(value, str) or not value:
+            raise JournalRecordError(
+                f"session record field {field!r} must be a non-empty string"
+            )
+    activity = data.get("activity")
+    if not isinstance(activity, str) or activity not in _SESSION_ACTIVITIES:
+        raise JournalRecordError(
+            "session record field 'activity' must be one of implementation, review, "
+            "or other"
+        )
+    tokens = data.get("tokens")
+    if not isinstance(tokens, dict) or tokens.keys() != {"input", "output", "cache"}:
+        raise JournalRecordError(
+            "session record field 'tokens' must contain only input, output, and cache"
+        )
+    for field in ("input", "output", "cache"):
+        value = tokens[field]
+        if type(value) is not int or value < 0:
+            raise JournalRecordError(
+                f"session record token {field!r} must be an integer greater than or equal to zero"
+            )
 
 
 def _record_path(
@@ -342,6 +385,37 @@ def create_abandoned_record(
         "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "tool_version": tool_version,
         "reason": reason,
+    }
+
+
+def create_session_record(
+    task_id: str,
+    tool_version: str,
+    role: str,
+    actor: str,
+    activity: str,
+    outcome: str,
+    input_tokens: int,
+    output_tokens: int,
+    cache_tokens: int,
+) -> dict[str, object]:
+    """Build an attributed work session record."""
+
+    return {
+        "schema": 1,
+        "record_type": "session",
+        "task": task_id,
+        "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "tool_version": tool_version,
+        "role": role,
+        "actor": actor,
+        "activity": activity,
+        "outcome": outcome,
+        "tokens": {
+            "input": input_tokens,
+            "output": output_tokens,
+            "cache": cache_tokens,
+        },
     }
 
 

@@ -18,6 +18,8 @@ from agentmarshal.journal.complete import (
 from agentmarshal.journal.gate import GateError, run_gate
 from agentmarshal.journal.open_task import TaskOpenError, open_task
 from agentmarshal.journal.review import ReviewLaunchError, launch_review
+from agentmarshal.journal.report import ReportError, build_report, format_report
+from agentmarshal.journal.session import SessionRecordError, record_session
 from agentmarshal.journal.status import (
     TaskStatus,
     TaskStatusError,
@@ -102,6 +104,23 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     abandon_parser.add_argument("--task", required=True, help="task identifier")
     abandon_parser.add_argument("--reason", required=True, help="abandonment reason")
+    session_parser = subparsers.add_parser(
+        "record-session", help="record attributed task work"
+    )
+    session_parser.add_argument("--task", required=True, help="task identifier")
+    session_parser.add_argument("--role", required=True, help="worker role")
+    session_parser.add_argument("--actor", required=True, help="worker identity")
+    session_parser.add_argument(
+        "--activity", required=True, help="implementation, review, or other"
+    )
+    session_parser.add_argument("--outcome", required=True, help="work outcome")
+    session_parser.add_argument("--input-tokens", type=int, default=0)
+    session_parser.add_argument("--output-tokens", type=int, default=0)
+    session_parser.add_argument("--cache-tokens", type=int, default=0)
+    report_parser = subparsers.add_parser(
+        "report", help="summarize task delegation economics"
+    )
+    report_parser.add_argument("--task", help="task identifier")
     return parser
 
 
@@ -288,6 +307,51 @@ def _run_abandon(args: argparse.Namespace, stderr: TextIO) -> int:
     return 0
 
 
+def _run_record_session(args: argparse.Namespace, stderr: TextIO) -> int:
+    project_root = find_project_root(Path.cwd())
+    if project_root is None:
+        print(
+            "agentmarshal record-session must be run inside an initialized project",
+            file=stderr,
+        )
+        return 1
+    try:
+        record_path = record_session(
+            project_root / ".agentmarshal" / "journal",
+            args.task,
+            args.role,
+            args.actor,
+            args.activity,
+            args.outcome,
+            args.input_tokens,
+            args.output_tokens,
+            args.cache_tokens,
+        )
+    except SessionRecordError as error:
+        print(error, file=stderr)
+        return 1
+    print(record_path)
+    return 0
+
+
+def _run_report(task_id: str | None, stderr: TextIO) -> int:
+    project_root = find_project_root(Path.cwd())
+    if project_root is None:
+        print(
+            "agentmarshal report must be run inside an initialized project",
+            file=stderr,
+        )
+        return 1
+    try:
+        report = build_report(project_root / ".agentmarshal" / "journal", task_id)
+    except ReportError as error:
+        print(error, file=stderr)
+        return 1
+    for line in format_report(report, include_summary=task_id is None):
+        print(line)
+    return 0
+
+
 def _run_status(task_id: str | None, stderr: TextIO) -> int:
     project_root = find_project_root(Path.cwd())
     if project_root is None:
@@ -334,5 +398,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_complete(args, sys.stderr)
     if args.command == "abandon":
         return _run_abandon(args, sys.stderr)
+    if args.command == "record-session":
+        return _run_record_session(args, sys.stderr)
+    if args.command == "report":
+        return _run_report(args.task, sys.stderr)
 
     parser.error(f"unknown command: {args.command}")
