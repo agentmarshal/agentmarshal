@@ -4,7 +4,14 @@ Owner: lead
 Type: docs
 Priority: P2
 Created: 2026-07-19
-Status: in_review
+Status: done
+Completion-Review: CR-004
+Reviewed-Commit: cf625763df5d119c3b310f29857dd1662aca4211
+Target-Branch: master
+Merged-Commit: cc114ba839499ceb51617dbf2385e6d0105ec27d
+Completed-At: 2026-07-19T01:33:05Z
+Completion-Review-Artifact: .agentmarshal/journal/reviews/2026/CR-004-completion-cf625763df5d.md
+Completion-Review-SHA256: sha256:4775c5386154994d077af2325f4c3243d7adfee392bebe3142f45870426565e3
 Scope:
 - .agentmarshal/journal/tasks/open/CR-004-adr-isolation-and-scope.md
 - docs/adr/
