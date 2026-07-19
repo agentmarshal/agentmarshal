@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TextIO, cast
 
 from agentmarshal import __version__
+from agentmarshal.doctor import run_doctor
 from agentmarshal.journal.complete import (
     LifecycleError,
     abandon_task,
@@ -17,8 +18,8 @@ from agentmarshal.journal.complete import (
 )
 from agentmarshal.journal.gate import GateError, run_gate
 from agentmarshal.journal.open_task import TaskOpenError, open_task
-from agentmarshal.journal.review import ReviewLaunchError, launch_review
 from agentmarshal.journal.report import ReportError, build_report, format_report
+from agentmarshal.journal.review import ReviewLaunchError, launch_review
 from agentmarshal.journal.session import SessionRecordError, record_session
 from agentmarshal.journal.status import (
     TaskStatus,
@@ -44,6 +45,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("init", help="initialize AgentMarshal project metadata")
+    subparsers.add_parser("doctor", help="check AgentMarshal project health")
     open_parser = subparsers.add_parser("open", help="open a journal task")
     open_parser.add_argument("--title", required=True, help="task title")
     open_parser.add_argument(
@@ -135,6 +137,19 @@ def _run_init(stderr: TextIO) -> int:
         return 1
 
     print(f"Initialized AgentMarshal project at {project_root}")
+    return 0
+
+
+def _run_doctor() -> int:
+    results = run_doctor()
+    for result in results:
+        status = "OK" if result.ok else "FAIL"
+        print(f"{status}: {result.name} — {result.detail}")
+    failures = sum(not result.ok for result in results)
+    if failures:
+        print(f"Summary: {failures} check(s) failed")
+        return 1
+    print(f"Summary: all {len(results)} checks passed")
     return 0
 
 
@@ -384,6 +399,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "init":
         return _run_init(sys.stderr)
+    if args.command == "doctor":
+        return _run_doctor()
     if args.command == "open":
         return _run_open(args.title, args.scope, sys.stderr)
     if args.command == "status":
