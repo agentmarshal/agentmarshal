@@ -40,6 +40,26 @@ _RECORD_FIELDS = {
             "findings",
         }
     ),
+    "completed": frozenset(
+        {
+            "schema",
+            "record_type",
+            "task",
+            "created_at",
+            "tool_version",
+            "completed_commit",
+        }
+    ),
+    "abandoned": frozenset(
+        {
+            "schema",
+            "record_type",
+            "task",
+            "created_at",
+            "tool_version",
+            "reason",
+        }
+    ),
 }
 _REVIEWED_COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}$")
 _REVIEW_VERDICTS = frozenset({"approved", "changes_required", "blocked", "rejected"})
@@ -129,6 +149,22 @@ def _validate_record(record: Mapping[str, object]) -> dict[str, object]:
         )
     if record_type == "review":
         _validate_review_record(data)
+    elif record_type == "completed":
+        completed_commit = data.get("completed_commit")
+        if (
+            not isinstance(completed_commit, str)
+            or _REVIEWED_COMMIT_PATTERN.fullmatch(completed_commit) is None
+        ):
+            raise JournalRecordError(
+                "completed record field 'completed_commit' must be exactly 40 "
+                "lowercase hex characters"
+            )
+    elif record_type == "abandoned":
+        reason = data.get("reason")
+        if not isinstance(reason, str) or not reason:
+            raise JournalRecordError(
+                "abandoned record field 'reason' must be a non-empty string"
+            )
     return data
 
 
@@ -276,6 +312,36 @@ def create_opened_record(task_id: str, tool_version: str) -> dict[str, object]:
         "task": task_id,
         "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "tool_version": tool_version,
+    }
+
+
+def create_completed_record(
+    task_id: str, tool_version: str, completed_commit: str
+) -> dict[str, object]:
+    """Build the terminal record emitted when a task is completed."""
+
+    return {
+        "schema": 1,
+        "record_type": "completed",
+        "task": task_id,
+        "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "tool_version": tool_version,
+        "completed_commit": completed_commit,
+    }
+
+
+def create_abandoned_record(
+    task_id: str, tool_version: str, reason: str
+) -> dict[str, object]:
+    """Build the terminal record emitted when a task is abandoned."""
+
+    return {
+        "schema": 1,
+        "record_type": "abandoned",
+        "task": task_id,
+        "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "tool_version": tool_version,
+        "reason": reason,
     }
 
 

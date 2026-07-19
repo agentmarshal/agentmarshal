@@ -38,6 +38,7 @@ class GateReport:
 
     passed: bool
     lines: list[str]
+    resolved_commit: str
 
 
 def _run_git(project_root: Path, arguments: list[str]) -> str:
@@ -334,4 +335,6 @@ def run_gate(
         + ", ".join(sorted(duplicate_opened)),
     )
 
-    return GateReport(passed=violations == 0, lines=lines)
+    return GateReport(
+        passed=violations == 0, lines=lines, resolved_commit=resolved_commit
+    )
