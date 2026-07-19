@@ -4,7 +4,14 @@ Owner: lead
 Type: feat
 Priority: P1
 Created: 2026-07-19
-Status: in_review
+Status: done
+Completion-Review: CR-008
+Reviewed-Commit: 2754f5ec78fd48dae0256e0eddef490161d28951
+Target-Branch: master
+Merged-Commit: aa527d83ea29f1ac69387a06beb9137c595c11f3
+Completed-At: 2026-07-19T05:32:29Z
+Completion-Review-Artifact: .agentmarshal/journal/reviews/2026/CR-008-completion-2754f5ec78fd.md
+Completion-Review-SHA256: sha256:c319fdeb50e5672850e1a01b6687a1d00eee13338358f6de29656961ee2d3da6
 Scope:
 - .agentmarshal/journal/tasks/open/CR-008-review-record-submit-verb.md
 - src/agentmarshal/
