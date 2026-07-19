@@ -10,13 +10,14 @@ import pytest
 from agentmarshal.cli import main
 from agentmarshal.journal import (
     JournalContractError,
+    JournalRecordError,
     create_opened_record,
     generate_ulid,
     parse_contract,
     read_records,
     write_record,
 )
-from agentmarshal.journal.open_task import journal_root
+from agentmarshal.journal.open_task import TaskOpenError, journal_root, open_task
 
 
 def init_git_repo(repo: Path) -> None:
@@ -83,6 +84,75 @@ def test_write_record_is_exclusive_and_preserves_original_content(
 
     assert path.read_bytes() == original
     assert read_records(root, "CR-001") == [record]
+
+
+@pytest.mark.parametrize("task_id", [".", "..", "CR-001/records"])
+def test_records_reject_invalid_task_ids(tmp_path: Path, task_id: str) -> None:
+    root = tmp_path / "journal"
+    record = create_opened_record(task_id, "1.0")
+
+    with pytest.raises(ValueError, match="task id"):
+        write_record(root, task_id, record)
+    with pytest.raises(ValueError, match="task id"):
+        read_records(root, task_id)
+
+
+def test_open_removes_staged_task_when_record_creation_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    (repo / ".agentmarshal").mkdir(parents=True)
+
+    def fail_write(*_args: object, **_kwargs: object) -> Path:
+        raise OSError("disk full")
+
+    monkeypatch.setattr("agentmarshal.journal.open_task.write_record", fail_write)
+
+    with pytest.raises(TaskOpenError, match="disk full"):
+        open_task(repo, "Task", [])
+
+    assert not (journal_root(repo) / "tasks" / "CR-001").exists()
+
+
+def test_records_refuse_a_symlinked_task_directory(tmp_path: Path) -> None:
+    root = tmp_path / "journal"
+    external = tmp_path / "external"
+    external.mkdir()
+    (root / "tasks").mkdir(parents=True)
+    (root / "tasks" / "CR-001").symlink_to(external, target_is_directory=True)
+    record = create_opened_record("CR-001", "1.0")
+
+    with pytest.raises(JournalRecordError, match="symlink"):
+        write_record(root, "CR-001", record)
+    with pytest.raises(JournalRecordError, match="symlink"):
+        read_records(root, "CR-001")
+
+    assert not (external / "records").exists()
+
+
+@pytest.mark.parametrize("component", ["metadata", "journal", "tasks"])
+def test_open_refuses_symlinked_journal_components(
+    tmp_path: Path, component: str
+) -> None:
+    repo = tmp_path / "repo"
+    external = tmp_path / "external"
+    external.mkdir()
+    metadata = repo / ".agentmarshal"
+    metadata.mkdir(parents=True)
+    if component == "metadata":
+        metadata.rmdir()
+        metadata.symlink_to(external, target_is_directory=True)
+    elif component == "journal":
+        (metadata / "journal").symlink_to(external, target_is_directory=True)
+    else:
+        root = journal_root(repo)
+        root.mkdir()
+        (root / "tasks").symlink_to(external, target_is_directory=True)
+
+    with pytest.raises(TaskOpenError, match="symlink"):
+        open_task(repo, "Task", [])
+
+    assert not (external / "tasks").exists()
 
 
 def test_open_creates_parseable_contract_and_record(

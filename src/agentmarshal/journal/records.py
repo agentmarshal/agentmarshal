@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import secrets
 import threading
 import time
@@ -13,6 +14,7 @@ from typing import cast
 
 _CROCKFORD_BASE32 = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 _ULID_RANDOM_MASK = (1 << 80) - 1
+_TASK_ID_PATTERN = re.compile(r"CR-[0-9]+$")
 _ulid_lock = threading.Lock()
 _last_timestamp = -1
 _last_randomness = 0
@@ -20,6 +22,13 @@ _last_randomness = 0
 
 class JournalRecordError(ValueError):
     """Raised when a journal record is malformed."""
+
+
+def validate_task_id(task_id: str) -> None:
+    """Raise when *task_id* is not a canonical journal task identifier."""
+
+    if _TASK_ID_PATTERN.fullmatch(task_id) is None:
+        raise JournalRecordError("task id must match CR-<number>")
 
 
 def _encode_base32(value: int, length: int) -> str:
@@ -71,11 +80,27 @@ def _validate_record(record: Mapping[str, object]) -> dict[str, object]:
 
 
 def _record_path(journal_root: Path, task_id: str, record_id: str, record_type: str) -> Path:
-    if not task_id or Path(task_id).name != task_id:
-        raise JournalRecordError("task id must be a single path component")
+    validate_task_id(task_id)
     if not record_type or Path(record_type).name != record_type:
         raise JournalRecordError("record type must be a single path component")
     return journal_root / "tasks" / task_id / "records" / f"{record_id}-{record_type}.json"
+
+
+def _prepare_record_directory(journal_root: Path, task_id: str) -> Path:
+    paths = (journal_root, journal_root / "tasks", journal_root / "tasks" / task_id)
+    for path in paths:
+        if path.is_symlink():
+            raise JournalRecordError(f"refusing to write through a symlink: {path}")
+        if path.exists() and not path.is_dir():
+            raise JournalRecordError(f"record path is not a directory: {path}")
+        path.mkdir(exist_ok=True)
+    records_directory = paths[-1] / "records"
+    if records_directory.is_symlink():
+        raise JournalRecordError(f"refusing to write through a symlink: {records_directory}")
+    if records_directory.exists() and not records_directory.is_dir():
+        raise JournalRecordError(f"record path is not a directory: {records_directory}")
+    records_directory.mkdir(exist_ok=True)
+    return records_directory
 
 
 def write_record(
@@ -95,7 +120,7 @@ def write_record(
     if len(identifier) != 26 or any(char not in _CROCKFORD_BASE32 for char in identifier):
         raise JournalRecordError("record id must be a 26-character Crockford base32 ULID")
     path = _record_path(journal_root, task_id, identifier, record_type)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    _prepare_record_directory(journal_root, task_id)
     content = json.dumps(data, indent=2, sort_keys=True, ensure_ascii=False)
     with path.open("x", encoding="utf-8", newline="\n") as record_file:
         record_file.write(f"{content}\n")
@@ -117,13 +142,25 @@ def create_opened_record(task_id: str, tool_version: str) -> dict[str, object]:
 def read_records(journal_root: Path, task_id: str) -> list[dict[str, object]]:
     """Load and validate all evidence records for one task in path order."""
 
+    validate_task_id(task_id)
+    if journal_root.is_symlink():
+        raise JournalRecordError(f"refusing to read through a symlink: {journal_root}")
+    tasks_directory = journal_root / "tasks"
+    task_directory = tasks_directory / task_id
+    for path in (tasks_directory, task_directory):
+        if path.is_symlink():
+            raise JournalRecordError(f"refusing to read through a symlink: {path}")
     records_directory = journal_root / "tasks" / task_id / "records"
+    if records_directory.is_symlink():
+        raise JournalRecordError(f"refusing to read through a symlink: {records_directory}")
     if not records_directory.exists():
         return []
     if not records_directory.is_dir():
         raise JournalRecordError(f"record directory is not a directory: {records_directory}")
     records: list[dict[str, object]] = []
     for path in sorted(records_directory.glob("*.json")):
+        if path.is_symlink():
+            raise JournalRecordError(f"refusing to read through a symlink: {path}")
         with path.open("r", encoding="utf-8-sig") as record_file:
             try:
                 loaded = json.load(record_file)
