@@ -10,6 +10,7 @@ from typing import TextIO, cast
 
 from agentmarshal import __version__
 from agentmarshal.journal.open_task import TaskOpenError, open_task
+from agentmarshal.journal.review import ReviewLaunchError, launch_review
 from agentmarshal.journal.status import (
     TaskStatus,
     TaskStatusError,
@@ -56,6 +57,15 @@ def _build_parser() -> argparse.ArgumentParser:
     review_parser.add_argument("--role", required=True, help="reviewer role")
     review_parser.add_argument("--vendor", required=True, help="reviewer vendor")
     review_parser.add_argument("--model", required=True, help="reviewer model")
+    launch_parser = subparsers.add_parser(
+        "review", help="run and record a read-only task review"
+    )
+    launch_parser.add_argument("--task", required=True, help="task identifier")
+    launch_parser.add_argument("--commit", required=True, help="reviewed commit SHA")
+    launch_parser.add_argument("--base", required=True, help="comparison base ref")
+    launch_parser.add_argument("--role", required=True, help="reviewer role")
+    launch_parser.add_argument("--vendor", required=True, help="reviewer vendor")
+    launch_parser.add_argument("--model", required=True, help="reviewer model")
     return parser
 
 
@@ -139,6 +149,31 @@ def _run_submit_review(args: argparse.Namespace, stderr: TextIO) -> int:
     return 0
 
 
+def _run_review(args: argparse.Namespace, stderr: TextIO) -> int:
+    project_root = find_project_root(Path.cwd())
+    if project_root is None:
+        print(
+            "agentmarshal review must be run inside an initialized project",
+            file=stderr,
+        )
+        return 1
+    try:
+        submitted = launch_review(
+            project_root,
+            args.task,
+            args.commit,
+            args.base,
+            args.role,
+            args.vendor,
+            args.model,
+        )
+    except ReviewLaunchError as error:
+        print(error, file=stderr)
+        return 1
+    print(submitted.record_path)
+    return 0
+
+
 def _run_status(task_id: str | None, stderr: TextIO) -> int:
     project_root = find_project_root(Path.cwd())
     if project_root is None:
@@ -177,5 +212,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_status(args.task_id, sys.stderr)
     if args.command == "submit-review":
         return _run_submit_review(args, sys.stderr)
+    if args.command == "review":
+        return _run_review(args, sys.stderr)
 
     parser.error(f"unknown command: {args.command}")
