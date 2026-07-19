@@ -206,6 +206,27 @@ def test_report_for_one_task_and_empty_journal(
     assert capsys.readouterr().out == "CR-001\topen\treviews=0\ttokens=0\n"
 
 
+def test_task_scoped_report_ignores_unrelated_malformed_task(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = tmp_path / "repo"
+    journal = _initialize_repo(repo, monkeypatch)
+    assert main(["open", "--title", "Requested task"]) == 0
+    assert main(["open", "--title", "Broken task"]) == 0
+
+    # Corrupt an unrelated task's records: a task-scoped report must not
+    # scan or validate it (ADR-0004).
+    broken = journal / "tasks" / "CR-002" / "records"
+    (next(broken.glob("*-opened.json"))).write_text("not json\n", encoding="utf-8")
+    capsys.readouterr()
+
+    assert main(["report", "--task", "CR-001"]) == 0
+    assert capsys.readouterr().out == "CR-001\topen\treviews=0\ttokens=0\n"
+
+    # The unfiltered report still surfaces the corruption fail-closed.
+    assert main(["report"]) == 1
+
+
 def test_report_uses_each_task_status_record_snapshot_once(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

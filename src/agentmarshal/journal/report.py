@@ -7,7 +7,12 @@ from pathlib import Path
 from typing import cast
 
 from agentmarshal.journal.records import JournalRecordError
-from agentmarshal.journal.status import TaskStatus, TaskStatusError, list_task_statuses
+from agentmarshal.journal.status import (
+    TaskStatus,
+    TaskStatusError,
+    list_task_statuses,
+    load_task_status,
+)
 
 
 class ReportError(Exception):
@@ -48,11 +53,12 @@ def build_report(journal_root: Path, task_id: str | None = None) -> JournalRepor
     """Read journal evidence and derive per-task delegation economics."""
 
     try:
-        statuses = list_task_statuses(journal_root)
+        # A task-scoped report must not scan or validate unrelated tasks
+        # (ADR-0004: reading one task never requires scanning the journal).
         if task_id is not None:
-            statuses = [status for status in statuses if status.task_id == task_id]
-            if not statuses:
-                raise ReportError(f"unknown task id: {task_id}")
+            statuses = [load_task_status(journal_root, task_id)]
+        else:
+            statuses = list_task_statuses(journal_root)
         tasks = tuple(_task_report(status) for status in statuses)
     except (JournalRecordError, TaskStatusError, OSError, ValueError) as error:
         raise ReportError(str(error)) from error
