@@ -4,7 +4,14 @@ Owner: lead
 Type: feat
 Priority: P1
 Created: 2026-07-19
-Status: in_review
+Status: done
+Completion-Review: CR-007
+Reviewed-Commit: 1173631aca483d15dba16490b0b4f3ef87ba35ae
+Target-Branch: master
+Merged-Commit: a790a0d40ab4ba4f48c1d9469f8d0805fbc66493
+Completed-At: 2026-07-19T04:48:01Z
+Completion-Review-Artifact: .agentmarshal/journal/reviews/2026/CR-007-completion-1173631aca48.md
+Completion-Review-SHA256: sha256:832eeea9f893a29af4ef49761a732897ab851a6b7241ebafb69d1dda31e6c6a5
 Scope:
 - .agentmarshal/journal/tasks/open/CR-007-status-verb-projections.md
 - src/agentmarshal/
