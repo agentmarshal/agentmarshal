@@ -17,7 +17,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from agentmarshal.journal.contracts import parse_contract_text
+from agentmarshal.journal.contracts import JournalContractError, parse_contract_text
 from agentmarshal.journal.records import (
     JournalRecordError,
     read_records,
@@ -186,7 +186,10 @@ def run_gate(
                 f"contract for {task_id} is not present in the base tree; "
                 "the opening transaction must merge before implementation"
             ) from None
-        contract = parse_contract_text(contract_text, contract_path)
+        try:
+            contract = parse_contract_text(contract_text, contract_path)
+        except JournalContractError as error:
+            raise GateError(f"contract in the base tree is invalid: {error}") from error
         outside = [
             path for path in changed if not _scope_covers(contract.scope, task_id, path)
         ]

@@ -348,6 +348,40 @@ def test_gate_refuses_invalid_added_records(
     assert "does not match its directory" in output
 
 
+def test_gate_reports_malformed_base_contract_without_traceback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    contract = repo / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "contract.md"
+    contract.write_text("no header here\n", encoding="utf-8")
+    base = _commit_all(repo, "corrupt contract on base")
+    head = _implement(repo, "src/module.py")
+    capsys.readouterr()
+
+    assert (
+        main(
+            [
+                "gate",
+                "--task",
+                "CR-001",
+                "--commit",
+                head,
+                "--base",
+                base,
+                "--pipeline-sha",
+                head,
+            ]
+        )
+        == 1
+    )
+
+    error_output = capsys.readouterr().err
+    assert "contract in the base tree is invalid" in error_output
+    assert "Traceback" not in error_output
+
+
 def test_gate_requires_contract_in_base_tree(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
