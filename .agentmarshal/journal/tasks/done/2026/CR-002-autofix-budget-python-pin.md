@@ -4,7 +4,14 @@ Owner: lead
 Type: chore
 Priority: P2
 Created: 2026-07-19
-Status: in_review
+Status: done
+Completion-Review: CR-002
+Reviewed-Commit: ec321d209e083013fc220ce032bfd80d9c077fde
+Target-Branch: master
+Merged-Commit: 63adf2af5e9e53de6daf57af9fd32f79b8664eaa
+Completed-At: 2026-07-19T00:44:45Z
+Completion-Review-Artifact: .agentmarshal/journal/reviews/2026/CR-002-completion-ec321d209e08.md
+Completion-Review-SHA256: sha256:9abb8c1501eaa3916a91c331f0bf2f7751b684d6ab22687a7aaca8a625b3fcbb
 Scope:
 - .agentmarshal/journal/tasks/open/CR-002-autofix-budget-python-pin.md
 - .agentmarshal/project.json
