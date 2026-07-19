@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import shlex
+import shutil
 import subprocess
 import tempfile
 from collections.abc import Mapping
@@ -158,6 +159,31 @@ def _parse_verdict(output: str) -> tuple[str, str, list[str]]:
     return reviewed_commit, verdict, cast(list[str], findings)
 
 
+def _remove_snapshot(project_root: Path, snapshot: Path) -> None:
+    """Remove a snapshot worktree, recovering from a failed Git removal."""
+
+    try:
+        _run_git(project_root, ["worktree", "remove", "--force", str(snapshot)])
+    except ReviewLaunchError as remove_error:
+        snapshot_error: OSError | None = None
+        try:
+            if snapshot.exists():
+                shutil.rmtree(snapshot)
+        except OSError as error:
+            snapshot_error = error
+        try:
+            _run_git(project_root, ["worktree", "prune"])
+        except ReviewLaunchError as prune_error:
+            raise ReviewLaunchError(
+                "worktree cleanup failed and stale registrations could not be pruned"
+            ) from prune_error
+        if snapshot_error is not None:
+            raise ReviewLaunchError(
+                f"worktree cleanup failed: {snapshot_error}"
+            ) from remove_error
+        raise ReviewLaunchError("worktree cleanup failed") from remove_error
+
+
 def launch_review(
     project_root: Path,
     task_id: str,
@@ -210,7 +236,7 @@ def launch_review(
             review_result = reviewed_commit, verdict, findings
         finally:
             if snapshot_added:
-                _run_git(project_root, ["worktree", "remove", "--force", str(snapshot)])
+                _remove_snapshot(project_root, snapshot)
     try:
         return submit_review(
             journal_root,

@@ -124,6 +124,28 @@ def test_review_cleanup_failure_does_not_record_verdict(
     _assert_no_snapshot(repo)
 
 
+def test_review_recovers_from_failed_worktree_removal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    stub = _reviewer_stub(tmp_path, _verdict(commit, "approved", []))
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+    original_run_git = review._run_git
+
+    def fail_worktree_removal(project_root: Path, arguments: list[str]) -> str:
+        if arguments[:3] == ["worktree", "remove", "--force"]:
+            raise review.ReviewLaunchError("simulated failure")
+        return original_run_git(project_root, arguments)
+
+    monkeypatch.setattr(review, "_run_git", fail_worktree_removal)
+
+    assert main(_review_args(commit)) == 1
+
+    assert len(read_records(repo / ".agentmarshal" / "journal", "CR-001")) == 1
+    _assert_no_snapshot(repo)
+
+
 @pytest.mark.parametrize(
     ("verdict", "findings"),
     [("approved", []), ("changes_required", ["F-001"])],
