@@ -44,9 +44,13 @@ is a model that avoids cross-branch mutation, not a database.
      prompt snapshot a session was actually launched with,
      content-addressed and captured by the launcher at launch time),
      and measurements. One file per record, JSON, written exactly once
-     by a trusted recorder, never edited. Record paths embed the task
-     id plus a unique suffix (reviewed commit and/or a monotonic
-     identifier), so parallel branches cannot collide on a path.
+     by a trusted recorder, never edited. Record identity is
+     unconditionally unique: every record path embeds the task id and a
+     recorder-generated sortable unique identifier (ULID-class), plus
+     the reviewed commit where applicable; records are created with
+     exclusive-create semantics, and an already-existing path is an
+     error, never an overwrite. Parallel branches therefore cannot
+     collide on a path.
 
 2. **State is a projection.** A task's status is computed
    deterministically from its records — opened, review recorded,
