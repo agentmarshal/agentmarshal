@@ -55,15 +55,17 @@ def _ensure_contract_path_is_real(path: Path) -> None:
         raise JournalContractError(f"refusing to read through a symlink: {path}")
 
 
-def parse_contract(path: Path) -> ContractHeader:
-    """Parse and validate the TOML header from a contract markdown file."""
+def parse_contract_text(text: str, source: str) -> ContractHeader:
+    """Parse and validate a contract's TOML header from its text.
 
-    _ensure_contract_path_is_real(path)
-    with path.open("r", encoding="utf-8-sig", newline=None) as contract_file:
-        lines = contract_file.readlines()
+    ``source`` names the origin (a path or a git object reference) for
+    error messages only.
+    """
+
+    lines = text.lstrip("\ufeff").splitlines()
     if not lines or lines[0].strip() != "+++":
         raise JournalContractError(
-            f"contract must start with a +++ header delimiter: {path}"
+            f"contract must start with a +++ header delimiter: {source}"
         )
     try:
         end = next(
@@ -71,20 +73,20 @@ def parse_contract(path: Path) -> ContractHeader:
         )
     except StopIteration as error:
         raise JournalContractError(
-            f"contract header is missing its closing delimiter: {path}"
+            f"contract header is missing its closing delimiter: {source}"
         ) from error
     try:
-        parsed = tomllib.loads("".join(lines[1:end]))
+        parsed = tomllib.loads("\n".join(lines[1:end]))
     except tomllib.TOMLDecodeError as error:
-        raise JournalContractError(f"invalid TOML contract header: {path}") from error
+        raise JournalContractError(f"invalid TOML contract header: {source}") from error
     if not isinstance(parsed, dict):
-        raise JournalContractError(f"contract header must be a TOML table: {path}")
+        raise JournalContractError(f"contract header must be a TOML table: {source}")
 
     data = cast(dict[str, object], parsed)
     schema = data.get("schema")
     if type(schema) is not int or schema != 1:
         raise JournalContractError(
-            f"contract header has an unknown or missing schema version: {path}"
+            f"contract header has an unknown or missing schema version: {source}"
         )
     try:
         return ContractHeader(
@@ -95,4 +97,12 @@ def parse_contract(path: Path) -> ContractHeader:
             acceptance=_require_string_array(data, "acceptance"),
         )
     except JournalContractError as error:
-        raise JournalContractError(f"{error}: {path}") from error
+        raise JournalContractError(f"{error}: {source}") from error
+
+
+def parse_contract(path: Path) -> ContractHeader:
+    """Parse and validate the TOML header from a contract markdown file."""
+
+    _ensure_contract_path_is_real(path)
+    with path.open("r", encoding="utf-8-sig", newline=None) as contract_file:
+        return parse_contract_text(contract_file.read(), str(path))

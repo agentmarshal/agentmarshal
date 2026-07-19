@@ -96,6 +96,8 @@ def _review_args(commit: str) -> list[str]:
         "test",
         "--model",
         "test-model",
+        "--email",
+        "reviewer@example.invalid",
     ]
 
 

@@ -33,6 +33,7 @@ def submit_review(
     reviewer_role: str,
     reviewer_vendor: str,
     reviewer_model: str,
+    reviewer_email: str,
     findings: list[str],
 ) -> SubmittedReview:
     """Validate and record a review against an opened task."""
@@ -47,6 +48,7 @@ def submit_review(
             reviewer_role,
             reviewer_vendor,
             reviewer_model,
+            reviewer_email,
             findings,
         )
         return SubmittedReview(write_record(journal_root, task_id, record))
