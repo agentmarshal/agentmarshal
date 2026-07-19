@@ -4,7 +4,14 @@ Owner: lead
 Type: fix
 Priority: P1
 Created: 2026-07-19
-Status: in_review
+Status: done
+Completion-Review: CR-010
+Reviewed-Commit: 040443a8dcef851344a94df106ad49eb1dfc65bc
+Target-Branch: master
+Merged-Commit: e84d0c34928c0f1c9374f543a7e9dd3362e06814
+Completed-At: 2026-07-19T07:22:20Z
+Completion-Review-Artifact: .agentmarshal/journal/reviews/2026/CR-010-completion-040443a8dcef.md
+Completion-Review-SHA256: sha256:e466f03b9e1ab51d0f7a560933c60cde3026ea1155767a680a5380e929eb87a6
 Scope:
 - .agentmarshal/journal/tasks/open/CR-010-restore-archive-snapshot.md
 - src/agentmarshal/
