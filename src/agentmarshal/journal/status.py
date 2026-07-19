@@ -17,7 +17,10 @@ from agentmarshal.journal.records import (
 _RECORD_TYPE_STATES: Mapping[str, str | None] = {
     "opened": "open",
     "review": None,
+    "completed": "done",
+    "abandoned": "abandoned",
 }
+_TERMINAL_RECORD_TYPES = frozenset({"completed", "abandoned"})
 
 
 class TaskStatusError(ValueError):
@@ -39,14 +42,19 @@ def project_status(records: Sequence[Mapping[str, object]]) -> str:
 
     state: str | None = None
     has_opened_record = False
+    has_terminal_record = False
     for record in records:
         record_type = record.get("record_type")
         if not isinstance(record_type, str) or record_type not in _RECORD_TYPE_STATES:
             raise TaskStatusError(f"record has no status projection: {record_type!r}")
+        if has_terminal_record:
+            raise TaskStatusError("task has a record after a terminal record")
         if record_type == "opened":
             if has_opened_record:
                 raise TaskStatusError("task records contain multiple opened records")
             has_opened_record = True
+        if record_type in _TERMINAL_RECORD_TYPES:
+            has_terminal_record = True
         record_state = _RECORD_TYPE_STATES[record_type]
         if record_state is not None:
             state = record_state

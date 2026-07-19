@@ -10,6 +10,11 @@ from pathlib import Path
 from typing import TextIO, cast
 
 from agentmarshal import __version__
+from agentmarshal.journal.complete import (
+    LifecycleError,
+    abandon_task,
+    complete_task,
+)
 from agentmarshal.journal.gate import GateError, run_gate
 from agentmarshal.journal.open_task import TaskOpenError, open_task
 from agentmarshal.journal.review import ReviewLaunchError, launch_review
@@ -81,6 +86,22 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="attested pipeline SHA (defaults to AGENTMARSHAL_PIPELINE_OK_SHA)",
     )
+    complete_parser = subparsers.add_parser(
+        "complete", help="gate a candidate and record completion on success"
+    )
+    complete_parser.add_argument("--task", required=True, help="task identifier")
+    complete_parser.add_argument("--commit", required=True, help="candidate head SHA")
+    complete_parser.add_argument("--base", required=True, help="merge target ref")
+    complete_parser.add_argument(
+        "--pipeline-sha",
+        default=None,
+        help="attested pipeline SHA (defaults to AGENTMARSHAL_PIPELINE_OK_SHA)",
+    )
+    abandon_parser = subparsers.add_parser(
+        "abandon", help="record abandonment of an open task"
+    )
+    abandon_parser.add_argument("--task", required=True, help="task identifier")
+    abandon_parser.add_argument("--reason", required=True, help="abandonment reason")
     return parser
 
 
@@ -133,6 +154,16 @@ def _print_task_detail(task: TaskStatus) -> None:
                 f"- {record['id']} review {record['created_at']} "
                 f"reviewed_commit={str(record['reviewed_commit'])[:7]} "
                 f"verdict={record['verdict']} findings={len(findings)}"
+            )
+        elif record["record_type"] == "completed":
+            print(
+                f"- {record['id']} completed {record['created_at']} "
+                f"completed_commit={str(record['completed_commit'])[:7]}"
+            )
+        elif record["record_type"] == "abandoned":
+            print(
+                f"- {record['id']} abandoned {record['created_at']} "
+                f"reason={record['reason']}"
             )
         else:
             print(f"- {record['id']} {record['record_type']} {record['created_at']}")
@@ -213,6 +244,50 @@ def _run_gate(args: argparse.Namespace, stderr: TextIO) -> int:
     return 0
 
 
+def _run_complete(args: argparse.Namespace, stderr: TextIO) -> int:
+    project_root = find_project_root(Path.cwd())
+    if project_root is None:
+        print(
+            "agentmarshal complete must be run inside an initialized project",
+            file=stderr,
+        )
+        return 1
+    pipeline_sha = args.pipeline_sha or os.environ.get("AGENTMARSHAL_PIPELINE_OK_SHA")
+    try:
+        result = complete_task(
+            project_root, args.task, args.commit, args.base, pipeline_sha
+        )
+    except LifecycleError as error:
+        print(error, file=stderr)
+        return 1
+    for line in result.report.lines:
+        print(line)
+    if result.record_path is None:
+        print("complete: gate refused; task not completed", file=stderr)
+        return 1
+    print(result.record_path)
+    print("completed")
+    return 0
+
+
+def _run_abandon(args: argparse.Namespace, stderr: TextIO) -> int:
+    project_root = find_project_root(Path.cwd())
+    if project_root is None:
+        print(
+            "agentmarshal abandon must be run inside an initialized project",
+            file=stderr,
+        )
+        return 1
+    try:
+        record_path = abandon_task(project_root, args.task, args.reason)
+    except LifecycleError as error:
+        print(error, file=stderr)
+        return 1
+    print(record_path)
+    print("abandoned")
+    return 0
+
+
 def _run_status(task_id: str | None, stderr: TextIO) -> int:
     project_root = find_project_root(Path.cwd())
     if project_root is None:
@@ -255,5 +330,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_review(args, sys.stderr)
     if args.command == "gate":
         return _run_gate(args, sys.stderr)
+    if args.command == "complete":
+        return _run_complete(args, sys.stderr)
+    if args.command == "abandon":
+        return _run_abandon(args, sys.stderr)
 
     parser.error(f"unknown command: {args.command}")
