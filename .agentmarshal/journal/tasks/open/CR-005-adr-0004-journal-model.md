@@ -4,7 +4,7 @@ Owner: lead
 Type: docs
 Priority: P1
 Created: 2026-07-19
-Status: open
+Status: in_review
 Scope:
 - .agentmarshal/journal/tasks/open/CR-005-adr-0004-journal-model.md
 - docs/adr/
