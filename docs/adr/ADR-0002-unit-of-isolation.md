@@ -35,9 +35,14 @@ The unit of isolation is the **task**.
   the opening transaction (the task contract) lands in the target
   branch *before* implementation starts. The contract is visible to
   everyone; only the work is isolated.
-- Runtime isolation — ports, databases, registries, temporary state,
-  journal location resolution — is governance-side work that must be
-  designed for explicitly, not assumed from the execution plane.
+- Worktrees isolate files and sandboxes isolate processes — execution
+  concerns that stay with the harness per
+  [ADR-0001](ADR-0001-governance-plane.md). What no harness isolates is
+  shared runtime resources: ports, databases, registries, temporary
+  state, journal-location resolution. For these, governance defines
+  task-scoped naming and allocation rules in contracts and tooling so
+  parallel tasks do not collide; provisioning and enforcement of the
+  execution environment itself remain with the harness.
 
 ## Consequences
 
