@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import contextlib
+import io
 import json
 import os
 import shlex
-import shutil
 import subprocess
+import tarfile
 import tempfile
 from collections.abc import Mapping
 from pathlib import Path
@@ -116,32 +116,19 @@ def _reviewer_command(vendor: str, model: str, prompt_file: Path) -> list[str]:
 
 
 def _run_reviewer(command: list[str], snapshot: Path, prompt: str) -> str:
-    """Execute the reviewer adapter in a filesystem read-only sandbox."""
+    """Execute the reviewer adapter against the metadata-free snapshot.
 
-    sandbox = shutil.which("bwrap")
-    if sandbox is None:
-        raise ReviewLaunchError(
-            "cannot run reviewer: bubblewrap (bwrap) is required for read-only reviews"
-        )
-    sandboxed_command = [
-        sandbox,
-        "--die-with-parent",
-        "--ro-bind",
-        "/",
-        "/",
-        "--dev",
-        "/dev",
-        "--proc",
-        "/proc",
-        "--chdir",
-        str(snapshot),
-        "--",
-        *command,
-    ]
+    Process-level isolation belongs to the vendor sandbox (ADR-0001; the
+    built-in codex adapter passes ``--sandbox read-only``). The launcher's
+    own guarantee is the snapshot: a plain copy of the reviewed tree with
+    no repository metadata, so nothing the reviewer can write through it
+    reaches the repository. `AGENTMARSHAL_REVIEWER_CMD` is a test/ops
+    seam; whoever configures it owns the isolation of that command.
+    """
 
     try:
         result = subprocess.run(
-            sandboxed_command,
+            command,
             cwd=snapshot,
             capture_output=True,
             encoding="utf-8",
@@ -185,43 +172,38 @@ def _parse_verdict(output: str) -> tuple[str, str, list[str]]:
     return reviewed_commit, verdict, cast(list[str], findings)
 
 
-def _remove_snapshot(project_root: Path, snapshot: Path) -> None:
-    """Remove a snapshot worktree, recovering from a failed Git removal."""
+def _extract_snapshot(project_root: Path, commit: str, snapshot: Path) -> None:
+    """Materialize the reviewed tree as a plain copy without git metadata.
 
-    try:
-        _run_git(project_root, ["worktree", "remove", "--force", str(snapshot)])
-    except ReviewLaunchError as remove_error:
-        snapshot_error: OSError | None = None
-        try:
-            if snapshot.exists():
-                shutil.rmtree(snapshot)
-        except OSError as error:
-            snapshot_error = error
-        try:
-            _run_git(project_root, ["worktree", "prune"])
-        except ReviewLaunchError as prune_error:
-            raise ReviewLaunchError(
-                "worktree cleanup failed and stale registrations could not be pruned"
-            ) from prune_error
-        if snapshot_error is not None:
-            raise ReviewLaunchError(
-                f"worktree cleanup failed: {snapshot_error}"
-            ) from remove_error
-        raise ReviewLaunchError("worktree cleanup failed") from remove_error
-
-
-def _cleanup_partial_snapshot(project_root: Path, snapshot: Path) -> None:
-    """Best-effort cleanup after a failed ``worktree add``.
-
-    A non-zero ``worktree add`` may still have created the directory or
-    registered the worktree. The add failure is already propagating, so
-    this must never raise and mask it: leftovers are removed if present
-    and stale registrations pruned.
+    ``git archive`` piped into stdlib tar extraction: the snapshot
+    contains no ``.git`` entry at all, so the reviewer cannot reach the
+    repository's metadata through it, and cleanup is a plain temporary
+    directory removal — there is no worktree registration to leak.
     """
 
-    shutil.rmtree(snapshot, ignore_errors=True)
-    with contextlib.suppress(ReviewLaunchError):
-        _run_git(project_root, ["worktree", "prune"])
+    try:
+        result = subprocess.run(
+            ["git", "archive", "--format=tar", commit],
+            cwd=project_root,
+            capture_output=True,
+            check=False,
+        )
+    except OSError as error:
+        raise ReviewLaunchError(f"cannot run git: {error}") from error
+    if result.returncode != 0:
+        detail = result.stderr.decode("utf-8", "replace").strip()
+        raise ReviewLaunchError(f"git archive failed: {detail}")
+    snapshot.mkdir()
+    try:
+        with tarfile.open(fileobj=io.BytesIO(result.stdout), mode="r:") as archive:
+            archive.extractall(snapshot, filter="data")
+    except tarfile.TarError as error:
+        # An empty tree archives to a lone pax_global_header, which
+        # tarfile rejects; an empty snapshot is then correct. Anything
+        # else is a real extraction failure.
+        if not _run_git(project_root, ["ls-tree", commit]).strip():
+            return
+        raise ReviewLaunchError(f"snapshot extraction failed: {error}") from error
 
 
 def launch_review(
@@ -254,31 +236,20 @@ def launch_review(
         temporary_root = Path(temporary_directory)
         snapshot = temporary_root / "snapshot"
         prompt_file = temporary_root / "review-prompt.txt"
-        snapshot_added = False
-        try:
-            _run_git(
-                project_root,
-                ["worktree", "add", "--detach", str(snapshot), resolved_commit],
+        _extract_snapshot(project_root, resolved_commit, snapshot)
+        prompt = _review_prompt(contract, diff, resolved_commit)
+        prompt_file.write_text(prompt, encoding="utf-8")
+        output = _run_reviewer(
+            _reviewer_command(reviewer_vendor, reviewer_model, prompt_file),
+            snapshot,
+            prompt,
+        )
+        reviewed_commit, verdict, findings = _parse_verdict(output)
+        if reviewed_commit != resolved_commit:
+            raise ReviewLaunchError(
+                "reviewer verdict reviewed_commit does not match commit"
             )
-            snapshot_added = True
-            prompt = _review_prompt(contract, diff, resolved_commit)
-            prompt_file.write_text(prompt, encoding="utf-8")
-            output = _run_reviewer(
-                _reviewer_command(reviewer_vendor, reviewer_model, prompt_file),
-                snapshot,
-                prompt,
-            )
-            reviewed_commit, verdict, findings = _parse_verdict(output)
-            if reviewed_commit != resolved_commit:
-                raise ReviewLaunchError(
-                    "reviewer verdict reviewed_commit does not match commit"
-                )
-            review_result = reviewed_commit, verdict, findings
-        finally:
-            if snapshot_added:
-                _remove_snapshot(project_root, snapshot)
-            else:
-                _cleanup_partial_snapshot(project_root, snapshot)
+        review_result = reviewed_commit, verdict, findings
     try:
         return submit_review(
             journal_root,

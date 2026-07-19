@@ -57,24 +57,18 @@ def _reviewer_stub(tmp_path: Path, output: str, exit_code: int = 0) -> Path:
     return stub
 
 
-def _write_attempting_reviewer_stub(tmp_path: Path, output: str) -> Path:
-    stub = tmp_path / "attempting-reviewer.py"
+def _metadata_probe_reviewer_stub(tmp_path: Path, output: str) -> Path:
+    """Stub that fails if the snapshot exposes any git metadata, and
+    writes into the snapshot to prove writes stay in the ephemeral copy."""
+
+    stub = tmp_path / "probing-reviewer.py"
     stub.write_text(
         "#!/usr/bin/env python3\n"
-        "import os\n"
         "from pathlib import Path\n"
         "import sys\n"
-        "targets = [\n"
-        "    Path('reviewer-snapshot-write'),\n"
-        "    Path(os.environ['AGENTMARSHAL_TEST_REPOSITORY']) / '.git' / "
-        "'reviewer-git-write',\n"
-        "]\n"
-        "for target in targets:\n"
-        "    try:\n"
-        "        target.write_text('attempted', encoding='utf-8')\n"
-        "    except OSError:\n"
-        "        continue\n"
-        "    raise SystemExit('reviewer write unexpectedly succeeded')\n"
+        "if Path('.git').exists():\n"
+        "    raise SystemExit('snapshot exposes git metadata')\n"
+        "Path('reviewer-scratch.txt').write_text('ephemeral', encoding='utf-8')\n"
         f"sys.stdout.write({output!r})\n",
         encoding="utf-8",
     )
@@ -106,31 +100,43 @@ def _verdict(commit: str, verdict: str, findings: list[str]) -> str:
 
 
 def _assert_no_snapshot(repo: Path) -> None:
+    import tempfile as _tempfile
+
+    leftovers = list(Path(_tempfile.gettempdir()).glob("agentmarshal-review-*"))
+    assert leftovers == []
     assert _git(repo, "worktree", "list", "--porcelain").count("worktree ") == 1
 
 
-def test_failed_worktree_add_leaves_no_snapshot_or_record(
+def test_snapshot_has_no_git_metadata_and_writes_stay_ephemeral(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    stub = _metadata_probe_reviewer_stub(tmp_path, _verdict(commit, "approved", []))
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert main(_review_args(commit)) == 0
+
+    assert len(read_records(repo / ".agentmarshal" / "journal", "CR-001")) == 2
+    assert not (repo / "reviewer-scratch.txt").exists()
+    _assert_no_snapshot(repo)
+
+
+def test_snapshot_extraction_failure_leaves_no_record(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repo, commit = _review_repo(tmp_path, monkeypatch)
     stub = _reviewer_stub(tmp_path, _verdict(commit, "approved", []))
     monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
-    original_run_git = review._run_git
 
-    # Simulate git creating/registering the worktree and then exiting
-    # non-zero: the real add runs, the wrapper still reports failure.
-    def add_then_fail(project_root: Path, arguments: list[str]) -> str:
-        result = original_run_git(project_root, arguments)
-        if arguments[:2] == ["worktree", "add"]:
-            raise review.ReviewLaunchError("worktree add exited non-zero")
-        return result
+    def failing_extract(project_root: Path, sha: str, snapshot: Path) -> None:
+        raise review.ReviewLaunchError("git archive failed: simulated")
 
-    monkeypatch.setattr(review, "_run_git", add_then_fail)
+    monkeypatch.setattr(review, "_extract_snapshot", failing_extract)
 
     assert main(_review_args(commit)) == 1
 
-    monkeypatch.setattr(review, "_run_git", original_run_git)
     assert len(read_records(repo / ".agentmarshal" / "journal", "CR-001")) == 1
     _assert_no_snapshot(repo)
 
@@ -150,66 +156,6 @@ def test_default_codex_adapter_uses_read_only_stdin_prompt(
         "test-model",
         "-",
     ]
-
-
-def test_reviewer_cannot_write_snapshot_or_git_metadata(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    repo, commit = _review_repo(tmp_path, monkeypatch)
-    stub = _write_attempting_reviewer_stub(tmp_path, _verdict(commit, "approved", []))
-    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
-    monkeypatch.setenv("AGENTMARSHAL_TEST_REPOSITORY", str(repo))
-
-    assert main(_review_args(commit)) == 0
-
-    assert not (repo / ".git" / "reviewer-git-write").exists()
-    _assert_no_snapshot(repo)
-
-
-def test_review_cleanup_failure_does_not_record_verdict(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    repo, commit = _review_repo(tmp_path, monkeypatch)
-    stub = _reviewer_stub(tmp_path, _verdict(commit, "approved", []))
-    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
-    original_run_git = review._run_git
-
-    def cleanup_then_fail(project_root: Path, arguments: list[str]) -> str:
-        result = original_run_git(project_root, arguments)
-        if arguments[:3] == ["worktree", "remove", "--force"]:
-            raise review.ReviewLaunchError("worktree cleanup could not be confirmed")
-        return result
-
-    monkeypatch.setattr(review, "_run_git", cleanup_then_fail)
-
-    assert main(_review_args(commit)) == 1
-
-    assert len(read_records(repo / ".agentmarshal" / "journal", "CR-001")) == 1
-    _assert_no_snapshot(repo)
-
-
-def test_review_recovers_from_failed_worktree_removal(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    repo, commit = _review_repo(tmp_path, monkeypatch)
-    stub = _reviewer_stub(tmp_path, _verdict(commit, "approved", []))
-    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
-    original_run_git = review._run_git
-
-    def fail_worktree_removal(project_root: Path, arguments: list[str]) -> str:
-        if arguments[:3] == ["worktree", "remove", "--force"]:
-            raise review.ReviewLaunchError("simulated failure")
-        return original_run_git(project_root, arguments)
-
-    monkeypatch.setattr(review, "_run_git", fail_worktree_removal)
-
-    assert main(_review_args(commit)) == 1
-
-    assert len(read_records(repo / ".agentmarshal" / "journal", "CR-001")) == 1
-    _assert_no_snapshot(repo)
 
 
 @pytest.mark.parametrize(
