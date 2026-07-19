@@ -20,8 +20,9 @@ overlays on trunk-based development, none of them isolation units.
 Scope is a **coordination overlay** over paths.
 
 - In the core model, scope is a list of paths in the task contract. The
-  merge gate enforces `diff ⊆ scope`: a change outside the declared
-  scope does not merge.
+  merge gate — the server-side authority boundary fixed in
+  [ADR-0001](ADR-0001-governance-plane.md) — enforces `diff ⊆ scope`:
+  a change outside the declared scope does not merge.
 - Scope is never an isolation unit. Long-lived per-scope branches are
   rejected explicitly; all work rides per-task branches into the target
   branch.
