@@ -63,6 +63,22 @@ def current_branch(project_root: Path) -> str:
     return branch
 
 
+def resolve_current_head(project_root: Path) -> str:
+    """Resolve HEAD to a full SHA, refusing a detached or unborn HEAD.
+
+    A detached HEAD still resolves to a commit, but gating a commit not
+    attached to any branch is exactly the ambiguous context this wrapper
+    must refuse; ``symbolic-ref`` confirms attachment first.
+    """
+    try:
+        _run_git(project_root, ["symbolic-ref", "--quiet", "HEAD"])
+    except GateError as error:
+        raise GateError(
+            "HEAD is detached; cannot derive the candidate commit, pass --commit"
+        ) from error
+    return _resolve_commit(project_root, "HEAD")
+
+
 def resolve_default_base(project_root: Path) -> str:
     """Detect the default branch via ``origin/HEAD``, falling back to master."""
     try:
@@ -105,7 +121,7 @@ def derive_gate_context(
         else derive_task_from_branch(current_branch(project_root))
     )
     resolved_commit = (
-        commit if commit is not None else _resolve_commit(project_root, "HEAD")
+        commit if commit is not None else resolve_current_head(project_root)
     )
     resolved_base = base if base is not None else resolve_default_base(project_root)
     return GateContext(resolved_task, resolved_commit, resolved_base)

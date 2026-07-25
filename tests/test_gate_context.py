@@ -140,6 +140,17 @@ def test_derive_task_fails_closed_on_detached_head(
         derive_gate_context(repo, None, base, "master")
 
 
+def test_derive_commit_fails_closed_on_detached_head_with_explicit_task(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Explicit --task must not let an omitted --commit gate a detached HEAD.
+    repo, base = _opened_repo(tmp_path, monkeypatch)
+    _git(repo, "checkout", "--quiet", base)  # detached HEAD
+
+    with pytest.raises(GateError, match="detached"):
+        derive_gate_context(repo, "CR-001", None, "master")
+
+
 def test_derive_commit_fails_closed_on_unborn_branch(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
