@@ -22,9 +22,10 @@ def write_task(
     path = root / "tasks" / location / f"{task_id}.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
+        f"# {task_id}: Migrated task\n\n"
         f"Owner: lead\nType: feat\nCreated: 2026-07-26\nStatus: {status}\n"
         f"{extra_headers}Scope:\n- src/agentmarshal/\n- tests/\n\n"
-        f"# {task_id}: Migrated task\n\n## Context\n\nTask body.\n",
+        "## Context\n\nTask body.\n",
         encoding="utf-8",
     )
     return path
@@ -103,7 +104,11 @@ def test_migrate_journal_cli_preserves_source_and_refuses_nonempty_target(
 @pytest.mark.parametrize(
     ("task_content", "review", "error"),
     [
-        ("Owner lead\n", None, "malformed Key: Value header"),
+        (
+            "# CR-001: Migrated task\n\nOwner lead\n",
+            None,
+            "malformed Key: Value header",
+        ),
         (None, None, "unknown Status: unexpected"),
         (None, ("CR-001", "approved", "F-001"), "inconsistent"),
         (None, ("CR-999", "approved", "none"), "unknown task"),

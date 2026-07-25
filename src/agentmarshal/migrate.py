@@ -117,16 +117,16 @@ def _parse_header(
 
 def _parse_task(path: Path) -> V1Task:
     text = _read_text(path)
-    headers, scope = _parse_header(path, text, _TASK_HEADER_FIELDS)
-    title_line = next(
+    lines = text.splitlines()
+    title_index, title_line = next(
         (
-            line
-            for line in text.splitlines()
+            (index, line)
+            for index, line in enumerate(lines)
             if line.startswith("# CR-") and ":" in line
         ),
-        None,
+        (-1, ""),
     )
-    if title_line is None:
+    if title_index == -1:
         raise _error(path, "missing task title '# CR-NNN: ...'")
     identifier, title = title_line[2:].split(":", 1)
     task_id = identifier.strip()
@@ -137,6 +137,12 @@ def _parse_task(path: Path) -> V1Task:
         validate_task_id(task_id)
     except JournalRecordError as error:
         raise _error(path, str(error)) from error
+    header_start = title_index + 1
+    while header_start < len(lines) and not lines[header_start].strip():
+        header_start += 1
+    headers, scope = _parse_header(
+        path, "\n".join(lines[header_start:]), _TASK_HEADER_FIELDS
+    )
     status = headers["Status"]
     if status not in _STATUS_STATES:
         raise _error(path, f"unknown Status: {status}")
