@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 from pathlib import Path
+import shutil
+import tempfile
 
 from agentmarshal import __version__
 from agentmarshal.journal.open_task import _contract_content
@@ -298,8 +300,10 @@ def migrate_journal(source: Path, target: Path) -> list[str]:
 
     source = source.resolve()
     target = target.resolve()
-    if source == target:
-        raise JournalMigrationError("source and target journal directories must differ")
+    if target.is_relative_to(source):
+        raise JournalMigrationError(
+            "target journal directory must not be inside the source journal"
+        )
     if target.exists() and any(target.iterdir()):
         raise JournalMigrationError(
             f"{target}: target journal already exists and is not empty"
@@ -307,14 +311,33 @@ def migrate_journal(source: Path, target: Path) -> list[str]:
     if target.exists() and not target.is_dir():
         raise JournalMigrationError(f"{target}: target journal is not a directory")
     tasks, reviews = _load_source(source)
-    target.mkdir(parents=True, exist_ok=True)
-    summaries: list[str] = []
-    for task in sorted(tasks, key=lambda item: int(item.task_id.removeprefix("CR-"))):
-        task_reviews = sorted(
-            (review for review in reviews if review.task_id == task.task_id),
-            key=lambda review: review.path.as_posix(),
-        )
-        _migrate_task(target, task, task_reviews)
-        state = _STATUS_STATES[task.status]
-        summaries.append(f"{task.task_id}: {state} ({len(task_reviews)} review(s))")
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        staging = Path(tempfile.mkdtemp(prefix=f".{target.name}.migration-", dir=target.parent))
+    except OSError as error:
+        raise JournalMigrationError(
+            f"{target}: could not create migration staging directory: {error}"
+        ) from error
+    try:
+        summaries: list[str] = []
+        for task in sorted(
+            tasks, key=lambda item: int(item.task_id.removeprefix("CR-"))
+        ):
+            task_reviews = sorted(
+                (review for review in reviews if review.task_id == task.task_id),
+                key=lambda review: review.path.as_posix(),
+            )
+            _migrate_task(staging, task, task_reviews)
+            state = _STATUS_STATES[task.status]
+            summaries.append(f"{task.task_id}: {state} ({len(task_reviews)} review(s))")
+        if target.exists():
+            target.rmdir()
+        staging.replace(target)
+    except OSError as error:
+        raise JournalMigrationError(
+            f"{target}: could not publish migrated journal: {error}"
+        ) from error
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging)
     return summaries

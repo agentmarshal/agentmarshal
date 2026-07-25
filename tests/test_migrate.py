@@ -101,6 +101,29 @@ def test_migrate_journal_cli_preserves_source_and_refuses_nonempty_target(
     assert "target journal already exists" in capsys.readouterr().err
 
 
+def test_migrate_journal_refuses_target_inside_source(tmp_path: Path) -> None:
+    source = tmp_path / "v1"
+    target = source / "migrated"
+    write_task(source, "open", "CR-001", "open")
+
+    with pytest.raises(JournalMigrationError, match="must not be inside"):
+        migrate_journal(source, target)
+
+    assert not target.exists()
+
+
+def test_migrate_journal_removes_staging_when_later_task_fails(tmp_path: Path) -> None:
+    source = tmp_path / "v1"
+    target = tmp_path / "v2"
+    write_task(source, "open", "CR-001", "open")
+    write_task(source, "done/2026", "CR-002", "done")
+
+    with pytest.raises(JournalMigrationError, match="no Merged-Commit"):
+        migrate_journal(source, target)
+
+    assert not target.exists()
+
+
 @pytest.mark.parametrize(
     ("task_content", "review", "error"),
     [
