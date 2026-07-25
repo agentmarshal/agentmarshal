@@ -17,6 +17,7 @@ from agentmarshal.journal.complete import (
     complete_task,
 )
 from agentmarshal.journal.gate import GateError, run_gate
+from agentmarshal.journal.gate_context import derive_gate_context
 from agentmarshal.journal.open_task import TaskOpenError, open_task
 from agentmarshal.journal.report import ReportError, build_report, format_report
 from agentmarshal.journal.review import ReviewLaunchError, launch_review
@@ -83,9 +84,21 @@ def _build_parser() -> argparse.ArgumentParser:
     gate_parser = subparsers.add_parser(
         "gate", help="verify a merge candidate against the journal"
     )
-    gate_parser.add_argument("--task", required=True, help="task identifier")
-    gate_parser.add_argument("--commit", required=True, help="candidate head SHA")
-    gate_parser.add_argument("--base", required=True, help="merge target ref")
+    gate_parser.add_argument(
+        "--task",
+        default=None,
+        help="task identifier (default: derived from the current branch name)",
+    )
+    gate_parser.add_argument(
+        "--commit",
+        default=None,
+        help="candidate head SHA (default: the current HEAD)",
+    )
+    gate_parser.add_argument(
+        "--base",
+        default=None,
+        help="merge target ref (default: the repository's default branch)",
+    )
     gate_parser.add_argument(
         "--pipeline-sha",
         default=None,
@@ -271,7 +284,14 @@ def _run_gate(args: argparse.Namespace, stderr: TextIO) -> int:
         return 1
     pipeline_sha = args.pipeline_sha or os.environ.get("AGENTMARSHAL_PIPELINE_OK_SHA")
     try:
-        report = run_gate(project_root, args.task, args.commit, args.base, pipeline_sha)
+        context = derive_gate_context(project_root, args.task, args.commit, args.base)
+        report = run_gate(
+            project_root,
+            context.task,
+            context.commit,
+            context.base,
+            pipeline_sha,
+        )
     except GateError as error:
         print(error, file=stderr)
         return 1
