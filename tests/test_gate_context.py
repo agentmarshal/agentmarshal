@@ -80,9 +80,24 @@ def test_derive_task_from_branch_extracts_id() -> None:
     assert derive_task_from_branch("completion/CR-042-thing") == "CR-042"
 
 
-def test_derive_task_from_branch_fails_closed_without_id() -> None:
-    with pytest.raises(GateError, match="does not encode a task id"):
-        derive_task_from_branch("wip/no-task-here")
+@pytest.mark.parametrize(
+    "branch",
+    [
+        "wip/no-task-here",  # no id at all
+        "wip/CR-001-slug",  # unsupported class
+        "feat/CR-001",  # missing slug
+        "feat/xCR-001-text",  # id embedded, not at the class boundary
+        "CR-001-slug",  # no class prefix
+    ],
+)
+def test_derive_task_from_branch_rejects_malformed(branch: str) -> None:
+    with pytest.raises(GateError, match="does not follow"):
+        derive_task_from_branch(branch)
+
+
+def test_derive_task_from_branch_rejects_multiple_ids() -> None:
+    with pytest.raises(GateError, match="more than one task id"):
+        derive_task_from_branch("feat/CR-001-to-CR-002")
 
 
 # --- context derivation from the git checkout ------------------------------
@@ -142,6 +157,20 @@ def test_resolve_default_base_falls_back_to_local_master(
     repo, _base = _opened_repo(tmp_path, monkeypatch)
     # No origin remote here, but a local master exists.
     assert resolve_default_base(repo) == "master"
+
+
+def test_resolve_default_base_returns_remote_tracking_ref(tmp_path: Path) -> None:
+    # origin/HEAD -> origin/main resolves, but no local ``main`` branch exists:
+    # the resolvable remote-tracking ref must be returned, not a bare ``main``.
+    repo = tmp_path / "tracking"
+    repo.mkdir()
+    _git(repo, "init", "--quiet", "-b", "trunk")
+    _git(repo, *_WRITER, "commit", "--quiet", "--allow-empty", "-m", "root")
+    head = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "update-ref", "refs/remotes/origin/main", head)
+    _git(repo, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+
+    assert resolve_default_base(repo) == "origin/main"
 
 
 def test_resolve_default_base_fails_closed_without_master(tmp_path: Path) -> None:

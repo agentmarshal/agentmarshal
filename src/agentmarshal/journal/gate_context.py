@@ -15,8 +15,11 @@ from pathlib import Path
 from agentmarshal.journal.gate import GateError, _resolve_commit, _run_git
 
 # Branch policy encodes the task as ``<class>/CR-NNN-slug`` (classes:
-# feat, fix, docs, ci, completion). The task id is the ``CR-NNN`` token.
-_TASK_IN_BRANCH = re.compile(r"CR-\d+")
+# feat, fix, docs, ci, completion). The whole name must match this shape:
+# an anchored parse rejects unsupported classes and ids embedded in a slug,
+# so a malformed branch refuses rather than gating the wrong contract.
+_BRANCH_TASK = re.compile(r"(?:feat|fix|docs|ci|completion)/(CR-\d+)-\S+")
+_ANY_TASK_ID = re.compile(r"CR-\d+")
 
 
 @dataclass(frozen=True)
@@ -29,14 +32,20 @@ class GateContext:
 
 
 def derive_task_from_branch(branch: str) -> str:
-    """Extract the ``CR-NNN`` task id encoded in a branch name."""
-    match = _TASK_IN_BRANCH.search(branch)
+    """Extract the ``CR-NNN`` task id from a ``<class>/CR-NNN-slug`` branch."""
+    match = _BRANCH_TASK.fullmatch(branch)
     if match is None:
         raise GateError(
-            f"branch {branch!r} does not encode a task id "
-            "(expected <class>/CR-NNN-slug); pass --task"
+            f"branch {branch!r} does not follow <class>/CR-NNN-slug "
+            "(classes: feat, fix, docs, ci, completion); pass --task"
         )
-    return match.group(0)
+    # A slug that carries a second, different id is ambiguous: refuse rather
+    # than silently gating the first one.
+    if len({found for found in _ANY_TASK_ID.findall(branch)}) > 1:
+        raise GateError(
+            f"branch {branch!r} encodes more than one task id; pass --task"
+        )
+    return match.group(1)
 
 
 def current_branch(project_root: Path) -> str:
@@ -64,8 +73,11 @@ def resolve_default_base(project_root: Path) -> str:
     except GateError:
         symbolic = ""
     if symbolic:
-        # ``origin/master`` -> ``master``; strip only the leading remote.
-        return symbolic.split("/", 1)[1] if symbolic.startswith("origin/") else symbolic
+        # ``symbolic`` is a resolvable remote-tracking ref (e.g. ``origin/master``);
+        # return it as-is. Stripping to a bare ``master`` would break checkouts
+        # that track the remote default without a matching local branch.
+        _resolve_commit(project_root, symbolic)
+        return symbolic
     try:
         _resolve_commit(project_root, "master")
     except GateError as error:
