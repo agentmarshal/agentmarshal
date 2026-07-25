@@ -4,7 +4,7 @@ Owner: lead
 Type: feat
 Priority: P2
 Created: 2026-07-26
-Status: open
+Status: in_review
 Scope:
 - .agentmarshal/journal/tasks/open/CR-017-gate-context-derivation.md
 - src/agentmarshal/
