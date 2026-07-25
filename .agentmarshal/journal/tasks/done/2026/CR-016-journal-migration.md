@@ -4,7 +4,14 @@ Owner: lead
 Type: feat
 Priority: P1
 Created: 2026-07-26
-Status: in_review
+Status: done
+Completion-Review: CR-016
+Reviewed-Commit: c866fce6e8efc9686cd7492c9bda0702e0a48599
+Target-Branch: master
+Merged-Commit: d9aa80b143fb1682b69050491d3aad7a8250d8f5
+Completed-At: 2026-07-25T14:52:24Z
+Completion-Review-Artifact: .agentmarshal/journal/reviews/2026/CR-016-completion-c866fce6e8ef.md
+Completion-Review-SHA256: sha256:6ded0868c9cf460a2184b37a4ae670e0560030a4f90c260809447b8e987ede68
 Scope:
 - .agentmarshal/journal/tasks/open/CR-016-journal-migration.md
 - src/agentmarshal/
