@@ -28,6 +28,7 @@ from agentmarshal.journal.status import (
     load_task_status,
 )
 from agentmarshal.journal.submit_review import ReviewSubmitError, submit_review
+from agentmarshal.migrate import JournalMigrationError, migrate_journal
 from agentmarshal.project import (
     AgentMarshalProjectError,
     AlreadyInitializedError,
@@ -123,6 +124,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "report", help="summarize task delegation economics"
     )
     report_parser.add_argument("--task", help="task identifier")
+    migrate_parser = subparsers.add_parser(
+        "migrate-journal", help="convert a v1 journal into a new v2 journal"
+    )
+    migrate_parser.add_argument("--source", required=True, type=Path)
+    migrate_parser.add_argument("--target", required=True, type=Path)
     return parser
 
 
@@ -391,6 +397,18 @@ def _run_status(task_id: str | None, stderr: TextIO) -> int:
     return 0
 
 
+def _run_migrate_journal(source: Path, target: Path, stderr: TextIO) -> int:
+    try:
+        summaries = migrate_journal(source, target)
+    except (JournalMigrationError, OSError, ValueError) as error:
+        print(error, file=stderr)
+        return 1
+    for summary in summaries:
+        print(summary)
+    print(f"Migrated {len(summaries)} task(s).")
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the AgentMarshal CLI."""
 
@@ -419,5 +437,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_record_session(args, sys.stderr)
     if args.command == "report":
         return _run_report(args.task, sys.stderr)
+    if args.command == "migrate-journal":
+        return _run_migrate_journal(args.source, args.target, sys.stderr)
 
     parser.error(f"unknown command: {args.command}")
