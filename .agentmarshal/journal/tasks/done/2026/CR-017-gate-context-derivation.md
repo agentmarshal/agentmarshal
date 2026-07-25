@@ -4,7 +4,14 @@ Owner: lead
 Type: feat
 Priority: P2
 Created: 2026-07-26
-Status: in_review
+Status: done
+Completion-Review: CR-017
+Reviewed-Commit: 29ebea688a321efa54e969ce988385e1e6d6d199
+Target-Branch: master
+Merged-Commit: 643b9181c26807ec901d1ca03a0726c04c93a931
+Completed-At: 2026-07-25T16:08:22Z
+Completion-Review-Artifact: .agentmarshal/journal/reviews/2026/CR-017-completion-29ebea688a32.md
+Completion-Review-SHA256: sha256:c13fe53c5d28bd23d625ed453a3e319836286fe2ae55b9e1c07b6a8172dfdebd
 Scope:
 - .agentmarshal/journal/tasks/open/CR-017-gate-context-derivation.md
 - src/agentmarshal/
