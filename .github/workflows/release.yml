@@ -19,9 +19,24 @@ jobs:
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
-      id-token: write # OIDC for PyPI Trusted Publishing
+      # Job-level permissions replace (not extend) the workflow default, so
+      # both are listed: contents:read for checkout, id-token:write for OIDC.
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
+      - name: Verify tag matches project version
+        # PyPI versions are immutable; refuse to publish if the pushed tag
+        # does not equal v<pyproject version> so a stray tag cannot ship a
+        # permanent wrong release.
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="$(python3 -c "import tomllib,pathlib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")"
+          if [ "$TAG" != "v${version}" ]; then
+            echo "::error::tag ${TAG} does not match pyproject version v${version}"
+            exit 1
+          fi
       - uses: astral-sh/setup-uv@v5
       - name: Build sdist and wheel
         run: uv build
