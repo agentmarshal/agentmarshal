@@ -1,0 +1,46 @@
+# Publish to PyPI on a version tag, using Trusted Publishing (OIDC) — no
+# API token. Inert until (1) a `v*` tag is pushed and (2) a pending
+# publisher is configured on PyPI:
+#   owner=<GH_OWNER>, repo=agentmarshal, workflow=release.yml,
+#   environment=pypi.
+# Dry-run first against TestPyPI (add a `repository-url` input) before the
+# real index. The tag must match the pyproject version.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      # Job-level permissions replace (not extend) the workflow default, so
+      # both are listed: contents:read for checkout, id-token:write for OIDC.
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify tag matches project version
+        # PyPI versions are immutable; refuse to publish if the pushed tag
+        # does not equal v<pyproject version> so a stray tag cannot ship a
+        # permanent wrong release.
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="$(python3 -c "import tomllib,pathlib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")"
+          if [ "$TAG" != "v${version}" ]; then
+            echo "::error::tag ${TAG} does not match pyproject version v${version}"
+            exit 1
+          fi
+      - uses: astral-sh/setup-uv@v5
+      - name: Build sdist and wheel
+        run: uv build
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        # No `password:` — OIDC Trusted Publishing authenticates the run.
+        # Uploads the artifacts in ./dist produced by `uv build`.
