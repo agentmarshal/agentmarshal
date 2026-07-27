@@ -4,7 +4,7 @@ Owner: lead
 Type: feat
 Priority: P2
 Created: 2026-07-27
-Status: open
+Status: in_review
 Scope:
 - .agentmarshal/journal/tasks/open/CR-018-journal-validate.md
 - src/agentmarshal/
