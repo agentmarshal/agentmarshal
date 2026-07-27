@@ -39,10 +39,16 @@ evidence in the journal (`.agentmarshal/journal/tasks/<id>/`).
    on success, performs the provider's merge.
 
 5. **Complete.** `agentmarshal complete --task <id> --commit <sha>
-   --base <target>` re-runs the gate and, on pass, writes the
-   `completed` record. That record is committed as a journal-only
-   completion transaction and merged the same way (the gate's base-state
-   check admits the open→done transition).
+   --base <base>` re-runs the gate and, on pass, writes the `completed`
+   record. `<base>` must be the same ancestor the candidate was gated
+   against (its merge base) — not the post-merge tip: once the candidate
+   is merged, a post-merge target resolves to the candidate or a
+   descendant and the empty `merge-base..candidate` range is rejected
+   with `candidate range contains no changes`. Completion may run before
+   or after the implementation merges, as long as `--base` stays an
+   ancestor of the candidate. The `completed` record is then committed as
+   a journal-only completion transaction and merged the same way (the
+   gate's base-state check admits the open→done transition).
 
 At any point `agentmarshal validate` checks the whole journal for
 integrity (every contract parses, every record is valid, every task
