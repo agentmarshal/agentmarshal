@@ -7,6 +7,7 @@ import pytest
 
 from agentmarshal.cli import main
 from agentmarshal.journal.gate import GateError, run_gate
+from agentmarshal.journal.records import create_completed_record, write_record
 
 _WRITER = ["-c", "user.name=Worker", "-c", "user.email=worker@test.invalid"]
 _REVIEWER_EMAIL = "reviewer@test.invalid"
@@ -486,3 +487,40 @@ def test_gate_requires_contract_in_base_tree(
 
     with pytest.raises(GateError, match="base tree"):
         run_gate(repo, "CR-001", head, base, head)
+
+
+def test_gate_allows_completion_candidate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A completion transaction appends a terminal record to a task that is
+    # open at the base; the open->done transition must pass, not trip the
+    # base-state check.
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    journal = repo / ".agentmarshal" / "journal"
+    _git(repo, "switch", "--quiet", "-c", "completion", base)
+    write_record(journal, "CR-001", create_completed_record("CR-001", "test", base))
+    head = _commit_all(repo, "complete CR-001")
+
+    passed, output = _run(repo, head, base, head)
+
+    assert passed, output
+    assert "task CR-001 is not closed at base" in output
+
+
+def test_gate_refuses_candidate_on_a_task_closed_at_base(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Once a task is closed on the base tree, no further candidate may
+    # merge against it.
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    journal = repo / ".agentmarshal" / "journal"
+    write_record(journal, "CR-001", create_completed_record("CR-001", "test", base))
+    closed_base = _commit_all(repo, "complete CR-001 on master")
+
+    _git(repo, "switch", "--quiet", "-c", "after-close", closed_base)
+    head = _implement(repo, "src/more.py")
+
+    passed, output = _run(repo, head, closed_base, head)
+
+    assert not passed
+    assert "already closed at base" in output
