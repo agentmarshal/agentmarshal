@@ -13,9 +13,10 @@ evidence in the journal (`.agentmarshal/journal/tasks/<id>/`).
 1. **Open.** `agentmarshal open --title "<title>" --scope <path> [...]`
    creates the task's `contract.md` and an `opened` record. The opening
    is a journal-only change: it is committed on its own branch and merged
-   first, so the contract is present in the base tree before any
-   implementation. The gate recognises a journal-only transaction and
-   does not require a review for it.
+   first with `am-merge` (the gate's journal-only lane), so the contract
+   is present in the base tree before any implementation. The gate
+   recognises a journal-only transaction and does not require a review
+   for it.
 
 2. **Implement.** Branch from the updated default branch, make the change
    within the declared scope, and commit. No lifecycle field is flipped
@@ -35,8 +36,9 @@ evidence in the journal (`.agentmarshal/journal/tasks/<id>/`).
    within the contract scope read from the base tree, the latest review
    of the exact commit is approved by an independent reviewer, the
    pipeline is attested for that commit, and the evidence records are
-   append-only and consistent. A thin merge wrapper runs the gate and,
-   on success, performs the provider's merge.
+   append-only and consistent. The `am-merge` host wrapper runs
+   `agentmarshal gate` and, on success, performs the merge by reusing the
+   v1 provider operation `mr.sh merge` with the v1 merge policy skipped.
 
 5. **Complete.** `agentmarshal complete --task <id> --commit <sha>
    --base <base>` re-runs the gate and, on pass, writes the `completed`
@@ -47,8 +49,9 @@ evidence in the journal (`.agentmarshal/journal/tasks/<id>/`).
    with `candidate range contains no changes`. Completion may run before
    or after the implementation merges, as long as `--base` stays an
    ancestor of the candidate. The `completed` record is then committed as
-   a journal-only completion transaction and merged the same way (the
-   gate's base-state check admits the open→done transition).
+   a journal-only completion transaction and merged with `am-merge` the
+   same way (the gate's base-state check admits the open→done
+   transition).
 
 At any point `agentmarshal validate` checks the whole journal for
 integrity (every contract parses, every record is valid, every task
@@ -59,13 +62,15 @@ governance check run in CI.
 
 Authority lives in `agentmarshal gate`, which is provider-agnostic: it
 reads git and the journal only. The actual merge call is delegated to
-the hosting provider. In this repository a thin host-side wrapper runs
-the gate and, on a pass, invokes the provider's existing merge API with
-the legacy merge policy disabled — the v2 gate has already established
-authority. This keeps the governance decision vendor-neutral while
-reusing whatever merge transport the provider offers.
+the hosting provider. In this repository the host-side wrapper
+`am-merge` resolves the merge request's head and target with the v1
+provider operation `mr.sh get`, runs `agentmarshal gate`, and on a pass
+invokes `mr.sh merge` with `AGENTMARSHAL_SKIP_MERGE_POLICY=1` — the v2
+gate has already established authority, so the v1 merge policy is not
+run. This keeps the governance decision vendor-neutral while reusing
+whatever merge transport the provider offers.
 
-Pipeline attestation is explicit: the wrapper passes the green pipeline
+Pipeline attestation is explicit: `am-merge` passes the green pipeline
 SHA (`AGENTMARSHAL_PIPELINE_OK_SHA`) that the gate checks against the
 candidate commit.
 
@@ -74,14 +79,16 @@ candidate commit.
 The self-hosting cut-over replaced the v1 governance authority but reuses
 some v1 transport:
 
-- **Still in use:** the provider merge-request API (fetch head/target and
-  perform the merge) and the read-only review launcher that produces an
+- **Still in use:** the v1 provider merge-request operations `mr.sh get`
+  and `mr.sh merge` (fetch head/target and perform the merge), invoked by
+  `am-merge`; and the read-only review launcher that produces an
   independent reviewer verdict. These are transport and reviewer
   integration, not governance decisions.
-- **Superseded:** the v1 merge policy, the v1 task-lifecycle/audit
-  scripts, and the managed implementation cycle. Their roles are now held
-  by `agentmarshal gate`, `agentmarshal complete`/`validate`, and the
-  task lifecycle projected from records. CI governance runs
+- **Superseded:** `merge-policy.sh` (the v1 merge policy),
+  `task-lifecycle.sh` (the v1 completion/audit scripts), and the agmake
+  managed implementation cycle. Their roles are now held by
+  `agentmarshal gate`, `agentmarshal complete`/`validate`, and the task
+  lifecycle projected from records. CI governance runs
   `agentmarshal validate` rather than the v1 validator.
 
 ## Notes
