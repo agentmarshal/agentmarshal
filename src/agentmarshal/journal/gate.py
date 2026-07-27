@@ -134,14 +134,34 @@ def _scope_covers(scope: tuple[str, ...], path: str) -> bool:
     return False
 
 
+ATTESTATION_MODES = ("commit", "ci-required")
+
+
 def run_gate(
     project_root: Path,
     task_id: str,
     commit: str,
     base: str,
     pipeline_sha: str | None,
+    attestation: str = "commit",
 ) -> GateReport:
-    """Evaluate a merge candidate; fail closed on every violation."""
+    """Evaluate a merge candidate; fail closed on every violation.
+
+    ``attestation`` selects how the pipeline-attestation check is
+    satisfied. ``commit`` (the default, Variant 1) requires
+    ``pipeline_sha`` to equal the candidate commit — the invoker attests a
+    green pipeline. ``ci-required`` (Variant 2) delegates attestation to
+    the provider's required checks: the gate runs as one required check
+    and the provider blocks the merge until the test check is also green,
+    so the gate does not self-attest. It is only sound when the provider
+    independently requires the test check for merge.
+    """
+
+    if attestation not in ATTESTATION_MODES:
+        raise GateError(
+            f"unknown attestation mode: {attestation!r} "
+            f"(expected one of {', '.join(ATTESTATION_MODES)})"
+        )
 
     lines: list[str] = []
     violations = 0
@@ -264,13 +284,19 @@ def run_gate(
                 "reviewer is independent of the candidate's writers",
             )
 
-    attested = pipeline_sha is not None and pipeline_sha == resolved_commit
-    check(
-        attested,
-        f"pipeline attested for {resolved_commit[:12]}"
-        if attested
-        else "pipeline attestation missing or for a different commit",
-    )
+    if attestation == "ci-required":
+        lines.append(
+            "PASS: pipeline attestation delegated to the provider's required "
+            "checks (the test check must also be required for merge)"
+        )
+    else:
+        attested = pipeline_sha is not None and pipeline_sha == resolved_commit
+        check(
+            attested,
+            f"pipeline attested for {resolved_commit[:12]}"
+            if attested
+            else "pipeline attestation missing or for a different commit",
+        )
 
     # Evidence records are append-only for every candidate: any
     # modification, deletion or rename of an existing record rewrites

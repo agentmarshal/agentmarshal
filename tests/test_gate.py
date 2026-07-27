@@ -220,6 +220,55 @@ def test_gate_refuses_missing_or_wrong_attestation(
     assert "attestation" in output
 
 
+def test_gate_ci_required_delegates_attestation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    head = _implement(repo, "src/module.py")
+    _approve(repo, head)
+
+    # No pipeline_sha at all, yet ci-required delegates attestation:
+    report = run_gate(repo, "CR-001", head, base, None, attestation="ci-required")
+
+    assert report.passed, "\n".join(report.lines)
+    assert "delegated to the provider's required checks" in "\n".join(report.lines)
+
+
+def test_gate_ci_required_still_enforces_review(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    head = _implement(repo, "src/module.py")  # no review recorded
+
+    report = run_gate(repo, "CR-001", head, base, None, attestation="ci-required")
+
+    assert not report.passed
+    assert "no review record" in "\n".join(report.lines)
+
+
+def test_gate_ci_required_still_enforces_scope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    head = _implement(repo, "outside/bad.py")
+    _approve(repo, head)
+
+    report = run_gate(repo, "CR-001", head, base, None, attestation="ci-required")
+
+    assert not report.passed
+    assert "outside contract scope" in "\n".join(report.lines)
+
+
+def test_gate_unknown_attestation_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    head = _implement(repo, "src/module.py")
+
+    with pytest.raises(GateError, match="unknown attestation mode"):
+        run_gate(repo, "CR-001", head, base, head, attestation="bogus")
+
+
 def test_gate_journal_only_lane_needs_no_review(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
