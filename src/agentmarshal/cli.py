@@ -29,6 +29,7 @@ from agentmarshal.journal.status import (
     load_task_status,
 )
 from agentmarshal.journal.submit_review import ReviewSubmitError, submit_review
+from agentmarshal.journal.validate import validate_journal
 from agentmarshal.migrate import JournalMigrationError, migrate_journal
 from agentmarshal.project import (
     AgentMarshalProjectError,
@@ -48,6 +49,7 @@ def _build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("init", help="initialize AgentMarshal project metadata")
     subparsers.add_parser("doctor", help="check AgentMarshal project health")
+    subparsers.add_parser("validate", help="validate the whole journal for integrity")
     open_parser = subparsers.add_parser("open", help="open a journal task")
     open_parser.add_argument("--title", required=True, help="task title")
     open_parser.add_argument(
@@ -275,6 +277,24 @@ def _run_review(args: argparse.Namespace, stderr: TextIO) -> int:
     return 0
 
 
+def _run_validate(stderr: TextIO) -> int:
+    project_root = find_project_root(Path.cwd())
+    if project_root is None:
+        print(
+            "agentmarshal validate must be run inside an initialized project",
+            file=stderr,
+        )
+        return 1
+    report = validate_journal(project_root)
+    for line in report.lines:
+        print(line)
+    if not report.passed:
+        print("validate: journal invalid", file=stderr)
+        return 1
+    print("validate: passed")
+    return 0
+
+
 def _run_gate(args: argparse.Namespace, stderr: TextIO) -> int:
     project_root = find_project_root(Path.cwd())
     if project_root is None:
@@ -439,6 +459,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_init(sys.stderr)
     if args.command == "doctor":
         return _run_doctor()
+    if args.command == "validate":
+        return _run_validate(sys.stderr)
     if args.command == "open":
         return _run_open(args.title, args.scope, sys.stderr)
     if args.command == "status":
