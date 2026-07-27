@@ -129,6 +129,44 @@ def test_validate_reports_non_utf8_record(
     assert any("FAIL: CR-001" in line for line in report.lines)
 
 
+def test_validate_fails_on_symlinked_journal_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A journal root reached through a symlink must fail closed, not slip
+    # past the early "no tasks" return.
+    repo = _project(tmp_path, monkeypatch, tasks=1)
+    journal = repo / ".agentmarshal" / "journal"
+    real = repo / ".agentmarshal" / "journal_real"
+    journal.rename(real)
+    journal.symlink_to(real)
+
+    report = validate_journal(repo)
+
+    assert not report.passed
+    assert any("journal root is not valid" in line for line in report.lines)
+
+
+def test_validate_fails_closed_on_unreadable_tasks_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # An enumeration failure is a controlled FAIL, never a traceback.
+    repo = _project(tmp_path, monkeypatch, tasks=1)
+
+    original_iterdir = Path.iterdir
+
+    def boom(self: Path):  # type: ignore[no-untyped-def]
+        if self.name == "tasks":
+            raise PermissionError("tasks directory is unreadable")
+        return original_iterdir(self)
+
+    monkeypatch.setattr(Path, "iterdir", boom)
+
+    report = validate_journal(repo)
+
+    assert not report.passed
+    assert any("cannot read tasks directory" in line for line in report.lines)
+
+
 def test_validate_cli_fails_outside_project(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
