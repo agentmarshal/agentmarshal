@@ -32,6 +32,16 @@ for now — see the open item below. Once review materialisation is in
 place, make `gate` a required check too; that is the point at which the
 gate becomes the merge authority on GitHub.
 
+## Token permissions
+
+The template declares least-privilege `permissions: contents: read` at the
+top level. Pull-request-controlled code (project checks, dependency
+install, the PR-head checkout in the gate job) must not inherit
+write-capable default token permissions — critical for a public repository
+with fork pull requests. Grant additional scopes only to the step that
+needs them; the review-materialisation step (below) will need
+`pull-requests: read` to read the PR approval.
+
 ## Open item: review materialisation (Phase C)
 
 The gate's review-bound lane requires the review evidence to be present in

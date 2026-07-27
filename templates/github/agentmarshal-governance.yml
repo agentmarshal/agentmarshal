@@ -11,6 +11,14 @@ on:
   push:
     branches: ["<DEFAULT_BRANCH>"] # e.g. main
 
+# Least privilege: pull-request-controlled code (project checks, install,
+# the PR-head checkout in the gate job) must not inherit write-capable
+# default token permissions. Grant more only to a step that needs it — the
+# future review-materialisation step will need `pull-requests: read` to
+# read the PR approval.
+permissions:
+  contents: read
+
 jobs:
   governance:
     # Journal integrity + your project checks. Mark REQUIRED in branch
