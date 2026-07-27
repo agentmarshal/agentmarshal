@@ -66,13 +66,32 @@ the hosting provider. In this repository the host-side wrapper
 `am-merge` resolves the merge request's head and target with the v1
 provider operation `mr.sh get`, runs `agentmarshal gate`, and on a pass
 invokes `mr.sh merge` with `AGENTMARSHAL_SKIP_MERGE_POLICY=1` — the v2
-gate has already established authority, so the v1 merge policy is not
-run. This keeps the governance decision vendor-neutral while reusing
-whatever merge transport the provider offers.
+gate is the governance decision, so the v1 merge policy is not re-run.
+This keeps the governance decision vendor-neutral while reusing whatever
+merge transport the provider offers.
 
 Pipeline attestation is explicit: `am-merge` passes the green pipeline
 SHA (`AGENTMARSHAL_PIPELINE_OK_SHA`) that the gate checks against the
 candidate commit.
+
+## Trust boundary
+
+The gate is not self-sufficient; it decides on the evidence it is given,
+within a trusted invocation environment. Concretely, it validates the
+*contents* of the review record (an approved verdict for the exact
+commit) and enforces that the reviewer's email differs from the
+candidate's authors and committers — but it does **not** authenticate the
+*provenance* of records. Record-provenance authentication is deferred
+(see `src/agentmarshal/journal/gate.py`); the gate therefore relies on:
+
+- a **trusted launcher/recorder** — review and lifecycle records are
+  assumed to be written by the legitimate tooling, not forged;
+- a **trusted checkout** — running the gate on an untrusted working tree
+  can feed it fabricated working-tree records.
+
+Running the gate on a trusted checkout is the operator's responsibility.
+The append-only and base-tree checks constrain what a *committed*
+candidate can do, but they do not replace launcher/checkout trust.
 
 ## Live vs superseded tooling
 
