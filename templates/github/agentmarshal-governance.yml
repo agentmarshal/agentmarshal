@@ -1,0 +1,72 @@
+# AgentMarshal governance for GitHub (Variant 2: gate as a required check).
+#
+# Copy to .github/workflows/agentmarshal-governance.yml and fill every
+# <PLACEHOLDER>. In branch protection, mark the `governance` (and your
+# tests) check(s) as REQUIRED; the `gate` check is advisory until review
+# materialisation is in place — see docs/github-enforcement.md.
+name: AgentMarshal governance
+
+on:
+  pull_request:
+  push:
+    branches: ["<DEFAULT_BRANCH>"] # e.g. main
+
+jobs:
+  governance:
+    # Journal integrity + your project checks. Mark REQUIRED in branch
+    # protection: on GitHub the provider blocks the merge until every
+    # required check is green, which is what the gate's `ci-required`
+    # attestation mode relies on.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # validate/gate need full history
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install AgentMarshal
+        # <INSTALL_SOURCE>: from PyPI once published, or a pinned git ref:
+        #   pip install "agentmarshal==<VERSION>"
+        run: pip install "agentmarshal @ git+<REPO_URL>@<PINNED_REF>"
+      - name: Validate journal
+        run: agentmarshal validate
+      - name: Project checks
+        # <TEST_COMMAND>: your project's tests / lint / type checks.
+        run: "<TEST_COMMAND>"
+
+  gate:
+    # Merge authority (Variant 2). Advisory for now (continue-on-error):
+    # the review-bound lane needs the review evidence materialised from the
+    # PR approval, which is a provider-integration step (Phase C). Until
+    # then this still enforces scope, append-only, base-state and lifecycle,
+    # and the journal-only lanes (openings / completions). Make it REQUIRED
+    # once review materialisation lands. See docs/github-enforcement.md.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install AgentMarshal
+        run: pip install "agentmarshal @ git+<REPO_URL>@<PINNED_REF>"
+      - name: Gate
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          git fetch --no-tags origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+          task="$(printf '%s' "$HEAD_REF" | grep -oE 'CR-[0-9]+' | head -1)"
+          # Phase C: materialise the review record from the PR approval
+          # (reviewer identity + verdict) before this step for the
+          # review-bound lane.
+          agentmarshal gate --attestation ci-required \
+            --task "$task" \
+            --commit "$HEAD_SHA" \
+            --base "origin/${BASE_REF}"
