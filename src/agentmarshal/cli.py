@@ -106,6 +106,16 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="attested pipeline SHA (defaults to AGENTMARSHAL_PIPELINE_OK_SHA)",
     )
+    gate_parser.add_argument(
+        "--attestation",
+        choices=("commit", "ci-required"),
+        default="commit",
+        help=(
+            "pipeline attestation mode: 'commit' (default) requires "
+            "--pipeline-sha to equal the candidate; 'ci-required' delegates "
+            "attestation to the provider's required checks"
+        ),
+    )
     complete_parser = subparsers.add_parser(
         "complete", help="gate a candidate and record completion on success"
     )
@@ -311,6 +321,7 @@ def _run_gate(args: argparse.Namespace, stderr: TextIO) -> int:
             context.commit,
             context.base,
             pipeline_sha,
+            attestation=args.attestation,
         )
     except GateError as error:
         print(error, file=stderr)
