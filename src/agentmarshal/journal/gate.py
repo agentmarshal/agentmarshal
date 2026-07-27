@@ -155,14 +155,13 @@ def run_gate(
             lines.append(f"FAIL: {message}")
 
     journal_root = project_root / ".agentmarshal" / "journal"
+    # load_task_status validates that the post-candidate journal is
+    # well-formed (single opened record, no record after a terminal one,
+    # contract id matches); it raises on an inconsistent projection.
     try:
         task = load_task_status(journal_root, task_id)
     except (OSError, TaskStatusError, ValueError) as error:
         raise GateError(str(error)) from error
-    check(
-        task.state == "open",
-        f"task {task_id} is open (state: {task.state})",
-    )
 
     resolved_commit = _resolve_commit(project_root, commit)
     base_commit = _resolve_commit(project_root, base)
@@ -172,6 +171,29 @@ def run_gate(
     changed = _changed_paths(project_root, merge_base, resolved_commit)
     if not changed:
         raise GateError("candidate range contains no changes")
+
+    base_tree = set(
+        _run_git(
+            project_root, ["ls-tree", "-r", "--name-only", base_commit]
+        ).splitlines()
+    )
+
+    # "Open" is decided from the base tree, never the candidate: opening,
+    # implementation and completion candidates all merge onto a task that
+    # is not yet closed there, so a legitimate open->terminal completion
+    # passes while work merged onto an already-closed task is refused.
+    task_records_prefix = f"{_JOURNAL_PREFIX}tasks/{task_id}/records/"
+    closed_at_base = any(
+        path.startswith(task_records_prefix)
+        and (path.endswith("-completed.json") or path.endswith("-abandoned.json"))
+        for path in base_tree
+    )
+    check(
+        not closed_at_base,
+        f"task {task_id} is not closed at base"
+        if not closed_at_base
+        else f"task {task_id} is already closed at base (candidate state: {task.state})",
+    )
 
     journal_only = all(path.startswith(_JOURNAL_PREFIX) for path in changed)
     if journal_only:
@@ -286,12 +308,6 @@ def run_gate(
         "added records are valid"
         if not invalid
         else f"invalid added records: {'; '.join(sorted(invalid))}",
-    )
-
-    base_tree = set(
-        _run_git(
-            project_root, ["ls-tree", "-r", "--name-only", base_commit]
-        ).splitlines()
     )
 
     # Collisions are checked against the merge target's tip: a record
