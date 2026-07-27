@@ -38,9 +38,12 @@ The template declares least-privilege `permissions: contents: read` at the
 top level. Pull-request-controlled code (project checks, dependency
 install, the PR-head checkout in the gate job) must not inherit
 write-capable default token permissions — critical for a public repository
-with fork pull requests. Grant additional scopes only to the step that
-needs them; the review-materialisation step (below) will need
-`pull-requests: read` to read the PR approval.
+with fork pull requests. GitHub Actions scopes permissions at the workflow
+or job level (not per step), so grant additional scopes at the job level.
+Review materialisation (below) should therefore be its own job with
+`contents: read` and `pull-requests: read`, passing only the non-sensitive
+materialised evidence to the gate job — rather than broadening permissions
+for jobs that run pull-request-controlled code.
 
 ## Open item: review materialisation (Phase C)
 
