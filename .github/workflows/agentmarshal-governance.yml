@@ -1,0 +1,58 @@
+# AgentMarshal's own governance on GitHub (Variant 2).
+# `governance` (validate + tests) is required-suitable; mark it required in
+# branch protection. `gate` is advisory until review materialisation
+# (Phase C). See docs/github-enforcement.md.
+name: AgentMarshal governance
+
+on:
+  pull_request:
+  push:
+    branches: [master] # rename to main here if the default branch is renamed
+
+# Least privilege: pull-request-controlled code must not inherit
+# write-capable default token permissions. Scope more only per job.
+permissions:
+  contents: read
+
+jobs:
+  governance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # validate/gate need full history
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --locked
+      - run: uv run agentmarshal validate
+      - run: uv run pytest
+      - run: uv run ruff check
+      - run: uv run ruff format --check
+      - run: uv run mypy
+
+  gate:
+    # Advisory until review materialisation (Phase C): the review-bound lane
+    # needs the review evidence materialised from the PR approval. Until
+    # then this still enforces scope, append-only, base-state and lifecycle
+    # and the journal-only lanes. Make it required once that lands.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --locked
+      - name: Gate
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          git fetch --no-tags origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+          task="$(printf '%s' "$HEAD_REF" | grep -oE 'CR-[0-9]+' | head -1)"
+          uv run agentmarshal gate --attestation ci-required \
+            --task "$task" \
+            --commit "$HEAD_SHA" \
+            --base "origin/${BASE_REF}"
