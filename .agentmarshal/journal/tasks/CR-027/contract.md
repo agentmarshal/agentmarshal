@@ -53,12 +53,14 @@ needs. Schema-1 records already in the journal stay valid (grandfathered).
 - [ ] The unexpected-field check remains fail-closed per schema version:
       `source`/`artifacts` are rejected on schema 1 and any other unknown
       field is rejected on both.
-- [ ] The `create_*` record builders emit schema 2 with `source = "live"`;
-      `create_session_record` and the other builders gain an optional
-      `source` parameter defaulting to `"live"` so the backfill can pass
-      `"imported-from-host"`. New records are therefore in-toto-complete.
+- [ ] The `create_*` record builders are unchanged and keep emitting
+      schema 1 (their many call sites — `open_task`, `submit_review`,
+      `complete`, `session`, and `migrate` — are out of this slice's
+      scope). Flipping forward capture to emit schema 2 is a separate CR;
+      CR-027 delivers the schema-2 support and enforcement the flip and the
+      backfill depend on.
 - [ ] `agentmarshal validate` stays green on the existing journal (schema-1
-      history) and rejects a schema-2 record missing/!invalid `source` or
+      history) and rejects a schema-2 record missing/invalid `source` or
       referencing an unregistered predicate type.
 - [ ] Tests in `tests/test_attestation.py` cover: registry lookup +
       fail-closed; schema-2 round-trip with `source` and `artifacts`;
@@ -73,6 +75,10 @@ needs. Schema-1 records already in the journal stay valid (grandfathered).
 
 - No in-toto/DSSE/Sigstore projection (wave 2) — CR-027 only stores the
   fields and the registry; it does not emit a Statement.
+- No forward-capture flip: the `create_*` builders and their call sites
+  keep emitting schema 1 in this slice; making live capture emit schema 2
+  (and migration mark `imported-from-host`) is a later, separately-scoped
+  CR that touches those call sites together.
 - No capture-policy config, no measurements-post-terminal gate/status
   change, no backfill tool — later CRs in the ADR-0005 chain.
 - No rewrite or migration of existing schema-1 records; they remain valid
