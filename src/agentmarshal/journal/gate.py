@@ -198,14 +198,15 @@ def run_gate(
         ).splitlines()
     )
 
-    # The record-level changes drive both the measurements lane below and
-    # the append-only / validity checks later; compute them once here.
+    # The candidate's per-path change statuses drive both the measurements
+    # lane below and the append-only / validity checks later; compute them
+    # once here. A rename decomposes into a deletion plus an addition, so a
+    # move is never seen as a pure addition.
+    changes_with_status = _changed_with_status(
+        project_root, merge_base, resolved_commit
+    )
     record_changes = [
-        (status, path)
-        for status, path in _changed_with_status(
-            project_root, merge_base, resolved_commit
-        )
-        if _is_record_path(path)
+        (status, path) for status, path in changes_with_status if _is_record_path(path)
     ]
     added_records = [path for status, path in record_changes if status == "A"]
     journal_only = all(path.startswith(_JOURNAL_PREFIX) for path in changed)
@@ -221,17 +222,22 @@ def run_gate(
         and (path.endswith("-completed.json") or path.endswith("-abandoned.json"))
         for path in base_tree
     )
-    # A task closed at base still admits measurements, but only a candidate
-    # confined to this task's own journal subtree that adds at least one
-    # session record and no non-session record: economics accrue after the
-    # terminal record (ADR-0005 Decision 3) without mutating the lifecycle
-    # or touching any other task. Restricting every changed path to the
-    # gated task's directory keeps a session record for an unrelated task
-    # from authorizing changes to this closed one. Anything else on a
-    # closed task remains refused by the base-state check.
+    # A task closed at base still admits measurements, but only a strictly
+    # additive candidate confined to this task's own journal subtree that
+    # adds at least one session record and no non-session record: economics
+    # (and new supplementary artifacts) accrue after the terminal record
+    # (ADR-0005 Decision 3) without mutating the lifecycle or any existing
+    # file, and without touching any other task. Every change must be an
+    # addition — a modification or deletion (of contract.md, an existing
+    # artifact, anything) fails the lane, so appended evidence can never
+    # authorize a mutation of a closed task. Anything else remains refused
+    # by the base-state check.
     measurements_only = (
         bool(added_records)
-        and all(path.startswith(task_dir_prefix) for path in changed)
+        and all(
+            status == "A" and path.startswith(task_dir_prefix)
+            for status, path in changes_with_status
+        )
         and all(
             path.startswith(task_records_prefix) and path.endswith("-session.json")
             for path in added_records

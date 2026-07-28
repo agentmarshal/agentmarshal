@@ -652,3 +652,93 @@ def test_gate_refuses_artifact_only_append_to_closed_task(
 
     assert not passed
     assert "already closed at base" in output
+
+
+def test_gate_measurements_lane_allows_a_new_supplementary_artifact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A session record plus a genuinely new supplementary artifact under
+    # the task directory is a valid measurements append to a closed task.
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    journal = repo / ".agentmarshal" / "journal"
+    write_record(journal, "CR-001", create_completed_record("CR-001", "test", base))
+    closed_base = _commit_all(repo, "complete CR-001 on master")
+
+    _git(repo, "switch", "--quiet", "-c", "measure-artifact", closed_base)
+    artifact = journal / "tasks" / "CR-001" / "artifacts" / "prompt.md"
+    artifact.parent.mkdir(parents=True, exist_ok=True)
+    artifact.write_text("prompt\n", encoding="utf-8")
+    write_record(
+        journal,
+        "CR-001",
+        create_session_record(
+            "CR-001", "test", "lead", "opus", "implementation", "done", 10, 20, 30
+        ),
+    )
+    head = _commit_all(repo, "record session and a new artifact")
+
+    passed, output = _run(repo, head, closed_base, head)
+
+    assert passed, output
+    assert "measurements-only append to a task closed at base" in output
+
+
+def test_gate_measurements_lane_refuses_modifying_contract(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Appended evidence must never authorize a mutation of an existing
+    # file: a session record bundled with a contract.md change on a closed
+    # task is refused because the change is not strictly additive.
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    journal = repo / ".agentmarshal" / "journal"
+    write_record(journal, "CR-001", create_completed_record("CR-001", "test", base))
+    closed_base = _commit_all(repo, "complete CR-001 on master")
+
+    _git(repo, "switch", "--quiet", "-c", "tamper-contract", closed_base)
+    contract = journal / "tasks" / "CR-001" / "contract.md"
+    contract.write_text(
+        contract.read_text(encoding="utf-8") + "\nmutated\n", encoding="utf-8"
+    )
+    write_record(
+        journal,
+        "CR-001",
+        create_session_record(
+            "CR-001", "test", "lead", "opus", "implementation", "done", 10, 20, 30
+        ),
+    )
+    head = _commit_all(repo, "session plus a contract mutation")
+
+    passed, output = _run(repo, head, closed_base, head)
+
+    assert not passed
+    assert "already closed at base" in output
+
+
+def test_gate_measurements_lane_refuses_modifying_existing_artifact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Modifying an existing artifact (not adding one) is not additive and
+    # is refused even alongside a session record.
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    journal = repo / ".agentmarshal" / "journal"
+    artifact = journal / "tasks" / "CR-001" / "artifacts" / "prompt.md"
+    artifact.parent.mkdir(parents=True, exist_ok=True)
+    artifact.write_text("original\n", encoding="utf-8")
+    write_record(journal, "CR-001", create_completed_record("CR-001", "test", base))
+    closed_base = _commit_all(repo, "complete CR-001 with an artifact")
+
+    _git(repo, "switch", "--quiet", "-c", "mutate-artifact", closed_base)
+    artifact.write_text("changed\n", encoding="utf-8")
+    write_record(
+        journal,
+        "CR-001",
+        create_session_record(
+            "CR-001", "test", "lead", "opus", "implementation", "done", 10, 20, 30
+        ),
+    )
+    head = _commit_all(repo, "session plus an artifact mutation")
+
+    passed, output = _run(repo, head, closed_base, head)
+
+    assert not passed
+    assert "already closed at base" in output
