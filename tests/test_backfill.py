@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -283,13 +284,26 @@ def test_ancestor_symlink_is_refused(tmp_path: Path) -> None:
         backfill_task_sessions(link / "stats", "CR-011", _IMPORTED_AT)
 
 
+def test_fifo_stat_entry_is_refused_without_hanging(tmp_path: Path) -> None:
+    # A FIFO named like a stat file must not block the importer waiting for
+    # a writer: it opens non-blocking and is rejected as a non-regular file.
+    stats = tmp_path / "stats"
+    stats.mkdir()
+    fifo = stats / "RUN-20260719T090000Z-lead-fifo000000.json"
+    try:
+        os.mkfifo(fifo)
+    except (AttributeError, OSError, NotImplementedError):
+        pytest.skip("FIFOs are unsupported on this platform")
+
+    with pytest.raises(BackfillError, match="regular file"):
+        backfill_task_sessions(stats, "CR-011", _IMPORTED_AT)
+
+
 def test_import_fails_closed_without_no_follow_support(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # If the platform lacks O_NOFOLLOW the importer must refuse rather than
     # read without symlink protection: a zero flag is never a fallback.
-    import os
-
     stats = tmp_path / "stats"
     _write(stats, "RUN-20260719T090000Z-lead-3514f554.json", _lead_stat())
     monkeypatch.delattr(os, "O_NOFOLLOW", raising=False)
