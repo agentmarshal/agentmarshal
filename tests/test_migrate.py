@@ -299,3 +299,16 @@ def test_strict_cli_output_unchanged(
     out = capsys.readouterr().out
     assert "Migrated 1 task(s)." in out
     assert "lenient note" not in out
+
+
+def test_lenient_skips_done_task_without_completion_commit(tmp_path: Path) -> None:
+    # An unreconstructable done task (no Merged-Commit/Reviewed-Commit) is
+    # skipped and reported; other valid tasks still migrate.
+    source, target = tmp_path / "v1", tmp_path / "v2"
+    write_task(source, "open", "CR-001", "open")
+    write_task(source, "done/2026", "CR-002", "done")  # no completion commit
+    report: list[str] = []
+    summaries = migrate_journal(source, target, lenient=True, report=report)
+    assert summaries == ["CR-001: open (0 review(s))"]
+    assert load_task_status(target, "CR-001").state == "open"
+    assert any("skipped done task" in note for note in report)

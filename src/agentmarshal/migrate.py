@@ -167,6 +167,19 @@ def _parse_task(
         raise _error(path, f"unknown Status: {status}")
     if lenient and "Scope" not in headers:
         _note(report, f"{path}: defaulted empty scope (no Scope header)")
+    # A done task's completed commit comes from Merged-Commit or
+    # Reviewed-Commit; without either it cannot be migrated, so skip it in
+    # lenient mode here rather than abort the whole run during writing.
+    if (
+        lenient
+        and status == "done"
+        and not (headers.get("Merged-Commit") or headers.get("Reviewed-Commit"))
+    ):
+        _note(
+            report,
+            f"{path}: skipped done task (no Merged-Commit or Reviewed-Commit)",
+        )
+        return None
     return V1Task(path, task_id, title, scope, status, headers)
 
 
