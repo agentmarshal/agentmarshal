@@ -1,0 +1,23 @@
+{
+  "activity": "implementation",
+  "actor": "claude/claude-fable-5",
+  "artifacts": [
+    {
+      "hash": "ff94920292ac92bb446fa6bd5bc38814417d2f1c996404ca26be13a835f0028a",
+      "ref": "host-stat:RUN-20260719T032858Z-lead-cbf3b821;imported-at=2026-07-28T09:04:46.862987Z"
+    }
+  ],
+  "created_at": "2026-07-19T04:05:09.257Z",
+  "outcome": "completed",
+  "record_type": "session",
+  "role": "lead",
+  "schema": 2,
+  "source": "imported-from-host",
+  "task": "CR-006",
+  "tokens": {
+    "cache": 25740936,
+    "input": 89,
+    "output": 35004
+  },
+  "tool_version": "0.1.0.dev0"
+}
