@@ -198,24 +198,64 @@ def run_gate(
         ).splitlines()
     )
 
+    # The candidate's per-path change statuses drive both the measurements
+    # lane below and the append-only / validity checks later; compute them
+    # once here. A rename decomposes into a deletion plus an addition, so a
+    # move is never seen as a pure addition.
+    changes_with_status = _changed_with_status(
+        project_root, merge_base, resolved_commit
+    )
+    record_changes = [
+        (status, path) for status, path in changes_with_status if _is_record_path(path)
+    ]
+    added_records = [path for status, path in record_changes if status == "A"]
+    journal_only = all(path.startswith(_JOURNAL_PREFIX) for path in changed)
+
     # "Open" is decided from the base tree, never the candidate: opening,
     # implementation and completion candidates all merge onto a task that
     # is not yet closed there, so a legitimate open->terminal completion
     # passes while work merged onto an already-closed task is refused.
     task_records_prefix = f"{_JOURNAL_PREFIX}tasks/{task_id}/records/"
+    task_dir_prefix = f"{_JOURNAL_PREFIX}tasks/{task_id}/"
     closed_at_base = any(
         path.startswith(task_records_prefix)
         and (path.endswith("-completed.json") or path.endswith("-abandoned.json"))
         for path in base_tree
     )
-    check(
-        not closed_at_base,
-        f"task {task_id} is not closed at base"
-        if not closed_at_base
-        else f"task {task_id} is already closed at base (candidate state: {task.state})",
+    # A task closed at base still admits measurements, but only a strictly
+    # additive candidate confined to this task's own journal subtree that
+    # adds at least one session record and no non-session record: economics
+    # (and new supplementary artifacts) accrue after the terminal record
+    # (ADR-0005 Decision 3) without mutating the lifecycle or any existing
+    # file, and without touching any other task. Every change must be an
+    # addition — a modification or deletion (of contract.md, an existing
+    # artifact, anything) fails the lane, so appended evidence can never
+    # authorize a mutation of a closed task. Anything else remains refused
+    # by the base-state check.
+    measurements_only = (
+        bool(added_records)
+        and all(
+            status == "A" and path.startswith(task_dir_prefix)
+            for status, path in changes_with_status
+        )
+        and all(
+            path.startswith(task_records_prefix) and path.endswith("-session.json")
+            for path in added_records
+        )
     )
+    if not closed_at_base:
+        lines.append(f"PASS: task {task_id} is not closed at base")
+    elif measurements_only:
+        lines.append(
+            "PASS: measurements-only append to a task closed at base "
+            "(session records accrue post-terminal)"
+        )
+    else:
+        check(
+            False,
+            f"task {task_id} is already closed at base (candidate state: {task.state})",
+        )
 
-    journal_only = all(path.startswith(_JOURNAL_PREFIX) for path in changed)
     if journal_only:
         lines.append(
             "PASS: journal-only transaction (deterministic lane; review not required)"
@@ -300,14 +340,8 @@ def run_gate(
 
     # Evidence records are append-only for every candidate: any
     # modification, deletion or rename of an existing record rewrites
-    # history at the merge boundary and is refused (ADR-0004).
-    record_changes = [
-        (status, path)
-        for status, path in _changed_with_status(
-            project_root, merge_base, resolved_commit
-        )
-        if _is_record_path(path)
-    ]
+    # history at the merge boundary and is refused (ADR-0004). The record
+    # changes were computed once above for the measurements lane.
     tampered = sorted(path for status, path in record_changes if status != "A")
     check(
         not tampered,
@@ -317,7 +351,6 @@ def run_gate(
         + ", ".join(tampered),
     )
 
-    added_records = [path for status, path in record_changes if status == "A"]
     invalid: list[str] = []
     for path in added_records:
         try:
