@@ -607,6 +607,32 @@ def test_gate_allows_session_only_append_to_closed_task(
     assert output.count("FAIL") == 0
 
 
+def test_gate_refuses_measurements_lane_with_another_tasks_session(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The measurements exception is per-task: a session record belonging to
+    # a different task must not authorize a change against a closed one.
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    journal = repo / ".agentmarshal" / "journal"
+    write_record(journal, "CR-001", create_completed_record("CR-001", "test", base))
+    closed_base = _commit_all(repo, "complete CR-001 on master")
+
+    _git(repo, "switch", "--quiet", "-c", "cross-task", closed_base)
+    write_record(
+        journal,
+        "CR-002",
+        create_session_record(
+            "CR-002", "test", "lead", "opus", "implementation", "done", 10, 20, 30
+        ),
+    )
+    head = _commit_all(repo, "record a CR-002 session while gating closed CR-001")
+
+    passed, output = _run(repo, head, closed_base, head)
+
+    assert not passed
+    assert "already closed at base" in output
+
+
 def test_gate_refuses_artifact_only_append_to_closed_task(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

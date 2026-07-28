@@ -215,20 +215,27 @@ def run_gate(
     # is not yet closed there, so a legitimate open->terminal completion
     # passes while work merged onto an already-closed task is refused.
     task_records_prefix = f"{_JOURNAL_PREFIX}tasks/{task_id}/records/"
+    task_dir_prefix = f"{_JOURNAL_PREFIX}tasks/{task_id}/"
     closed_at_base = any(
         path.startswith(task_records_prefix)
         and (path.endswith("-completed.json") or path.endswith("-abandoned.json"))
         for path in base_tree
     )
-    # A task closed at base still admits measurements: a journal-only
-    # candidate whose added records are all session records accrues
-    # economics after the terminal record (ADR-0005 Decision 3) without
-    # mutating the lifecycle. Any non-session record or non-journal file on
-    # a closed task remains refused by the base-state check.
+    # A task closed at base still admits measurements, but only a candidate
+    # confined to this task's own journal subtree that adds at least one
+    # session record and no non-session record: economics accrue after the
+    # terminal record (ADR-0005 Decision 3) without mutating the lifecycle
+    # or touching any other task. Restricting every changed path to the
+    # gated task's directory keeps a session record for an unrelated task
+    # from authorizing changes to this closed one. Anything else on a
+    # closed task remains refused by the base-state check.
     measurements_only = (
-        journal_only
-        and bool(added_records)
-        and all(path.endswith("-session.json") for path in added_records)
+        bool(added_records)
+        and all(path.startswith(task_dir_prefix) for path in changed)
+        and all(
+            path.startswith(task_records_prefix) and path.endswith("-session.json")
+            for path in added_records
+        )
     )
     if not closed_at_base:
         lines.append(f"PASS: task {task_id} is not closed at base")
