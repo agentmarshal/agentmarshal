@@ -89,9 +89,28 @@ class CapturePolicy:
         # still holds a reference to, which could otherwise inject a session
         # COMMIT after construction. Validate the copy, then store the
         # read-only view.
+        # The constructor is a public construction path (tests and callers
+        # build policies directly), so it fully validates rather than trust
+        # the parser: an invalid preset, override key, or override value
+        # must fail closed here, not surface later as a KeyError or a level
+        # that is not a CaptureLevel.
+        if self.preset not in _PRESETS:
+            allowed = ", ".join(sorted(_PRESETS))
+            raise CaptureError(
+                f"unknown capture preset {self.preset!r} (expected one of {allowed})"
+            )
         if not isinstance(self.allow_public_sessions, bool):
             raise CaptureError("allow_public_sessions must be a boolean")
         frozen = MappingProxyType(dict(self.overrides))
+        for key, value in frozen.items():
+            if not isinstance(key, CaptureClass):
+                raise CaptureError(
+                    f"capture override key must be a CaptureClass: {key!r}"
+                )
+            if not isinstance(value, CaptureLevel):
+                raise CaptureError(
+                    f"capture override value must be a CaptureLevel: {value!r}"
+                )
         # Sessions are private by default at every preset; committing one
         # publicly is a separate escalation gated by the two opt-ins below,
         # never expressible as a capture level. Reject a session COMMIT
@@ -224,11 +243,9 @@ def capture_policy_from_project(project_data: Mapping[str, object]) -> CapturePo
 _LEAK_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "private-key-block",
-        re.compile(
-            r"-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----"
-        ),
+        re.compile(r"-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----"),
     ),
-    ("aws-access-key-id", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
+    ("aws-access-key-id", re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b")),
     ("github-token", re.compile(r"\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36}\b")),
     ("github-pat", re.compile(r"\bgithub_pat_[A-Za-z0-9_]{22,}\b")),
     ("gitlab-token", re.compile(r"\bglpat-[A-Za-z0-9_-]{20}\b")),
@@ -245,9 +262,7 @@ _LEAK_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 )
 
 
-def scan_for_leaks(
-    text: str, private_markers: tuple[str, ...] = ()
-) -> list[str]:
+def scan_for_leaks(text: str, private_markers: tuple[str, ...] = ()) -> list[str]:
     """Return the sorted leak categories found in *text*.
 
     A best-effort safeguard (ADR-0005): it matches known secret/token

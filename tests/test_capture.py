@@ -127,6 +127,23 @@ def test_session_commit_override_is_rejected() -> None:
         )
 
 
+def test_direct_constructor_validates_preset_and_overrides() -> None:
+    # The public constructor fails closed on the same malformed inputs the
+    # parser rejects, so level_for cannot later raise or return a non-level.
+    with pytest.raises(CaptureError, match="unknown capture preset"):
+        CapturePolicy(preset="aggressive")
+    with pytest.raises(CaptureError, match="must be a CaptureLevel"):
+        CapturePolicy(
+            preset="full",
+            overrides={CaptureClass.REVIEWS: "commit"},  # type: ignore[dict-item]
+        )
+    with pytest.raises(CaptureError, match="must be a CaptureClass"):
+        CapturePolicy(
+            preset="full",
+            overrides={"reviews": CaptureLevel.HASH},  # type: ignore[dict-item]
+        )
+
+
 def test_overrides_are_defensively_copied() -> None:
     # Mutating the source mapping after construction must not change the
     # policy: a frozen dataclass does not freeze the referenced mapping, so
@@ -186,6 +203,7 @@ def test_resolve_session_disposition_gated_by_two_opt_ins() -> None:
     [
         "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----",
         "aws key AKIAIOSFODNN7EXAMPLE here",
+        "temp creds ASIAIOSFODNN7EXAMPLE session",
         "token ghp_" + "a" * 36,
         "github_pat_" + "a" * 30,
         "glpat-" + "a" * 20,
