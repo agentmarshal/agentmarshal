@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import stat as stat_module
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -196,23 +198,47 @@ def _read_stat_files(
     are ignored, so the directory can hold other host state.
     """
 
-    if not stats_dir.is_dir():
+    if stats_dir.is_symlink() or not stats_dir.is_dir():
         raise BackfillError(f"{stats_dir}: stats directory is not a directory")
     for path in sorted(stats_dir.iterdir()):
-        if (
-            not path.is_file()
-            or path.suffix != ".json"
-            or not path.name.startswith("RUN-")
-        ):
+        if path.suffix != ".json" or not path.name.startswith("RUN-"):
             continue
+        # Read with no-follow semantics so a RUN-*.json symlink cannot make
+        # the importer hash bytes from outside the retained stats directory
+        # and attribute them to an in-directory source_ref, which would
+        # break the provenance guarantee.
+        raw = _read_regular_file_nofollow(path)
         try:
-            raw = path.read_bytes()
             loaded = json.loads(raw.decode("utf-8-sig"))
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
             raise BackfillError(f"{path}: cannot read stat record: {error}") from error
         if not isinstance(loaded, dict):
             raise BackfillError(f"{path}: stat record must be a JSON object")
         yield path.stem, raw, loaded
+
+
+def _read_regular_file_nofollow(path: Path) -> bytes:
+    """Read a regular file without following a symlink at its final component.
+
+    ``O_NOFOLLOW`` fails if ``path`` is a symlink, and the ``fstat`` on the
+    open descriptor confirms the object read is a regular file (not a fifo
+    or device) — the same descriptor is read, closing the check/read race.
+    """
+
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(path, os.O_RDONLY | nofollow)
+    except OSError as error:
+        raise BackfillError(
+            f"{path}: refusing to read (symlink or unreadable): {error}"
+        ) from error
+    try:
+        with os.fdopen(fd, "rb") as handle:
+            if not stat_module.S_ISREG(os.fstat(handle.fileno()).st_mode):
+                raise BackfillError(f"{path}: stat record is not a regular file")
+            return handle.read()
+    except OSError as error:
+        raise BackfillError(f"{path}: cannot read stat record: {error}") from error
 
 
 def _map_file(

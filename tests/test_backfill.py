@@ -233,3 +233,20 @@ def test_selector_orders_by_instant_not_text(tmp_path: Path) -> None:
 def test_selector_rejects_missing_directory(tmp_path: Path) -> None:
     with pytest.raises(BackfillError):
         backfill_task_sessions(tmp_path / "absent", "CR-011", _IMPORTED_AT)
+
+
+def test_symlinked_stat_file_is_refused(tmp_path: Path) -> None:
+    # A RUN-*.json symlink must not let the importer hash bytes from outside
+    # the retained stats directory and attribute them to an in-directory ref.
+    outside = tmp_path / "outside.json"
+    outside.write_text(json.dumps(_lead_stat()), encoding="utf-8")
+    stats = tmp_path / "stats"
+    stats.mkdir()
+    link = stats / "RUN-20260719T090000Z-lead-evil0000.json"
+    try:
+        link.symlink_to(outside)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks are unsupported on this platform")
+
+    with pytest.raises(BackfillError, match=r"symlink|regular file"):
+        backfill_task_sessions(stats, "CR-011", _IMPORTED_AT)
