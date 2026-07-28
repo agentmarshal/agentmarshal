@@ -33,7 +33,9 @@ def record_session(
     try:
         task = load_task_status(journal_root, task_id)
         if task.state != "open":
-            raise SessionRecordError(f"task {task_id} is not open (state: {task.state})")
+            raise SessionRecordError(
+                f"task {task_id} is not open (state: {task.state})"
+            )
         record = create_session_record(
             task_id,
             __version__,

@@ -53,9 +53,7 @@ def project_status(records: Sequence[Mapping[str, object]]) -> str:
         # record. Any other record type after a terminal one is a
         # lifecycle mutation of a closed task and stays forbidden.
         if has_terminal_record and record_type != "session":
-            raise TaskStatusError(
-                "task has a lifecycle record after a terminal record"
-            )
+            raise TaskStatusError("task has a lifecycle record after a terminal record")
         if record_type == "opened":
             if has_opened_record:
                 raise TaskStatusError("task records contain multiple opened records")
@@ -84,7 +82,8 @@ def load_task_status(journal_root: Path, task_id: str) -> TaskStatus:
     contract = parse_contract(task_directory / "contract.md")
     if contract.id != task_id:
         raise TaskStatusError(
-            f"contract id does not match its task directory: {task_directory / 'contract.md'}"
+            "contract id does not match its task directory: "
+            f"{task_directory / 'contract.md'}"
         )
     return TaskStatus(task_id, contract, records, project_status(records))
 

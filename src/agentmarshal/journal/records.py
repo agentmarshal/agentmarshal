@@ -250,7 +250,8 @@ def _validate_review_record(data: Mapping[str, object]) -> None:
         or _REVIEWED_COMMIT_PATTERN.fullmatch(reviewed_commit) is None
     ):
         raise JournalRecordError(
-            "review record field 'reviewed_commit' must be exactly 40 lowercase hex characters"
+            "review record field 'reviewed_commit' must be exactly 40 "
+            "lowercase hex characters"
         )
     verdict = data.get("verdict")
     if not isinstance(verdict, str) or verdict not in _REVIEW_VERDICTS:
@@ -316,7 +317,8 @@ def _validate_session_record(data: Mapping[str, object]) -> None:
         value = tokens[field]
         if type(value) is not int or value < 0:
             raise JournalRecordError(
-                f"session record token {field!r} must be an integer greater than or equal to zero"
+                f"session record token {field!r} must be an integer greater "
+                "than or equal to zero"
             )
 
 

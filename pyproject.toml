@@ -44,7 +44,7 @@ build-backend = "uv_build"
 [tool.ruff]
 line-length = 88
 src = ["src", "tests"]
-extend-exclude = ["agentmarshal"]  # v1 archive submodule, not our code
+extend-exclude = ["./agentmarshal"]  # v1 archive submodule at repo root, not our src
 
 [tool.ruff.lint]
 select = [

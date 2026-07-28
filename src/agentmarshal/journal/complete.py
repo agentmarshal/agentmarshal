@@ -57,9 +57,7 @@ def complete_task(
     if not report.passed:
         return CompletionResult(report, None)
     try:
-        record = create_completed_record(
-            task_id, __version__, report.resolved_commit
-        )
+        record = create_completed_record(task_id, __version__, report.resolved_commit)
         record_path = write_record(journal_root, task_id, record)
     except (JournalRecordError, OSError, ValueError) as error:
         raise LifecycleError(str(error)) from error

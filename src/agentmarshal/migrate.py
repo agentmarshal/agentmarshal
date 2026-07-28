@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
-from pathlib import Path
 import shutil
 import tempfile
+from dataclasses import dataclass
+from pathlib import Path
 
 from agentmarshal import __version__
 from agentmarshal.journal.attestation import SOURCE_IMPORTED
@@ -17,8 +17,8 @@ from agentmarshal.journal.records import (
     create_completed_record,
     create_opened_record,
     create_review_record,
-    validate_task_id,
     validate_record_content,
+    validate_task_id,
     write_record,
 )
 from agentmarshal.journal.status import TaskStatusError, load_task_status
@@ -325,7 +325,9 @@ def migrate_journal(source: Path, target: Path) -> list[str]:
     tasks, reviews = _load_source(source)
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
-        staging = Path(tempfile.mkdtemp(prefix=f".{target.name}.migration-", dir=target.parent))
+        staging = Path(
+            tempfile.mkdtemp(prefix=f".{target.name}.migration-", dir=target.parent)
+        )
     except OSError as error:
         raise JournalMigrationError(
             f"{target}: could not create migration staging directory: {error}"

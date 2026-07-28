@@ -136,6 +136,8 @@ def run_doctor(
             ok, detail = check.run()
         except Exception as error:
             ok = False
-            detail = f"check could not run; verify repository access and retry ({error})"
+            detail = (
+                f"check could not run; verify repository access and retry ({error})"
+            )
         results.append(DoctorResult(check.name, ok, detail))
     return tuple(results)
