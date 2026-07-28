@@ -82,6 +82,29 @@ def test_migrate_journal_converts_lifecycle_states(tmp_path: Path) -> None:
     assert open_task.records[1]["verdict"] == "changes_required"
 
 
+def test_migrated_records_are_schema_2_imported_from_host(tmp_path: Path) -> None:
+    # Migrated evidence is imported, not live: every record carries the
+    # honest imported-from-host provenance (ADR-0005 Decision 4).
+    source = tmp_path / "v1"
+    target = tmp_path / "v2"
+    write_task(
+        source,
+        "done/2026",
+        "CR-001",
+        "done",
+        extra_headers=f"Merged-Commit: {'b' * 40}\n",
+    )
+    write_review(source, "CR-001-approved.md", "CR-001", "approved", "none")
+
+    migrate_journal(source, target)
+
+    records = load_task_status(target, "CR-001").records
+    assert records  # opened + review + completed
+    for record in records:
+        assert record["schema"] == 2
+        assert record["source"] == "imported-from-host"
+
+
 def test_migrate_journal_cli_preserves_source_and_refuses_nonempty_target(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

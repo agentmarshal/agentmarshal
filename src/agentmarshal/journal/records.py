@@ -15,6 +15,7 @@ from typing import cast
 # Reuse the hardened no-follow exclusive creator from project.py so record
 # files get the same symlink/race guarantees as the project file.
 from agentmarshal.journal.attestation import (
+    SOURCE_LIVE,
     SOURCE_VALUES,
     is_registered_record_type,
 )
@@ -403,45 +404,50 @@ def write_record(
     return path
 
 
-def create_opened_record(task_id: str, tool_version: str) -> dict[str, object]:
+def create_opened_record(
+    task_id: str, tool_version: str, *, source: str = SOURCE_LIVE
+) -> dict[str, object]:
     """Build the lifecycle record emitted when a task is opened."""
 
     return {
-        "schema": 1,
+        "schema": 2,
         "record_type": "opened",
         "task": task_id,
         "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "tool_version": tool_version,
+        "source": source,
     }
 
 
 def create_completed_record(
-    task_id: str, tool_version: str, completed_commit: str
+    task_id: str, tool_version: str, completed_commit: str, *, source: str = SOURCE_LIVE
 ) -> dict[str, object]:
     """Build the terminal record emitted when a task is completed."""
 
     return {
-        "schema": 1,
+        "schema": 2,
         "record_type": "completed",
         "task": task_id,
         "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "tool_version": tool_version,
         "completed_commit": completed_commit,
+        "source": source,
     }
 
 
 def create_abandoned_record(
-    task_id: str, tool_version: str, reason: str
+    task_id: str, tool_version: str, reason: str, *, source: str = SOURCE_LIVE
 ) -> dict[str, object]:
     """Build the terminal record emitted when a task is abandoned."""
 
     return {
-        "schema": 1,
+        "schema": 2,
         "record_type": "abandoned",
         "task": task_id,
         "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "tool_version": tool_version,
         "reason": reason,
+        "source": source,
     }
 
 
@@ -455,11 +461,13 @@ def create_session_record(
     input_tokens: int,
     output_tokens: int,
     cache_tokens: int,
+    *,
+    source: str = SOURCE_LIVE,
 ) -> dict[str, object]:
     """Build an attributed work session record."""
 
     return {
-        "schema": 1,
+        "schema": 2,
         "record_type": "session",
         "task": task_id,
         "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
@@ -473,6 +481,7 @@ def create_session_record(
             "output": output_tokens,
             "cache": cache_tokens,
         },
+        "source": source,
     }
 
 
@@ -486,11 +495,13 @@ def create_review_record(
     reviewer_model: str,
     reviewer_email: str,
     findings: list[str],
+    *,
+    source: str = SOURCE_LIVE,
 ) -> dict[str, object]:
     """Build the review evidence record submitted by a reviewer."""
 
     return {
-        "schema": 1,
+        "schema": 2,
         "record_type": "review",
         "task": task_id,
         "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
@@ -504,6 +515,7 @@ def create_review_record(
             "email": reviewer_email,
         },
         "findings": findings,
+        "source": source,
     }
 
 
