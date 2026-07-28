@@ -14,6 +14,10 @@ from typing import cast
 
 # Reuse the hardened no-follow exclusive creator from project.py so record
 # files get the same symlink/race guarantees as the project file.
+from agentmarshal.journal.attestation import (
+    SOURCE_VALUES,
+    is_registered_record_type,
+)
 from agentmarshal.project import UnsafeProjectPathError, _create_exclusive
 
 _CROCKFORD_BASE32 = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
@@ -75,6 +79,12 @@ _RECORD_FIELDS = {
         }
     ),
 }
+# Schema 2 adds provenance (ADR-0005): a required ``source`` and optional
+# ``artifacts`` references. They are permitted only on schema 2 — a schema
+# 1 record carrying them is rejected as an unexpected field.
+_SCHEMA_2_FIELDS = frozenset({"source", "artifacts"})
+_SUPPORTED_SCHEMAS = frozenset({1, 2})
+_ARTIFACT_HASH_PATTERN = re.compile(r"[0-9a-f]{64}$")
 _REVIEWED_COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}$")
 _REVIEW_VERDICTS = frozenset({"approved", "changes_required", "blocked", "rejected"})
 _SESSION_ACTIVITIES = frozenset({"implementation", "review", "other"})
@@ -131,12 +141,23 @@ def _is_ulid(value: str) -> bool:
 
 def _validate_record(record: Mapping[str, object]) -> dict[str, object]:
     data = dict(record)
-    if type(data.get("schema")) is not int or data["schema"] != 1:
+    schema = data.get("schema")
+    if type(schema) is not int or schema not in _SUPPORTED_SCHEMAS:
         raise JournalRecordError("record has an unknown or missing schema version")
     record_type = data.get("record_type")
     if not isinstance(record_type, str) or record_type not in _RECORD_FIELDS:
         raise JournalRecordError("record has an unknown or missing record type")
-    unexpected_fields = data.keys() - _RECORD_FIELDS[record_type]
+    # Every accepted record type must be projectable to an in-toto
+    # Statement; a type without a registered predicateType could not be,
+    # so reject it fail-closed (ADR-0005 Decision 5).
+    if not is_registered_record_type(record_type):
+        raise JournalRecordError(
+            f"record type {record_type!r} has no registered predicateType"
+        )
+    allowed_fields = _RECORD_FIELDS[record_type]
+    if schema >= 2:
+        allowed_fields = allowed_fields | _SCHEMA_2_FIELDS
+    unexpected_fields = data.keys() - allowed_fields
     if unexpected_fields:
         raise JournalRecordError(
             f"record has unsupported fields: {', '.join(sorted(unexpected_fields))}"
@@ -182,7 +203,43 @@ def _validate_record(record: Mapping[str, object]) -> dict[str, object]:
             )
     elif record_type == "session":
         _validate_session_record(data)
+    if schema >= 2:
+        _validate_provenance(data)
     return data
+
+
+def _validate_provenance(data: Mapping[str, object]) -> None:
+    """Validate the schema-2 provenance fields (ADR-0005 Decision 4).
+
+    ``source`` is required and names how the evidence was captured;
+    ``artifacts`` is an optional list of hash-pinned references to
+    supplementary evidence stored outside the record.
+    """
+
+    source = data.get("source")
+    if not isinstance(source, str) or source not in SOURCE_VALUES:
+        raise JournalRecordError(
+            f"record field 'source' must be one of {', '.join(sorted(SOURCE_VALUES))}"
+        )
+    if "artifacts" not in data:
+        return
+    artifacts = data["artifacts"]
+    if not isinstance(artifacts, list):
+        raise JournalRecordError("record field 'artifacts' must be an array")
+    for artifact in artifacts:
+        if not isinstance(artifact, dict) or artifact.keys() != {"ref", "hash"}:
+            raise JournalRecordError("each artifact must contain only 'ref' and 'hash'")
+        ref = artifact["ref"]
+        if not isinstance(ref, str) or not ref:
+            raise JournalRecordError("artifact field 'ref' must be a non-empty string")
+        digest = artifact["hash"]
+        if (
+            not isinstance(digest, str)
+            or _ARTIFACT_HASH_PATTERN.fullmatch(digest) is None
+        ):
+            raise JournalRecordError(
+                "artifact field 'hash' must be exactly 64 lowercase hex characters"
+            )
 
 
 def _validate_review_record(data: Mapping[str, object]) -> None:
