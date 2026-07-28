@@ -1,0 +1,164 @@
+"""Tests for the capture policy and leak scanner (ADR-0005 Decision 2)."""
+
+from __future__ import annotations
+
+import pytest
+
+from agentmarshal.journal.capture import (
+    CaptureClass,
+    CaptureError,
+    CaptureLevel,
+    CapturePolicy,
+    assert_no_leaks,
+    capture_policy_from_project,
+    scan_for_leaks,
+)
+
+# --- presets and resolution ----------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("preset", "expected"),
+    [
+        (
+            "minimal",
+            {
+                CaptureClass.ECONOMICS: CaptureLevel.OFF,
+                CaptureClass.REVIEWS: CaptureLevel.OFF,
+                CaptureClass.SESSIONS: CaptureLevel.OFF,
+            },
+        ),
+        (
+            "attested",
+            {
+                CaptureClass.ECONOMICS: CaptureLevel.COMMIT,
+                CaptureClass.REVIEWS: CaptureLevel.HASH,
+                CaptureClass.SESSIONS: CaptureLevel.HASH,
+            },
+        ),
+        (
+            "full",
+            {
+                CaptureClass.ECONOMICS: CaptureLevel.COMMIT,
+                CaptureClass.REVIEWS: CaptureLevel.COMMIT,
+                CaptureClass.SESSIONS: CaptureLevel.HASH,
+            },
+        ),
+    ],
+)
+def test_preset_resolved_levels(
+    preset: str, expected: dict[CaptureClass, CaptureLevel]
+) -> None:
+    policy = capture_policy_from_project({"capture": {"preset": preset}})
+    for capture_class, level in expected.items():
+        assert policy.level_for(capture_class) == level
+
+
+def test_full_preset_keeps_sessions_private() -> None:
+    # Even at full, sessions never exceed HASH by preset.
+    policy = capture_policy_from_project({"capture": {"preset": "full"}})
+    assert policy.level_for(CaptureClass.SESSIONS) == CaptureLevel.HASH
+
+
+def test_default_preset_when_capture_absent() -> None:
+    policy = capture_policy_from_project({"schema": 1})
+    assert policy.preset == "attested"
+    assert policy.level_for(CaptureClass.ECONOMICS) == CaptureLevel.COMMIT
+
+
+def test_override_beats_preset() -> None:
+    policy = capture_policy_from_project(
+        {"capture": {"preset": "attested", "overrides": {"reviews": "commit"}}}
+    )
+    assert policy.level_for(CaptureClass.REVIEWS) == CaptureLevel.COMMIT
+    # Non-overridden classes keep the preset.
+    assert policy.level_for(CaptureClass.ECONOMICS) == CaptureLevel.COMMIT
+
+
+# --- fail-closed parsing --------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "section",
+    [
+        {"preset": "aggressive"},
+        {"preset": 2},
+        {"overrides": {"reviews": "publish"}},
+        {"overrides": {"telemetry": "commit"}},
+        {"overrides": "commit-everything"},
+        {"allow_public_sessions": "yes"},
+        {"unknown_field": 1},
+    ],
+)
+def test_malformed_capture_config_fails_closed(section: object) -> None:
+    with pytest.raises(CaptureError):
+        capture_policy_from_project({"capture": section})
+
+
+def test_capture_section_must_be_object() -> None:
+    with pytest.raises(CaptureError):
+        capture_policy_from_project({"capture": "attested"})
+
+
+# --- session privacy guard ------------------------------------------------
+
+
+def test_public_session_needs_both_opt_ins() -> None:
+    without = CapturePolicy(preset="full", allow_public_sessions=False)
+    assert not without.may_commit_session_publicly(per_operation_flag=True)
+
+    configured = CapturePolicy(preset="full", allow_public_sessions=True)
+    # Config alone is not enough; the per-operation flag alone is not enough.
+    assert not configured.may_commit_session_publicly(per_operation_flag=False)
+    assert configured.may_commit_session_publicly(per_operation_flag=True)
+
+
+def test_preset_path_never_yields_public_session() -> None:
+    # Even an explicit commit override for sessions leaves public session
+    # commit gated: allow_public_sessions defaults off, so the guard is
+    # false regardless of the per-operation flag. Only the two-opt-in guard
+    # can authorize public session content.
+    policy = capture_policy_from_project(
+        {"capture": {"preset": "full", "overrides": {"sessions": "commit"}}}
+    )
+    assert policy.allow_public_sessions is False
+    assert not policy.may_commit_session_publicly(per_operation_flag=True)
+
+
+# --- leak scanning --------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "secret",
+    [
+        "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----",
+        "aws key AKIAIOSFODNN7EXAMPLE here",
+        "token ghp_" + "a" * 36,
+        "github_pat_" + "a" * 30,
+        "glpat-" + "a" * 20,
+        "xoxb-123456789012-abcdefghijkl",
+        "AIza" + "b" * 35,
+        "sk-" + "c" * 40,
+        "Authorization: Bearer sometoken",
+    ],
+)
+def test_scan_detects_secrets(secret: str) -> None:
+    hits = scan_for_leaks(secret)
+    assert hits
+    with pytest.raises(CaptureError):
+        assert_no_leaks(secret)
+
+
+def test_scan_detects_configured_private_marker() -> None:
+    text = "connecting to coordinator.internal.example for the run"
+    assert scan_for_leaks(text, private_markers=("coordinator.internal.example",)) == [
+        "private-marker"
+    ]
+    with pytest.raises(CaptureError):
+        assert_no_leaks(text, private_markers=("coordinator.internal.example",))
+
+
+def test_scan_passes_clean_text() -> None:
+    text = "The review found no blocking issues; the diff is within scope."
+    assert scan_for_leaks(text) == []
+    assert_no_leaks(text)  # does not raise
