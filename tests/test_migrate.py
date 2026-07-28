@@ -185,3 +185,103 @@ def test_migrate_journal_fails_closed(
         migrate_journal(source, target)
 
     assert not target.exists()
+
+
+def _raw(path: Path, content: str) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+    return path
+
+
+_TASK_NO_SCOPE = (
+    "# CR-001: T\n\nOwner: lead\nType: feat\nCreated: 2026-07-26\nStatus: open\n\n"
+    "## Body\n"
+)
+
+
+def _review_count(target: Path, task_id: str) -> int:
+    records = load_task_status(target, task_id).records
+    return sum(1 for r in records if r["record_type"] == "review")
+
+
+def test_strict_aborts_on_missing_scope(tmp_path: Path) -> None:
+    source, target = tmp_path / "v1", tmp_path / "v2"
+    _raw(source / "tasks" / "open" / "CR-001.md", _TASK_NO_SCOPE)
+    with pytest.raises(JournalMigrationError, match="Scope"):
+        migrate_journal(source, target)
+
+
+def test_lenient_defaults_empty_scope(tmp_path: Path) -> None:
+    source, target = tmp_path / "v1", tmp_path / "v2"
+    _raw(source / "tasks" / "open" / "CR-001.md", _TASK_NO_SCOPE)
+    report: list[str] = []
+    summaries = migrate_journal(source, target, lenient=True, report=report)
+    assert summaries == ["CR-001: open (0 review(s))"]
+    assert load_task_status(target, "CR-001").contract.scope == ()
+    assert any("defaulted empty scope" in note for note in report)
+
+
+def _task_done(source: Path) -> None:
+    write_task(
+        source,
+        "done/2026",
+        "CR-001",
+        "done",
+        extra_headers=f"Merged-Commit: {'b' * 40}\n",
+    )
+
+
+def test_lenient_skips_review_missing_identity(tmp_path: Path) -> None:
+    source, target = tmp_path / "v1", tmp_path / "v2"
+    _task_done(source)
+    _raw(
+        source / "reviews" / "2026" / "CR-001-x.md",
+        "Task: CR-001\nVerdict: changes_required\n\nBody\n",
+    )
+    report: list[str] = []
+    migrate_journal(source, target, lenient=True, report=report)
+    assert _review_count(target, "CR-001") == 0
+    assert any("skipped review" in n and "missing" in n for n in report)
+
+
+def test_lenient_skips_non_approved_review_missing_findings(tmp_path: Path) -> None:
+    source, target = tmp_path / "v1", tmp_path / "v2"
+    _task_done(source)
+    _raw(
+        source / "reviews" / "2026" / "CR-001-x.md",
+        "Task: CR-001\nReviewer-Role: qa\nReviewer-Vendor: codex\n"
+        "Reviewer-Model: m\nReviewer-Email: qa@x.invalid\n"
+        f"Reviewed-Commit: {'a' * 40}\nVerdict: blocked\n\nBody\n",
+    )
+    report: list[str] = []
+    migrate_journal(source, target, lenient=True, report=report)
+    assert _review_count(target, "CR-001") == 0
+    assert any("non-approved" in n for n in report)
+
+
+def test_lenient_migrates_approved_review_missing_findings(tmp_path: Path) -> None:
+    source, target = tmp_path / "v1", tmp_path / "v2"
+    _task_done(source)
+    _raw(
+        source / "reviews" / "2026" / "CR-001-x.md",
+        "Task: CR-001\nReviewer-Role: qa\nReviewer-Vendor: codex\n"
+        "Reviewer-Model: m\nReviewer-Email: qa@x.invalid\n"
+        f"Reviewed-Commit: {'a' * 40}\nVerdict: approved\n\nBody\n",
+    )
+    report: list[str] = []
+    migrate_journal(source, target, lenient=True, report=report)
+    assert _review_count(target, "CR-001") == 1
+    assert any("defaulted Finding-IDs=none" in n for n in report)
+
+
+def test_lenient_drops_findings_from_approved_review(tmp_path: Path) -> None:
+    source, target = tmp_path / "v1", tmp_path / "v2"
+    _task_done(source)
+    write_review(source, "CR-001-approve.md", "CR-001", "approved", "F1, F2")
+    report: list[str] = []
+    migrate_journal(source, target, lenient=True, report=report)
+    records = load_task_status(target, "CR-001").records
+    review = next(r for r in records if r["record_type"] == "review")
+    assert review["verdict"] == "approved"
+    assert review["findings"] == []
+    assert any("dropped 2 non-blocking finding" in n for n in report)
