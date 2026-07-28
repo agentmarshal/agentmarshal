@@ -274,14 +274,28 @@ def test_lenient_migrates_approved_review_missing_findings(tmp_path: Path) -> No
     assert any("defaulted Finding-IDs=none" in n for n in report)
 
 
-def test_lenient_drops_findings_from_approved_review(tmp_path: Path) -> None:
+def test_lenient_skips_inconsistent_review(tmp_path: Path) -> None:
+    # An approved review carrying findings is inconsistent under the v2
+    # model; lenient migration skips it (never rewrites the evidence).
     source, target = tmp_path / "v1", tmp_path / "v2"
     _task_done(source)
     write_review(source, "CR-001-approve.md", "CR-001", "approved", "F1, F2")
     report: list[str] = []
     migrate_journal(source, target, lenient=True, report=report)
-    records = load_task_status(target, "CR-001").records
-    review = next(r for r in records if r["record_type"] == "review")
-    assert review["verdict"] == "approved"
-    assert review["findings"] == []
-    assert any("dropped 2 non-blocking finding" in n for n in report)
+    assert _review_count(target, "CR-001") == 0
+    assert any("inconsistent verdict/findings" in note for note in report)
+
+
+def test_strict_cli_output_unchanged(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Strict mode keeps the original completion line (no lenient suffix).
+    source, target = tmp_path / "v1", tmp_path / "v2"
+    write_task(source, "open", "CR-001", "open")
+    exit_code = main(
+        ["migrate-journal", "--source", str(source), "--target", str(target)]
+    )
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "Migrated 1 task(s)." in out
+    assert "lenient note" not in out

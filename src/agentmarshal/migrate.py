@@ -236,21 +236,15 @@ def _parse_review(
     if (verdict == "approved") != (not findings):
         if not lenient:
             raise _error(path, "Verdict and Finding-IDs are inconsistent")
-        if verdict == "approved" and findings:
-            # Pre-v1 allowed an approved review to carry non-blocking
-            # findings (tracked separately as follow-up tasks). v2 models
-            # approved as zero findings, so keep the approval attestation
-            # and drop the findings, noted — they are not lost, they are the
-            # migrated follow-up tasks.
-            _note(
-                report,
-                f"{path}: dropped {len(findings)} non-blocking finding(s) "
-                "from an approved review (pre-v1 approve-with-findings)",
-            )
-            findings = []
-        else:
-            _skip("non-approved verdict with no findings to reconstruct")
-            return None
+        # An inconsistent attestation (an approved review carrying findings,
+        # or a non-approved one with none) cannot be migrated faithfully
+        # under the v2 model without altering the recorded evidence, so it
+        # is skipped and reported rather than rewritten.
+        _skip(
+            f"inconsistent verdict/findings "
+            f"(verdict={verdict!r}, {len(findings)} finding(s))"
+        )
+        return None
     record = create_review_record(
         task_id,
         __version__,

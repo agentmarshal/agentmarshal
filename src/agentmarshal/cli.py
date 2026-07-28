@@ -467,7 +467,10 @@ def _run_migrate_journal(
         print(f"note: {note}", file=stderr)
     for summary in summaries:
         print(summary)
-    print(f"Migrated {len(summaries)} task(s); {len(report)} lenient note(s).")
+    if lenient:
+        print(f"Migrated {len(summaries)} task(s); {len(report)} lenient note(s).")
+    else:
+        print(f"Migrated {len(summaries)} task(s).")
     return 0
 
 
