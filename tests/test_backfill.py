@@ -252,6 +252,21 @@ def test_symlinked_stat_file_is_refused(tmp_path: Path) -> None:
         backfill_task_sessions(stats, "CR-011", _IMPORTED_AT)
 
 
+def test_symlinked_stats_directory_is_refused(tmp_path: Path) -> None:
+    # A symlinked stats directory must be refused: opening it no-follow
+    # prevents importing files reached through a swapped-in parent.
+    real = tmp_path / "real"
+    _write(real, "RUN-20260719T090000Z-lead-3514f554.json", _lead_stat())
+    link = tmp_path / "stats"
+    try:
+        link.symlink_to(real, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks are unsupported on this platform")
+
+    with pytest.raises(BackfillError, match=r"symlink|directory"):
+        backfill_task_sessions(link, "CR-011", _IMPORTED_AT)
+
+
 def test_import_fails_closed_without_no_follow_support(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

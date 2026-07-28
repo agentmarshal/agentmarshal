@@ -188,66 +188,93 @@ def session_record_from_stat(
     return record
 
 
+def _secure_dir_reads_supported() -> bool:
+    """Whether the platform supports no-follow directory-relative reads.
+
+    Evaluated at call time so the fail-closed guard can be exercised.
+    """
+
+    return (
+        os.open in os.supports_dir_fd
+        and hasattr(os, "O_DIRECTORY")
+        and hasattr(os, "O_NOFOLLOW")
+    )
+
+
 def _read_stat_files(
     stats_dir: Path,
 ) -> Iterator[tuple[str, bytes, dict[str, object]]]:
     """Yield (stat_id, raw_bytes, stat) for every stat JSON in *stats_dir*.
 
-    The exact bytes are retained so provenance can hash the source file
-    before JSON decoding. Unrelated files (anything not a ``RUN-*.json``)
-    are ignored, so the directory can hold other host state.
+    The directory is opened once with no-follow semantics and every entry
+    is opened relative to that descriptor, so neither a symlinked parent
+    swapped in after validation nor a ``RUN-*.json`` symlink can make the
+    importer hash bytes from outside the retained stats directory and
+    attribute them to an in-directory ``source_ref`` — the provenance
+    guarantee. The exact bytes are retained so provenance can hash the
+    source before JSON decoding; unrelated files are ignored.
     """
 
-    if stats_dir.is_symlink() or not stats_dir.is_dir():
-        raise BackfillError(f"{stats_dir}: stats directory is not a directory")
-    for path in sorted(stats_dir.iterdir()):
-        if path.suffix != ".json" or not path.name.startswith("RUN-"):
-            continue
-        # Read with no-follow semantics so a RUN-*.json symlink cannot make
-        # the importer hash bytes from outside the retained stats directory
-        # and attribute them to an in-directory source_ref, which would
-        # break the provenance guarantee.
-        raw = _read_regular_file_nofollow(path)
-        try:
-            loaded = json.loads(raw.decode("utf-8-sig"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as error:
-            raise BackfillError(f"{path}: cannot read stat record: {error}") from error
-        if not isinstance(loaded, dict):
-            raise BackfillError(f"{path}: stat record must be a JSON object")
-        yield path.stem, raw, loaded
-
-
-def _read_regular_file_nofollow(path: Path) -> bytes:
-    """Read a regular file without following a symlink at its final component.
-
-    ``O_NOFOLLOW`` fails if ``path`` is a symlink, and the ``fstat`` on the
-    open descriptor confirms the object read is a regular file (not a fifo
-    or device) — the same descriptor is read, closing the check/read race.
-    """
-
-    # Cross-platform reject of a symlinked final component (lstat, no
-    # follow), plus a fail-closed guard: never fall back to a zero flag,
-    # which would silently follow symlinks where O_NOFOLLOW is absent.
-    if path.is_symlink():
-        raise BackfillError(f"{path}: refusing to read through a symlink")
-    if not hasattr(os, "O_NOFOLLOW"):
+    if not _secure_dir_reads_supported():
         raise BackfillError(
-            f"{path}: no-follow reads are unavailable on this platform; "
-            "refusing to import"
+            "secure no-follow directory reads are unavailable on this "
+            "platform; refusing to import"
         )
+    if stats_dir.is_symlink():
+        raise BackfillError(f"{stats_dir}: refusing to read through a symlink")
     try:
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        dir_fd = os.open(stats_dir, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     except OSError as error:
         raise BackfillError(
-            f"{path}: refusing to read (symlink or unreadable): {error}"
+            f"{stats_dir}: cannot open stats directory: {error}"
+        ) from error
+    try:
+        if not stat_module.S_ISDIR(os.fstat(dir_fd).st_mode):
+            raise BackfillError(f"{stats_dir}: stats path is not a directory")
+        for name in sorted(os.listdir(dir_fd)):
+            if not name.endswith(".json") or not name.startswith("RUN-"):
+                continue
+            raw = _read_regular_file_at(dir_fd, name, stats_dir)
+            try:
+                loaded = json.loads(raw.decode("utf-8-sig"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as error:
+                raise BackfillError(
+                    f"{stats_dir}/{name}: cannot read stat record: {error}"
+                ) from error
+            if not isinstance(loaded, dict):
+                raise BackfillError(
+                    f"{stats_dir}/{name}: stat record must be a JSON object"
+                )
+            yield name.removesuffix(".json"), raw, loaded
+    finally:
+        os.close(dir_fd)
+
+
+def _read_regular_file_at(dir_fd: int, name: str, stats_dir: Path) -> bytes:
+    """Read *name* relative to *dir_fd* without following a symlink.
+
+    ``O_NOFOLLOW`` fails if the entry is a symlink, and the ``fstat`` on the
+    open descriptor confirms a regular file (not a fifo or device); the same
+    descriptor is read, closing the check/read race.
+    """
+
+    try:
+        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=dir_fd)
+    except OSError as error:
+        raise BackfillError(
+            f"{stats_dir}/{name}: refusing to read (symlink or unreadable): {error}"
         ) from error
     try:
         with os.fdopen(fd, "rb") as handle:
             if not stat_module.S_ISREG(os.fstat(handle.fileno()).st_mode):
-                raise BackfillError(f"{path}: stat record is not a regular file")
+                raise BackfillError(
+                    f"{stats_dir}/{name}: stat record is not a regular file"
+                )
             return handle.read()
     except OSError as error:
-        raise BackfillError(f"{path}: cannot read stat record: {error}") from error
+        raise BackfillError(
+            f"{stats_dir}/{name}: cannot read stat record: {error}"
+        ) from error
 
 
 def _map_file(
