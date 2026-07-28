@@ -220,10 +220,20 @@ def _read_stat_files(
             "secure no-follow directory reads are unavailable on this "
             "platform; refusing to import"
         )
-    if stats_dir.is_symlink():
-        raise BackfillError(f"{stats_dir}: refusing to read through a symlink")
+    # Reject a symlink anywhere in the path, not just the final component:
+    # O_NOFOLLOW guards only the last component, so an ancestor symlink
+    # (e.g. /trusted/link/stats) could still escape the retained-data tree.
+    # abspath normalizes ".." and makes absolute without resolving symlinks;
+    # resolve() follows them — a mismatch means a symlinked component. This
+    # matches how the journal root itself is protected
+    # (records.ensure_journal_root_is_real).
+    absolute = Path(os.path.abspath(stats_dir))
+    if stats_dir.resolve() != absolute:
+        raise BackfillError(
+            f"{stats_dir}: stats directory path contains a symlinked component"
+        )
     try:
-        dir_fd = os.open(stats_dir, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        dir_fd = os.open(absolute, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     except OSError as error:
         raise BackfillError(
             f"{stats_dir}: cannot open stats directory: {error}"

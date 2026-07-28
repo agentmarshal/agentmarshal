@@ -267,6 +267,22 @@ def test_symlinked_stats_directory_is_refused(tmp_path: Path) -> None:
         backfill_task_sessions(link, "CR-011", _IMPORTED_AT)
 
 
+def test_ancestor_symlink_is_refused(tmp_path: Path) -> None:
+    # A symlink anywhere in the path — not just the final component — must
+    # be refused, or an ancestor could redirect the import outside the tree.
+    real = tmp_path / "real"
+    stats = real / "stats"
+    _write(stats, "RUN-20260719T090000Z-lead-3514f554.json", _lead_stat())
+    link = tmp_path / "link"
+    try:
+        link.symlink_to(real, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks are unsupported on this platform")
+
+    with pytest.raises(BackfillError, match="symlink"):
+        backfill_task_sessions(link / "stats", "CR-011", _IMPORTED_AT)
+
+
 def test_import_fails_closed_without_no_follow_support(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
