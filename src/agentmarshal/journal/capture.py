@@ -89,6 +89,8 @@ class CapturePolicy:
         # still holds a reference to, which could otherwise inject a session
         # COMMIT after construction. Validate the copy, then store the
         # read-only view.
+        if not isinstance(self.allow_public_sessions, bool):
+            raise CaptureError("allow_public_sessions must be a boolean")
         frozen = MappingProxyType(dict(self.overrides))
         # Sessions are private by default at every preset; committing one
         # publicly is a separate escalation gated by the two opt-ins below,
@@ -123,9 +125,13 @@ class CapturePolicy:
         and a per-operation flag are set (ADR-0005 supersedes ADR-0004 D7
         for this narrow case). The preset/override path can never yield a
         public session, so this is the sole gate to public session content.
+        Both opt-ins must be strict booleans — a truthy non-boolean flag is
+        rejected fail-closed rather than silently authorizing a commit.
         """
 
-        return self.allow_public_sessions and per_operation_flag
+        if not isinstance(per_operation_flag, bool):
+            raise CaptureError("per-operation session flag must be a boolean")
+        return self.allow_public_sessions is True and per_operation_flag is True
 
     def resolve_session_disposition(self, per_operation_flag: bool) -> CaptureLevel:
         """Return the authoritative capture level for a raw session.
@@ -228,7 +234,10 @@ _LEAK_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("gitlab-token", re.compile(r"\bglpat-[A-Za-z0-9_-]{20}\b")),
     ("slack-token", re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b")),
     ("google-api-key", re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b")),
-    ("openai-key", re.compile(r"\bsk-[A-Za-z0-9]{32,}\b")),
+    (
+        "openai-key",
+        re.compile(r"\bsk-(?:proj-|svcacct-|admin-)?[A-Za-z0-9_-]{20,}\b"),
+    ),
     (
         "authorization-header",
         re.compile(r"(?i)authorization:\s*(?:bearer|basic)\s+\S+"),

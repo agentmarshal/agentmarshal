@@ -142,6 +142,18 @@ def test_overrides_are_defensively_copied() -> None:
     )
 
 
+def test_both_opt_ins_must_be_strict_booleans() -> None:
+    # A truthy non-boolean must never authorize a public session.
+    with pytest.raises(CaptureError, match="allow_public_sessions must be a boolean"):
+        CapturePolicy(preset="full", allow_public_sessions="false")  # type: ignore[arg-type]
+
+    policy = CapturePolicy(preset="full", allow_public_sessions=True)
+    with pytest.raises(CaptureError, match="per-operation session flag"):
+        policy.may_commit_session_publicly(per_operation_flag=1)  # type: ignore[arg-type]
+    with pytest.raises(CaptureError, match="per-operation session flag"):
+        policy.resolve_session_disposition(per_operation_flag="yes")  # type: ignore[arg-type]
+
+
 def test_resolve_session_disposition_gated_by_two_opt_ins() -> None:
     # The authoritative session API returns COMMIT only with both opt-ins.
     default = capture_policy_from_project({"capture": {"preset": "full"}})
@@ -180,6 +192,8 @@ def test_resolve_session_disposition_gated_by_two_opt_ins() -> None:
         "xoxb-123456789012-abcdefghijkl",
         "AIza" + "b" * 35,
         "sk-" + "c" * 40,
+        "sk-proj-" + "A" * 48,
+        "sk-svcacct-" + "B" * 40,
         "Authorization: Bearer sometoken",
     ],
 )
