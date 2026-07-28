@@ -11,7 +11,10 @@ from agentmarshal.journal.backfill import (
     BackfillError,
     backfill_task_sessions,
     session_record_from_stat,
+    source_hash,
 )
+
+_IMPORTED_AT = "2026-07-28T08:00:00Z"
 
 
 def _lead_stat(**overrides: object) -> dict[str, object]:
@@ -53,6 +56,16 @@ def _qa_stat(**overrides: object) -> dict[str, object]:
     return stat
 
 
+def _map(stat: dict[str, object], **overrides: object) -> dict[str, object]:
+    kwargs: dict[str, object] = {
+        "source_ref": "RUN-20260719T075212Z-lead-3514f554",
+        "source_digest": "a" * 64,
+        "imported_at": _IMPORTED_AT,
+    }
+    kwargs.update(overrides)
+    return session_record_from_stat(stat, **kwargs)  # type: ignore[arg-type]
+
+
 def _write(stats_dir: Path, name: str, stat: dict[str, object]) -> None:
     stats_dir.mkdir(parents=True, exist_ok=True)
     (stats_dir / name).write_text(json.dumps(stat), encoding="utf-8")
@@ -62,7 +75,7 @@ def _write(stats_dir: Path, name: str, stat: dict[str, object]) -> None:
 
 
 def test_lead_stat_maps_to_imported_session() -> None:
-    record = session_record_from_stat(_lead_stat())
+    record = _map(_lead_stat())
     assert record["schema"] == 2
     assert record["record_type"] == "session"
     assert record["source"] == "imported-from-host"
@@ -80,18 +93,32 @@ def test_lead_stat_maps_to_imported_session() -> None:
     }
 
 
+def test_provenance_pins_source_hash_and_import_time() -> None:
+    record = _map(_lead_stat(), source_digest="b" * 64)
+    artifacts = record["artifacts"]
+    assert isinstance(artifacts, list) and len(artifacts) == 1
+    entry = artifacts[0]
+    assert entry["hash"] == "b" * 64
+    assert "imported-at=2026-07-28T08:00:00Z" in entry["ref"]
+    assert "RUN-20260719T075212Z-lead-3514f554" in entry["ref"]
+
+
+def test_source_hash_changes_with_source_bytes() -> None:
+    assert source_hash(b"one") != source_hash(b"two")
+    assert len(source_hash(b"one")) == 64
+
+
 def test_qa_stat_maps_review_activity() -> None:
-    record = session_record_from_stat(_qa_stat())
+    record = _map(_qa_stat())
     assert record["activity"] == "review"
     assert record["actor"] == "codex/gpt-5.6-sol"
-    # cache-creation absent defaults to zero.
     tokens = record["tokens"]
     assert isinstance(tokens, dict)
-    assert tokens["cache"] == 320000
+    assert tokens["cache"] == 320000  # cache-creation absent defaults to zero
 
 
 def test_unknown_activity_normalizes_to_other() -> None:
-    record = session_record_from_stat(_lead_stat(activity="planning"))
+    record = _map(_lead_stat(activity="planning"))
     assert record["activity"] == "other"
 
 
@@ -102,17 +129,30 @@ def test_missing_field_fails_closed() -> None:
     stat = _lead_stat()
     del stat["output_tokens"]
     with pytest.raises(BackfillError, match="output_tokens"):
-        session_record_from_stat(stat)
+        _map(stat)
 
 
 def test_negative_tokens_fail_closed() -> None:
     with pytest.raises(BackfillError):
-        session_record_from_stat(_lead_stat(input_tokens=-1))
+        _map(_lead_stat(input_tokens=-1))
 
 
 def test_bad_task_id_fails_closed() -> None:
     with pytest.raises(BackfillError):
-        session_record_from_stat(_lead_stat(task="not-a-task"))
+        _map(_lead_stat(task="not-a-task"))
+
+
+def test_missing_import_metadata_fails_closed() -> None:
+    with pytest.raises(BackfillError, match="imported_at"):
+        _map(_lead_stat(), imported_at="")
+    with pytest.raises(BackfillError, match="source_ref"):
+        _map(_lead_stat(), source_ref="")
+
+
+def test_leak_in_stat_field_fails_closed() -> None:
+    # A secret smuggled into a free-text field is refused, not restored.
+    with pytest.raises(BackfillError, match="leak"):
+        _map(_lead_stat(outcome="token ghp_" + "a" * 36))
 
 
 # --- directory selection --------------------------------------------------
@@ -138,13 +178,18 @@ def test_per_task_selector_filters_and_orders(tmp_path: Path) -> None:
     # An unrelated file must be ignored.
     (stats / "README.md").write_text("not a stat\n", encoding="utf-8")
 
-    records = backfill_task_sessions(stats, "CR-011")
+    records = backfill_task_sessions(stats, "CR-011", _IMPORTED_AT)
 
     assert [record["role"] for record in records] == ["qa", "lead"]  # by timestamp
     assert all(record["task"] == "CR-011" for record in records)
     assert all(record["source"] == "imported-from-host" for record in records)
+    # The hash is over the real file bytes (64 hex).
+    for record in records:
+        artifacts = record["artifacts"]
+        assert isinstance(artifacts, list)
+        assert len(artifacts[0]["hash"]) == 64
 
 
 def test_selector_rejects_missing_directory(tmp_path: Path) -> None:
     with pytest.raises(BackfillError):
-        backfill_task_sessions(tmp_path / "absent", "CR-011")
+        backfill_task_sessions(tmp_path / "absent", "CR-011", _IMPORTED_AT)
