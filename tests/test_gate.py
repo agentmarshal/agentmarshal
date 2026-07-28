@@ -7,7 +7,11 @@ import pytest
 
 from agentmarshal.cli import main
 from agentmarshal.journal.gate import GateError, run_gate
-from agentmarshal.journal.records import create_completed_record, write_record
+from agentmarshal.journal.records import (
+    create_completed_record,
+    create_session_record,
+    write_record,
+)
 
 _WRITER = ["-c", "user.name=Worker", "-c", "user.email=worker@test.invalid"]
 _REVIEWER_EMAIL = "reviewer@test.invalid"
@@ -559,8 +563,8 @@ def test_gate_allows_completion_candidate(
 def test_gate_refuses_candidate_on_a_task_closed_at_base(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Once a task is closed on the base tree, no further candidate may
-    # merge against it.
+    # Once a task is closed on the base tree, no non-measurement candidate
+    # may merge against it (a session-only append is the exception below).
     repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
     journal = repo / ".agentmarshal" / "journal"
     write_record(journal, "CR-001", create_completed_record("CR-001", "test", base))
@@ -568,6 +572,55 @@ def test_gate_refuses_candidate_on_a_task_closed_at_base(
 
     _git(repo, "switch", "--quiet", "-c", "after-close", closed_base)
     head = _implement(repo, "src/more.py")
+
+    passed, output = _run(repo, head, closed_base, head)
+
+    assert not passed
+    assert "already closed at base" in output
+
+
+def test_gate_allows_session_only_append_to_closed_task(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A task closed at base still admits measurements: a journal-only
+    # candidate whose added records are all session records accrues
+    # economics after the terminal record (ADR-0005 Decision 3).
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    journal = repo / ".agentmarshal" / "journal"
+    write_record(journal, "CR-001", create_completed_record("CR-001", "test", base))
+    closed_base = _commit_all(repo, "complete CR-001 on master")
+
+    _git(repo, "switch", "--quiet", "-c", "measure", closed_base)
+    write_record(
+        journal,
+        "CR-001",
+        create_session_record(
+            "CR-001", "test", "lead", "opus", "implementation", "done", 10, 20, 30
+        ),
+    )
+    head = _commit_all(repo, "record session for CR-001")
+
+    passed, output = _run(repo, head, closed_base, head)
+
+    assert passed, output
+    assert "measurements-only append to a task closed at base" in output
+    assert output.count("FAIL") == 0
+
+
+def test_gate_refuses_artifact_only_append_to_closed_task(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The measurements lane requires at least one session record: a
+    # journal candidate adding only a non-record document to a closed task
+    # is not a measurement and is still refused by the base-state check.
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    journal = repo / ".agentmarshal" / "journal"
+    write_record(journal, "CR-001", create_completed_record("CR-001", "test", base))
+    closed_base = _commit_all(repo, "complete CR-001 on master")
+
+    _git(repo, "switch", "--quiet", "-c", "note", closed_base)
+    (journal / "tasks" / "CR-001" / "note.md").write_text("late\n", encoding="utf-8")
+    head = _commit_all(repo, "add a note to a closed task")
 
     passed, output = _run(repo, head, closed_base, head)
 

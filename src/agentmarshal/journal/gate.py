@@ -198,6 +198,18 @@ def run_gate(
         ).splitlines()
     )
 
+    # The record-level changes drive both the measurements lane below and
+    # the append-only / validity checks later; compute them once here.
+    record_changes = [
+        (status, path)
+        for status, path in _changed_with_status(
+            project_root, merge_base, resolved_commit
+        )
+        if _is_record_path(path)
+    ]
+    added_records = [path for status, path in record_changes if status == "A"]
+    journal_only = all(path.startswith(_JOURNAL_PREFIX) for path in changed)
+
     # "Open" is decided from the base tree, never the candidate: opening,
     # implementation and completion candidates all merge onto a task that
     # is not yet closed there, so a legitimate open->terminal completion
@@ -208,14 +220,29 @@ def run_gate(
         and (path.endswith("-completed.json") or path.endswith("-abandoned.json"))
         for path in base_tree
     )
-    check(
-        not closed_at_base,
-        f"task {task_id} is not closed at base"
-        if not closed_at_base
-        else f"task {task_id} is already closed at base (candidate state: {task.state})",
+    # A task closed at base still admits measurements: a journal-only
+    # candidate whose added records are all session records accrues
+    # economics after the terminal record (ADR-0005 Decision 3) without
+    # mutating the lifecycle. Any non-session record or non-journal file on
+    # a closed task remains refused by the base-state check.
+    measurements_only = (
+        journal_only
+        and bool(added_records)
+        and all(path.endswith("-session.json") for path in added_records)
     )
+    if not closed_at_base:
+        lines.append(f"PASS: task {task_id} is not closed at base")
+    elif measurements_only:
+        lines.append(
+            "PASS: measurements-only append to a task closed at base "
+            "(session records accrue post-terminal)"
+        )
+    else:
+        check(
+            False,
+            f"task {task_id} is already closed at base (candidate state: {task.state})",
+        )
 
-    journal_only = all(path.startswith(_JOURNAL_PREFIX) for path in changed)
     if journal_only:
         lines.append(
             "PASS: journal-only transaction (deterministic lane; review not required)"
@@ -300,14 +327,8 @@ def run_gate(
 
     # Evidence records are append-only for every candidate: any
     # modification, deletion or rename of an existing record rewrites
-    # history at the merge boundary and is refused (ADR-0004).
-    record_changes = [
-        (status, path)
-        for status, path in _changed_with_status(
-            project_root, merge_base, resolved_commit
-        )
-        if _is_record_path(path)
-    ]
+    # history at the merge boundary and is refused (ADR-0004). The record
+    # changes were computed once above for the measurements lane.
     tampered = sorted(path for status, path in record_changes if status != "A")
     check(
         not tampered,
@@ -317,7 +338,6 @@ def run_gate(
         + ", ".join(tampered),
     )
 
-    added_records = [path for status, path in record_changes if status == "A"]
     invalid: list[str] = []
     for path in added_records:
         try:

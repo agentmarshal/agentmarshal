@@ -195,3 +195,23 @@ def test_projection_rejects_record_after_terminal(tmp_path: Path) -> None:
     ]
     with pytest.raises(TaskStatusError, match="after a terminal record"):
         project_status(both_terminal)
+
+
+def test_projection_admits_session_after_terminal(tmp_path: Path) -> None:
+    from agentmarshal.journal.records import (
+        create_completed_record,
+        create_opened_record,
+        create_session_record,
+    )
+
+    # Measurements are not lifecycle (ADR-0005 Decision 3): a session
+    # record accrues after a terminal record and leaves the state terminal.
+    records = [
+        create_opened_record("CR-001", "1.0"),
+        create_completed_record("CR-001", "1.0", "a" * 40),
+        create_session_record(
+            "CR-001", "1.0", "lead", "opus", "implementation", "done", 1, 2, 3
+        ),
+    ]
+
+    assert project_status(records) == "done"

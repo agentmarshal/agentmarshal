@@ -48,8 +48,14 @@ def project_status(records: Sequence[Mapping[str, object]]) -> str:
         record_type = record.get("record_type")
         if not isinstance(record_type, str) or record_type not in _RECORD_TYPE_STATES:
             raise TaskStatusError(f"record has no status projection: {record_type!r}")
-        if has_terminal_record:
-            raise TaskStatusError("task has a record after a terminal record")
+        # Measurements are not lifecycle (ADR-0005 Decision 3): a session
+        # record projects to no state and may accrue after a terminal
+        # record. Any other record type after a terminal one is a
+        # lifecycle mutation of a closed task and stays forbidden.
+        if has_terminal_record and record_type != "session":
+            raise TaskStatusError(
+                "task has a lifecycle record after a terminal record"
+            )
         if record_type == "opened":
             if has_opened_record:
                 raise TaskStatusError("task records contain multiple opened records")
