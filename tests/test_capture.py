@@ -85,6 +85,7 @@ def test_override_beats_preset() -> None:
         {"preset": 2},
         {"overrides": {"reviews": "publish"}},
         {"overrides": {"telemetry": "commit"}},
+        {"overrides": {"sessions": "commit"}},
         {"overrides": "commit-everything"},
         {"allow_public_sessions": "yes"},
         {"unknown_field": 1},
@@ -113,16 +114,41 @@ def test_public_session_needs_both_opt_ins() -> None:
     assert configured.may_commit_session_publicly(per_operation_flag=True)
 
 
-def test_preset_path_never_yields_public_session() -> None:
-    # Even an explicit commit override for sessions leaves public session
-    # commit gated: allow_public_sessions defaults off, so the guard is
-    # false regardless of the per-operation flag. Only the two-opt-in guard
-    # can authorize public session content.
-    policy = capture_policy_from_project(
-        {"capture": {"preset": "full", "overrides": {"sessions": "commit"}}}
+def test_session_commit_override_is_rejected() -> None:
+    # A session COMMIT is not expressible as a capture override; it fails
+    # closed so no configuration path can leak a raw session.
+    with pytest.raises(CaptureError, match="sessions cannot be set to 'commit'"):
+        CapturePolicy(
+            preset="full", overrides={CaptureClass.SESSIONS: CaptureLevel.COMMIT}
+        )
+    with pytest.raises(CaptureError):
+        capture_policy_from_project(
+            {"capture": {"preset": "full", "overrides": {"sessions": "commit"}}}
+        )
+
+
+def test_resolve_session_disposition_gated_by_two_opt_ins() -> None:
+    # The authoritative session API returns COMMIT only with both opt-ins.
+    default = capture_policy_from_project({"capture": {"preset": "full"}})
+    assert (
+        default.resolve_session_disposition(per_operation_flag=True)
+        == CaptureLevel.HASH
     )
-    assert policy.allow_public_sessions is False
-    assert not policy.may_commit_session_publicly(per_operation_flag=True)
+
+    configured = CapturePolicy(preset="full", allow_public_sessions=True)
+    assert (
+        configured.resolve_session_disposition(per_operation_flag=False)
+        == CaptureLevel.HASH
+    )
+    assert (
+        configured.resolve_session_disposition(per_operation_flag=True)
+        == CaptureLevel.COMMIT
+    )
+
+    minimal = capture_policy_from_project({"capture": {"preset": "minimal"}})
+    assert (
+        minimal.resolve_session_disposition(per_operation_flag=True) == CaptureLevel.OFF
+    )
 
 
 # --- leak scanning --------------------------------------------------------

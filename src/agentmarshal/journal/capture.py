@@ -82,8 +82,27 @@ class CapturePolicy:
     overrides: Mapping[CaptureClass, CaptureLevel] = field(default_factory=dict)
     allow_public_sessions: bool = False
 
+    def __post_init__(self) -> None:
+        # Sessions are private by default at every preset; committing one
+        # publicly is a separate escalation gated by the two opt-ins below,
+        # never expressible as a capture level. Reject a session COMMIT
+        # override fail-closed so no configuration path can leak a raw
+        # session (ADR-0005 Decision 2).
+        if self.overrides.get(CaptureClass.SESSIONS) is CaptureLevel.COMMIT:
+            raise CaptureError(
+                "sessions cannot be set to 'commit' via a capture override; "
+                "public session commit requires allow_public_sessions plus a "
+                "per-operation flag"
+            )
+
     def level_for(self, capture_class: CaptureClass) -> CaptureLevel:
-        """Return the effective level for a class; an override beats the preset."""
+        """Return the effective level for a class; an override beats the preset.
+
+        For ``SESSIONS`` this is only ever ``OFF`` or ``HASH`` — a public
+        session is never expressed as a level. Use
+        :meth:`resolve_session_disposition` for the authoritative session
+        decision, which folds in the two-opt-in public gate.
+        """
 
         if capture_class in self.overrides:
             return self.overrides[capture_class]
@@ -99,6 +118,19 @@ class CapturePolicy:
         """
 
         return self.allow_public_sessions and per_operation_flag
+
+    def resolve_session_disposition(self, per_operation_flag: bool) -> CaptureLevel:
+        """Return the authoritative capture level for a raw session.
+
+        The single API for session disposition: it returns ``COMMIT`` only
+        when the two-opt-in public gate is satisfied, and otherwise the
+        private preset/override level (``OFF`` or ``HASH``). No caller can
+        obtain a public-session decision without both opt-ins.
+        """
+
+        if self.may_commit_session_publicly(per_operation_flag):
+            return CaptureLevel.COMMIT
+        return self.level_for(CaptureClass.SESSIONS)
 
 
 def _parse_level(value: object, capture_class: CaptureClass) -> CaptureLevel:
