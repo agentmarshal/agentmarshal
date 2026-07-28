@@ -52,8 +52,12 @@ review/completed record that is not in-toto-Statement-derivable-complete.
 Until then this ADR does not represent the guarantee as enforced; after
 activation a user cannot accidentally turn interoperability off.
 
-This guarantee is the **envelope plus our predicate only**. It is **not**
-a SLSA conformance claim: SLSA Source (v1.2) additionally requires trusted
+This guarantee is the **in-toto Statement layer** (`subject`,
+`predicateType`, `predicate`) carrying AgentMarshal's own predicate. The
+**DSSE Envelope layer (signing) is a distinct in-toto layer and lies
+outside this activation boundary** — it is introduced by the wave-2
+signing slice (Decision 5), not by the completeness invariant. It is
+**not** a SLSA conformance claim: SLSA Source (v1.2) additionally requires trusted
 identities, enforced protected-reference controls, approval bound to the
 final revision, and contemporaneous source attestations — process- and
 provider-level properties our record fields cannot establish. SLSA
@@ -153,9 +157,10 @@ committed contract's hash, git author/committer emails) need not be
 stored; they are computed at projection time, so they cannot be turned
 off.
 
-The projection guarantee is scoped to the **in-toto Statement envelope
-plus AgentMarshal's own AI-review `predicateType`** — a syntactically
-valid, **schema-checkable** in-toto Statement. Structural validity is all
+The projection guarantee is scoped to the **in-toto Statement layer
+carrying AgentMarshal's own AI-review `predicateType`** — a syntactically
+valid, **schema-checkable** in-toto Statement. The DSSE **Envelope** layer
+is a separate in-toto layer, out of scope until the wave-2 signing slice. Structural validity is all
 the unsigned projection asserts: its producer and integrity become
 cryptographically **verifiable only once the DSSE/Sigstore signing of
 wave 2 wraps it**, so "verifiable attestation" is reserved for that signed
