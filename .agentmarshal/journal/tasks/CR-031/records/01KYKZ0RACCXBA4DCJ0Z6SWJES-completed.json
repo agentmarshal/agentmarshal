@@ -1,0 +1,9 @@
+{
+  "completed_commit": "520683919145312d6afe544df7ed140ee002eddd",
+  "created_at": "2026-07-28T08:56:16.460378Z",
+  "record_type": "completed",
+  "schema": 2,
+  "source": "live",
+  "task": "CR-031",
+  "tool_version": "0.1.0.dev0"
+}
