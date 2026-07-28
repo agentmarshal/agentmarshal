@@ -201,10 +201,10 @@ def test_resolve_session_disposition_gated_by_two_opt_ins() -> None:
 @pytest.mark.parametrize(
     "secret",
     [
-        "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----",
-        "-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----",
-        "-----BEGIN ENCRYPTED PRIVATE KEY-----\nabc\n-----END ENCRYPTED PRIVATE KEY-----",
-        "-----BEGIN PGP PRIVATE KEY BLOCK-----\nabc\n-----END PGP PRIVATE KEY BLOCK-----",
+        "-----BEGIN OPENSSH PRIVATE KEY-----\nx",
+        "-----BEGIN PRIVATE KEY-----\nx",
+        "-----BEGIN ENCRYPTED PRIVATE KEY-----\nx",
+        "-----BEGIN PGP PRIVATE KEY BLOCK-----\nx",
         "aws key AKIAIOSFODNN7EXAMPLE here",
         "temp creds ASIAIOSFODNN7EXAMPLE session",
         "token ghp_" + "a" * 36,
