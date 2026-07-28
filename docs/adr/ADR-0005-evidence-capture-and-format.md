@@ -44,9 +44,13 @@ the format strategy. It extends ADR-0004 D7.
 derivable in-toto Statement carrying AgentMarshal's own predicate — is a
 property of the always-on attestation records, not of the capture policy.
 No capture setting drops the journal below in-toto Statement
-completeness. `agentmarshal validate` enforces it fail-closed: a
-review/completed record that is not in-toto-Statement-derivable-complete
-is rejected. A user cannot accidentally turn interoperability off.
+completeness. **This is normative intent, not a property the current
+validator enforces.** Its **activation boundary** is the schema-fields +
+validate-check slice (Decision 5): only once those fields land and the
+check ships will `agentmarshal validate` reject, fail-closed, a
+review/completed record that is not in-toto-Statement-derivable-complete.
+Until then this ADR does not represent the guarantee as enforced; after
+activation a user cannot accidentally turn interoperability off.
 
 This guarantee is the **envelope plus our predicate only**. It is **not**
 a SLSA conformance claim: SLSA Source (v1.2) additionally requires trusted
@@ -151,7 +155,12 @@ off.
 
 The projection guarantee is scoped to the **in-toto Statement envelope
 plus AgentMarshal's own AI-review `predicateType`** — a syntactically
-valid, verifiable attestation. AgentMarshal is **SLSA Source-Track
+valid, **schema-checkable** in-toto Statement. Structural validity is all
+the unsigned projection asserts: its producer and integrity become
+cryptographically **verifiable only once the DSSE/Sigstore signing of
+wave 2 wraps it**, so "verifiable attestation" is reserved for that signed
+output; the unsigned Statement is schema-valid, not a verifiable
+attestation. AgentMarshal is **SLSA Source-Track
 adjacent, not SLSA-conformant**: the reviewer-identity field is an input
 a SLSA Source verifier *could* consume, but a Source level (e.g. two-party
 review at L4) additionally demands trusted-identity configuration,
@@ -160,8 +169,9 @@ contemporaneous source attestations that live at the provider/process
 layer. Reaching a stated SLSA Source level is a roadmap item requiring
 that separate specification (a fixed SLSA version, the trust config, and a
 VSA), and is deliberately **not** claimed as derivable from the records
-alone. The derived Statement — consumable by an external auditor via the
-compliance pack (brief §13) — is what these records guarantee today.
+alone. Once the schema fields land, the derived (and later signed)
+Statement is what feeds an external auditor via the compliance pack
+(brief §13); that is the scope of this format guarantee.
 
 ## Consequences
 
