@@ -114,7 +114,7 @@ def _parse_header(
         key, value = line.split(":", 1)
         key = key.strip()
         value = value.strip()
-        if not key or (not value and key != "Scope"):
+        if not key or (not value and key != "Scope" and not lenient):
             raise _error(path, "malformed Key: Value header")
         if key in headers:
             raise _error(path, f"duplicate header: {key}")
@@ -213,7 +213,9 @@ def _parse_review(
         "Reviewer-Email",
         "Reviewed-Commit",
     )
-    missing_essential = [field for field in essential_fields if field not in headers]
+    # Treat an empty essential value the same as an absent one (a lenient
+    # header may carry `Reviewer-Role:` with no value).
+    missing_essential = [field for field in essential_fields if not headers.get(field)]
     if missing_essential:
         if lenient:
             _skip(f"missing {', '.join(missing_essential)}")
@@ -224,7 +226,7 @@ def _parse_review(
         )
 
     verdict = headers["Verdict"]
-    if "Finding-IDs" not in headers:
+    if not headers.get("Finding-IDs"):
         if not lenient:
             raise _error(path, "missing required header(s): Finding-IDs")
         if verdict == "approved":

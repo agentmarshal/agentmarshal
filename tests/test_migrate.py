@@ -312,3 +312,34 @@ def test_lenient_skips_done_task_without_completion_commit(tmp_path: Path) -> No
     assert summaries == ["CR-001: open (0 review(s))"]
     assert load_task_status(target, "CR-001").state == "open"
     assert any("skipped done task" in note for note in report)
+
+
+def test_lenient_skips_task_with_empty_status(tmp_path: Path) -> None:
+    # An empty required value (Status:) must not abort lenient migration.
+    source, target = tmp_path / "v1", tmp_path / "v2"
+    _raw(
+        source / "tasks" / "open" / "CR-001.md",
+        "# CR-001: T\n\nOwner: lead\nType: feat\nCreated: 2026-07-26\nStatus:\n\n"
+        "## Body\n",
+    )
+    write_task(source, "open", "CR-002", "open")
+    report: list[str] = []
+    summaries = migrate_journal(source, target, lenient=True, report=report)
+    assert summaries == ["CR-002: open (0 review(s))"]
+    assert any("skipped task" in note and "Status" in note for note in report)
+
+
+def test_lenient_skips_review_with_empty_identity(tmp_path: Path) -> None:
+    # An empty essential value (Reviewer-Role:) is treated as absent.
+    source, target = tmp_path / "v1", tmp_path / "v2"
+    _task_done(source)
+    _raw(
+        source / "reviews" / "2026" / "CR-001-x.md",
+        "Task: CR-001\nReviewer-Role:\nReviewer-Vendor: codex\nReviewer-Model: m\n"
+        f"Reviewer-Email: qa@x.invalid\nReviewed-Commit: {'a' * 40}\n"
+        "Verdict: approved\nFinding-IDs: none\n\nBody\n",
+    )
+    report: list[str] = []
+    migrate_journal(source, target, lenient=True, report=report)
+    assert _review_count(target, "CR-001") == 0
+    assert any("Reviewer-Role" in note for note in report)
