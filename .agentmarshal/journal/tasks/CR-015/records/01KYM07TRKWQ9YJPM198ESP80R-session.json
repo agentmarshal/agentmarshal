@@ -1,0 +1,23 @@
+{
+  "activity": "implementation",
+  "actor": "claude/claude-opus-4-8",
+  "artifacts": [
+    {
+      "hash": "f7d51fdaa3a92655b7ca196d79ce2b59e6dcbaf0f41fe4a84a385eb31c7e5ae3",
+      "ref": "host-stat:RUN-20260719T110429Z-lead-39c3eb09;imported-at=2026-07-28T09:04:46.862987Z"
+    }
+  ],
+  "created_at": "2026-07-19T11:47:02.804Z",
+  "outcome": "completed",
+  "record_type": "session",
+  "role": "lead",
+  "schema": 2,
+  "source": "imported-from-host",
+  "task": "CR-015",
+  "tokens": {
+    "cache": 27556453,
+    "input": 68,
+    "output": 14054
+  },
+  "tool_version": "0.1.0.dev0"
+}
