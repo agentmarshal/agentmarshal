@@ -20,7 +20,8 @@ Operating the v2 journal surfaced three gaps against
 3. **in-toto / SLSA compatibility (brief §12, wave 2) has no design.**
    The records are custom JSON. The requirement is to be forward
    compatible with the in-toto Attestation Framework and SLSA without
-   ever converting the journal.
+   ever converting the journal, so the derived attestation can feed an
+   external compliance pack for auditors (brief §13).
 
 This ADR decides the capture policy, how measurements relate to the task
 lifecycle, the sanctioned retroactive backfill of retained host data, and
@@ -39,12 +40,21 @@ the format strategy. It extends ADR-0004 D7.
   supplementary artifacts (full review text, prompt snapshots, raw
   session transcripts) and economics (`session`/measurement records).
 
-**Invariant.** in-toto / SLSA completeness is a property of the always-on
-attestation records, not of the capture policy. No capture setting drops
-the journal below in-toto / SLSA completeness. `agentmarshal validate`
-enforces it fail-closed: a review/completed record that is not
-in-toto/SLSA-derivable-complete is rejected. A user cannot accidentally
-turn interoperability off.
+**Invariant.** in-toto **Statement** completeness — a syntactically
+derivable in-toto Statement carrying AgentMarshal's own predicate — is a
+property of the always-on attestation records, not of the capture policy.
+No capture setting drops the journal below in-toto Statement
+completeness. `agentmarshal validate` enforces it fail-closed: a
+review/completed record that is not in-toto-Statement-derivable-complete
+is rejected. A user cannot accidentally turn interoperability off.
+
+This guarantee is the **envelope plus our predicate only**. It is **not**
+a SLSA conformance claim: SLSA Source (v1.2) additionally requires trusted
+identities, enforced protected-reference controls, approval bound to the
+final revision, and contemporaneous source attestations — process- and
+provider-level properties our record fields cannot establish. SLSA
+Source alignment is adjacency and roadmap (Decision 5), never asserted as
+a derived level.
 
 ### 2. Capture policy — preset plus overrides
 
@@ -53,19 +63,28 @@ Host configuration selects a **preset** and may **override** per class:
 | preset | economics | reviews / prompts | raw sessions |
 |---|---|---|---|
 | `minimal` | off | off | off |
-| `attested` (default) | commit | hash (private store) | hash / private |
-| `full` | commit | commit | commit only with `allow_public_sessions` |
+| `attested` (default) | commit | hash (private store) | hash (private store) |
+| `full` | commit | commit | **private store** (never public by preset) |
 
 - Per-type overrides layer on the preset (e.g. `reviews = commit` under
   `attested`); only when a real mixed need appears — no speculative
   matrix (ADR-0004 D6).
-- Committing raw session transcripts publicly requires the explicit
-  `allow_public_sessions` double opt-in (ADR-0004 D7).
+- **Raw session transcripts stay private by default at every preset**,
+  preserving ADR-0004 D7's private-only rule. `full` raises observability
+  by capturing full review/prompt text and economics, and by keeping
+  sessions in a durable **private store** (hash-referenced from public
+  records) — not by publishing them.
+- **Public session commit is a separate, explicit escalation that
+  supersedes ADR-0004 D7 only for that narrow case**, and requires **two
+  independent opt-ins**: persistent configuration (`allow_public_sessions`)
+  **and** a per-operation dangerously-named flag. Neither alone suffices.
 - **Leak-scan is mandatory** on every artifact before it is committed:
-  secrets, private hosts and tokens are refused. `full` without leak-scan
-  would be a disclosure vector.
-- `minimal` is in-toto / SLSA complete but omits AgentMarshal's economics
-  enrichment; this is documented, not silent.
+  secrets, private hosts and tokens are refused. Leak-scan is an
+  additional safeguard, **not authorization to publish** — it never
+  substitutes for the opt-ins above; heuristics miss content, so private
+  stays the default.
+- `minimal` is in-toto Statement complete but omits AgentMarshal's
+  economics enrichment; this is documented, not silent.
 
 ### 3. Measurements accrue independent of lifecycle
 
@@ -114,7 +133,7 @@ To keep the derivation **lossless** (a projection, not a conversion) the
 record schema must carry every field the target formats need. The
 compatibility matrix:
 
-| in-toto Statement / SLSA | record field | status |
+| in-toto Statement field | record field | status |
 |---|---|---|
 | `subject[].digest` (`gitCommit`) | `reviewed_commit` / `completed_commit` | present |
 | `predicateType` (URI) | derived from `record_type` via a URI registry | add registry |
@@ -122,19 +141,34 @@ compatibility matrix:
 | contract the review bound to | contract content hash | **add / derive from committed contract** |
 | supplementary artifact | artifact reference + hash | **add** |
 | evidence provenance | `source` + import metadata | **add** |
-| independence (SLSA Source L4 two-party) | `reviewer.email` + git writers | derivable |
+| reviewer identity (an *input* to SLSA Source two-party review, not proof of it) | `reviewer.email` + git writers | present |
 | schema version | `schema` | present, evolvable |
 
 Fields derivable from always-committed data (commit digests, the
 committed contract's hash, git author/committer emails) need not be
 stored; they are computed at projection time, so they cannot be turned
-off. We are SLSA **Source-Track adjacent**, not SLSA provenance: same
-in-toto envelope, our own first AI-review `predicateType`.
+off.
+
+The projection guarantee is scoped to the **in-toto Statement envelope
+plus AgentMarshal's own AI-review `predicateType`** — a syntactically
+valid, verifiable attestation. AgentMarshal is **SLSA Source-Track
+adjacent, not SLSA-conformant**: the reviewer-identity field is an input
+a SLSA Source verifier *could* consume, but a Source level (e.g. two-party
+review at L4) additionally demands trusted-identity configuration,
+enforced protected-reference controls, final-revision binding, and
+contemporaneous source attestations that live at the provider/process
+layer. Reaching a stated SLSA Source level is a roadmap item requiring
+that separate specification (a fixed SLSA version, the trust config, and a
+VSA), and is deliberately **not** claimed as derivable from the records
+alone. The derived Statement — consumable by an external auditor via the
+compliance pack (brief §13) — is what these records guarantee today.
 
 ## Consequences
 
-- The minimal footprint a user can select is still a complete,
-  interoperable attestation; economics and full artifacts are additive.
+- The minimal footprint a user can select still projects to a complete,
+  interoperable in-toto Statement; economics and full artifacts are
+  additive. SLSA Source conformance is a separate roadmap goal, not part
+  of this floor.
 - Economics and observability become durable and auditable; token-overspend
   and review-loop cases can be reconstructed from committed data.
 - Sigstore signing (DSSE) is deferred (wave 2) but requires no journal
