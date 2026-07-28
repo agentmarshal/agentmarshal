@@ -299,6 +299,20 @@ def test_fifo_stat_entry_is_refused_without_hanging(tmp_path: Path) -> None:
         backfill_task_sessions(stats, "CR-011", _IMPORTED_AT)
 
 
+def test_oversized_stat_file_is_refused(tmp_path: Path) -> None:
+    # A hostile or corrupt oversized RUN-*.json must be refused rather than
+    # read into memory unbounded.
+    from agentmarshal.journal.backfill import _MAX_STAT_BYTES
+
+    stats = tmp_path / "stats"
+    stats.mkdir()
+    oversized = stats / "RUN-20260719T090000Z-lead-big0000000.json"
+    oversized.write_bytes(b" " * (_MAX_STAT_BYTES + 1))
+
+    with pytest.raises(BackfillError, match="exceeds"):
+        backfill_task_sessions(stats, "CR-011", _IMPORTED_AT)
+
+
 def test_import_fails_closed_without_no_follow_support(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

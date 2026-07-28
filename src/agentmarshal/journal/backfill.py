@@ -33,6 +33,12 @@ from agentmarshal.journal.records import (
     validate_task_id,
 )
 
+# A stat record is a small flat JSON object; cap the read generously so a
+# hostile or corrupt RUN-*.json cannot exhaust memory. Read one byte past
+# the limit to detect an oversize file without trusting fstat's size, which
+# a concurrent writer could grow after inspection.
+_MAX_STAT_BYTES = 1 << 20  # 1 MiB
+
 # A synthetic session filename to drive record validation through the
 # public record validator (name + content), which also checks the record
 # type matches. The id is a placeholder; the real id is assigned when the
@@ -307,7 +313,13 @@ def _read_regular_file_at(dir_fd: int, name: str, stats_dir: Path) -> bytes:
                 raise BackfillError(
                     f"{stats_dir}/{name}: stat record is not a regular file"
                 )
-            return handle.read()
+            data = handle.read(_MAX_STAT_BYTES + 1)
+            if len(data) > _MAX_STAT_BYTES:
+                raise BackfillError(
+                    f"{stats_dir}/{name}: stat record exceeds "
+                    f"{_MAX_STAT_BYTES} bytes"
+                )
+            return data
     except OSError as error:
         raise BackfillError(
             f"{stats_dir}/{name}: cannot read stat record: {error}"
