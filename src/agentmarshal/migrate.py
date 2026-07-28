@@ -9,6 +9,7 @@ import shutil
 import tempfile
 
 from agentmarshal import __version__
+from agentmarshal.journal.attestation import SOURCE_IMPORTED
 from agentmarshal.journal.open_task import _contract_content
 from agentmarshal.journal.records import (
     JournalRecordError,
@@ -179,6 +180,7 @@ def _parse_review(path: Path) -> V1Review:
         headers["Reviewer-Model"],
         headers["Reviewer-Email"],
         findings,
+        source=SOURCE_IMPORTED,
     )
     try:
         validate_record_content(
@@ -248,7 +250,9 @@ def _migrate_task(target: Path, task: V1Task, reviews: list[V1Review]) -> None:
     _write_contract(target, task)
     try:
         write_record(
-            target, task.task_id, create_opened_record(task.task_id, __version__)
+            target,
+            task.task_id,
+            create_opened_record(task.task_id, __version__, source=SOURCE_IMPORTED),
         )
         for review in reviews:
             headers = review.headers
@@ -265,6 +269,7 @@ def _migrate_task(target: Path, task: V1Task, reviews: list[V1Review]) -> None:
                     headers["Reviewer-Model"],
                     headers["Reviewer-Email"],
                     _review_findings(review),
+                    source=SOURCE_IMPORTED,
                 ),
             )
         if task.status == "done":
@@ -278,14 +283,21 @@ def _migrate_task(target: Path, task: V1Task, reviews: list[V1Review]) -> None:
             write_record(
                 target,
                 task.task_id,
-                create_completed_record(task.task_id, __version__, completed_commit),
+                create_completed_record(
+                    task.task_id,
+                    __version__,
+                    completed_commit,
+                    source=SOURCE_IMPORTED,
+                ),
             )
         elif task.status == "abandoned":
             reason = task.headers.get("Reason", "migrated from v1")
             write_record(
                 target,
                 task.task_id,
-                create_abandoned_record(task.task_id, __version__, reason),
+                create_abandoned_record(
+                    task.task_id, __version__, reason, source=SOURCE_IMPORTED
+                ),
             )
         projected = load_task_status(target, task.task_id).state
     except (JournalRecordError, OSError, TaskStatusError, ValueError) as error:

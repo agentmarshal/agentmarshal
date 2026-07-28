@@ -143,6 +143,26 @@ def test_write_record_is_exclusive_and_preserves_original_content(
     assert read_records(root, "CR-001") == [record | {"id": identifier}]
 
 
+def test_builders_emit_schema_2_with_live_provenance(tmp_path: Path) -> None:
+    # Forward capture is in-toto-complete from the start: builders emit
+    # schema 2 with live provenance, and the record round-trips through the
+    # validating writer/reader.
+    record = create_opened_record("CR-001", "1.0")
+    assert record["schema"] == 2
+    assert record["source"] == "live"
+
+    review = create_review_record(
+        "CR-001", "1.0", "a" * 40, "approved", "r", "v", "m", "r@t.i", []
+    )
+    assert review["schema"] == 2
+    assert review["source"] == "live"
+
+    root = tmp_path / "journal"
+    identifier = "01J00000000000000000000000"
+    write_record(root, "CR-001", record, record_id=identifier)
+    assert read_records(root, "CR-001") == [record | {"id": identifier}]
+
+
 def test_review_record_round_trip_and_status_detail(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
