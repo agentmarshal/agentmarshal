@@ -1,0 +1,23 @@
+{
+  "activity": "review",
+  "actor": "codex/gpt-5.6-sol",
+  "artifacts": [
+    {
+      "hash": "783f781206b1d5b531f83fccfaf25bce74def8bd88cbdacfb1b2f71c274102fe",
+      "ref": "host-stat:RUN-20260728T081947Z-qa-22b576be;imported-at=2026-07-28T09:04:46.862987Z"
+    }
+  ],
+  "created_at": "2026-07-28T08:19:47Z",
+  "outcome": "changes_required",
+  "record_type": "session",
+  "role": "qa",
+  "schema": 2,
+  "source": "imported-from-host",
+  "task": "CR-031",
+  "tokens": {
+    "cache": 85760,
+    "input": 197297,
+    "output": 1443
+  },
+  "tool_version": "0.1.0.dev0"
+}
