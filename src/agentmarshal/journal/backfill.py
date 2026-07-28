@@ -19,6 +19,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 
 from agentmarshal import __version__
@@ -73,6 +74,22 @@ def source_hash(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
+def _require_utc_timestamp(value: str, label: str) -> None:
+    """Reject a timestamp that is not ISO-8601 and UTC-aware.
+
+    ``imported_at`` becomes opaque provenance inside an artifact ref, which
+    the record validator cannot check, so validate it here exactly as the
+    record schema validates ``created_at`` (ADR-0005 Decision 4).
+    """
+
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise BackfillError(f"{label} must be an ISO-8601 timestamp") from error
+    if parsed.tzinfo is None or parsed.utcoffset() != UTC.utcoffset(parsed):
+        raise BackfillError(f"{label} must be a UTC timestamp")
+
+
 def session_record_from_stat(
     stat: dict[str, object],
     *,
@@ -98,6 +115,7 @@ def session_record_from_stat(
         raise BackfillError("source_ref must be a non-empty string")
     if not imported_at:
         raise BackfillError("imported_at must be a non-empty timestamp")
+    _require_utc_timestamp(imported_at, "imported_at")
 
     for field in _REQUIRED_STAT_FIELDS:
         if field not in stat:

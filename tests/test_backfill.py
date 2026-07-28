@@ -149,6 +149,25 @@ def test_missing_import_metadata_fails_closed() -> None:
         _map(_lead_stat(), source_ref="")
 
 
+@pytest.mark.parametrize(
+    "imported_at",
+    [
+        "not-a-timestamp",
+        "2026-07-28T08:00:00",  # timezone-naive
+        "2026-07-28T08:00:00+02:00",  # non-UTC
+    ],
+)
+def test_malformed_import_time_fails_closed(imported_at: str) -> None:
+    with pytest.raises(BackfillError, match="imported_at"):
+        _map(_lead_stat(), imported_at=imported_at)
+
+
+def test_utc_import_time_is_accepted() -> None:
+    # Both the Z form and an explicit +00:00 offset are valid UTC.
+    assert _map(_lead_stat(), imported_at="2026-07-28T08:00:00Z")
+    assert _map(_lead_stat(), imported_at="2026-07-28T08:00:00+00:00")
+
+
 def test_leak_in_stat_field_fails_closed() -> None:
     # A secret smuggled into a free-text field is refused, not restored.
     with pytest.raises(BackfillError, match="leak"):
