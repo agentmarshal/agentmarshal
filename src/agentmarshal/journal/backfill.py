@@ -300,9 +300,7 @@ def _read_regular_file_at(dir_fd: int, name: str, stats_dir: Path) -> bytes:
     # blocking forever waiting for a writer — the file-type check below then
     # rejects it. On a regular file O_NONBLOCK has no effect on reads.
     try:
-        fd = os.open(
-            name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=dir_fd
-        )
+        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=dir_fd)
     except OSError as error:
         raise BackfillError(
             f"{stats_dir}/{name}: refusing to read (symlink or unreadable): {error}"
@@ -316,8 +314,7 @@ def _read_regular_file_at(dir_fd: int, name: str, stats_dir: Path) -> bytes:
             data = handle.read(_MAX_STAT_BYTES + 1)
             if len(data) > _MAX_STAT_BYTES:
                 raise BackfillError(
-                    f"{stats_dir}/{name}: stat record exceeds "
-                    f"{_MAX_STAT_BYTES} bytes"
+                    f"{stats_dir}/{name}: stat record exceeds {_MAX_STAT_BYTES} bytes"
                 )
             return data
     except OSError as error:

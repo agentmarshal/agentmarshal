@@ -277,9 +277,7 @@ def run_gate(
             contract = parse_contract_text(contract_text, contract_path)
         except JournalContractError as error:
             raise GateError(f"contract in the base tree is invalid: {error}") from error
-        outside = [
-            path for path in changed if not _scope_covers(contract.scope, path)
-        ]
+        outside = [path for path in changed if not _scope_covers(contract.scope, path)]
         check(
             not outside,
             "diff within contract scope"
@@ -319,8 +317,7 @@ def run_gate(
                 for email in _range_emails(project_root, merge_base, resolved_commit)
             }
             check(
-                bool(normalized_reviewer)
-                and normalized_reviewer not in writer_emails,
+                bool(normalized_reviewer) and normalized_reviewer not in writer_emails,
                 "reviewer is independent of the candidate's writers",
             )
 

@@ -42,9 +42,7 @@ def derive_task_from_branch(branch: str) -> str:
     # A slug that carries a second, different id is ambiguous: refuse rather
     # than silently gating the first one.
     if len({found for found in _ANY_TASK_ID.findall(branch)}) > 1:
-        raise GateError(
-            f"branch {branch!r} encodes more than one task id; pass --task"
-        )
+        raise GateError(f"branch {branch!r} encodes more than one task id; pass --task")
     return match.group(1)
 
 
