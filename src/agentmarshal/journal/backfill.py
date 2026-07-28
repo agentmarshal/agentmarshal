@@ -245,11 +245,17 @@ def backfill_task_sessions(
     """
 
     validate_task_id(task_id)
-    selected: list[tuple[str, str, dict[str, object]]] = []
+    selected: list[tuple[datetime, str, dict[str, object]]] = []
     for stat_id, raw, stat in _read_stat_files(stats_dir):
         if stat.get("task") != task_id:
             continue
         record = _map_file(stat_id, raw, stat, imported_at)
-        selected.append((str(record["created_at"]), stat_id, record))
+        # Sort by the parsed instant, not its text: created_at is a
+        # validated UTC timestamp but has several valid ISO-8601 spellings
+        # (e.g. with or without fractional seconds), so a lexical sort can
+        # order events wrongly. stat_id is the deterministic tie-breaker.
+        created_at = str(record["created_at"])
+        instant = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+        selected.append((instant, stat_id, record))
     selected.sort(key=lambda item: (item[0], item[1]))
     return [record for _, _, record in selected]

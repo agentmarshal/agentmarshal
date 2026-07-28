@@ -209,6 +209,27 @@ def test_per_task_selector_filters_and_orders(tmp_path: Path) -> None:
         assert len(artifacts[0]["hash"]) == 64
 
 
+def test_selector_orders_by_instant_not_text(tmp_path: Path) -> None:
+    # Fractional seconds make lexical order disagree with chronological
+    # order: "...00.500Z" (later) sorts before "...00Z" (earlier) as text.
+    # The selector must order by the parsed instant.
+    stats = tmp_path / "stats"
+    _write(
+        stats,
+        "RUN-20260719T090000Z-lead-later0000.json",
+        _lead_stat(recorded_at="2026-07-19T09:00:00.500Z", outcome="later"),
+    )
+    _write(
+        stats,
+        "RUN-20260719T090000Z-lead-earlier00.json",
+        _lead_stat(recorded_at="2026-07-19T09:00:00Z", outcome="earlier"),
+    )
+
+    records = backfill_task_sessions(stats, "CR-011", _IMPORTED_AT)
+
+    assert [record["outcome"] for record in records] == ["earlier", "later"]
+
+
 def test_selector_rejects_missing_directory(tmp_path: Path) -> None:
     with pytest.raises(BackfillError):
         backfill_task_sessions(tmp_path / "absent", "CR-011", _IMPORTED_AT)
