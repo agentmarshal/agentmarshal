@@ -127,6 +127,21 @@ def test_session_commit_override_is_rejected() -> None:
         )
 
 
+def test_overrides_are_defensively_copied() -> None:
+    # Mutating the source mapping after construction must not change the
+    # policy: a frozen dataclass does not freeze the referenced mapping, so
+    # the policy copies it. Injecting a session COMMIT afterwards is inert.
+    source: dict[CaptureClass, CaptureLevel] = {}
+    policy = CapturePolicy(preset="full", overrides=source)
+    source[CaptureClass.SESSIONS] = CaptureLevel.COMMIT
+
+    assert policy.level_for(CaptureClass.SESSIONS) == CaptureLevel.HASH
+    assert (
+        policy.resolve_session_disposition(per_operation_flag=False)
+        == CaptureLevel.HASH
+    )
+
+
 def test_resolve_session_disposition_gated_by_two_opt_ins() -> None:
     # The authoritative session API returns COMMIT only with both opt-ins.
     default = capture_policy_from_project({"capture": {"preset": "full"}})

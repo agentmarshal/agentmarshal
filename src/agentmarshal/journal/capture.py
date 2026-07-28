@@ -25,6 +25,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Enum
+from types import MappingProxyType
 
 
 class CaptureError(ValueError):
@@ -83,17 +84,24 @@ class CapturePolicy:
     allow_public_sessions: bool = False
 
     def __post_init__(self) -> None:
+        # Defensively copy and freeze the overrides: a frozen dataclass
+        # stops field reassignment but not mutation of a mapping the caller
+        # still holds a reference to, which could otherwise inject a session
+        # COMMIT after construction. Validate the copy, then store the
+        # read-only view.
+        frozen = MappingProxyType(dict(self.overrides))
         # Sessions are private by default at every preset; committing one
         # publicly is a separate escalation gated by the two opt-ins below,
         # never expressible as a capture level. Reject a session COMMIT
         # override fail-closed so no configuration path can leak a raw
         # session (ADR-0005 Decision 2).
-        if self.overrides.get(CaptureClass.SESSIONS) is CaptureLevel.COMMIT:
+        if frozen.get(CaptureClass.SESSIONS) is CaptureLevel.COMMIT:
             raise CaptureError(
                 "sessions cannot be set to 'commit' via a capture override; "
                 "public session commit requires allow_public_sessions plus a "
                 "per-operation flag"
             )
+        object.__setattr__(self, "overrides", frozen)
 
     def level_for(self, capture_class: CaptureClass) -> CaptureLevel:
         """Return the effective level for a class; an override beats the preset.
