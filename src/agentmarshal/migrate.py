@@ -68,6 +68,7 @@ class V1Review:
     path: Path
     task_id: str
     headers: dict[str, str]
+    findings: list[str]
 
 
 def _error(path: Path, message: str) -> JournalMigrationError:
@@ -81,8 +82,15 @@ def _read_text(path: Path) -> str:
         raise _error(path, f"could not read file: {error}") from error
 
 
+def _note(report: list[str] | None, message: str) -> None:
+    """Record a lenient-mode default or skip, if a report is being collected."""
+
+    if report is not None:
+        report.append(message)
+
+
 def _parse_header(
-    path: Path, text: str, required: frozenset[str]
+    path: Path, text: str, required: frozenset[str], *, lenient: bool = False
 ) -> tuple[dict[str, str], list[str]]:
     headers: dict[str, str] = {}
     scope: list[str] = []
@@ -106,19 +114,21 @@ def _parse_header(
         key, value = line.split(":", 1)
         key = key.strip()
         value = value.strip()
-        if not key or (not value and key != "Scope"):
+        if not key or (not value and key != "Scope" and not lenient):
             raise _error(path, "malformed Key: Value header")
         if key in headers:
             raise _error(path, f"duplicate header: {key}")
         headers[key] = value
         index += 1
     missing = required - headers.keys()
-    if missing:
+    if missing and not lenient:
         raise _error(path, f"missing required header(s): {', '.join(sorted(missing))}")
     return headers, scope
 
 
-def _parse_task(path: Path) -> V1Task:
+def _parse_task(
+    path: Path, *, lenient: bool = False, report: list[str] | None = None
+) -> V1Task | None:
     text = _read_text(path)
     lines = text.splitlines()
     title_index, title_line = next(
@@ -144,32 +154,125 @@ def _parse_task(path: Path) -> V1Task:
     while header_start < len(lines) and not lines[header_start].strip():
         header_start += 1
     headers, scope = _parse_header(
-        path, "\n".join(lines[header_start:]), _TASK_HEADER_FIELDS
+        path, "\n".join(lines[header_start:]), _TASK_HEADER_FIELDS, lenient=lenient
     )
-    status = headers["Status"]
-    if status not in _STATUS_STATES:
+    status = headers.get("Status")
+    if status is None or status not in _STATUS_STATES:
+        if lenient:
+            _note(
+                report,
+                f"{path}: skipped task (missing/invalid Status={status!r})",
+            )
+            return None
         raise _error(path, f"unknown Status: {status}")
+    if lenient and "Scope" not in headers:
+        _note(report, f"{path}: defaulted empty scope (no Scope header)")
+    # A done task's completed commit comes from Merged-Commit or
+    # Reviewed-Commit; without either it cannot be migrated, so skip it in
+    # lenient mode here rather than abort the whole run during writing.
+    if (
+        lenient
+        and status == "done"
+        and not (headers.get("Merged-Commit") or headers.get("Reviewed-Commit"))
+    ):
+        _note(
+            report,
+            f"{path}: skipped done task (no Merged-Commit or Reviewed-Commit)",
+        )
+        return None
+    if lenient:
+        # Owner/Type/Created are not used in the migrated output, but the
+        # contract reports every degradation: note when they are lost so the
+        # note count reflects the true source condition.
+        ignored = [
+            field for field in ("Owner", "Type", "Created") if not headers.get(field)
+        ]
+        if ignored:
+            _note(
+                report,
+                f"{path}: ignored missing/empty non-essential header(s): "
+                f"{', '.join(ignored)}",
+            )
     return V1Task(path, task_id, title, scope, status, headers)
 
 
-def _parse_review(path: Path) -> V1Review:
-    headers, _ = _parse_header(path, _read_text(path), _REVIEW_HEADER_FIELDS)
-    task_id = headers["Task"]
+def _parse_review(
+    path: Path, *, lenient: bool = False, report: list[str] | None = None
+) -> V1Review | None:
+    headers, _ = _parse_header(
+        path, _read_text(path), _REVIEW_HEADER_FIELDS, lenient=lenient
+    )
+
+    def _skip(reason: str) -> None:
+        _note(report, f"{path}: skipped review ({reason})")
+
+    task_id = headers.get("Task", "")
     try:
         validate_task_id(task_id)
     except JournalRecordError as error:
+        if lenient:
+            _skip(f"invalid Task id: {error}")
+            return None
         raise _error(path, str(error)) from error
-    findings_value = headers["Finding-IDs"]
+
+    # Reviewer identity and the reviewed commit cannot be fabricated: a
+    # review lacking any of them is not a valid attestation and is skipped
+    # in lenient mode rather than invented.
+    essential_fields = (
+        "Verdict",
+        "Reviewer-Role",
+        "Reviewer-Vendor",
+        "Reviewer-Model",
+        "Reviewer-Email",
+        "Reviewed-Commit",
+    )
+    # Treat an empty essential value the same as an absent one (a lenient
+    # header may carry `Reviewer-Role:` with no value).
+    missing_essential = [field for field in essential_fields if not headers.get(field)]
+    if missing_essential:
+        if lenient:
+            _skip(f"missing {', '.join(missing_essential)}")
+            return None
+        # strict mode already raised in _parse_header; unreachable here.
+        raise _error(
+            path, f"missing required header(s): {', '.join(missing_essential)}"
+        )
+
+    verdict = headers["Verdict"]
+    if not headers.get("Finding-IDs"):
+        if not lenient:
+            raise _error(path, "missing required header(s): Finding-IDs")
+        if verdict == "approved":
+            findings_value = "none"
+            _note(report, f"{path}: defaulted Finding-IDs=none (approved review)")
+        else:
+            _skip(f"missing Finding-IDs for non-approved verdict {verdict!r}")
+            return None
+    else:
+        findings_value = headers["Finding-IDs"]
+
     findings = (
         []
         if findings_value == "none"
         else [item.strip() for item in findings_value.split(",")]
     )
     if not all(findings) or len(set(findings)) != len(findings):
+        if lenient:
+            _skip("Finding-IDs are not unique, non-empty ids or 'none'")
+            return None
         raise _error(path, "Finding-IDs must be unique, non-empty ids or 'none'")
-    verdict = headers["Verdict"]
     if (verdict == "approved") != (not findings):
-        raise _error(path, "Verdict and Finding-IDs are inconsistent")
+        if not lenient:
+            raise _error(path, "Verdict and Finding-IDs are inconsistent")
+        # An inconsistent attestation (an approved review carrying findings,
+        # or a non-approved one with none) cannot be migrated faithfully
+        # under the v2 model without altering the recorded evidence, so it
+        # is skipped and reported rather than rewritten.
+        _skip(
+            f"inconsistent verdict/findings "
+            f"(verdict={verdict!r}, {len(findings)} finding(s))"
+        )
+        return None
     record = create_review_record(
         task_id,
         __version__,
@@ -187,8 +290,11 @@ def _parse_review(path: Path) -> V1Review:
             "01J00000000000000000000000-review.json", json.dumps(record)
         )
     except JournalRecordError as error:
+        if lenient:
+            _skip(f"invalid review record: {error}")
+            return None
         raise _error(path, str(error)) from error
-    return V1Review(path, task_id, headers)
+    return V1Review(path, task_id, headers, findings)
 
 
 def _source_files(root: Path, directory: Path) -> list[Path]:
@@ -199,31 +305,45 @@ def _source_files(root: Path, directory: Path) -> list[Path]:
     return sorted(path for path in directory.rglob("*.md") if path.is_file())
 
 
-def _load_source(source: Path) -> tuple[list[V1Task], list[V1Review]]:
+def _load_source(
+    source: Path, *, lenient: bool = False, report: list[str] | None = None
+) -> tuple[list[V1Task], list[V1Review]]:
     if not source.is_dir():
         raise JournalMigrationError(f"{source}: source journal is not a directory")
     tasks_directory = source / "tasks"
     if not tasks_directory.is_dir():
         raise JournalMigrationError(f"{tasks_directory}: task directory is missing")
     tasks = [
-        _parse_task(path)
+        task
         for name in _TASK_DIRECTORIES
         for path in _source_files(source, tasks_directory / name)
+        if (task := _parse_task(path, lenient=lenient, report=report)) is not None
     ]
     task_ids = [task.task_id for task in tasks]
     if len(task_ids) != len(set(task_ids)):
         duplicate = next(task_id for task_id in task_ids if task_ids.count(task_id) > 1)
         raise JournalMigrationError(f"{source}: duplicate task id: {duplicate}")
     reviews = [
-        _parse_review(path) for path in _source_files(source, source / "reviews")
+        review
+        for path in _source_files(source, source / "reviews")
+        if (review := _parse_review(path, lenient=lenient, report=report)) is not None
     ]
     known_tasks = set(task_ids)
+    kept_reviews: list[V1Review] = []
     for review in reviews:
         if review.task_id not in known_tasks:
+            if lenient:
+                _note(
+                    report,
+                    f"{review.path}: skipped review (references unknown task "
+                    f"{review.task_id})",
+                )
+                continue
             raise _error(
                 review.path, f"review references unknown task: {review.task_id}"
             )
-    return tasks, reviews
+        kept_reviews.append(review)
+    return tasks, kept_reviews
 
 
 def _write_contract(target: Path, task: V1Task) -> None:
@@ -239,11 +359,6 @@ def _write_contract(target: Path, task: V1Task) -> None:
         raise _error(
             task.path, f"could not write migrated contract: {error}"
         ) from error
-
-
-def _review_findings(review: V1Review) -> list[str]:
-    value = review.headers["Finding-IDs"]
-    return [] if value == "none" else [item.strip() for item in value.split(",")]
 
 
 def _migrate_task(target: Path, task: V1Task, reviews: list[V1Review]) -> None:
@@ -268,7 +383,7 @@ def _migrate_task(target: Path, task: V1Task, reviews: list[V1Review]) -> None:
                     headers["Reviewer-Vendor"],
                     headers["Reviewer-Model"],
                     headers["Reviewer-Email"],
-                    _review_findings(review),
+                    review.findings,
                     source=SOURCE_IMPORTED,
                 ),
             )
@@ -307,8 +422,19 @@ def _migrate_task(target: Path, task: V1Task, reviews: list[V1Review]) -> None:
         raise _error(task.path, f"state projection is {projected}, expected {expected}")
 
 
-def migrate_journal(source: Path, target: Path) -> list[str]:
-    """Convert *source* v1 journal into a new v2 journal at *target*."""
+def migrate_journal(
+    source: Path,
+    target: Path,
+    *,
+    lenient: bool = False,
+    report: list[str] | None = None,
+) -> list[str]:
+    """Convert *source* v1 journal into a new v2 journal at *target*.
+
+    In ``lenient`` mode, tasks/reviews with pre-v1 header deltas are
+    defaulted where semantically safe or skipped (never fabricated), and
+    each default/skip is appended to *report* if one is provided.
+    """
 
     source = source.resolve()
     target = target.resolve()
@@ -322,7 +448,7 @@ def migrate_journal(source: Path, target: Path) -> list[str]:
         )
     if target.exists() and not target.is_dir():
         raise JournalMigrationError(f"{target}: target journal is not a directory")
-    tasks, reviews = _load_source(source)
+    tasks, reviews = _load_source(source, lenient=lenient, report=report)
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
         staging = Path(

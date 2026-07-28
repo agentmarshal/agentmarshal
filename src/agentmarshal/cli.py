@@ -154,6 +154,12 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     migrate_parser.add_argument("--source", required=True, type=Path)
     migrate_parser.add_argument("--target", required=True, type=Path)
+    migrate_parser.add_argument(
+        "--lenient",
+        action="store_true",
+        help="tolerate pre-v1 header deltas: default safe fields, skip "
+        "unreconstructable records, and report each",
+    )
     return parser
 
 
@@ -448,15 +454,23 @@ def _run_status(task_id: str | None, stderr: TextIO) -> int:
     return 0
 
 
-def _run_migrate_journal(source: Path, target: Path, stderr: TextIO) -> int:
+def _run_migrate_journal(
+    source: Path, target: Path, stderr: TextIO, *, lenient: bool = False
+) -> int:
+    report: list[str] = []
     try:
-        summaries = migrate_journal(source, target)
+        summaries = migrate_journal(source, target, lenient=lenient, report=report)
     except (JournalMigrationError, OSError, ValueError) as error:
         print(error, file=stderr)
         return 1
+    for note in report:
+        print(f"note: {note}", file=stderr)
     for summary in summaries:
         print(summary)
-    print(f"Migrated {len(summaries)} task(s).")
+    if lenient:
+        print(f"Migrated {len(summaries)} task(s); {len(report)} lenient note(s).")
+    else:
+        print(f"Migrated {len(summaries)} task(s).")
     return 0
 
 
@@ -491,6 +505,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "report":
         return _run_report(args.task, sys.stderr)
     if args.command == "migrate-journal":
-        return _run_migrate_journal(args.source, args.target, sys.stderr)
+        return _run_migrate_journal(
+            args.source, args.target, sys.stderr, lenient=args.lenient
+        )
 
     parser.error(f"unknown command: {args.command}")
