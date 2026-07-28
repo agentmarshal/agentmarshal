@@ -225,9 +225,18 @@ def _read_regular_file_nofollow(path: Path) -> bytes:
     or device) — the same descriptor is read, closing the check/read race.
     """
 
-    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    # Cross-platform reject of a symlinked final component (lstat, no
+    # follow), plus a fail-closed guard: never fall back to a zero flag,
+    # which would silently follow symlinks where O_NOFOLLOW is absent.
+    if path.is_symlink():
+        raise BackfillError(f"{path}: refusing to read through a symlink")
+    if not hasattr(os, "O_NOFOLLOW"):
+        raise BackfillError(
+            f"{path}: no-follow reads are unavailable on this platform; "
+            "refusing to import"
+        )
     try:
-        fd = os.open(path, os.O_RDONLY | nofollow)
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
     except OSError as error:
         raise BackfillError(
             f"{path}: refusing to read (symlink or unreadable): {error}"

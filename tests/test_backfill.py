@@ -250,3 +250,18 @@ def test_symlinked_stat_file_is_refused(tmp_path: Path) -> None:
 
     with pytest.raises(BackfillError, match=r"symlink|regular file"):
         backfill_task_sessions(stats, "CR-011", _IMPORTED_AT)
+
+
+def test_import_fails_closed_without_no_follow_support(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # If the platform lacks O_NOFOLLOW the importer must refuse rather than
+    # read without symlink protection: a zero flag is never a fallback.
+    import os
+
+    stats = tmp_path / "stats"
+    _write(stats, "RUN-20260719T090000Z-lead-3514f554.json", _lead_stat())
+    monkeypatch.delattr(os, "O_NOFOLLOW", raising=False)
+
+    with pytest.raises(BackfillError, match="no-follow"):
+        backfill_task_sessions(stats, "CR-011", _IMPORTED_AT)
