@@ -243,7 +243,9 @@ def capture_policy_from_project(project_data: Mapping[str, object]) -> CapturePo
 _LEAK_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "private-key-block",
-        re.compile(r"-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----"),
+        # Matches PKCS#8 (BEGIN PRIVATE KEY), algorithm-tagged forms (RSA,
+        # EC, DSA, OPENSSH), ENCRYPTED PKCS#8, and PGP PRIVATE KEY BLOCK.
+        re.compile(r"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----"),
     ),
     ("aws-access-key-id", re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b")),
     ("github-token", re.compile(r"\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36}\b")),
