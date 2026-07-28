@@ -220,27 +220,14 @@ def _read_stat_files(
             "secure no-follow directory reads are unavailable on this "
             "platform; refusing to import"
         )
-    # Reject a symlink anywhere in the path, not just the final component:
-    # O_NOFOLLOW guards only the last component, so an ancestor symlink
-    # (e.g. /trusted/link/stats) could still escape the retained-data tree.
-    # abspath normalizes ".." and makes absolute without resolving symlinks;
-    # resolve() follows them — a mismatch means a symlinked component. This
-    # matches how the journal root itself is protected
-    # (records.ensure_journal_root_is_real).
-    absolute = Path(os.path.abspath(stats_dir))
-    if stats_dir.resolve() != absolute:
-        raise BackfillError(
-            f"{stats_dir}: stats directory path contains a symlinked component"
-        )
+    # Open the stats directory by descending one component at a time from
+    # the filesystem root, each step directory-relative and no-follow, so
+    # no ancestor symlink — and no ancestor swapped in during traversal —
+    # can redirect the import outside the retained tree. The held final
+    # descriptor is then the sole handle used for enumeration and reads,
+    # closing the validate/open race entirely.
+    dir_fd = _open_stats_dir_fd(stats_dir)
     try:
-        dir_fd = os.open(absolute, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-    except OSError as error:
-        raise BackfillError(
-            f"{stats_dir}: cannot open stats directory: {error}"
-        ) from error
-    try:
-        if not stat_module.S_ISDIR(os.fstat(dir_fd).st_mode):
-            raise BackfillError(f"{stats_dir}: stats path is not a directory")
         for name in sorted(os.listdir(dir_fd)):
             if not name.endswith(".json") or not name.startswith("RUN-"):
                 continue
@@ -258,6 +245,41 @@ def _read_stat_files(
             yield name.removesuffix(".json"), raw, loaded
     finally:
         os.close(dir_fd)
+
+
+def _open_stats_dir_fd(stats_dir: Path) -> int:
+    """Open *stats_dir* race-free by descending each component no-follow.
+
+    Starts from the filesystem root (a trusted anchor that cannot be a
+    symlink) and opens every subsequent component with ``O_DIRECTORY |
+    O_NOFOLLOW`` relative to its parent descriptor. A symlinked component —
+    ancestor or final — raises, and because each step holds a real
+    descriptor rather than re-resolving a path string, an ancestor swapped
+    in mid-traversal cannot redirect the descent. Returns the final
+    directory descriptor; the caller must close it.
+    """
+
+    parts = Path(os.path.abspath(stats_dir)).parts
+    dir_fd = os.open(parts[0], os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        for component in parts[1:]:
+            try:
+                next_fd = os.open(
+                    component,
+                    os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                    dir_fd=dir_fd,
+                )
+            except OSError as error:
+                raise BackfillError(
+                    f"{stats_dir}: refusing to traverse a symlinked or missing "
+                    f"component {component!r}: {error}"
+                ) from error
+            os.close(dir_fd)
+            dir_fd = next_fd
+    except BaseException:
+        os.close(dir_fd)
+        raise
+    return dir_fd
 
 
 def _read_regular_file_at(dir_fd: int, name: str, stats_dir: Path) -> bytes:
