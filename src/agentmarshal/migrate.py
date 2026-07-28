@@ -180,6 +180,19 @@ def _parse_task(
             f"{path}: skipped done task (no Merged-Commit or Reviewed-Commit)",
         )
         return None
+    if lenient:
+        # Owner/Type/Created are not used in the migrated output, but the
+        # contract reports every degradation: note when they are lost so the
+        # note count reflects the true source condition.
+        ignored = [
+            field for field in ("Owner", "Type", "Created") if not headers.get(field)
+        ]
+        if ignored:
+            _note(
+                report,
+                f"{path}: ignored missing/empty non-essential header(s): "
+                f"{', '.join(ignored)}",
+            )
     return V1Task(path, task_id, title, scope, status, headers)
 
 

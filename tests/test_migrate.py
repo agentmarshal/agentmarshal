@@ -343,3 +343,23 @@ def test_lenient_skips_review_with_empty_identity(tmp_path: Path) -> None:
     migrate_journal(source, target, lenient=True, report=report)
     assert _review_count(target, "CR-001") == 0
     assert any("Reviewer-Role" in note for note in report)
+
+
+@pytest.mark.parametrize("field", ["Owner", "Type", "Created"])
+def test_lenient_reports_ignored_non_essential_header(
+    tmp_path: Path, field: str
+) -> None:
+    # A missing non-essential header (Owner/Type/Created) does not block,
+    # but every such degradation is reported.
+    source, target = tmp_path / "v1", tmp_path / "v2"
+    lines = {"Owner": "lead", "Type": "feat", "Created": "2026-07-26"}
+    del lines[field]
+    body = "".join(f"{key}: {value}\n" for key, value in lines.items())
+    _raw(
+        source / "tasks" / "open" / "CR-001.md",
+        f"# CR-001: T\n\n{body}Status: open\nScope:\n- x/\n\n## Body\n",
+    )
+    report: list[str] = []
+    summaries = migrate_journal(source, target, lenient=True, report=report)
+    assert summaries == ["CR-001: open (0 review(s))"]
+    assert any("non-essential" in note and field in note for note in report)
