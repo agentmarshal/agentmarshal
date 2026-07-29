@@ -274,16 +274,41 @@ def test_lenient_migrates_approved_review_missing_findings(tmp_path: Path) -> No
     assert any("defaulted Finding-IDs=none" in n for n in report)
 
 
-def test_lenient_skips_inconsistent_review(tmp_path: Path) -> None:
-    # An approved review carrying findings is inconsistent under the v2
-    # model; lenient migration skips it (never rewrites the evidence).
+def test_lenient_migrates_approved_with_findings_as_advisory(tmp_path: Path) -> None:
+    # A pre-v1 approved review carrying findings migrates faithfully: the
+    # approval is kept and the findings become advisory (non-blocking),
+    # reported — no loss, no verdict rewrite.
     source, target = tmp_path / "v1", tmp_path / "v2"
     _task_done(source)
     write_review(source, "CR-001-approve.md", "CR-001", "approved", "F1, F2")
     report: list[str] = []
     migrate_journal(source, target, lenient=True, report=report)
+    records = load_task_status(target, "CR-001").records
+    review = next(r for r in records if r["record_type"] == "review")
+    assert review["verdict"] == "approved"
+    assert review["findings"] == []
+    assert review["advisory_findings"] == ["F1", "F2"]
+    assert any("reclassified 2 finding" in note for note in report)
+
+
+def test_lenient_still_skips_non_approved_without_findings(tmp_path: Path) -> None:
+    # The other inconsistency (non-approved with no findings) is still
+    # skipped — it cannot be reconstructed.
+    source, target = tmp_path / "v1", tmp_path / "v2"
+    _task_done(source)
+    write_review(source, "CR-001-x.md", "CR-001", "changes_required", "none")
+    report: list[str] = []
+    migrate_journal(source, target, lenient=True, report=report)
     assert _review_count(target, "CR-001") == 0
-    assert any("inconsistent verdict/findings" in note for note in report)
+    assert any("non-approved verdict with no findings" in note for note in report)
+
+
+def test_strict_still_aborts_on_approved_with_findings(tmp_path: Path) -> None:
+    source, target = tmp_path / "v1", tmp_path / "v2"
+    _task_done(source)
+    write_review(source, "CR-001-x.md", "CR-001", "approved", "F1")
+    with pytest.raises(JournalMigrationError, match="inconsistent"):
+        migrate_journal(source, target)
 
 
 def test_strict_cli_output_unchanged(

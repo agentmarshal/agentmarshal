@@ -69,6 +69,7 @@ class V1Review:
     task_id: str
     headers: dict[str, str]
     findings: list[str]
+    advisory_findings: list[str]
 
 
 def _error(path: Path, message: str) -> JournalMigrationError:
@@ -261,18 +262,26 @@ def _parse_review(
             _skip("Finding-IDs are not unique, non-empty ids or 'none'")
             return None
         raise _error(path, "Finding-IDs must be unique, non-empty ids or 'none'")
+    advisory_findings: list[str] = []
     if (verdict == "approved") != (not findings):
         if not lenient:
             raise _error(path, "Verdict and Finding-IDs are inconsistent")
-        # An inconsistent attestation (an approved review carrying findings,
-        # or a non-approved one with none) cannot be migrated faithfully
-        # under the v2 model without altering the recorded evidence, so it
-        # is skipped and reported rather than rewritten.
-        _skip(
-            f"inconsistent verdict/findings "
-            f"(verdict={verdict!r}, {len(findings)} finding(s))"
-        )
-        return None
+        if verdict == "approved" and findings:
+            # Pre-v1 approved-with-findings: those findings were non-blocking
+            # (v2 approved requires no blocking findings). Preserve them
+            # faithfully as advisory findings (CR-034) rather than skip —
+            # no loss, no rewrite of the verdict.
+            advisory_findings = findings
+            findings = []
+            _note(
+                report,
+                f"{path}: reclassified {len(advisory_findings)} finding(s) as "
+                "advisory (approved-with-findings)",
+            )
+        else:
+            # A non-approved verdict with no findings cannot be reconstructed.
+            _skip("non-approved verdict with no findings to reconstruct")
+            return None
     record = create_review_record(
         task_id,
         __version__,
@@ -283,6 +292,7 @@ def _parse_review(
         headers["Reviewer-Model"],
         headers["Reviewer-Email"],
         findings,
+        advisory_findings=advisory_findings,
         source=SOURCE_IMPORTED,
     )
     try:
@@ -294,7 +304,7 @@ def _parse_review(
             _skip(f"invalid review record: {error}")
             return None
         raise _error(path, str(error)) from error
-    return V1Review(path, task_id, headers, findings)
+    return V1Review(path, task_id, headers, findings, advisory_findings)
 
 
 def _source_files(root: Path, directory: Path) -> list[Path]:
@@ -384,6 +394,7 @@ def _migrate_task(target: Path, task: V1Task, reviews: list[V1Review]) -> None:
                     headers["Reviewer-Model"],
                     headers["Reviewer-Email"],
                     review.findings,
+                    advisory_findings=review.advisory_findings,
                     source=SOURCE_IMPORTED,
                 ),
             )
