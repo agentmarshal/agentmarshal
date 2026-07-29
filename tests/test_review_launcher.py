@@ -148,6 +148,58 @@ def test_snapshot_has_no_git_metadata_and_writes_stay_ephemeral(
     _assert_no_snapshot(repo)
 
 
+def _env_probe_reviewer_stub(tmp_path: Path, output: str, repo: Path) -> Path:
+    """Stub that exits non-zero if its environment still exposes a handle on
+    the live repository (a leaked variable name, or any value carrying the
+    repo path), and only emits its verdict when the environment is clean."""
+
+    stub = tmp_path / "env-probe-reviewer.py"
+    stub.write_text(
+        "#!/usr/bin/env python3\n"
+        "import os, sys\n"
+        f"repo = {str(repo)!r}\n"
+        "leaked = [n for n in ('PYTHONPATH', 'PWD', 'OLDPWD',\n"
+        "        'AGENTMARSHAL_PROJECT_ROOT', 'AGENTMARSHAL_REVIEWER_CMD',\n"
+        "        'GIT_DIR', 'LEAKY_REPO') if n in os.environ]\n"
+        "leaked += [n for n, v in os.environ.items()\n"
+        "           if n not in ('PATH', 'HOME') and repo in v]\n"
+        "if 'PATH' not in os.environ:\n"
+        "    leaked.append('PATH-missing')\n"
+        "if leaked:\n"
+        "    sys.stderr.write('leaked:' + ','.join(sorted(set(leaked))))\n"
+        "    raise SystemExit(1)\n"
+        f"sys.stdout.write({output!r})\n",
+        encoding="utf-8",
+    )
+    stub.chmod(0o755)
+    return stub
+
+
+def test_reviewer_environment_is_sanitized(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    stub = _env_probe_reviewer_stub(tmp_path, _verdict(commit, "approved", []), repo)
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+    # Every one of these must be stripped from the reviewer's environment: by
+    # name (PYTHONPATH/PWD/AGENTMARSHAL_*/GIT_*) or by value (LEAKY_REPO carries
+    # the repo path). PATH/HOME survive so the adapter still runs.
+    monkeypatch.setenv("PYTHONPATH", str(repo / ".agentmarshal" / "vendor"))
+    monkeypatch.setenv("PWD", str(repo))
+    monkeypatch.setenv("AGENTMARSHAL_PROJECT_ROOT", str(repo))
+    monkeypatch.setenv("GIT_DIR", str(repo / ".git"))
+    monkeypatch.setenv("LEAKY_REPO", str(repo))
+
+    # The stub exits 0 (and its verdict is recorded) only if the environment
+    # is clean; a leak makes it exit 1 and the review fails closed.
+    assert main(_review_args(commit)) == 0
+
+    records = read_records(repo / ".agentmarshal" / "journal", "CR-001")
+    assert records[-1]["verdict"] == "approved"
+    _assert_no_snapshot(repo)
+
+
 def test_review_of_commit_without_contract_fails_closed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

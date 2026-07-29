@@ -35,6 +35,33 @@ _DEFAULT_REVIEWER_COMMANDS: Mapping[str, tuple[str, ...]] = {
     ),
 }
 
+# The reviewer runs in a metadata-free snapshot, but a read-only sandbox still
+# permits reads, so any inherited variable that points at or reveals the live
+# repository lets the reviewer escape the snapshot and inspect the real
+# checkout/.git (defeating review-by-SHA). Drop the known leak vectors and,
+# below, any variable whose value carries the project-root path. PATH and HOME
+# are always kept — the reviewer adapter (e.g. codex) needs them.
+_REVIEWER_ENV_DROP_EXACT = frozenset({"PYTHONPATH", "PWD", "OLDPWD", "VIRTUAL_ENV"})
+_REVIEWER_ENV_DROP_PREFIX = ("AGENTMARSHAL_", "GIT_")
+_REVIEWER_ENV_KEEP = frozenset({"PATH", "HOME"})
+
+
+def _sanitized_reviewer_env(project_root: Path) -> dict[str, str]:
+    """Reviewer-subprocess environment with every handle on the live repo
+    removed, so the metadata-free snapshot is a real isolation boundary."""
+
+    leaks = {str(project_root), str(project_root.resolve())}
+    sanitized: dict[str, str] = {}
+    for name, value in os.environ.items():
+        if name in _REVIEWER_ENV_DROP_EXACT:
+            continue
+        if any(name.startswith(prefix) for prefix in _REVIEWER_ENV_DROP_PREFIX):
+            continue
+        if name not in _REVIEWER_ENV_KEEP and any(leak in value for leak in leaks):
+            continue
+        sanitized[name] = value
+    return sanitized
+
 
 class ReviewLaunchError(Exception):
     """Raised when a read-only review cannot be launched or recorded."""
@@ -115,22 +142,28 @@ def _reviewer_command(vendor: str, model: str, prompt_file: Path) -> list[str]:
         ) from error
 
 
-def _run_reviewer(command: list[str], snapshot: Path, prompt: str) -> str:
+def _run_reviewer(
+    command: list[str], snapshot: Path, prompt: str, env: Mapping[str, str]
+) -> str:
     """Execute the reviewer adapter against the metadata-free snapshot.
 
     Process-level isolation belongs to the vendor sandbox (ADR-0001; the
     built-in codex adapter passes ``--sandbox read-only``). The
     launcher's own guarantee is the snapshot: a plain copy of the
     reviewed tree with no repository metadata, so nothing the reviewer
-    writes through it reaches the repository. ``AGENTMARSHAL_REVIEWER_CMD``
-    is a test/ops seam; whoever configures it owns that command's
-    isolation.
+    writes through it reaches the repository. ``env`` is the sanitized
+    reviewer environment (see ``_sanitized_reviewer_env``): even a
+    read-only reviewer must not learn the live repo path through an
+    inherited variable, or it could read outside the snapshot.
+    ``AGENTMARSHAL_REVIEWER_CMD`` is a test/ops seam; whoever configures it
+    owns that command's isolation.
     """
 
     try:
         result = subprocess.run(
             command,
             cwd=snapshot,
+            env=dict(env),
             capture_output=True,
             encoding="utf-8",
             input=prompt,
@@ -256,6 +289,7 @@ def launch_review(
             _reviewer_command(reviewer_vendor, reviewer_model, prompt_file),
             snapshot,
             prompt,
+            _sanitized_reviewer_env(project_root),
         )
         reviewed_commit, verdict, findings = _parse_verdict(output)
         if reviewed_commit != resolved_commit:
