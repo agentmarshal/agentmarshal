@@ -1,6 +1,7 @@
 """Tests for the read-only review launcher."""
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -161,10 +162,16 @@ def _env_probe_reviewer_stub(tmp_path: Path, output: str, repo: Path) -> Path:
         "leaked = [n for n in ('PYTHONPATH', 'PWD', 'OLDPWD',\n"
         "        'AGENTMARSHAL_PROJECT_ROOT', 'AGENTMARSHAL_REVIEWER_CMD',\n"
         "        'GIT_DIR', 'LEAKY_REPO') if n in os.environ]\n"
+        # HOME is the only variable exempt from the value scan (the adapter
+        # needs it). Everything else, PATH included, must not carry the path.
         "leaked += [n for n, v in os.environ.items()\n"
-        "           if n not in ('PATH', 'HOME') and repo in v]\n"
-        "if 'PATH' not in os.environ:\n"
+        "           if n != 'HOME' and repo in v]\n"
+        "path = os.environ.get('PATH', '')\n"
+        "if not path:\n"
         "    leaked.append('PATH-missing')\n"
+        "if any(part == repo or part.startswith(repo + os.sep)\n"
+        "       for part in path.split(os.pathsep)):\n"
+        "    leaked.append('PATH-has-repo-entry')\n"
         "if leaked:\n"
         "    sys.stderr.write('leaked:' + ','.join(sorted(set(leaked))))\n"
         "    raise SystemExit(1)\n"
@@ -182,14 +189,18 @@ def test_reviewer_environment_is_sanitized(
     repo, commit = _review_repo(tmp_path, monkeypatch)
     stub = _env_probe_reviewer_stub(tmp_path, _verdict(commit, "approved", []), repo)
     monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
-    # Every one of these must be stripped from the reviewer's environment: by
-    # name (PYTHONPATH/PWD/AGENTMARSHAL_*/GIT_*) or by value (LEAKY_REPO carries
-    # the repo path). PATH/HOME survive so the adapter still runs.
+    # Stripped by name (PYTHONPATH/PWD/AGENTMARSHAL_*/GIT_*) or by value
+    # (LEAKY_REPO carries the repo path).
     monkeypatch.setenv("PYTHONPATH", str(repo / ".agentmarshal" / "vendor"))
     monkeypatch.setenv("PWD", str(repo))
     monkeypatch.setenv("AGENTMARSHAL_PROJECT_ROOT", str(repo))
     monkeypatch.setenv("GIT_DIR", str(repo / ".git"))
     monkeypatch.setenv("LEAKY_REPO", str(repo))
+    # A repo-local venv bin on PATH must be dropped component-wise while the
+    # real system entries survive (so the stub can still be executed).
+    monkeypatch.setenv(
+        "PATH", f"{repo / '.venv' / 'bin'}{os.pathsep}{os.environ['PATH']}"
+    )
 
     # The stub exits 0 (and its verdict is recorded) only if the environment
     # is clean; a leak makes it exit 1 and the review fails closed.

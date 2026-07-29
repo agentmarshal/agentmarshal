@@ -38,12 +38,15 @@ _DEFAULT_REVIEWER_COMMANDS: Mapping[str, tuple[str, ...]] = {
 # The reviewer runs in a metadata-free snapshot, but a read-only sandbox still
 # permits reads, so any inherited variable that points at or reveals the live
 # repository lets the reviewer escape the snapshot and inspect the real
-# checkout/.git (defeating review-by-SHA). Drop the known leak vectors and,
-# below, any variable whose value carries the project-root path. PATH and HOME
-# are always kept — the reviewer adapter (e.g. codex) needs them.
+# checkout/.git (defeating review-by-SHA). Drop the known leak vectors and any
+# variable whose value carries the project-root path. PATH is not dropped
+# wholesale (the adapter needs it) but is filtered component-wise so a
+# repo-local venv bin cannot smuggle the path in. HOME is required by the
+# adapter (e.g. codex reads ~/.codex) and is kept as-is; a HOME that is itself
+# the checkout is a degenerate setup outside this boundary's remit.
 _REVIEWER_ENV_DROP_EXACT = frozenset({"PYTHONPATH", "PWD", "OLDPWD", "VIRTUAL_ENV"})
 _REVIEWER_ENV_DROP_PREFIX = ("AGENTMARSHAL_", "GIT_")
-_REVIEWER_ENV_KEEP = frozenset({"PATH", "HOME"})
+_REVIEWER_ENV_KEEP = frozenset({"HOME"})
 
 
 def _sanitized_reviewer_env(project_root: Path) -> dict[str, str]:
@@ -51,13 +54,28 @@ def _sanitized_reviewer_env(project_root: Path) -> dict[str, str]:
     removed, so the metadata-free snapshot is a real isolation boundary."""
 
     leaks = {str(project_root), str(project_root.resolve())}
+
+    def _reveals_repo(text: str) -> bool:
+        return any(leak in text for leak in leaks)
+
     sanitized: dict[str, str] = {}
     for name, value in os.environ.items():
         if name in _REVIEWER_ENV_DROP_EXACT:
             continue
         if any(name.startswith(prefix) for prefix in _REVIEWER_ENV_DROP_PREFIX):
             continue
-        if name not in _REVIEWER_ENV_KEEP and any(leak in value for leak in leaks):
+        if name == "PATH":
+            # Keep only the entries that do not reveal the checkout (drops a
+            # repo-local venv bin) so the adapter still resolves its tools.
+            kept = [
+                part
+                for part in value.split(os.pathsep)
+                if part and not _reveals_repo(part)
+            ]
+            if kept:
+                sanitized[name] = os.pathsep.join(kept)
+            continue
+        if name not in _REVIEWER_ENV_KEEP and _reveals_repo(value):
             continue
         sanitized[name] = value
     return sanitized
