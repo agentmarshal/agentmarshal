@@ -43,6 +43,7 @@ _RECORD_FIELDS = {
             "verdict",
             "reviewer",
             "findings",
+            "advisory_findings",
         }
     ),
     "completed": frozenset(
@@ -293,6 +294,25 @@ def _validate_review_record(data: Mapping[str, object]) -> None:
         raise JournalRecordError(
             "non-approved review records must have at least one finding id"
         )
+    if "advisory_findings" in data:
+        advisory = data["advisory_findings"]
+        if not isinstance(advisory, list) or not all(
+            isinstance(finding, str) and finding for finding in advisory
+        ):
+            raise JournalRecordError(
+                "review record field 'advisory_findings' must be an array of "
+                "non-empty finding ids"
+            )
+        if len(set(advisory)) != len(advisory):
+            raise JournalRecordError(
+                "review record advisory_findings must have unique finding ids"
+            )
+        # A finding is either blocking or advisory, never both.
+        overlap = set(advisory) & set(findings)
+        if overlap:
+            raise JournalRecordError(
+                "review record findings and advisory_findings must be disjoint"
+            )
 
 
 def _validate_session_record(data: Mapping[str, object]) -> None:
@@ -498,11 +518,18 @@ def create_review_record(
     reviewer_email: str,
     findings: list[str],
     *,
+    advisory_findings: list[str] | None = None,
     source: str = SOURCE_LIVE,
 ) -> dict[str, object]:
-    """Build the review evidence record submitted by a reviewer."""
+    """Build the review evidence record submitted by a reviewer.
 
-    return {
+    ``advisory_findings`` are non-blocking findings that may accompany any
+    verdict, including ``approved``; they never affect the merge decision.
+    The field is omitted when empty so records without advisory findings
+    stay identical to before.
+    """
+
+    record: dict[str, object] = {
         "schema": 2,
         "record_type": "review",
         "task": task_id,
@@ -519,6 +546,9 @@ def create_review_record(
         "findings": findings,
         "source": source,
     }
+    if advisory_findings:
+        record["advisory_findings"] = advisory_findings
+    return record
 
 
 def validate_record_content(filename: str, content: str) -> dict[str, object]:

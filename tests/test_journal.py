@@ -712,3 +712,76 @@ def test_status_accepts_bom_prefixed_contract(
     assert main(["status"]) == 0
 
     assert "Задача" in capsys.readouterr().out
+
+
+def _review_with_advisory(advisory: list[str]) -> dict[str, object]:
+    return create_review_record(
+        "CR-001",
+        "1.0",
+        "a" * 40,
+        "approved",
+        "r",
+        "v",
+        "m",
+        "r@t.i",
+        [],
+        advisory_findings=advisory,
+    )
+
+
+def test_approved_review_with_advisory_findings_round_trips(tmp_path: Path) -> None:
+    root = tmp_path / "journal"
+    record = _review_with_advisory(["F1", "F2"])
+    assert record["verdict"] == "approved"
+    assert record["findings"] == []
+    assert record["advisory_findings"] == ["F1", "F2"]
+    identifier = "01J00000000000000000000000"
+    write_record(root, "CR-001", record, record_id=identifier)
+    assert read_records(root, "CR-001") == [record | {"id": identifier}]
+
+
+def test_review_without_advisory_omits_the_field() -> None:
+    record = create_review_record(
+        "CR-001", "1.0", "a" * 40, "approved", "r", "v", "m", "r@t.i", []
+    )
+    assert "advisory_findings" not in record
+
+
+def test_advisory_findings_must_be_unique_non_empty_and_disjoint(
+    tmp_path: Path,
+) -> None:
+    for advisory in (["", "F1"], ["F1", "F1"]):
+        with pytest.raises(JournalRecordError, match="advisory_findings"):
+            write_record(tmp_path / "j", "CR-001", _review_with_advisory(advisory))
+    # A finding cannot be both blocking and advisory.
+    record = create_review_record(
+        "CR-001",
+        "1.0",
+        "a" * 40,
+        "changes_required",
+        "r",
+        "v",
+        "m",
+        "r@t.i",
+        ["F1"],
+        advisory_findings=["F1"],
+    )
+    with pytest.raises(JournalRecordError, match="disjoint"):
+        write_record(tmp_path / "j2", "CR-001", record)
+
+
+def test_approved_review_still_rejects_blocking_findings(tmp_path: Path) -> None:
+    record = create_review_record(
+        "CR-001",
+        "1.0",
+        "a" * 40,
+        "approved",
+        "r",
+        "v",
+        "m",
+        "r@t.i",
+        ["F1"],
+        advisory_findings=["F2"],
+    )
+    with pytest.raises(JournalRecordError, match="approved review records"):
+        write_record(tmp_path / "j", "CR-001", record)

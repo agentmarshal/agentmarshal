@@ -35,6 +35,7 @@ def submit_review(
     reviewer_model: str,
     reviewer_email: str,
     findings: list[str],
+    advisory_findings: list[str] | None = None,
 ) -> SubmittedReview:
     """Validate and record a review against an opened task."""
 
@@ -50,6 +51,7 @@ def submit_review(
             reviewer_model,
             reviewer_email,
             findings,
+            advisory_findings=advisory_findings,
         )
         return SubmittedReview(write_record(journal_root, task_id, record))
     except (JournalRecordError, TaskStatusError, OSError, ValueError) as error:

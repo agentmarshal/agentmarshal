@@ -69,6 +69,12 @@ def _build_parser() -> argparse.ArgumentParser:
     review_parser.add_argument(
         "--finding", action="append", default=[], help="finding id (repeatable)"
     )
+    review_parser.add_argument(
+        "--advisory-finding",
+        action="append",
+        default=[],
+        help="non-blocking advisory finding id (repeatable)",
+    )
     review_parser.add_argument("--role", required=True, help="reviewer role")
     review_parser.add_argument("--vendor", required=True, help="reviewer vendor")
     review_parser.add_argument("--model", required=True, help="reviewer model")
@@ -221,10 +227,12 @@ def _print_task_detail(task: TaskStatus) -> None:
     for record in task.records:
         if record["record_type"] == "review":
             findings = cast(list[object], record["findings"])
+            advisory = cast(list[object], record.get("advisory_findings", []))
             print(
                 f"- {record['id']} review {record['created_at']} "
                 f"reviewed_commit={str(record['reviewed_commit'])[:7]} "
-                f"verdict={record['verdict']} findings={len(findings)}"
+                f"verdict={record['verdict']} findings={len(findings)} "
+                f"advisory={len(advisory)}"
             )
         elif record["record_type"] == "completed":
             print(
@@ -259,6 +267,7 @@ def _run_submit_review(args: argparse.Namespace, stderr: TextIO) -> int:
             args.model,
             args.email,
             args.finding,
+            args.advisory_finding,
         )
     except ReviewSubmitError as error:
         print(error, file=stderr)
