@@ -654,6 +654,46 @@ def test_gate_refuses_artifact_only_append_to_closed_task(
     assert "already closed at base" in output
 
 
+def test_gate_passes_approved_review_with_advisory_findings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Advisory findings never block a merge: an approved review carrying
+    # them still passes the gate's review check.
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    head = _implement(repo, "src/module.py")
+    assert (
+        main(
+            [
+                "submit-review",
+                "--task",
+                "CR-001",
+                "--commit",
+                head,
+                "--verdict",
+                "approved",
+                "--role",
+                "qa",
+                "--vendor",
+                "test",
+                "--model",
+                "test-model",
+                "--email",
+                _REVIEWER_EMAIL,
+                "--advisory-finding",
+                "F1",
+                "--advisory-finding",
+                "F2",
+            ]
+        )
+        == 0
+    )
+
+    passed, output = _run(repo, head, base, head)
+
+    assert passed, output
+    assert output.count("FAIL") == 0
+
+
 def test_gate_measurements_lane_allows_a_new_supplementary_artifact(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
