@@ -1,0 +1,17 @@
+{
+  "created_at": "2026-07-29T01:13:18.914967Z",
+  "findings": [],
+  "record_type": "review",
+  "reviewed_commit": "38c03145bb065485bb6a851a52a3f0527f295d70",
+  "reviewer": {
+    "email": "qa-agent@agent.example.invalid",
+    "model": "gpt-5.6-sol",
+    "role": "qa",
+    "vendor": "codex"
+  },
+  "schema": 2,
+  "source": "live",
+  "task": "CR-034",
+  "tool_version": "0.1.0.dev0",
+  "verdict": "approved"
+}
