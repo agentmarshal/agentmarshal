@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import subprocess
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -11,6 +12,11 @@ from typing import TextIO, cast
 
 from agentmarshal import __version__
 from agentmarshal.doctor import run_doctor
+from agentmarshal.journal.capture import (
+    CaptureError,
+    private_markers_from_project,
+    scan_diff_for_leaks,
+)
 from agentmarshal.journal.complete import (
     LifecycleError,
     abandon_task,
@@ -36,6 +42,8 @@ from agentmarshal.project import (
     AlreadyInitializedError,
     find_project_root,
     initialize_project,
+    project_file_path,
+    read_project_file,
 )
 
 
@@ -165,6 +173,17 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="tolerate pre-v1 header deltas: default safe fields, skip "
         "unreconstructable records, and report each",
+    )
+    leak_scan_parser = subparsers.add_parser(
+        "leak-scan",
+        help="scan a candidate diff's added content for secrets/markers "
+        "(best-effort, provider-neutral)",
+    )
+    leak_scan_parser.add_argument(
+        "--base", required=True, help="merge target ref (the comparison base)"
+    )
+    leak_scan_parser.add_argument(
+        "--commit", required=True, help="candidate head ref to scan"
     )
     return parser
 
@@ -483,6 +502,50 @@ def _run_migrate_journal(
     return 0
 
 
+def _run_leak_scan(args: argparse.Namespace, stderr: TextIO) -> int:
+    project_root = find_project_root(Path.cwd())
+    if project_root is None:
+        print(
+            "agentmarshal leak-scan must be run inside an initialized project",
+            file=stderr,
+        )
+        return 1
+    try:
+        markers = private_markers_from_project(
+            read_project_file(project_file_path(project_root))
+        )
+    except (OSError, ValueError, CaptureError) as error:
+        print(f"leak-scan: cannot read project config: {error}", file=stderr)
+        return 1
+    # Three-dot range: diff the candidate against the merge-base of base and
+    # commit, matching the gate, so only the candidate's own additions are
+    # scanned.
+    try:
+        completed = subprocess.run(
+            ["git", "diff", f"{args.base}...{args.commit}"],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as error:
+        print(f"leak-scan: git diff failed: {error}", file=stderr)
+        return 1
+    hits = scan_diff_for_leaks(completed.stdout, markers)
+    if hits:
+        print(
+            "leak-scan: possible leak categories in added content: " + ", ".join(hits)
+        )
+        print(
+            "(best-effort: a hit is not proof of a leak and a clean run is not "
+            "proof of safety — see ADR-0005)",
+            file=stderr,
+        )
+        return 1
+    print("leak-scan: no known leak signatures in added content")
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the AgentMarshal CLI."""
 
@@ -517,5 +580,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_migrate_journal(
             args.source, args.target, sys.stderr, lenient=args.lenient
         )
+    if args.command == "leak-scan":
+        return _run_leak_scan(args, sys.stderr)
 
     parser.error(f"unknown command: {args.command}")

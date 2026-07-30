@@ -17,6 +17,11 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from agentmarshal.journal.capture import (
+    CaptureError,
+    private_markers_from_project,
+    scan_diff_for_leaks,
+)
 from agentmarshal.journal.contracts import JournalContractError, parse_contract_text
 from agentmarshal.journal.records import (
     JournalRecordError,
@@ -24,6 +29,7 @@ from agentmarshal.journal.records import (
     validate_record_content,
 )
 from agentmarshal.journal.status import TaskStatusError, load_task_status
+from agentmarshal.project import project_file_path, read_project_file
 
 _JOURNAL_PREFIX = ".agentmarshal/journal/"
 
@@ -406,6 +412,28 @@ def run_gate(
         else "multiple opened records after merge for: "
         + ", ".join(sorted(duplicate_opened)),
     )
+
+    # Advisory leak-scan (ADR-0005, CR-041): best-effort and never
+    # fail-closed. The scanner is heuristic — a clean result is not proof of
+    # safety and a hit is not proof of a leak — so it warns but does not
+    # block, and it never touches `violations`. A misconfigured marker list
+    # or a git failure degrades to a warning rather than refusing every
+    # merge. Only the candidate's added lines are scanned, so accepted
+    # historical residuals already in the tree are not re-flagged.
+    try:
+        markers = private_markers_from_project(
+            read_project_file(project_file_path(project_root))
+        )
+        diff_text = _run_git(project_root, ["diff", f"{merge_base}..{resolved_commit}"])
+        leak_hits = scan_diff_for_leaks(diff_text, markers)
+    except (OSError, ValueError, CaptureError, GateError) as error:
+        lines.append(f"WARN: leak-scan skipped ({error})")
+    else:
+        if leak_hits:
+            lines.append(
+                "WARN: possible leak in candidate additions "
+                f"(advisory, not blocking): {', '.join(leak_hits)}"
+            )
 
     return GateReport(
         passed=violations == 0, lines=lines, resolved_commit=resolved_commit
