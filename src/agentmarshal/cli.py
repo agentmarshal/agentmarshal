@@ -543,6 +543,10 @@ def _run_leak_scan(args: argparse.Namespace, stderr: TextIO) -> int:
         return 1
     # Pin raw patch output so a repo's own diff drivers (textconv, external
     # diff) cannot rewrite or redact what the scanner sees.
+    # Capture bytes and decode explicitly: git permits non-UTF-8 paths and
+    # content, so a text=True run could raise UnicodeDecodeError mid-call and
+    # traceback instead of returning the contract's clean 0/1 (the gate is
+    # protected the same way in its own git helper).
     try:
         completed = subprocess.run(
             [
@@ -554,13 +558,17 @@ def _run_leak_scan(args: argparse.Namespace, stderr: TextIO) -> int:
             ],
             cwd=project_root,
             capture_output=True,
-            text=True,
             check=True,
         )
     except (OSError, subprocess.CalledProcessError) as error:
         print(f"leak-scan: git diff failed: {error}", file=stderr)
         return 1
-    hits = scan_diff_for_leaks(completed.stdout, markers)
+    try:
+        diff_text = completed.stdout.decode("utf-8")
+    except UnicodeDecodeError as error:
+        print(f"leak-scan: git produced non-UTF-8 output: {error}", file=stderr)
+        return 1
+    hits = scan_diff_for_leaks(diff_text, markers)
     if hits:
         print(
             "leak-scan: possible leak categories in added content: " + ", ".join(hits)

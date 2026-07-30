@@ -293,6 +293,9 @@ def assert_no_leaks(text: str, private_markers: tuple[str, ...] = ()) -> None:
         )
 
 
+_HUNK_HEADER = re.compile(r"^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@")
+
+
 def scan_diff_for_leaks(
     unified_diff: str, private_markers: tuple[str, ...] = ()
 ) -> list[str]:
@@ -300,30 +303,46 @@ def scan_diff_for_leaks(
 
     Only lines the diff introduces are scanned, so this is forward-only leak
     prevention: content already in the tree (including consciously accepted
-    historical residuals) and removed lines are never re-flagged. Parsing is
-    hunk-aware rather than a plain ``+`` prefix test: a ``+`` line is treated
-    as added content only inside a hunk body (after an ``@@`` header, until
-    the next file's ``diff --git`` header). This matters because an added
-    line whose content itself starts with ``+`` is emitted as ``+++…`` in the
-    diff — a naive ``not startswith('+++')`` test would skip it and let a
-    secret hide behind leading plus signs. Pure: it parses the text it is
-    given and runs nothing. As with :func:`scan_for_leaks` an empty result is
-    not proof of safety.
+    historical residuals) and removed lines are never re-flagged.
+
+    Parsing follows the hunk line counts from each ``@@ -a,b +c,d @@`` header
+    rather than a prefix test, so it is correct for any unified diff, not just
+    one exact ``git diff`` shape. Inside a hunk body an added line is consumed
+    by the new-side counter and a removed line by the old-side counter; the
+    body ends when both counts are exhausted, so file headers between patches
+    (``---``/``+++``) are never mistaken for content. This also means an added
+    line whose content itself starts with ``+`` (emitted as ``+++…``) is still
+    scanned — a secret cannot hide behind leading plus signs. Pure: it parses
+    the text it is given and runs nothing. As with :func:`scan_for_leaks` an
+    empty result is not proof of safety.
     """
 
     added: list[str] = []
-    in_hunk = False
-    for line in unified_diff.splitlines():
-        if line.startswith("@@"):
-            in_hunk = True
+    lines = unified_diff.splitlines()
+    index = 0
+    total = len(lines)
+    while index < total:
+        header = _HUNK_HEADER.match(lines[index])
+        index += 1
+        if header is None:
             continue
-        if line.startswith("diff --git "):
-            # A new file's header; its ``---``/``+++`` lines follow while not
-            # in a hunk, so they are never mistaken for added content.
-            in_hunk = False
-            continue
-        if in_hunk and line.startswith("+"):
-            added.append(line[1:])
+        old_remaining = int(header.group(1)) if header.group(1) is not None else 1
+        new_remaining = int(header.group(2)) if header.group(2) is not None else 1
+        while index < total and (old_remaining > 0 or new_remaining > 0):
+            body = lines[index]
+            index += 1
+            if body.startswith("\\"):
+                # "\ No newline at end of file" — not a content line.
+                continue
+            if body.startswith("+"):
+                added.append(body[1:])
+                new_remaining -= 1
+            elif body.startswith("-"):
+                old_remaining -= 1
+            else:
+                # A context line (leading space) belongs to both sides.
+                old_remaining -= 1
+                new_remaining -= 1
     return scan_for_leaks("\n".join(added), private_markers)
 
 

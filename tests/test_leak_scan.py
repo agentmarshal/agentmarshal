@@ -134,6 +134,26 @@ def test_leak_scan_requires_a_git_repository(
     assert "must be run inside a git repository" in capsys.readouterr().err
 
 
+def test_leak_scan_handles_non_utf8_diff_without_traceback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import os
+
+    repo, base = _repo(tmp_path, monkeypatch)
+    # Emit raw bytes for a non-UTF-8 path (default quoting would hide it).
+    _git(repo, "config", "core.quotePath", "false")
+    bad_path = os.fsencode(repo) + b"/\xff.py"
+    with open(bad_path, "wb") as bad_file:
+        bad_file.write(b"code\n")
+    head = _commit_all(repo, "non-utf8 path")
+
+    code = main(["leak-scan", "--base", base, "--commit", head])
+
+    # A controlled refusal, not a traceback.
+    assert code == 1
+    assert "non-UTF-8" in capsys.readouterr().err
+
+
 def test_leak_scan_works_in_plain_git_repo_without_agentmarshal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -283,6 +283,34 @@ def test_scan_diff_honours_private_markers() -> None:
     ]
 
 
+def test_scan_diff_multi_file_without_diff_git_header() -> None:
+    # Two file patches separated only by ---/+++ headers (no 'diff --git').
+    # Hunk line counts end each body, so the second file's '+++' header is
+    # never scanned as added content — no false positive on a legit diff.
+    diff = (
+        "--- a/one\n"
+        "+++ b/one\n"
+        "@@ -0,0 +1 @@\n"
+        "+clean one\n"
+        "--- a/two\n"
+        "+++ b/AKIAIOSFODNN7EXAMPLE\n"
+        "@@ -0,0 +1 @@\n"
+        "+clean two\n"
+    )
+    assert scan_diff_for_leaks(diff) == []
+
+
+def test_scan_diff_counts_added_line_that_looks_like_a_hunk_header() -> None:
+    # An added content line beginning with '@@' must be consumed by the hunk
+    # counter, not treated as a new hunk header.
+    diff = (
+        "@@ -0,0 +2 @@\n"
+        "+@@ not a real header AKIAIOSFODNN7EXAMPLE\n"
+        "+second added line\n"
+    )
+    assert scan_diff_for_leaks(diff) == ["aws-access-key-id"]
+
+
 def test_private_markers_absent_section_is_empty() -> None:
     assert private_markers_from_project({}) == ()
 
