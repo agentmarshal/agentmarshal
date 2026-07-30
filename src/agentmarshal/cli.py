@@ -12,17 +12,13 @@ from typing import TextIO, cast
 
 from agentmarshal import __version__
 from agentmarshal.doctor import run_doctor
-from agentmarshal.journal.capture import (
-    CaptureError,
-    private_markers_from_project,
-    scan_diff_for_leaks,
-)
+from agentmarshal.journal.capture import CaptureError, scan_diff_for_leaks
 from agentmarshal.journal.complete import (
     LifecycleError,
     abandon_task,
     complete_task,
 )
-from agentmarshal.journal.gate import GateError, run_gate
+from agentmarshal.journal.gate import GateError, markers_from_tree, run_gate
 from agentmarshal.journal.gate_context import derive_gate_context
 from agentmarshal.journal.open_task import TaskOpenError, open_task
 from agentmarshal.journal.report import ReportError, build_report, format_report
@@ -42,8 +38,6 @@ from agentmarshal.project import (
     AlreadyInitializedError,
     find_project_root,
     initialize_project,
-    project_file_path,
-    read_project_file,
 )
 
 
@@ -510,19 +504,32 @@ def _run_leak_scan(args: argparse.Namespace, stderr: TextIO) -> int:
             file=stderr,
         )
         return 1
+    # Resolve the merge base explicitly: markers are read from that trusted
+    # tree (as the gate does) so a candidate cannot weaken its own scan, and
+    # only the candidate's own additions since the merge base are scanned.
     try:
-        markers = private_markers_from_project(
-            read_project_file(project_file_path(project_root))
+        merge_base = subprocess.run(
+            ["git", "merge-base", args.base, args.commit],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+    except (OSError, subprocess.CalledProcessError) as error:
+        print(
+            f"leak-scan: cannot find the merge base of {args.base} and "
+            f"{args.commit}: {error}",
+            file=stderr,
         )
-    except (OSError, ValueError, CaptureError) as error:
+        return 1
+    try:
+        markers = markers_from_tree(project_root, merge_base)
+    except (GateError, ValueError, CaptureError) as error:
         print(f"leak-scan: cannot read project config: {error}", file=stderr)
         return 1
-    # Three-dot range: diff the candidate against the merge-base of base and
-    # commit, matching the gate, so only the candidate's own additions are
-    # scanned.
     try:
         completed = subprocess.run(
-            ["git", "diff", f"{args.base}...{args.commit}"],
+            ["git", "diff", f"{merge_base}..{args.commit}"],
             cwd=project_root,
             capture_output=True,
             text=True,

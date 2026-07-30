@@ -836,6 +836,37 @@ def test_gate_leak_scan_uses_configured_private_markers(
     assert "private-marker" in output
 
 
+def test_gate_leak_scan_reads_markers_from_base_not_candidate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, _ = _gate_repo(tmp_path, monkeypatch, ["src/", ".agentmarshal/"])
+    project_file = repo / ".agentmarshal" / "project.json"
+    data = json.loads(project_file.read_text(encoding="utf-8"))
+    data["leak_scan"] = {"private_markers": ["internal.example.invalid"]}
+    project_file.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    base = _commit_all(repo, "configure private markers")
+
+    # The candidate tries to weaken its own scan: drop the marker from config
+    # and, in the same change, add content the base-configured marker catches.
+    data["leak_scan"] = {"private_markers": []}
+    project_file.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    src = repo / "src"
+    src.mkdir(exist_ok=True)
+    (src / "host.py").write_text(
+        "HOST = 'internal.example.invalid'\n", encoding="utf-8"
+    )
+    head = _commit_all(repo, "weaken config and add marked content")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    # Config comes from the base tree, so the candidate cannot suppress the
+    # warning by editing its own project.json.
+    assert passed, output
+    assert "WARN: possible leak in candidate additions" in output
+    assert "private-marker" in output
+
+
 def test_gate_leak_scan_degrades_to_warning_on_bad_config(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -13,6 +13,7 @@ responsibility in this slice.
 
 from __future__ import annotations
 
+import json
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -29,9 +30,9 @@ from agentmarshal.journal.records import (
     validate_record_content,
 )
 from agentmarshal.journal.status import TaskStatusError, load_task_status
-from agentmarshal.project import project_file_path, read_project_file
 
 _JOURNAL_PREFIX = ".agentmarshal/journal/"
+_PROJECT_FILE = ".agentmarshal/project.json"
 
 
 class GateError(Exception):
@@ -138,6 +139,28 @@ def _scope_covers(scope: tuple[str, ...], path: str) -> bool:
         elif path == entry:
             return True
     return False
+
+
+def markers_from_tree(project_root: Path, tree_ref: str) -> tuple[str, ...]:
+    """Read ``leak_scan.private_markers`` from ``project.json`` at a git tree.
+
+    The config is read from a **trusted** tree (the merge base), never the
+    candidate working tree, so a candidate cannot weaken its own leak-scan by
+    editing ``project.json`` in the very change being scanned — the same
+    reason the contract is read from the base side. A tree without a
+    ``project.json`` yields no markers (the scan still runs its built-in
+    secret signatures); a malformed config raises so the caller can degrade
+    to a warning rather than silently dropping it.
+    """
+
+    try:
+        project_json = _run_git(project_root, ["show", f"{tree_ref}:{_PROJECT_FILE}"])
+    except GateError:
+        return ()
+    data = json.loads(project_json.lstrip("\ufeff"))
+    if not isinstance(data, dict):
+        raise ValueError("project.json is not a JSON object")
+    return private_markers_from_project(data)
 
 
 ATTESTATION_MODES = ("commit", "ci-required")
@@ -416,17 +439,17 @@ def run_gate(
     # Advisory leak-scan (ADR-0005, CR-041): best-effort and never
     # fail-closed. The scanner is heuristic — a clean result is not proof of
     # safety and a hit is not proof of a leak — so it warns but does not
-    # block, and it never touches `violations`. A misconfigured marker list
-    # or a git failure degrades to a warning rather than refusing every
-    # merge. Only the candidate's added lines are scanned, so accepted
-    # historical residuals already in the tree are not re-flagged.
+    # block, and it never touches `violations`. Marker config is read from
+    # the merge-base tree (the trusted side), so a candidate cannot weaken
+    # its own scan; a malformed config or a git failure degrades to a warning
+    # rather than refusing every merge. Only the candidate's added lines are
+    # scanned, so accepted historical residuals already in the tree are not
+    # re-flagged.
     try:
-        markers = private_markers_from_project(
-            read_project_file(project_file_path(project_root))
-        )
+        markers = markers_from_tree(project_root, merge_base)
         diff_text = _run_git(project_root, ["diff", f"{merge_base}..{resolved_commit}"])
         leak_hits = scan_diff_for_leaks(diff_text, markers)
-    except (OSError, ValueError, CaptureError, GateError) as error:
+    except (ValueError, CaptureError, GateError) as error:
         lines.append(f"WARN: leak-scan skipped ({error})")
     else:
         if leak_hits:

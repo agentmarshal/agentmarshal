@@ -88,12 +88,14 @@ def test_leak_scan_never_echoes_the_secret(
 def test_leak_scan_uses_configured_private_markers(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    repo, base = _repo(tmp_path, monkeypatch)
+    repo, _ = _repo(tmp_path, monkeypatch)
     project_file = repo / ".agentmarshal" / "project.json"
     data = json.loads(project_file.read_text(encoding="utf-8"))
     data["leak_scan"] = {"private_markers": ["internal.example.invalid"]}
     project_file.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-    _commit_all(repo, "configure markers")
+    # Markers are read from the base (merge-base) tree, so the config must be
+    # committed on the base being scanned against.
+    base = _commit_all(repo, "configure markers")
     head = _add_file(repo, "host.py", "HOST = 'internal.example.invalid'\n")
 
     code = main(["leak-scan", "--base", base, "--commit", head])
@@ -105,12 +107,12 @@ def test_leak_scan_uses_configured_private_markers(
 def test_leak_scan_reports_bad_config(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    repo, base = _repo(tmp_path, monkeypatch)
+    repo, _ = _repo(tmp_path, monkeypatch)
     project_file = repo / ".agentmarshal" / "project.json"
     data = json.loads(project_file.read_text(encoding="utf-8"))
     data["leak_scan"] = {"private_markers": "not-a-list"}
     project_file.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-    _commit_all(repo, "bad markers")
+    base = _commit_all(repo, "bad markers")
     head = _add_file(repo, "module.py", "code\n")
 
     code = main(["leak-scan", "--base", base, "--commit", head])
