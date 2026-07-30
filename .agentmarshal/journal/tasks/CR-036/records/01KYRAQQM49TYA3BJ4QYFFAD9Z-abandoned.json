@@ -1,0 +1,9 @@
+{
+  "created_at": "2026-07-30T01:38:01.476319Z",
+  "reason": "Abandoned: this task pursued read-isolation of the review subprocess, which is not a launcher goal. Process isolation is delegated to the vendor sandbox (--sandbox read-only), and review integrity binds reviewed_commit to the candidate SHA, not to filesystem confinement, so read-isolation was never required. The exploratory env-hardening additionally regressed reviewer startup when the reviewer binary is installed in a repo-local venv (component-wise PATH filtering). No implementation merged; the original launcher is retained.",
+  "record_type": "abandoned",
+  "schema": 2,
+  "source": "live",
+  "task": "CR-036",
+  "tool_version": "0.1.0.dev0"
+}
