@@ -496,40 +496,57 @@ def _run_migrate_journal(
     return 0
 
 
+class _LeakScanGitError(Exception):
+    """A git invocation for leak-scan failed or produced undecodable output."""
+
+
+def _leak_scan_git(cwd: Path, arguments: list[str]) -> str:
+    """Run git under *cwd* and return UTF-8 stdout, or raise a clean error.
+
+    Bytes are captured and decoded explicitly so that a non-zero exit, a
+    missing git, or non-UTF-8 output (git permits non-UTF-8 paths and
+    content) all surface as :class:`_LeakScanGitError` — never a traceback,
+    so the CLI can always return the contract's clean 0/1.
+    """
+
+    try:
+        result = subprocess.run(
+            ["git", *arguments], cwd=cwd, capture_output=True, check=True
+        )
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise _LeakScanGitError(str(error)) from error
+    try:
+        return result.stdout.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise _LeakScanGitError(f"non-UTF-8 git output: {error}") from error
+
+
 def _run_leak_scan(args: argparse.Namespace, stderr: TextIO) -> int:
     # leak-scan is provider-neutral and works in any git repository. An
     # AgentMarshal project supplies configured private markers (from the base
     # tree); without one the built-in secret signatures still run, so any CI
-    # can call it on a plain checkout.
+    # can call it on a plain checkout. Every git call goes through
+    # _leak_scan_git, so non-UTF-8 paths/content are a clean refusal, never a
+    # traceback (as in the gate's own git helper).
     project_root = find_project_root(Path.cwd())
     if project_root is None:
         try:
-            toplevel = subprocess.run(
-                ["git", "rev-parse", "--show-toplevel"],
-                cwd=Path.cwd(),
-                capture_output=True,
-                text=True,
-                check=True,
-            ).stdout.strip()
-        except (OSError, subprocess.CalledProcessError):
+            toplevel = _leak_scan_git(Path.cwd(), ["rev-parse", "--show-toplevel"])
+        except _LeakScanGitError:
             print(
                 "agentmarshal leak-scan must be run inside a git repository",
                 file=stderr,
             )
             return 1
-        project_root = Path(toplevel)
+        project_root = Path(toplevel.strip())
     # Resolve the merge base explicitly: markers are read from that trusted
     # tree (as the gate does) so a candidate cannot weaken its own scan, and
     # only the candidate's own additions since the merge base are scanned.
     try:
-        merge_base = subprocess.run(
-            ["git", "merge-base", args.base, args.commit],
-            cwd=project_root,
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout.strip()
-    except (OSError, subprocess.CalledProcessError) as error:
+        merge_base = _leak_scan_git(
+            project_root, ["merge-base", args.base, args.commit]
+        ).strip()
+    except _LeakScanGitError as error:
         print(
             f"leak-scan: cannot find the merge base of {args.base} and "
             f"{args.commit}: {error}",
@@ -543,30 +560,13 @@ def _run_leak_scan(args: argparse.Namespace, stderr: TextIO) -> int:
         return 1
     # Pin raw patch output so a repo's own diff drivers (textconv, external
     # diff) cannot rewrite or redact what the scanner sees.
-    # Capture bytes and decode explicitly: git permits non-UTF-8 paths and
-    # content, so a text=True run could raise UnicodeDecodeError mid-call and
-    # traceback instead of returning the contract's clean 0/1 (the gate is
-    # protected the same way in its own git helper).
     try:
-        completed = subprocess.run(
-            [
-                "git",
-                "diff",
-                "--no-textconv",
-                "--no-ext-diff",
-                f"{merge_base}..{args.commit}",
-            ],
-            cwd=project_root,
-            capture_output=True,
-            check=True,
+        diff_text = _leak_scan_git(
+            project_root,
+            ["diff", "--no-textconv", "--no-ext-diff", f"{merge_base}..{args.commit}"],
         )
-    except (OSError, subprocess.CalledProcessError) as error:
+    except _LeakScanGitError as error:
         print(f"leak-scan: git diff failed: {error}", file=stderr)
-        return 1
-    try:
-        diff_text = completed.stdout.decode("utf-8")
-    except UnicodeDecodeError as error:
-        print(f"leak-scan: git produced non-UTF-8 output: {error}", file=stderr)
         return 1
     hits = scan_diff_for_leaks(diff_text, markers)
     if hits:
