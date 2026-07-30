@@ -867,6 +867,27 @@ def test_gate_leak_scan_reads_markers_from_base_not_candidate(
     assert "private-marker" in output
 
 
+def test_gate_leak_scan_scans_binary_marked_file_content(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A candidate marks its file 'binary' in .gitattributes; without --text
+    # git would emit "Binary files differ" and hide the secret. --text forces
+    # content, so the added secret is still scanned.
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/", ".gitattributes"])
+    (repo / ".gitattributes").write_text("src/secret.py binary\n", encoding="utf-8")
+    src = repo / "src"
+    src.mkdir(exist_ok=True)
+    (src / "secret.py").write_text("key = 'AKIAIOSFODNN7EXAMPLE'\n", encoding="utf-8")
+    head = _commit_all(repo, "binary-marked secret")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    assert passed, output
+    assert "WARN: possible leak in candidate additions" in output
+    assert "aws-access-key-id" in output
+
+
 def test_markers_from_tree_absent_project_json_yields_no_markers(
     tmp_path: Path,
 ) -> None:

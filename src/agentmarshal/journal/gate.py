@@ -456,13 +456,16 @@ def run_gate(
     # re-flagged.
     try:
         markers = markers_from_tree(project_root, merge_base)
-        # Pin raw patch output: --no-textconv / --no-ext-diff stop a repo's
-        # own diff drivers (textconv filters, external diff) from rewriting
-        # or redacting what the scanner sees, which could hide a secret.
+        # Pin raw text patch output: --text forces content even for files a
+        # repo marks binary/non-diffable (otherwise git emits "Binary files
+        # differ" and the added content is never scanned); --no-textconv /
+        # --no-ext-diff stop the repo's own diff drivers from rewriting or
+        # redacting what the scanner sees, which could hide a secret.
         diff_text = _run_git(
             project_root,
             [
                 "diff",
+                "--text",
                 "--no-textconv",
                 "--no-ext-diff",
                 f"{merge_base}..{resolved_commit}",

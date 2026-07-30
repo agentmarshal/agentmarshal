@@ -134,6 +134,32 @@ def test_leak_scan_requires_a_git_repository(
     assert "must be run inside a git repository" in capsys.readouterr().err
 
 
+def test_leak_scan_binds_to_nested_repo_not_ancestor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # An AgentMarshal repo with a plain git repo nested inside it.
+    outer = tmp_path / "outer"
+    outer.mkdir()
+    _git(outer, "init", "--quiet", "-b", "master")
+    monkeypatch.chdir(outer)
+    assert main(["init"]) == 0
+    _commit_all(outer, "outer init")
+    inner = outer / "inner"
+    inner.mkdir()
+    _git(inner, "init", "--quiet", "-b", "master")
+    monkeypatch.chdir(inner)
+    (inner / "readme.md").write_text("hi\n", encoding="utf-8")
+    base = _commit_all(inner, "inner base")
+    head = _add_file(inner, "secret.py", "key = 'AKIAIOSFODNN7EXAMPLE'\n")
+
+    # Must scan the inner checkout, not bind to the outer project and run git
+    # in the wrong repo.
+    code = main(["leak-scan", "--base", base, "--commit", head])
+
+    assert code == 1
+    assert "aws-access-key-id" in capsys.readouterr().out
+
+
 def test_leak_scan_handles_non_utf8_diff_without_traceback(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

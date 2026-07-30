@@ -36,6 +36,7 @@ from agentmarshal.migrate import JournalMigrationError, migrate_journal
 from agentmarshal.project import (
     AgentMarshalProjectError,
     AlreadyInitializedError,
+    find_git_root,
     find_project_root,
     initialize_project,
 )
@@ -522,23 +523,23 @@ def _leak_scan_git(cwd: Path, arguments: list[str]) -> str:
 
 
 def _run_leak_scan(args: argparse.Namespace, stderr: TextIO) -> int:
-    # leak-scan is provider-neutral and works in any git repository. An
+    # leak-scan is provider-neutral and works in any git repository. Bind to
+    # the CURRENT checkout: find_git_root gives this repo's top level, and
+    # discovering the project with stop_at=git_root keeps a nested plain git
+    # repo from binding to an ancestor AgentMarshal repo's project.json. An
     # AgentMarshal project supplies configured private markers (from the base
     # tree); without one the built-in secret signatures still run, so any CI
     # can call it on a plain checkout. Every git call goes through
     # _leak_scan_git, so non-UTF-8 paths/content are a clean refusal, never a
     # traceback (as in the gate's own git helper).
-    project_root = find_project_root(Path.cwd())
-    if project_root is None:
-        try:
-            toplevel = _leak_scan_git(Path.cwd(), ["rev-parse", "--show-toplevel"])
-        except _LeakScanGitError:
-            print(
-                "agentmarshal leak-scan must be run inside a git repository",
-                file=stderr,
-            )
-            return 1
-        project_root = Path(toplevel.strip())
+    git_root = find_git_root(Path.cwd())
+    if git_root is None:
+        print(
+            "agentmarshal leak-scan must be run inside a git repository",
+            file=stderr,
+        )
+        return 1
+    project_root = find_project_root(Path.cwd(), stop_at=git_root) or git_root
     # Resolve the merge base explicitly: markers are read from that trusted
     # tree (as the gate does) so a candidate cannot weaken its own scan, and
     # only the candidate's own additions since the merge base are scanned.
@@ -558,12 +559,20 @@ def _run_leak_scan(args: argparse.Namespace, stderr: TextIO) -> int:
     except (GateError, ValueError, CaptureError) as error:
         print(f"leak-scan: cannot read project config: {error}", file=stderr)
         return 1
-    # Pin raw patch output so a repo's own diff drivers (textconv, external
-    # diff) cannot rewrite or redact what the scanner sees.
+    # Pin raw text patch output: --text forces content even for files a repo
+    # marks binary/non-diffable (otherwise git emits "Binary files differ"
+    # and the added content is never scanned); --no-textconv / --no-ext-diff
+    # stop the repo's own diff drivers from rewriting what the scanner sees.
     try:
         diff_text = _leak_scan_git(
             project_root,
-            ["diff", "--no-textconv", "--no-ext-diff", f"{merge_base}..{args.commit}"],
+            [
+                "diff",
+                "--text",
+                "--no-textconv",
+                "--no-ext-diff",
+                f"{merge_base}..{args.commit}",
+            ],
         )
     except _LeakScanGitError as error:
         print(f"leak-scan: git diff failed: {error}", file=stderr)
