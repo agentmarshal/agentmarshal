@@ -184,13 +184,22 @@ def test_snapshot_extraction_failure_leaves_no_record(
     _assert_no_snapshot(repo)
 
 
-def test_default_codex_adapter_uses_read_only_stdin_prompt(
+def test_reviewer_command_requires_explicit_command_no_bundled_vendor(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.delenv("AGENTMARSHAL_REVIEWER_CMD", raising=False)
     prompt_file = tmp_path / "review-prompt.txt"
 
-    assert review._reviewer_command("codex", "test-model", prompt_file) == [
+    # Model-agnostic: no reviewer is bundled, so an unset command fails closed.
+    monkeypatch.delenv("AGENTMARSHAL_REVIEWER_CMD", raising=False)
+    with pytest.raises(review.ReviewLaunchError, match="AGENTMARSHAL_REVIEWER_CMD"):
+        review._reviewer_command("test-model", prompt_file)
+
+    # With a command set, {model} is substituted and the prompt goes on stdin.
+    monkeypatch.setenv(
+        "AGENTMARSHAL_REVIEWER_CMD",
+        "codex exec --sandbox read-only --model {model} -",
+    )
+    assert review._reviewer_command("test-model", prompt_file) == [
         "codex",
         "exec",
         "--sandbox",

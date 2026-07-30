@@ -9,7 +9,6 @@ import shlex
 import subprocess
 import tarfile
 import tempfile
-from collections.abc import Mapping
 from pathlib import Path
 from typing import cast
 
@@ -23,17 +22,6 @@ from agentmarshal.journal.submit_review import (
 _VERDICT_BEGIN = "AGENTMARSHAL_VERDICT_BEGIN"
 _VERDICT_END = "AGENTMARSHAL_VERDICT_END"
 _VERDICT_FIELDS = {"reviewed_commit", "verdict", "findings"}
-_DEFAULT_REVIEWER_COMMANDS: Mapping[str, tuple[str, ...]] = {
-    "codex": (
-        "codex",
-        "exec",
-        "--sandbox",
-        "read-only",
-        "--model",
-        "{model}",
-        "-",
-    ),
-}
 
 
 class ReviewLaunchError(Exception):
@@ -89,23 +77,35 @@ Diff:
 """
 
 
-def _reviewer_command(vendor: str, model: str, prompt_file: Path) -> list[str]:
+def _reviewer_command(model: str, prompt_file: Path) -> list[str]:
+    """Build the reviewer command from ``AGENTMARSHAL_REVIEWER_CMD``.
+
+    AgentMarshal is model-agnostic and bundles no reviewer: the operator
+    supplies the command that runs their reviewer of choice. It receives the
+    review prompt on stdin and must print the machine-verdict block.
+    Placeholders ``{model}`` and ``{prompt_file}`` are substituted.
+    """
+
     template_text = os.environ.get("AGENTMARSHAL_REVIEWER_CMD")
     if template_text is None:
-        template = _DEFAULT_REVIEWER_COMMANDS.get(vendor)
-        if template is None:
-            raise ReviewLaunchError(
-                f"no reviewer adapter configured for vendor: {vendor}"
-            )
-    else:
-        try:
-            template = tuple(shlex.split(template_text))
-        except ValueError as error:
-            raise ReviewLaunchError(
-                f"invalid AGENTMARSHAL_REVIEWER_CMD: {error}"
-            ) from error
-        if not template:
-            raise ReviewLaunchError("AGENTMARSHAL_REVIEWER_CMD must not be empty")
+        raise ReviewLaunchError(
+            "no reviewer command configured: set AGENTMARSHAL_REVIEWER_CMD to the "
+            "command that runs your reviewer (AgentMarshal bundles none — it is "
+            "model-agnostic). The command reads the prompt on stdin and prints the "
+            "machine-verdict block; placeholders {model} and {prompt_file} are "
+            "substituted. Example (Codex): "
+            "'codex exec --sandbox read-only --model {model} -'. "
+            "Alternatively, record a verdict directly with `agentmarshal "
+            "submit-review`."
+        )
+    try:
+        template = tuple(shlex.split(template_text))
+    except ValueError as error:
+        raise ReviewLaunchError(
+            f"invalid AGENTMARSHAL_REVIEWER_CMD: {error}"
+        ) from error
+    if not template:
+        raise ReviewLaunchError("AGENTMARSHAL_REVIEWER_CMD must not be empty")
     replacements = {"model": model, "prompt_file": str(prompt_file)}
     try:
         return [element.format(**replacements) for element in template]
@@ -118,8 +118,9 @@ def _reviewer_command(vendor: str, model: str, prompt_file: Path) -> list[str]:
 def _run_reviewer(command: list[str], snapshot: Path, prompt: str) -> str:
     """Execute the reviewer adapter against the metadata-free snapshot.
 
-    Process-level isolation belongs to the vendor sandbox (ADR-0001; the
-    built-in codex adapter passes ``--sandbox read-only``). The
+    Process-level isolation belongs to the reviewer command's own vendor
+    sandbox (ADR-0001; a Codex command, for example, passes
+    ``--sandbox read-only``). The
     launcher's own guarantee is the snapshot: a plain copy of the
     reviewed tree with no repository metadata, so nothing the reviewer
     writes through it reaches the repository. ``AGENTMARSHAL_REVIEWER_CMD``
@@ -253,7 +254,7 @@ def launch_review(
         prompt = _review_prompt(contract, diff, resolved_commit)
         prompt_file.write_text(prompt, encoding="utf-8")
         output = _run_reviewer(
-            _reviewer_command(reviewer_vendor, reviewer_model, prompt_file),
+            _reviewer_command(reviewer_model, prompt_file),
             snapshot,
             prompt,
         )
