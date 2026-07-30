@@ -41,9 +41,10 @@ is a model that avoids cross-branch mutation, not a database.
      amendment trail.
    - **Evidence is append-only records**: reviews and verdicts,
      completion evidence, lifecycle events, execution inputs (the
-     prompt snapshot a session was actually launched with,
-     content-addressed and captured by the launcher at launch time),
-     and measurements. One file per record, JSON, written exactly once
+     prompt snapshot a session was launched with, content-addressed at
+     launch time — *planned; not captured in 0.1.0, see D7 and
+     ADR-0005*), and measurements. One file per record, JSON, written
+     exactly once
      by a trusted recorder, never edited. Record identity is
      collision-resistant by construction: every record path embeds the
      task id and a recorder-generated sortable collision-resistant
@@ -95,20 +96,40 @@ is a model that avoids cross-branch mutation, not a database.
    store and only under a double opt-in (configuration plus an
    explicitly dangerous-named flag) — never into the public store.
 
+   **0.1.0 boundary.** This is the target visibility model. In 0.1.0
+   every record is public and git-tracked; the persistent private
+   store, the per-class capture policy, prompt-snapshot capture, and the
+   session double-opt-in are **planned, not implemented** (`capture.py`
+   writes nothing). ADR-0005 marks the same capture boundary.
+
 ## Consequences
 
 - Journal transactions from parallel tasks never contend over shared
   mutable files; identifier collisions are statistically negligible and
   caught fail-closed at the merge boundary if they ever occur. The only
   serialized journal write remains task creation (ADR-0002).
-- Gates read state from records reachable from the merge candidate
-  instead of the checked-out working tree, removing a whole class of
-  checkout-order traps observed on the v1 rails.
+- Gates read journal records from the checkout they are invoked on — the
+  **trusted-checkout** model documented in the README and self-hosting
+  docs. The merge-authority wrapper checks out the merge candidate and
+  runs the gate there, so the gate sees the candidate's records rather
+  than whatever tree a human happened to leave behind; the gate trusts
+  that checkout and does not independently resolve records from the
+  candidate SHA. This removes the checkout-order traps of the v1 rails
+  while keeping the trust boundary explicit (an untrusted caller can run
+  the gate on a mismatched tree — the wrapper, not the gate, guarantees
+  the checkout matches the candidate).
 - No file ever says "status: done"; humans ask the CLI. The CLI being
   the product's API, this is accepted.
-- Machine-readable acceptance criteria plus recorded outcomes make
-  every merged task an extractable evaluation case with no extra
-  bookkeeping.
+- Machine-readable acceptance criteria plus recorded outcomes *would*
+  make a merged task an extractable evaluation case with no extra
+  bookkeeping — but only once contracts actually carry them. In practice
+  the machine-readable `acceptance` array was empty in every contract
+  through CR-038 (criteria lived only as human prose in the body); the
+  v1→v2 migration carried no contract prose at all. So most merged tasks
+  are **not** usable evaluation cases today (see
+  [docs/migration-v1-to-v2.md](../migration-v1-to-v2.md)). Substantive,
+  machine-readable acceptance is required going forward, and enforcing it
+  in the gate is a planned contract-schema change, not yet in effect.
 - Session records may carry an optional external trace reference,
   keeping the ledger composable with session observability tooling
   without depending on it.
