@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import subprocess
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -11,12 +12,13 @@ from typing import TextIO, cast
 
 from agentmarshal import __version__
 from agentmarshal.doctor import run_doctor
+from agentmarshal.journal.capture import CaptureError, scan_diff_for_leaks
 from agentmarshal.journal.complete import (
     LifecycleError,
     abandon_task,
     complete_task,
 )
-from agentmarshal.journal.gate import GateError, run_gate
+from agentmarshal.journal.gate import GateError, markers_from_tree, run_gate
 from agentmarshal.journal.gate_context import derive_gate_context
 from agentmarshal.journal.open_task import TaskOpenError, open_task
 from agentmarshal.journal.report import ReportError, build_report, format_report
@@ -34,6 +36,7 @@ from agentmarshal.migrate import JournalMigrationError, migrate_journal
 from agentmarshal.project import (
     AgentMarshalProjectError,
     AlreadyInitializedError,
+    find_git_root,
     find_project_root,
     initialize_project,
 )
@@ -165,6 +168,17 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="tolerate pre-v1 header deltas: default safe fields, skip "
         "unreconstructable records, and report each",
+    )
+    leak_scan_parser = subparsers.add_parser(
+        "leak-scan",
+        help="scan a candidate diff's added content for secrets/markers "
+        "(best-effort, provider-neutral)",
+    )
+    leak_scan_parser.add_argument(
+        "--base", required=True, help="merge target ref (the comparison base)"
+    )
+    leak_scan_parser.add_argument(
+        "--commit", required=True, help="candidate head ref to scan"
     )
     return parser
 
@@ -483,6 +497,107 @@ def _run_migrate_journal(
     return 0
 
 
+class _LeakScanGitError(Exception):
+    """A git invocation for leak-scan failed or produced undecodable output."""
+
+
+def _leak_scan_git(cwd: Path, arguments: list[str]) -> str:
+    """Run git under *cwd* and return UTF-8 stdout, or raise a clean error.
+
+    Bytes are captured and decoded explicitly so that a non-zero exit, a
+    missing git, or non-UTF-8 output (git permits non-UTF-8 paths and
+    content) all surface as :class:`_LeakScanGitError` — never a traceback,
+    so the CLI can always return the contract's clean 0/1.
+    """
+
+    try:
+        result = subprocess.run(
+            ["git", *arguments], cwd=cwd, capture_output=True, check=True
+        )
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise _LeakScanGitError(str(error)) from error
+    try:
+        return result.stdout.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise _LeakScanGitError(f"non-UTF-8 git output: {error}") from error
+
+
+def _run_leak_scan(args: argparse.Namespace, stderr: TextIO) -> int:
+    # leak-scan is provider-neutral and works in any git repository. Bind to
+    # the CURRENT checkout: find_git_root gives this repo's top level, and
+    # discovering the project with stop_at=git_root keeps a nested plain git
+    # repo from binding to an ancestor AgentMarshal repo's project.json. An
+    # AgentMarshal project supplies configured private markers (from the base
+    # tree); without one the built-in secret signatures still run, so any CI
+    # can call it on a plain checkout. Every git call goes through
+    # _leak_scan_git, so non-UTF-8 paths/content are a clean refusal, never a
+    # traceback (as in the gate's own git helper).
+    # find_git_root shells out to git; a non-UTF-8 repo path can make it raise
+    # (UnicodeDecodeError) and a missing git raises GitNotAvailableError. Catch
+    # both at the call site so discovery is a clean refusal, never a traceback.
+    try:
+        git_root = find_git_root(Path.cwd())
+    except (UnicodeDecodeError, AgentMarshalProjectError):
+        git_root = None
+    if git_root is None:
+        print(
+            "agentmarshal leak-scan must be run inside a git repository",
+            file=stderr,
+        )
+        return 1
+    project_root = find_project_root(Path.cwd(), stop_at=git_root) or git_root
+    # Resolve the merge base explicitly: markers are read from that trusted
+    # tree (as the gate does) so a candidate cannot weaken its own scan, and
+    # only the candidate's own additions since the merge base are scanned.
+    try:
+        merge_base = _leak_scan_git(
+            project_root, ["merge-base", args.base, args.commit]
+        ).strip()
+    except _LeakScanGitError as error:
+        print(
+            f"leak-scan: cannot find the merge base of {args.base} and "
+            f"{args.commit}: {error}",
+            file=stderr,
+        )
+        return 1
+    try:
+        markers = markers_from_tree(project_root, merge_base)
+    except (GateError, ValueError, CaptureError) as error:
+        print(f"leak-scan: cannot read project config: {error}", file=stderr)
+        return 1
+    # Pin raw text patch output: --text forces content even for files a repo
+    # marks binary/non-diffable (otherwise git emits "Binary files differ"
+    # and the added content is never scanned); --no-textconv / --no-ext-diff
+    # stop the repo's own diff drivers from rewriting what the scanner sees.
+    try:
+        diff_text = _leak_scan_git(
+            project_root,
+            [
+                "diff",
+                "--text",
+                "--no-textconv",
+                "--no-ext-diff",
+                f"{merge_base}..{args.commit}",
+            ],
+        )
+    except _LeakScanGitError as error:
+        print(f"leak-scan: git diff failed: {error}", file=stderr)
+        return 1
+    hits = scan_diff_for_leaks(diff_text, markers)
+    if hits:
+        print(
+            "leak-scan: possible leak categories in added content: " + ", ".join(hits)
+        )
+        print(
+            "(best-effort: a hit is not proof of a leak and a clean run is not "
+            "proof of safety — see ADR-0005)",
+            file=stderr,
+        )
+        return 1
+    print("leak-scan: no known leak signatures in added content")
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the AgentMarshal CLI."""
 
@@ -517,5 +632,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_migrate_journal(
             args.source, args.target, sys.stderr, lenient=args.lenient
         )
+    if args.command == "leak-scan":
+        return _run_leak_scan(args, sys.stderr)
 
     parser.error(f"unknown command: {args.command}")

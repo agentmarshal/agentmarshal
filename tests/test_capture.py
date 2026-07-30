@@ -11,6 +11,8 @@ from agentmarshal.journal.capture import (
     CapturePolicy,
     assert_no_leaks,
     capture_policy_from_project,
+    private_markers_from_project,
+    scan_diff_for_leaks,
     scan_for_leaks,
 )
 
@@ -238,3 +240,103 @@ def test_scan_passes_clean_text() -> None:
     text = "The review found no blocking issues; the diff is within scope."
     assert scan_for_leaks(text) == []
     assert_no_leaks(text)  # does not raise
+
+
+def test_scan_diff_scans_only_added_lines() -> None:
+    diff = (
+        "diff --git a/f b/f\n"
+        "--- a/f\n"
+        "+++ b/f\n"
+        "@@ -1,2 +1,2 @@\n"
+        " context AKIAIOSFODNN7EXAMPLE stays unscanned on a context line\n"
+        "-removed AKIAIOSFODNN7EXAMPLE on a removed line is ignored\n"
+        "+added token AKIAIOSFODNN7EXAMPLE now present\n"
+    )
+    # Only the '+' line (not the '+++' header, not context, not '-') is scanned.
+    assert scan_diff_for_leaks(diff) == ["aws-access-key-id"]
+
+
+def test_scan_diff_ignores_file_header_plus_plus_plus() -> None:
+    diff = "--- a/x\n+++ b/AKIAIOSFODNN7EXAMPLE\n@@ -0,0 +1 @@\n+clean line\n"
+    # The '+++' destination header is outside any hunk, so it is not content.
+    assert scan_diff_for_leaks(diff) == []
+
+
+def test_scan_diff_catches_added_line_starting_with_plus() -> None:
+    # An added line whose content itself starts with '+' is emitted as
+    # '+++...' in the diff; hunk-aware parsing must still scan it so a secret
+    # cannot hide behind leading plus signs.
+    diff = (
+        "diff --git a/f b/f\n"
+        "--- a/f\n"
+        "+++ b/f\n"
+        "@@ -0,0 +1 @@\n"
+        "+++AKIAIOSFODNN7EXAMPLE trailing\n"
+    )
+    assert scan_diff_for_leaks(diff) == ["aws-access-key-id"]
+
+
+def test_scan_diff_honours_private_markers() -> None:
+    diff = "+++ b/f\n@@ -0,0 +1 @@\n+HOST = internal.example.invalid\n"
+    assert scan_diff_for_leaks(diff, ("internal.example.invalid",)) == [
+        "private-marker"
+    ]
+
+
+def test_scan_diff_multi_file_without_diff_git_header() -> None:
+    # Two file patches separated only by ---/+++ headers (no 'diff --git').
+    # Hunk line counts end each body, so the second file's '+++' header is
+    # never scanned as added content — no false positive on a legit diff.
+    diff = (
+        "--- a/one\n"
+        "+++ b/one\n"
+        "@@ -0,0 +1 @@\n"
+        "+clean one\n"
+        "--- a/two\n"
+        "+++ b/AKIAIOSFODNN7EXAMPLE\n"
+        "@@ -0,0 +1 @@\n"
+        "+clean two\n"
+    )
+    assert scan_diff_for_leaks(diff) == []
+
+
+def test_scan_diff_counts_added_line_that_looks_like_a_hunk_header() -> None:
+    # An added content line beginning with '@@' must be consumed by the hunk
+    # counter, not treated as a new hunk header.
+    diff = (
+        "@@ -0,0 +2 @@\n"
+        "+@@ not a real header AKIAIOSFODNN7EXAMPLE\n"
+        "+second added line\n"
+    )
+    assert scan_diff_for_leaks(diff) == ["aws-access-key-id"]
+
+
+def test_private_markers_absent_section_is_empty() -> None:
+    assert private_markers_from_project({}) == ()
+
+
+def test_private_markers_parsed_from_list() -> None:
+    data = {"leak_scan": {"private_markers": ["a.example", "b.example"]}}
+    assert private_markers_from_project(data) == ("a.example", "b.example")
+
+
+def test_private_markers_reject_non_object_section() -> None:
+    with pytest.raises(CaptureError):
+        private_markers_from_project({"leak_scan": ["not-an-object"]})
+
+
+def test_private_markers_reject_unsupported_field() -> None:
+    with pytest.raises(CaptureError):
+        private_markers_from_project({"leak_scan": {"bogus": 1}})
+
+
+def test_private_markers_reject_non_list() -> None:
+    with pytest.raises(CaptureError):
+        private_markers_from_project({"leak_scan": {"private_markers": "x"}})
+
+
+def test_private_markers_reject_empty_or_non_string_entry() -> None:
+    with pytest.raises(CaptureError):
+        private_markers_from_project({"leak_scan": {"private_markers": [""]}})
+    with pytest.raises(CaptureError):
+        private_markers_from_project({"leak_scan": {"private_markers": [3]}})

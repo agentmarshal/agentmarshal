@@ -13,10 +13,16 @@ responsibility in this slice.
 
 from __future__ import annotations
 
+import json
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from agentmarshal.journal.capture import (
+    CaptureError,
+    private_markers_from_project,
+    scan_diff_for_leaks,
+)
 from agentmarshal.journal.contracts import JournalContractError, parse_contract_text
 from agentmarshal.journal.records import (
     JournalRecordError,
@@ -26,6 +32,7 @@ from agentmarshal.journal.records import (
 from agentmarshal.journal.status import TaskStatusError, load_task_status
 
 _JOURNAL_PREFIX = ".agentmarshal/journal/"
+_PROJECT_FILE = ".agentmarshal/project.json"
 
 
 class GateError(Exception):
@@ -132,6 +139,37 @@ def _scope_covers(scope: tuple[str, ...], path: str) -> bool:
         elif path == entry:
             return True
     return False
+
+
+def markers_from_tree(project_root: Path, tree_ref: str) -> tuple[str, ...]:
+    """Read ``leak_scan.private_markers`` from ``project.json`` at a git tree.
+
+    The config is read from a **trusted** tree (the merge base), never the
+    candidate working tree, so a candidate cannot weaken its own leak-scan by
+    editing ``project.json`` in the very change being scanned — the same
+    reason the contract is read from the base side.
+
+    A tree that genuinely has no ``project.json`` yields no markers (the scan
+    still runs its built-in secret signatures). That is distinguished from a
+    real failure — an unknown ref, or a ``git show`` error on a file that
+    does exist — which propagates as :class:`GateError` so the caller can
+    surface a visible skip warning instead of silently dropping configured
+    markers. A malformed config likewise raises (``ValueError`` /
+    :class:`CaptureError`).
+    """
+
+    # `ls-tree` distinguishes an absent path (empty output, exit 0) from a
+    # bad ref (non-zero -> GateError); only genuine absence returns no markers.
+    listing = _run_git(
+        project_root, ["ls-tree", "--name-only", tree_ref, "--", _PROJECT_FILE]
+    )
+    if not listing.strip():
+        return ()
+    project_json = _run_git(project_root, ["show", f"{tree_ref}:{_PROJECT_FILE}"])
+    data = json.loads(project_json.lstrip("\ufeff"))
+    if not isinstance(data, dict):
+        raise ValueError("project.json is not a JSON object")
+    return private_markers_from_project(data)
 
 
 ATTESTATION_MODES = ("commit", "ci-required")
@@ -406,6 +444,42 @@ def run_gate(
         else "multiple opened records after merge for: "
         + ", ".join(sorted(duplicate_opened)),
     )
+
+    # Advisory leak-scan (ADR-0005, CR-041): best-effort and never
+    # fail-closed. The scanner is heuristic — a clean result is not proof of
+    # safety and a hit is not proof of a leak — so it warns but does not
+    # block, and it never touches `violations`. Marker config is read from
+    # the merge-base tree (the trusted side), so a candidate cannot weaken
+    # its own scan; a malformed config or a git failure degrades to a warning
+    # rather than refusing every merge. Only the candidate's added lines are
+    # scanned, so accepted historical residuals already in the tree are not
+    # re-flagged.
+    try:
+        markers = markers_from_tree(project_root, merge_base)
+        # Pin raw text patch output: --text forces content even for files a
+        # repo marks binary/non-diffable (otherwise git emits "Binary files
+        # differ" and the added content is never scanned); --no-textconv /
+        # --no-ext-diff stop the repo's own diff drivers from rewriting or
+        # redacting what the scanner sees, which could hide a secret.
+        diff_text = _run_git(
+            project_root,
+            [
+                "diff",
+                "--text",
+                "--no-textconv",
+                "--no-ext-diff",
+                f"{merge_base}..{resolved_commit}",
+            ],
+        )
+        leak_hits = scan_diff_for_leaks(diff_text, markers)
+    except (ValueError, CaptureError, GateError) as error:
+        lines.append(f"WARN: leak-scan skipped ({error})")
+    else:
+        if leak_hits:
+            lines.append(
+                "WARN: possible leak in candidate additions "
+                f"(advisory, not blocking): {', '.join(leak_hits)}"
+            )
 
     return GateReport(
         passed=violations == 0, lines=lines, resolved_commit=resolved_commit

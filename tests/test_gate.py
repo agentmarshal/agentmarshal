@@ -1,12 +1,13 @@
 """Tests for the merge gate."""
 
+import json
 import subprocess
 from pathlib import Path
 
 import pytest
 
 from agentmarshal.cli import main
-from agentmarshal.journal.gate import GateError, run_gate
+from agentmarshal.journal.gate import GateError, markers_from_tree, run_gate
 from agentmarshal.journal.records import (
     create_completed_record,
     create_session_record,
@@ -782,3 +783,148 @@ def test_gate_measurements_lane_refuses_modifying_existing_artifact(
 
     assert not passed
     assert "already closed at base" in output
+
+
+def test_gate_warns_on_leak_without_blocking(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    # An added line trips the built-in secret signatures.
+    head = _implement(repo, "src/module.py", "aws_key = 'AKIAIOSFODNN7EXAMPLE'\n")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    # Advisory: the gate warns but still passes, and never emits a FAIL.
+    assert passed, output
+    assert output.count("FAIL") == 0
+    assert "WARN: possible leak in candidate additions" in output
+    assert "aws-access-key-id" in output
+
+
+def test_gate_leak_scan_is_clean_for_benign_additions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    head = _implement(repo, "src/module.py", "def add(a, b):\n    return a + b\n")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    assert passed, output
+    assert "WARN:" not in output
+
+
+def test_gate_leak_scan_uses_configured_private_markers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, _ = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    project_file = repo / ".agentmarshal" / "project.json"
+    data = json.loads(project_file.read_text(encoding="utf-8"))
+    data["leak_scan"] = {"private_markers": ["internal.example.invalid"]}
+    project_file.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    # Commit the config into the base so the marker only trips on the
+    # candidate's own added content, not on the config declaration itself.
+    base = _commit_all(repo, "configure private markers")
+    head = _implement(repo, "src/host.py", "HOST = 'internal.example.invalid'\n")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    assert passed, output
+    assert "WARN: possible leak in candidate additions" in output
+    assert "private-marker" in output
+
+
+def test_gate_leak_scan_reads_markers_from_base_not_candidate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, _ = _gate_repo(tmp_path, monkeypatch, ["src/", ".agentmarshal/"])
+    project_file = repo / ".agentmarshal" / "project.json"
+    data = json.loads(project_file.read_text(encoding="utf-8"))
+    data["leak_scan"] = {"private_markers": ["internal.example.invalid"]}
+    project_file.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    base = _commit_all(repo, "configure private markers")
+
+    # The candidate tries to weaken its own scan: drop the marker from config
+    # and, in the same change, add content the base-configured marker catches.
+    data["leak_scan"] = {"private_markers": []}
+    project_file.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    src = repo / "src"
+    src.mkdir(exist_ok=True)
+    (src / "host.py").write_text(
+        "HOST = 'internal.example.invalid'\n", encoding="utf-8"
+    )
+    head = _commit_all(repo, "weaken config and add marked content")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    # Config comes from the base tree, so the candidate cannot suppress the
+    # warning by editing its own project.json.
+    assert passed, output
+    assert "WARN: possible leak in candidate additions" in output
+    assert "private-marker" in output
+
+
+def test_gate_leak_scan_scans_binary_marked_file_content(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A candidate marks its file 'binary' in .gitattributes; without --text
+    # git would emit "Binary files differ" and hide the secret. --text forces
+    # content, so the added secret is still scanned.
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/", ".gitattributes"])
+    (repo / ".gitattributes").write_text("src/secret.py binary\n", encoding="utf-8")
+    src = repo / "src"
+    src.mkdir(exist_ok=True)
+    (src / "secret.py").write_text("key = 'AKIAIOSFODNN7EXAMPLE'\n", encoding="utf-8")
+    head = _commit_all(repo, "binary-marked secret")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    assert passed, output
+    assert "WARN: possible leak in candidate additions" in output
+    assert "aws-access-key-id" in output
+
+
+def test_markers_from_tree_absent_project_json_yields_no_markers(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "--quiet", "-b", "master")
+    (repo / "file.txt").write_text("x\n", encoding="utf-8")
+    # A commit that deliberately has no .agentmarshal/project.json.
+    ref = _commit_all(repo, "no project file")
+
+    assert markers_from_tree(repo, ref) == ()
+
+
+def test_markers_from_tree_bad_ref_raises_rather_than_dropping(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, _ = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    # An unknown ref is a real failure, surfaced — not silently "no markers".
+    with pytest.raises(GateError):
+        markers_from_tree(repo, "definitely-not-a-ref")
+
+
+def test_gate_leak_scan_degrades_to_warning_on_bad_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, _ = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    project_file = repo / ".agentmarshal" / "project.json"
+    data = json.loads(project_file.read_text(encoding="utf-8"))
+    data["leak_scan"] = {"private_markers": "not-a-list"}
+    project_file.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    base = _commit_all(repo, "malformed leak_scan config")
+    head = _implement(repo, "src/module.py", "code\n")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    # A malformed advisory config never blocks a merge: it degrades to a warn.
+    assert passed, output
+    assert output.count("FAIL") == 0
+    assert "WARN: leak-scan skipped" in output

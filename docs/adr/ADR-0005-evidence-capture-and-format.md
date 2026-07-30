@@ -9,13 +9,19 @@ Date: 2026-07-28
 > `session`/measurement record type — validated fail-closed and read by the
 > gate. **Planned, not implemented in 0.1.0** (no active enforcement):
 > supplementary-artifact capture and the capture-policy presets/overrides
-> (Decision 2) — `capture.py` is a stub that writes nothing; the mandatory
-> pre-commit leak-scan (Decision 2); the in-toto Statement / DSSE projection
-> and the schema fields it needs (Decisions 1 and 5) — `attestation.py` emits
-> no Statement; and the retroactive host backfill (Decision 4). Sentences
-> below that describe these in the present tense state the target behaviour,
-> not what 0.1.0 does. The Decision 5 "activation boundary" notes mark where
-> each guarantee becomes enforced.
+> (Decision 2) — `capture.py` is a stub that writes nothing; the *mandatory,
+> block-on-leak* enforcement of the leak-scan (Decision 2); the in-toto
+> Statement / DSSE projection and the schema fields it needs (Decisions 1 and
+> 5) — `attestation.py` emits no Statement; and the retroactive host backfill
+> (Decision 4). Sentences below that describe these in the present tense state
+> the target behaviour, not what 0.1.0 does. The Decision 5 "activation
+> boundary" notes mark where each guarantee becomes enforced.
+>
+> **Shipped since 0.1.0.** An *advisory* leak-scan now runs at the merge
+> boundary (CR-041): the merge gate warns on a possible leak in the
+> candidate's added content, and a provider-neutral `agentmarshal leak-scan`
+> command is available for any CI. It is best-effort and never blocks a merge;
+> the mandatory block-on-leak enforcement above remains roadmap.
 
 ## Context
 
@@ -101,8 +107,9 @@ Host configuration selects a **preset** and may **override** per class:
   independent opt-ins**: persistent configuration (`allow_public_sessions`)
   **and** a per-operation dangerously-named flag. Neither alone suffices.
 - **Leak-scan is mandatory** on every artifact before it is committed
-  *(planned; no leak-scan runs in 0.1.0)*: secrets, private hosts and tokens
-  are refused. Leak-scan is an
+  *(mandatory block-on-leak is roadmap; an advisory merge-time leak-scan
+  ships — see the boundary note above and CR-041)*: secrets, private hosts
+  and tokens are refused. Leak-scan is an
   additional safeguard, **not authorization to publish** — it never
   substitutes for the opt-ins above; heuristics miss content, so private
   stays the default.

@@ -291,3 +291,94 @@ def assert_no_leaks(text: str, private_markers: tuple[str, ...] = ()) -> None:
         raise CaptureError(
             f"artifact refused: possible secrets detected ({', '.join(hits)})"
         )
+
+
+_HUNK_HEADER = re.compile(r"^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@")
+
+
+def scan_diff_for_leaks(
+    unified_diff: str, private_markers: tuple[str, ...] = ()
+) -> list[str]:
+    """Return leak categories found in the *added* lines of a unified diff.
+
+    Only lines the diff introduces are scanned, so this is forward-only leak
+    prevention: content already in the tree (including consciously accepted
+    historical residuals) and removed lines are never re-flagged.
+
+    Parsing follows the hunk line counts from each ``@@ -a,b +c,d @@`` header
+    rather than a prefix test, so it is correct for any unified diff, not just
+    one exact ``git diff`` shape. Inside a hunk body an added line is consumed
+    by the new-side counter and a removed line by the old-side counter; the
+    body ends when both counts are exhausted, so file headers between patches
+    (``---``/``+++``) are never mistaken for content. This also means an added
+    line whose content itself starts with ``+`` (emitted as ``+++…``) is still
+    scanned — a secret cannot hide behind leading plus signs. Pure: it parses
+    the text it is given and runs nothing. As with :func:`scan_for_leaks` an
+    empty result is not proof of safety.
+    """
+
+    added: list[str] = []
+    lines = unified_diff.splitlines()
+    index = 0
+    total = len(lines)
+    while index < total:
+        header = _HUNK_HEADER.match(lines[index])
+        index += 1
+        if header is None:
+            continue
+        old_remaining = int(header.group(1)) if header.group(1) is not None else 1
+        new_remaining = int(header.group(2)) if header.group(2) is not None else 1
+        while index < total and (old_remaining > 0 or new_remaining > 0):
+            body = lines[index]
+            index += 1
+            if body.startswith("\\"):
+                # "\ No newline at end of file" — not a content line.
+                continue
+            if body.startswith("+"):
+                added.append(body[1:])
+                new_remaining -= 1
+            elif body.startswith("-"):
+                old_remaining -= 1
+            else:
+                # A context line (leading space) belongs to both sides.
+                old_remaining -= 1
+                new_remaining -= 1
+    return scan_for_leaks("\n".join(added), private_markers)
+
+
+def private_markers_from_project(
+    project_data: Mapping[str, object],
+) -> tuple[str, ...]:
+    """Parse the optional ``leak_scan.private_markers`` list from project config.
+
+    An absent ``leak_scan`` section yields no markers, so the scan falls back
+    to the built-in secret signatures only and existing projects are
+    unaffected. Fails closed on a malformed section (a non-object
+    ``leak_scan``, an unsupported field, a non-list ``private_markers``, or a
+    non-string / empty entry) rather than silently ignoring it.
+    """
+
+    section = project_data.get("leak_scan")
+    if section is None:
+        return ()
+    if not isinstance(section, Mapping):
+        raise CaptureError("project 'leak_scan' section must be an object")
+
+    allowed_keys = {"private_markers"}
+    unexpected = set(section.keys()) - allowed_keys
+    if unexpected:
+        raise CaptureError(
+            f"leak_scan section has unsupported fields: {', '.join(sorted(unexpected))}"
+        )
+
+    raw = section.get("private_markers", [])
+    if not isinstance(raw, list):
+        raise CaptureError("leak_scan 'private_markers' must be a list")
+    markers: list[str] = []
+    for item in raw:
+        if not isinstance(item, str) or not item:
+            raise CaptureError(
+                "leak_scan 'private_markers' entries must be non-empty strings"
+            )
+        markers.append(item)
+    return tuple(markers)
