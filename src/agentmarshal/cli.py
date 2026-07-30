@@ -532,7 +532,13 @@ def _run_leak_scan(args: argparse.Namespace, stderr: TextIO) -> int:
     # can call it on a plain checkout. Every git call goes through
     # _leak_scan_git, so non-UTF-8 paths/content are a clean refusal, never a
     # traceback (as in the gate's own git helper).
-    git_root = find_git_root(Path.cwd())
+    # find_git_root shells out to git; a non-UTF-8 repo path can make it raise
+    # (UnicodeDecodeError) and a missing git raises GitNotAvailableError. Catch
+    # both at the call site so discovery is a clean refusal, never a traceback.
+    try:
+        git_root = find_git_root(Path.cwd())
+    except (UnicodeDecodeError, AgentMarshalProjectError):
+        git_root = None
     if git_root is None:
         print(
             "agentmarshal leak-scan must be run inside a git repository",
