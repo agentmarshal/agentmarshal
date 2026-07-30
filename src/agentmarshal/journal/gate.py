@@ -456,7 +456,18 @@ def run_gate(
     # re-flagged.
     try:
         markers = markers_from_tree(project_root, merge_base)
-        diff_text = _run_git(project_root, ["diff", f"{merge_base}..{resolved_commit}"])
+        # Pin raw patch output: --no-textconv / --no-ext-diff stop a repo's
+        # own diff drivers (textconv filters, external diff) from rewriting
+        # or redacting what the scanner sees, which could hide a secret.
+        diff_text = _run_git(
+            project_root,
+            [
+                "diff",
+                "--no-textconv",
+                "--no-ext-diff",
+                f"{merge_base}..{resolved_commit}",
+            ],
+        )
         leak_hits = scan_diff_for_leaks(diff_text, markers)
     except (ValueError, CaptureError, GateError) as error:
         lines.append(f"WARN: leak-scan skipped ({error})")

@@ -497,13 +497,27 @@ def _run_migrate_journal(
 
 
 def _run_leak_scan(args: argparse.Namespace, stderr: TextIO) -> int:
+    # leak-scan is provider-neutral and works in any git repository. An
+    # AgentMarshal project supplies configured private markers (from the base
+    # tree); without one the built-in secret signatures still run, so any CI
+    # can call it on a plain checkout.
     project_root = find_project_root(Path.cwd())
     if project_root is None:
-        print(
-            "agentmarshal leak-scan must be run inside an initialized project",
-            file=stderr,
-        )
-        return 1
+        try:
+            toplevel = subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],
+                cwd=Path.cwd(),
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip()
+        except (OSError, subprocess.CalledProcessError):
+            print(
+                "agentmarshal leak-scan must be run inside a git repository",
+                file=stderr,
+            )
+            return 1
+        project_root = Path(toplevel)
     # Resolve the merge base explicitly: markers are read from that trusted
     # tree (as the gate does) so a candidate cannot weaken its own scan, and
     # only the candidate's own additions since the merge base are scanned.
@@ -527,9 +541,17 @@ def _run_leak_scan(args: argparse.Namespace, stderr: TextIO) -> int:
     except (GateError, ValueError, CaptureError) as error:
         print(f"leak-scan: cannot read project config: {error}", file=stderr)
         return 1
+    # Pin raw patch output so a repo's own diff drivers (textconv, external
+    # diff) cannot rewrite or redact what the scanner sees.
     try:
         completed = subprocess.run(
-            ["git", "diff", f"{merge_base}..{args.commit}"],
+            [
+                "git",
+                "diff",
+                "--no-textconv",
+                "--no-ext-diff",
+                f"{merge_base}..{args.commit}",
+            ],
             cwd=project_root,
             capture_output=True,
             text=True,

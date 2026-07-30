@@ -121,7 +121,7 @@ def test_leak_scan_reports_bad_config(
     assert "cannot read project config" in capsys.readouterr().err
 
 
-def test_leak_scan_requires_initialized_project(
+def test_leak_scan_requires_a_git_repository(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     plain = tmp_path / "plain"
@@ -131,4 +131,23 @@ def test_leak_scan_requires_initialized_project(
     code = main(["leak-scan", "--base", "HEAD~1", "--commit", "HEAD"])
 
     assert code == 1
-    assert "initialized project" in capsys.readouterr().err
+    assert "must be run inside a git repository" in capsys.readouterr().err
+
+
+def test_leak_scan_works_in_plain_git_repo_without_agentmarshal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # No `agentmarshal init`: a plain git repo. Built-in secret signatures
+    # must still scan (markers are simply empty).
+    repo = tmp_path / "plain-git"
+    repo.mkdir()
+    _git(repo, "init", "--quiet", "-b", "master")
+    monkeypatch.chdir(repo)
+    (repo / "readme.md").write_text("hello\n", encoding="utf-8")
+    base = _commit_all(repo, "base")
+    head = _add_file(repo, "secret.py", "key = 'AKIAIOSFODNN7EXAMPLE'\n")
+
+    code = main(["leak-scan", "--base", base, "--commit", head])
+
+    assert code == 1
+    assert "aws-access-key-id" in capsys.readouterr().out
