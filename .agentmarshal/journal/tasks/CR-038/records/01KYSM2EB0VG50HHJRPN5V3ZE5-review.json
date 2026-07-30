@@ -1,0 +1,17 @@
+{
+  "created_at": "2026-07-30T13:40:24.032449Z",
+  "findings": [],
+  "record_type": "review",
+  "reviewed_commit": "6ecc685ef989f4ca74fc5ab2540b2979dd0936bf",
+  "reviewer": {
+    "email": "auto-review@agent.example.invalid",
+    "model": "codex-auto-review",
+    "role": "qa",
+    "vendor": "codex"
+  },
+  "schema": 2,
+  "source": "live",
+  "task": "CR-038",
+  "tool_version": "0.1.0",
+  "verdict": "approved"
+}
