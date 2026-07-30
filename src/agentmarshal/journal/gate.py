@@ -147,16 +147,25 @@ def markers_from_tree(project_root: Path, tree_ref: str) -> tuple[str, ...]:
     The config is read from a **trusted** tree (the merge base), never the
     candidate working tree, so a candidate cannot weaken its own leak-scan by
     editing ``project.json`` in the very change being scanned — the same
-    reason the contract is read from the base side. A tree without a
-    ``project.json`` yields no markers (the scan still runs its built-in
-    secret signatures); a malformed config raises so the caller can degrade
-    to a warning rather than silently dropping it.
+    reason the contract is read from the base side.
+
+    A tree that genuinely has no ``project.json`` yields no markers (the scan
+    still runs its built-in secret signatures). That is distinguished from a
+    real failure — an unknown ref, or a ``git show`` error on a file that
+    does exist — which propagates as :class:`GateError` so the caller can
+    surface a visible skip warning instead of silently dropping configured
+    markers. A malformed config likewise raises (``ValueError`` /
+    :class:`CaptureError`).
     """
 
-    try:
-        project_json = _run_git(project_root, ["show", f"{tree_ref}:{_PROJECT_FILE}"])
-    except GateError:
+    # `ls-tree` distinguishes an absent path (empty output, exit 0) from a
+    # bad ref (non-zero -> GateError); only genuine absence returns no markers.
+    listing = _run_git(
+        project_root, ["ls-tree", "--name-only", tree_ref, "--", _PROJECT_FILE]
+    )
+    if not listing.strip():
         return ()
+    project_json = _run_git(project_root, ["show", f"{tree_ref}:{_PROJECT_FILE}"])
     data = json.loads(project_json.lstrip("\ufeff"))
     if not isinstance(data, dict):
         raise ValueError("project.json is not a JSON object")

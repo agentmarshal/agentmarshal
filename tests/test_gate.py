@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from agentmarshal.cli import main
-from agentmarshal.journal.gate import GateError, run_gate
+from agentmarshal.journal.gate import GateError, markers_from_tree, run_gate
 from agentmarshal.journal.records import (
     create_completed_record,
     create_session_record,
@@ -865,6 +865,28 @@ def test_gate_leak_scan_reads_markers_from_base_not_candidate(
     assert passed, output
     assert "WARN: possible leak in candidate additions" in output
     assert "private-marker" in output
+
+
+def test_markers_from_tree_absent_project_json_yields_no_markers(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "--quiet", "-b", "master")
+    (repo / "file.txt").write_text("x\n", encoding="utf-8")
+    # A commit that deliberately has no .agentmarshal/project.json.
+    ref = _commit_all(repo, "no project file")
+
+    assert markers_from_tree(repo, ref) == ()
+
+
+def test_markers_from_tree_bad_ref_raises_rather_than_dropping(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, _ = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    # An unknown ref is a real failure, surfaced — not silently "no markers".
+    with pytest.raises(GateError):
+        markers_from_tree(repo, "definitely-not-a-ref")
 
 
 def test_gate_leak_scan_degrades_to_warning_on_bad_config(

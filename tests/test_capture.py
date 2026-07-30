@@ -258,12 +258,26 @@ def test_scan_diff_scans_only_added_lines() -> None:
 
 def test_scan_diff_ignores_file_header_plus_plus_plus() -> None:
     diff = "--- a/x\n+++ b/AKIAIOSFODNN7EXAMPLE\n@@ -0,0 +1 @@\n+clean line\n"
-    # The '+++' destination header is not an added content line.
+    # The '+++' destination header is outside any hunk, so it is not content.
     assert scan_diff_for_leaks(diff) == []
 
 
+def test_scan_diff_catches_added_line_starting_with_plus() -> None:
+    # An added line whose content itself starts with '+' is emitted as
+    # '+++...' in the diff; hunk-aware parsing must still scan it so a secret
+    # cannot hide behind leading plus signs.
+    diff = (
+        "diff --git a/f b/f\n"
+        "--- a/f\n"
+        "+++ b/f\n"
+        "@@ -0,0 +1 @@\n"
+        "+++AKIAIOSFODNN7EXAMPLE trailing\n"
+    )
+    assert scan_diff_for_leaks(diff) == ["aws-access-key-id"]
+
+
 def test_scan_diff_honours_private_markers() -> None:
-    diff = "+++ b/f\n+HOST = internal.example.invalid\n"
+    diff = "+++ b/f\n@@ -0,0 +1 @@\n+HOST = internal.example.invalid\n"
     assert scan_diff_for_leaks(diff, ("internal.example.invalid",)) == [
         "private-marker"
     ]

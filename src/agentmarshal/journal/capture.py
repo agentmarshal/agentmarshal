@@ -298,17 +298,31 @@ def scan_diff_for_leaks(
 ) -> list[str]:
     """Return leak categories found in the *added* lines of a unified diff.
 
-    Only lines the diff introduces are scanned — a leading ``+`` that is not
-    the ``+++`` file header. Removed lines and pre-existing content are
-    ignored, so this is forward-only leak prevention: content already in the
-    tree (including consciously accepted historical residuals) is never
-    re-flagged. Pure: it parses the text it is given and runs nothing. As
-    with :func:`scan_for_leaks` an empty result is not proof of safety.
+    Only lines the diff introduces are scanned, so this is forward-only leak
+    prevention: content already in the tree (including consciously accepted
+    historical residuals) and removed lines are never re-flagged. Parsing is
+    hunk-aware rather than a plain ``+`` prefix test: a ``+`` line is treated
+    as added content only inside a hunk body (after an ``@@`` header, until
+    the next file's ``diff --git`` header). This matters because an added
+    line whose content itself starts with ``+`` is emitted as ``+++…`` in the
+    diff — a naive ``not startswith('+++')`` test would skip it and let a
+    secret hide behind leading plus signs. Pure: it parses the text it is
+    given and runs nothing. As with :func:`scan_for_leaks` an empty result is
+    not proof of safety.
     """
 
     added: list[str] = []
+    in_hunk = False
     for line in unified_diff.splitlines():
-        if line.startswith("+") and not line.startswith("+++"):
+        if line.startswith("@@"):
+            in_hunk = True
+            continue
+        if line.startswith("diff --git "):
+            # A new file's header; its ``---``/``+++`` lines follow while not
+            # in a hunk, so they are never mistaken for added content.
+            in_hunk = False
+            continue
+        if in_hunk and line.startswith("+"):
             added.append(line[1:])
     return scan_for_leaks("\n".join(added), private_markers)
 
