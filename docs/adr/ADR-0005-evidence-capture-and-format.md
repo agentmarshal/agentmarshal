@@ -3,6 +3,20 @@
 Status: Accepted
 Date: 2026-07-28
 
+> **0.1.0 implementation boundary.** This ADR records the *decided design*
+> and is largely a roadmap. Implemented in 0.1.0: the always-on lifecycle
+> records (`opened`, `review`, `completed`, `abandoned`) and the
+> `session`/measurement record type — validated fail-closed and read by the
+> gate. **Planned, not implemented in 0.1.0** (no active enforcement):
+> supplementary-artifact capture and the capture-policy presets/overrides
+> (Decision 2) — `capture.py` is a stub that writes nothing; the mandatory
+> pre-commit leak-scan (Decision 2); the in-toto Statement / DSSE projection
+> and the schema fields it needs (Decisions 1 and 5) — `attestation.py` emits
+> no Statement; and the retroactive host backfill (Decision 4). Sentences
+> below that describe these in the present tense state the target behaviour,
+> not what 0.1.0 does. The Decision 5 "activation boundary" notes mark where
+> each guarantee becomes enforced.
+
 ## Context
 
 Operating the v2 journal surfaced three gaps against
@@ -64,7 +78,7 @@ provider-level properties our record fields cannot establish. SLSA
 Source alignment is adjacency and roadmap (Decision 5), never asserted as
 a derived level.
 
-### 2. Capture policy — preset plus overrides
+### 2. Capture policy — preset plus overrides *(planned; not implemented in 0.1.0 — see the boundary above)*
 
 Host configuration selects a **preset** and may **override** per class:
 
@@ -86,8 +100,9 @@ Host configuration selects a **preset** and may **override** per class:
   supersedes ADR-0004 D7 only for that narrow case**, and requires **two
   independent opt-ins**: persistent configuration (`allow_public_sessions`)
   **and** a per-operation dangerously-named flag. Neither alone suffices.
-- **Leak-scan is mandatory** on every artifact before it is committed:
-  secrets, private hosts and tokens are refused. Leak-scan is an
+- **Leak-scan is mandatory** on every artifact before it is committed
+  *(planned; no leak-scan runs in 0.1.0)*: secrets, private hosts and tokens
+  are refused. Leak-scan is an
   additional safeguard, **not authorization to publish** — it never
   substitutes for the opt-ins above; heuristics miss content, so private
   stays the default.
@@ -127,7 +142,7 @@ data (`runs/`) is imported into the journal under the current policy.
   policy plus cleanup, there is nothing to import.
 - **Leak-scanned** on import exactly as forward capture.
 
-### 5. Format — records are source of truth, in-toto is a projection
+### 5. Format — records are source of truth, in-toto is a projection *(projection planned; not implemented in 0.1.0 — see the boundary above)*
 
 The journal is **not** stored in in-toto format. Flat records remain the
 source of truth (gate and validators read fields directly, ADR-0004 D3).
@@ -180,10 +195,11 @@ Statement is what feeds an external auditor via the compliance pack
 
 ## Consequences
 
-- The minimal footprint a user can select still projects to a complete,
-  interoperable in-toto Statement; economics and full artifacts are
-  additive. SLSA Source conformance is a separate roadmap goal, not part
-  of this floor.
+- Once the projection ships (Decision 5), the minimal footprint a user can
+  select will still project to a complete, interoperable in-toto Statement;
+  economics and full artifacts are additive. In 0.1.0 no Statement is
+  emitted. SLSA Source conformance is a separate roadmap goal, not part of
+  this floor.
 - Economics and observability become durable and auditable; token-overspend
   and review-loop cases can be reconstructed from committed data.
 - Sigstore signing (DSSE) is deferred (wave 2) but requires no journal
