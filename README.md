@@ -68,6 +68,45 @@ model (use e.g. `--vendor human --model none` for a human review).
 (`git archive`-based review snapshotting currently assumes a POSIX host;
 Windows is untested.)
 
+## Quickstart
+
+New to the idea? [docs/overview.md](docs/overview.md) explains the purpose,
+the design, and the vocabulary (host repo, task, gate, …) in a page. The whole
+loop, inside a git repository — see [docs/quickstart.md](docs/quickstart.md)
+for the annotated walkthrough with a full configuration reference:
+
+```sh
+agentmarshal init                                     # write .agentmarshal/
+agentmarshal open --title "Add greeting" --scope src/ # -> task CR-001 + contract
+git add .agentmarshal && git commit -m "open CR-001"
+BASE=$(git rev-parse HEAD)
+
+git switch -c feat/CR-001                              # do the work in scope
+# ...edit files under src/...
+git add src && git commit -m "implement CR-001"
+IMPL=$(git rev-parse HEAD)
+
+# record an INDEPENDENT review (reviewer email != commit author)
+agentmarshal submit-review --task CR-001 --commit "$IMPL" \
+  --verdict approved --role reviewer --vendor human --model none \
+  --email reviewer@example.com
+
+# the gate is the merge authority; it passes only when every check holds
+AGENTMARSHAL_PIPELINE_OK_SHA="$IMPL" \
+  agentmarshal gate --task CR-001 --commit "$IMPL" --base "$BASE"
+
+AGENTMARSHAL_PIPELINE_OK_SHA="$IMPL" \
+  agentmarshal complete --task CR-001 --commit "$IMPL" --base "$BASE"
+
+agentmarshal status CR-001   # -> done, with the SHA-bound review evidence
+agentmarshal validate        # -> whole-journal integrity check (run this in CI)
+```
+
+The gate only decides; performing the merge is your provider's job. Wiring it
+to block merges is covered in
+[docs/self-hosting-workflow.md](docs/self-hosting-workflow.md) and
+[docs/github-enforcement.md](docs/github-enforcement.md).
+
 ## Development
 
 Requires Python >= 3.12 and [uv](https://docs.astral.sh/uv/) (development
