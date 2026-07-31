@@ -1,0 +1,17 @@
+{
+  "created_at": "2026-07-31T01:46:52.244409Z",
+  "findings": [],
+  "record_type": "review",
+  "reviewed_commit": "b729d24787209a100283c0cc7c0aabb44a8d22a8",
+  "reviewer": {
+    "email": "avtropichev@yandex.ru",
+    "model": "none",
+    "role": "reviewer",
+    "vendor": "human"
+  },
+  "schema": 2,
+  "source": "live",
+  "task": "CR-042",
+  "tool_version": "0.1.0",
+  "verdict": "approved"
+}
