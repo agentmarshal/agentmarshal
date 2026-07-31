@@ -2,8 +2,8 @@
 
 This walks through the whole AgentMarshal loop on a throwaway repository —
 from installing the package to a task that carries durable, SHA-bound
-evidence that its work was independently reviewed. The commands below are the
-stable core loop; `agentmarshal --version` shows the version you installed.
+evidence that its work was independently reviewed. Every command below was
+verified against the published `agentmarshal` 0.1.0 (the current release).
 
 New here? [overview.md](overview.md) explains the idea and the vocabulary
 (**host repo**, task, contract, scope, gate, …) in a page. This guide is the
@@ -14,9 +14,12 @@ Requirements: **Python ≥ 3.12** and **git** on your `PATH`.
 ## Install
 
 ```sh
-pip install agentmarshal
+pip install agentmarshal==0.1.0   # the version this guide was verified against
 agentmarshal --version
 ```
+
+(Plain `pip install agentmarshal` installs the latest release; pin `==0.1.0`
+to match this walkthrough exactly.)
 
 AgentMarshal is a single, dependency-free CLI. It stores everything in git
 under `.agentmarshal/`, so there is no server and no database.
@@ -74,13 +77,11 @@ objective and prose acceptance.
 ### `project.json`
 
 `agentmarshal init` writes a minimal `.agentmarshal/project.json`
-(`schema` + framework version); no hand-editing is needed for the loop.
-Optional sections tune advanced behavior and are not required to govern a
-task: a `capture` policy (how much supplementary evidence is retained) and
-`leak_scan.private_markers` (extra substrings a merge-time leak-scan warns on,
-alongside its built-in secret signatures). Both are described in
-[overview.md](overview.md); availability depends on your installed version, so
-check with a recent release.
+(`schema` + framework version); no hand-editing is needed for the loop. A
+`capture` policy and a `leak_scan.private_markers` list are **not active in the
+0.1.0 release** — the merge-time leak-scan they configure landed after 0.1.0 —
+so ignore them here; they are described in the roadmap in
+[overview.md](overview.md).
 
 ## The governed loop
 
