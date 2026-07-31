@@ -104,21 +104,25 @@ task is already closed.
 
 ## Direction (roadmap)
 
-The shipped 0.1.0 boundary is stated honestly in the ADRs and
-[migration-v1-to-v2.md](migration-v1-to-v2.md). What is designed but not yet
-active in 0.1.0, in rough order:
+The design is broader than what is fully wired today; the honest boundary is
+stated in the ADRs and [migration-v1-to-v2.md](migration-v1-to-v2.md). Where
+the project is heading, in rough order (some of it already partly landed):
 
 - **Verifiable attestation** — projecting records to an in-toto Statement and
   signing it (DSSE / Sigstore), so provenance is cryptographically checkable,
-  not just recorded. Adjacent to (not a claim of) SLSA Source.
-- **Capture policy** — presets governing how much supplementary evidence
-  (economics, review/prompt text, sessions) is stored, public or in a private
-  store (`capture.py` is currently a stub).
-- **Leak-scan enforcement** — an advisory merge-time leak-scan already warns
-  (in the development version); making a block-on-leak mandatory is roadmap.
+  not just recorded. Adjacent to (not a claim of) SLSA Source; not yet emitted.
+- **Capture policy** — `capture.py` already parses the policy and runs the
+  best-effort leak-scanner; what remains is actually *retaining* supplementary
+  evidence (economics, review/prompt text, sessions), public or in a private
+  store.
+- **Leak-scan enforcement** — an advisory merge-time leak-scan warns on
+  possible leaks in a candidate's additions (and a `leak-scan` command exists);
+  making a block-on-leak mandatory is roadmap. It is best-effort by design
+  (ADR-0005) — never a guarantee.
 - **Contract-extension RFC** — required machine-readable acceptance criteria
   plus a threat-model field, so every merged task doubles as an evaluation
   case and gates enforce it.
 - **Broader providers** — first-class GitHub, GitFlic, and self-hosted rails.
 
+Feature availability tracks releases; `agentmarshal --version` shows yours.
 See the [ADRs](adr/) for the full design decisions.

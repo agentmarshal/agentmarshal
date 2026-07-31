@@ -2,8 +2,8 @@
 
 This walks through the whole AgentMarshal loop on a throwaway repository —
 from installing the package to a task that carries durable, SHA-bound
-evidence that its work was independently reviewed. Every command below is run
-against the published `agentmarshal` 0.1.0.
+evidence that its work was independently reviewed. The commands below are the
+stable core loop; `agentmarshal --version` shows the version you installed.
 
 New here? [overview.md](overview.md) explains the idea and the vocabulary
 (**host repo**, task, contract, scope, gate, …) in a page. This guide is the
@@ -59,6 +59,11 @@ strings. This is the entire contract a custom or model reviewer must satisfy.
   merge until the test check is also green. Only sound when the provider
   actually requires that test check.
 
+`agentmarshal complete` has no `--attestation` flag — it always uses
+`commit`-mode attestation, so pass `AGENTMARSHAL_PIPELINE_OK_SHA` (or
+`--pipeline-sha`) for the candidate commit even when your gate runs
+`ci-required`.
+
 ### The contract (`contract.md`)
 
 Per task, in its TOML header: **`scope`** (paths the task may change — the gate
@@ -69,10 +74,13 @@ objective and prose acceptance.
 ### `project.json`
 
 `agentmarshal init` writes a minimal `.agentmarshal/project.json`
-(`schema` + framework version); no hand-editing is needed for the loop. Optional
-sections — a `capture` policy and `leak_scan.private_markers` — belong to
-features that are **not active in 0.1.0** (see the roadmap in
-[overview.md](overview.md)); ignore them for now.
+(`schema` + framework version); no hand-editing is needed for the loop.
+Optional sections tune advanced behavior and are not required to govern a
+task: a `capture` policy (how much supplementary evidence is retained) and
+`leak_scan.private_markers` (extra substrings a merge-time leak-scan warns on,
+alongside its built-in secret signatures). Both are described in
+[overview.md](overview.md); availability depends on your installed version, so
+check with a recent release.
 
 ## The governed loop
 
@@ -216,5 +224,5 @@ independently reviewed. From here:
   back with `agentmarshal report`.
 
 For the concepts, terminology, and roadmap, see [overview.md](overview.md); for
-the design decisions and the honest 0.1.0 boundary, the [ADRs](adr/) and
-[migration-v1-to-v2.md](migration-v1-to-v2.md).
+the design decisions and the honest implemented-vs-roadmap boundary, the
+[ADRs](adr/) and [migration-v1-to-v2.md](migration-v1-to-v2.md).
