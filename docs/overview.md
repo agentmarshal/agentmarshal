@@ -112,10 +112,12 @@ releases — `agentmarshal --version` shows yours):
 - **Verifiable attestation** — projecting records to an in-toto Statement and
   signing it (DSSE / Sigstore), so provenance is cryptographically checkable,
   not just recorded. Adjacent to (not a claim of) SLSA Source; not yet emitted.
-- **Capture policy** — in 0.1.0, `capture.py` carries the capture-policy parser
-  and a leak-scan primitive, but nothing is captured yet; what remains is
-  actually *retaining* supplementary evidence (economics, review/prompt text,
-  sessions), public or in a private store.
+- **Capture policy** — token-economics/session records already accrue in 0.1.0
+  (`record-session` / `report`). What is roadmap is the *capture policy* that
+  governs retaining heavier supplementary evidence — full review and prompt
+  text, raw session transcripts — public or in a private store: in 0.1.0
+  `capture.py` carries the policy parser and a leak-scan primitive but does not
+  yet retain those artifacts.
 - **Leak-scan enforcement** — an advisory merge-time leak-scan that warns on
   possible leaks in a candidate's additions (with a `leak-scan` command) landed
   *after* 0.1.0; making a block-on-leak mandatory is further roadmap. It is
