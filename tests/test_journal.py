@@ -899,8 +899,8 @@ def test_scope_warning_flags_an_empty_entry(tmp_path: Path) -> None:
     assert "empty" in warnings[0]
 
 
-def test_scope_warning_flags_a_symlinked_entry(tmp_path: Path) -> None:
-    """git stores a symlink as a link; nothing beneath one is ever a changed path."""
+def test_scope_warning_allows_naming_the_symlink_itself(tmp_path: Path) -> None:
+    """git tracks the symlink as a path, so naming it can match exactly."""
 
     from agentmarshal.journal.open_task import scope_warnings
 
@@ -909,10 +909,7 @@ def test_scope_warning_flags_a_symlinked_entry(tmp_path: Path) -> None:
     (real / "a.py").write_text("x", encoding="utf-8")
     (tmp_path / "linked").symlink_to(real, target_is_directory=True)
 
-    warnings = scope_warnings(tmp_path, ["linked/"])
-
-    assert len(warnings) == 1
-    assert "symlink" in warnings[0]
+    assert scope_warnings(tmp_path, ["linked", "linked/"]) == []
 
 
 def test_scope_warning_does_not_cry_wolf_on_legal_git_names(tmp_path: Path) -> None:
@@ -939,4 +936,4 @@ def test_scope_warning_sees_a_symlinked_ancestor(tmp_path: Path) -> None:
     warnings = scope_warnings(tmp_path, ["linked/a.py"])
 
     assert len(warnings) == 1
-    assert "symlink" in warnings[0]
+    assert "beneath a symlink" in warnings[0]

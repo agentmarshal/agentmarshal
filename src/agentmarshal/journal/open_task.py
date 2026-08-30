@@ -128,21 +128,23 @@ def scope_warnings(project_root: Path, scope: list[str]) -> list[str]:
             continue
         base = entry.rstrip("/")
         target = project_root / base
-        # git stores a symlink as a link, never as a directory it can descend
-        # into, so nothing under a symlinked path is ever emitted as a change.
-        # Every component has to be checked, not just the last one: the entry
-        # may sit beneath a symlinked ancestor.
+        # git tracks a symlink as a path in its own right, so an entry naming
+        # one can still match exactly — including with a trailing slash, which
+        # the gate satisfies via the slash-stripped path. What git never emits
+        # is anything *beneath* a symlink, so only a symlinked strict ancestor
+        # makes an entry unmatchable.
+        components = base.split("/")
         walked = project_root
-        symlinked = False
-        for part in base.split("/"):
+        symlinked_ancestor = False
+        for part in components[:-1]:
             walked = walked / part
             if walked.is_symlink():
-                symlinked = True
+                symlinked_ancestor = True
                 break
-        if symlinked:
+        if symlinked_ancestor:
             warnings.append(
-                f"scope entry {entry!r} resolves through a symlink; git never "
-                "reports paths beneath one, so it matches nothing"
+                f"scope entry {entry!r} sits beneath a symlink; git never "
+                "reports paths under one, so it matches nothing"
             )
             continue
         if entry.endswith("/"):
@@ -153,12 +155,16 @@ def scope_warnings(project_root: Path, scope: list[str]) -> list[str]:
                     f"scope entry {entry!r} matches no path in the working tree"
                 )
             continue
-        if target.is_dir():
+        # is_dir() follows a symlink, but git tracks a symlink-to-directory as
+        # a path of its own, so only a real directory is unmatchable here.
+        if target.is_dir() and not target.is_symlink():
             warnings.append(
                 f"scope entry {entry!r} names a directory but has no trailing "
                 f"slash, so it matches nothing — did you mean {entry + '/'!r}?"
             )
-        elif not target.is_file():
+        elif not (target.exists() or target.is_symlink()):
+            # Anything that is not a real directory can be a git path — a file,
+            # a symlink, even a broken one, which git still tracks as an entry.
             warnings.append(
                 f"scope entry {entry!r} matches no path in the working tree"
             )
