@@ -1170,3 +1170,65 @@ def test_open_fails_when_the_task_it_wrote_is_unreadable(
 
     with pytest.raises(open_task_module.TaskOpenError, match="cannot read it back"):
         open_task_module.open_task(repo, "T", ["src/"])
+
+
+def test_init_scaffolds_the_upstream_outbox(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The convention arrives with the tool instead of having to be found."""
+
+    from agentmarshal.cli import main
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "--quiet", "-b", "master"], cwd=repo, check=True)
+    monkeypatch.chdir(repo)
+
+    assert main(["init"]) == 0
+
+    readme = repo / ".agentmarshal" / "upstream" / "README.md"
+    assert readme.is_file()
+    assert "Sanitize at source" in readme.read_text(encoding="utf-8")
+    assert "upstream" in capsys.readouterr().out
+
+
+def test_init_does_not_overwrite_an_outbox_readme(tmp_path: Path) -> None:
+    """An adopter who wrote their own convention does not lose it."""
+
+    from agentmarshal import project as project_module
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "--quiet", "-b", "master"], cwd=repo, check=True)
+    outbox = repo / ".agentmarshal" / "upstream"
+    outbox.mkdir(parents=True)
+    (outbox / "README.md").write_text("ours", encoding="utf-8")
+
+    project_module.initialize_project(repo)
+
+    assert (outbox / "README.md").read_text(encoding="utf-8") == "ours"
+
+
+def test_init_succeeds_when_the_outbox_cannot_be_written(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A project that could not write a convenience is still a project."""
+
+    from agentmarshal import project as project_module
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "--quiet", "-b", "master"], cwd=repo, check=True)
+    real_mkdir = Path.mkdir
+
+    def _refuse(self: Path, *args: Any, **kwargs: Any) -> None:
+        if self.name == "upstream":
+            raise OSError(13, "Permission denied")
+        real_mkdir(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", _refuse)
+
+    project_root, outbox = project_module.initialize_project(repo)
+
+    assert outbox is None
+    assert (project_root / ".agentmarshal" / "project.json").is_file()

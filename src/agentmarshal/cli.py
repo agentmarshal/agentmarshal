@@ -189,7 +189,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def _run_init(stderr: TextIO) -> int:
     try:
-        project_root = initialize_project(Path.cwd())
+        project_root, outbox = initialize_project(Path.cwd())
     except AlreadyInitializedError as error:
         print(error, file=stderr)
         return 1
@@ -198,6 +198,8 @@ def _run_init(stderr: TextIO) -> int:
         return 1
 
     print(f"Initialized AgentMarshal project at {project_root}")
+    if outbox is not None:
+        print(f"Findings about AgentMarshal itself go in {outbox} — see its README")
     return 0
 
 
