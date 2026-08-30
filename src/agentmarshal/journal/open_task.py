@@ -85,13 +85,20 @@ def _contract_content(task_id: str, title: str, scope: list[str]) -> str:
 
 
 def scope_warnings(project_root: Path, scope: list[str]) -> list[str]:
-    """Return a warning for every scope entry that matches nothing on disk.
+    """Return a warning for every scope entry that cannot match a changed path.
 
-    Scope entries are compared by the gate as directory prefixes only when they
-    end in ``/``, and as exact paths otherwise, so ``--scope src`` gates every
-    file under ``src/`` as out-of-scope. That failure is silent at open time and
-    surfaces at the merge gate on a change that is in fact correct, which is the
-    most expensive moment to discover it.
+    This mirrors what the gate actually compares, which is stricter than asking
+    the filesystem whether something exists:
+
+    * the gate matches entries against paths from ``git diff --name-only``, and
+      git lists **files**, never directories — so a plain entry naming a
+      directory can never match, which is the reported failure;
+    * an entry ending in ``/`` matches the exact path with the slash stripped as
+      well as everything beneath it, so it is satisfied by a file of that name
+      too;
+    * git paths are repository-relative and normalised, so an absolute entry,
+      one containing ``..``, or one written as ``./x`` cannot match anything the
+      gate will ever see, however well it resolves on this machine.
 
     These are warnings, never refusals: a task may legitimately declare a path
     it is about to create.
@@ -105,11 +112,22 @@ def scope_warnings(project_root: Path, scope: list[str]) -> list[str]:
             # failure this function exists to prevent.
             warnings.append("scope entry is empty and matches nothing")
             continue
+        parts = entry.split("/")
+        if entry.startswith("/") or "." in parts or ".." in parts:
+            warnings.append(
+                f"scope entry {entry!r} is not a repository-relative path, so it "
+                "cannot match any changed path the gate sees"
+            )
+            continue
         if entry.endswith("/"):
-            target = project_root / entry.rstrip("/")
-            if not target.is_dir():
+            base = entry.rstrip("/")
+            if not base:
                 warnings.append(
-                    f"scope entry {entry!r} matches no directory in the working tree"
+                    f"scope entry {entry!r} names no path and matches nothing"
+                )
+            elif not (project_root / base).exists():
+                warnings.append(
+                    f"scope entry {entry!r} matches no path in the working tree"
                 )
             continue
         target = project_root / entry
@@ -118,7 +136,7 @@ def scope_warnings(project_root: Path, scope: list[str]) -> list[str]:
                 f"scope entry {entry!r} names a directory but has no trailing "
                 f"slash, so it matches nothing — did you mean {entry + '/'!r}?"
             )
-        elif not target.exists():
+        elif not target.is_file():
             warnings.append(
                 f"scope entry {entry!r} matches no path in the working tree"
             )

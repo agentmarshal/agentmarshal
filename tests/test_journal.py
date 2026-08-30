@@ -807,8 +807,43 @@ def test_scope_warning_for_a_path_that_is_not_there(tmp_path: Path) -> None:
     warnings = scope_warnings(tmp_path, ["nowhere/", "missing.py"])
 
     assert len(warnings) == 2
-    assert "matches no directory" in warnings[0]
-    assert "matches no path" in warnings[1]
+    assert all("matches no path" in warning for warning in warnings)
+
+
+def test_scope_warning_mirrors_what_the_gate_can_match(tmp_path: Path) -> None:
+    """git lists files, so the filesystem is not the right question to ask."""
+
+    from agentmarshal.journal.open_task import scope_warnings
+
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "a.py").write_text("x", encoding="utf-8")
+    (tmp_path / "foo").write_text("x", encoding="utf-8")
+
+    # 'foo/' matches the exact path 'foo' by the gate's rule, so it is silent
+    # even though 'foo' is a file, not a directory.
+    assert scope_warnings(tmp_path, ["foo/"]) == []
+    # A plain entry naming a directory can never match: git emits file paths.
+    assert len(scope_warnings(tmp_path, ["src"])) == 1
+
+
+def test_scope_warning_rejects_paths_the_gate_can_never_see(tmp_path: Path) -> None:
+    """Absolute, parent-escaping and dot-prefixed entries resolve but cannot match."""
+
+    from agentmarshal.journal.open_task import scope_warnings
+
+    (tmp_path / "README.md").write_text("x", encoding="utf-8")
+    outside = tmp_path.parent / "outside"
+    outside.mkdir(exist_ok=True)
+
+    warnings = scope_warnings(
+        tmp_path, ["/etc/", "../outside/", "./README.md", "src/../README.md", "/"]
+    )
+
+    assert len(warnings) == 5
+    assert all(
+        "not a repository-relative path" in warning or "matches nothing" in warning
+        for warning in warnings
+    )
 
 
 def test_scope_warning_stays_silent_when_entries_match(tmp_path: Path) -> None:
@@ -839,7 +874,7 @@ def test_open_warns_but_still_opens(
     assert main(["open", "--title", "T", "--scope", "not-created-yet/"]) == 0
 
     captured = capsys.readouterr()
-    assert "matches no directory" in captured.err
+    assert "matches no path" in captured.err
     assert "contract.md" in captured.out
     assert (repo / ".agentmarshal/journal/tasks/CR-001/contract.md").is_file()
 
