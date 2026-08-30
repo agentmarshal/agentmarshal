@@ -2,7 +2,7 @@
 schema = 1
 id = "CR-051"
 title = "recorded_by: say which actor created a record"
-scope = ["src/agentmarshal/journal/actors.py", "src/agentmarshal/journal/records.py", "tests/test_journal.py", "docs/quickstart.md"]
+scope = ["src/agentmarshal/journal/actors.py", "src/agentmarshal/journal/records.py", "tests/test_journal.py", "tests/test_attestation.py", "docs/quickstart.md"]
 acceptance = [
   "records carry an optional recorded_by naming the actor that created them, plus recorded_by_source saying where that value came from: the project's actors table, the invoking git identity, or an explicit override",
   "the value is derived, not typed: it is resolved from the invoking checkout's git identity, matched against an optional actors table in project.json, with AGENTMARSHAL_ACTOR overriding and marking itself as an override",
@@ -49,6 +49,15 @@ typed by the caller, without changing what any existing record means.
 - [ ] Stamped in `write_record`, so no record type is missed and no caller changes.
 - [ ] Documented in `docs/quickstart.md`.
 - [ ] Suite green, with the four cases covered.
+
+## Amendment (2026-08-31)
+
+Scope gains `tests/test_attestation.py`. Stamping in `write_record` reaches
+every record, so the round-trip assertions that compare a written record with
+the dict passed in now differ by the stamped pair — in that file as well as in
+`tests/test_journal.py`. The original scope missed it; the alternative was to
+stamp only inside an initialised project, which would have been choosing a
+design because a test broke.
 
 ## Non-Goals
 
