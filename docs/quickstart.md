@@ -60,6 +60,15 @@ states all of this, so a reviewer does not have to guess. When a verdict is
 refused the reviewer's **raw output is kept** and its path is named in the
 error — a rejected verdict should not cost you the analysis.
 
+The same holds for a verdict that is *accepted* and **names a finding** —
+blocking, or advisory alongside an approval. A record carries finding **ids**
+and not the reasoning behind them, so the raw output is kept and
+`agentmarshal review` names the file **on stderr**; stdout stays the record
+path alone, for callers that read it. Keeping the output is best effort: if the
+file cannot be written the review is still recorded, because the record is the
+evidence. And it keeps only what the reviewer actually wrote — a reviewer that
+emits an id with no prose leaves you a file with no prose in it.
+
 ### Gate attestation modes (`--attestation`)
 
 - `commit` (default) — the invoker attests the pipeline via
