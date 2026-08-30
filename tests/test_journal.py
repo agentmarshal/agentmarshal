@@ -1043,3 +1043,31 @@ def test_a_malformed_recorded_by_source_fails_closed(tmp_path: Path) -> None:
         validate_record_content(
             "01J00000000000000000000000-opened.json", json.dumps(record)
         )
+
+
+def test_opened_record_uses_the_actors_table_too(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`open` writes through a staging dir; attribution must not differ for it."""
+
+    from agentmarshal.cli import main
+
+    monkeypatch.delenv("AGENTMARSHAL_ACTOR", raising=False)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "--quiet", "-b", "master"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "lead@example.invalid"], cwd=repo, check=True
+    )
+    monkeypatch.chdir(repo)
+    assert main(["init"]) == 0
+    project_file = repo / ".agentmarshal" / "project.json"
+    data = json.loads(project_file.read_text(encoding="utf-8"))
+    data["actors"] = {"lead": {"git_identities": ["lead@example.invalid"]}}
+    project_file.write_text(json.dumps(data), encoding="utf-8")
+
+    assert main(["open", "--title", "T", "--scope", "src/"]) == 0
+
+    opened = read_records(repo / ".agentmarshal" / "journal", "CR-001")[0]
+    assert opened["recorded_by"] == "lead"
+    assert opened["recorded_by_source"] == "project-actor"

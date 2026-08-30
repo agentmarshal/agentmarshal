@@ -439,6 +439,22 @@ def _validate_recorded_by(data: Mapping[str, object]) -> None:
         )
 
 
+def _project_root_for(journal_root: Path) -> Path:
+    """Find the project a journal belongs to, walking up from the given root.
+
+    The journal root is not always two levels below the project: `open` writes
+    the opening record through a staging directory *inside* the journal, so a
+    fixed `parent.parent` lands on `.agentmarshal` and misses the project file —
+    the opening record of every task would then miss the actors table while its
+    later records used it.
+    """
+
+    for candidate in (journal_root, *journal_root.parents):
+        if (candidate / ".agentmarshal" / "project.json").is_file():
+            return candidate
+    return journal_root.parent.parent
+
+
 def write_record(
     journal_root: Path,
     task_id: str,
@@ -464,7 +480,7 @@ def write_record(
             "recorded_by is derived from the environment and must not be supplied"
         )
     if data.get("schema") == 2:
-        resolved = resolve_recorded_by(journal_root.parent.parent)
+        resolved = resolve_recorded_by(_project_root_for(journal_root))
         if resolved is not None:
             data["recorded_by"], data["recorded_by_source"] = resolved
     record_type = cast(str, data["record_type"])
