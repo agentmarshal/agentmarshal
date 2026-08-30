@@ -33,25 +33,37 @@ had created. Two of round 4's findings were false positives the earlier rounds
 had introduced — a backslash and a space are legal characters in a git path, so
 the "hardening" was warning about valid input.
 
-## This has happened before, from the other side
+## This happened once already, one month earlier
 
-A year earlier the same domain — filesystem paths, symlinks, TOCTOU — was
-over-engineered in `backfill.py` (CR-031) and `project.py` (CR-001). An internal
-audit found roughly 40% of a module given over to filesystem security under a
-contract that asked for "pure mapping and validation", introducing a fail-closed
-portability constraint the contract never sanctioned.
+The same domain — filesystem paths, symlinks, TOCTOU — was hardened the same way
+in `backfill.py` (CR-031, opened 2026-07-28) and `project.py` (CR-001, opened
+2026-07-27). An internal audit at the time found roughly 40% of a module given
+over to filesystem security under a contract asking for "pure mapping and
+validation", introducing a fail-closed portability constraint the contract never
+sanctioned.
 
-The mirror is the useful part:
+That audit recorded the cause as gold-plating — the implementer over-building,
+review failing to catch it. **The commit trail says otherwise**, and the
+correction matters more than the original finding:
 
-|  | CR-031, a year ago | CR-049, now |
-|---|---|---|
-| Who added the hardening | the implementer, unprompted | the reviewer asked, the implementer complied |
-| What review did | approved with no findings | escalated over five rounds |
-| Signature | gold-plating | reviewer escalation |
+```
+CR-031: address sol re-review F1 (reject symlinked ancestor components)
+CR-031: address sol re-review F1 (component-by-component no-follow traversal)
+CR-031: address sol re-review F1 (fail closed without O_NOFOLLOW)
+CR-031: address sol re-review F1 (non-blocking open to reject FIFOs)
+CR-031: address sol re-review F1 (bound the stat-file read)
+```
 
-Same domain, opposite mechanism, and in both cases the contract was the thing
-that could have stopped it and was not consulted. Filesystem and path handling
-is this project's recurring attractor for work nobody asked for.
+Every piece of that hardening was an answer to a review finding, across roughly
+eleven rounds. So this is not a mirror image of CR-049 — **it is the same
+mechanism, one month earlier**: a reviewer escalating into filesystem hardening,
+an implementer complying round after round, and a contract that mentioned none
+of it going unconsulted.
+
+Two things follow. Filesystem and path handling is this project's recurring
+attractor for work nobody asked for. And an audit that diagnosed the mechanism
+from the finished code rather than the commit trail reached the wrong conclusion
+about how the code got there — which is why this record quotes the trail.
 
 ## Cause, and what the evidence does not support
 
