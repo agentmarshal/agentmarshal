@@ -6,6 +6,7 @@ import errno
 import json
 import os
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TextIO, cast
 
@@ -250,7 +251,25 @@ send a batch.
 """
 
 
-def _scaffold_outbox(project_directory: Path) -> Path | None:
+@dataclass(frozen=True)
+class InitializedProject:
+    """What ``init`` produced: the project root, and how the outbox fared.
+
+    A named type rather than a tuple, because the outbox carries two facts —
+    where it belongs and whether it is there — and a caller reading them
+    positionally would not say which is which.
+    """
+
+    project_root: Path
+    outbox: Path
+    outbox_error: str | None
+
+    @property
+    def outbox_created(self) -> bool:
+        return self.outbox_error is None
+
+
+def _scaffold_outbox(project_directory: Path) -> tuple[Path, str | None]:
     """Create the upstream outbox, and leave an existing one alone.
 
     Adopter proposal 012: three adopters invented three layouts for the same
@@ -271,18 +290,17 @@ def _scaffold_outbox(project_directory: Path) -> Path | None:
         with readme.open("x", encoding="utf-8", newline="\n") as handle:
             handle.write(_OUTBOX_README)
     except FileExistsError:
-        return outbox
-    except OSError:
-        return None
-    return outbox
+        return outbox, None
+    except OSError as error:
+        # The reason travels with the failure. A caller that only learned
+        # "no outbox" would have to guess between a permission problem, a
+        # full disk, and a bug of ours.
+        return outbox, str(error)
+    return outbox, None
 
 
-def initialize_project(start: Path | None = None) -> tuple[Path, Path | None]:
-    """Initialize AgentMarshal in the containing git repository.
-
-    Returns the project root and the upstream outbox, or ``None`` for the outbox
-    when it could not be scaffolded.
-    """
+def initialize_project(start: Path | None = None) -> InitializedProject:
+    """Initialize AgentMarshal in the containing git repository."""
 
     search_start = Path.cwd() if start is None else start
     git_root = find_git_root(search_start)
@@ -300,4 +318,5 @@ def initialize_project(start: Path | None = None) -> tuple[Path, Path | None]:
     except FileExistsError as error:
         raise AlreadyInitializedError(git_root) from error
     _assert_readable(project_file)
-    return git_root, _scaffold_outbox(project_file.parent)
+    outbox, outbox_error = _scaffold_outbox(project_file.parent)
+    return InitializedProject(git_root, outbox, outbox_error)

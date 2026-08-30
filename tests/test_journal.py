@@ -1204,9 +1204,10 @@ def test_init_does_not_overwrite_an_outbox_readme(tmp_path: Path) -> None:
     outbox.mkdir(parents=True)
     (outbox / "README.md").write_text("ours", encoding="utf-8")
 
-    project_module.initialize_project(repo)
+    initialized = project_module.initialize_project(repo)
 
     assert (outbox / "README.md").read_text(encoding="utf-8") == "ours"
+    assert initialized.outbox_created
 
 
 def test_init_succeeds_when_the_outbox_cannot_be_written(
@@ -1228,7 +1229,36 @@ def test_init_succeeds_when_the_outbox_cannot_be_written(
 
     monkeypatch.setattr(Path, "mkdir", _refuse)
 
-    project_root, outbox = project_module.initialize_project(repo)
+    initialized = project_module.initialize_project(repo)
 
-    assert outbox is None
-    assert (project_root / ".agentmarshal" / "project.json").is_file()
+    assert not initialized.outbox_created
+    assert "Permission denied" in (initialized.outbox_error or "")
+    assert (initialized.project_root / ".agentmarshal" / "project.json").is_file()
+
+
+def test_init_states_the_convention_even_when_the_outbox_is_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Silence would leave the operator believing nothing was meant to happen."""
+
+    from agentmarshal.cli import main
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "--quiet", "-b", "master"], cwd=repo, check=True)
+    monkeypatch.chdir(repo)
+    real_mkdir = Path.mkdir
+
+    def _refuse(self: Path, *args: Any, **kwargs: Any) -> None:
+        if self.name == "upstream":
+            raise OSError(13, "Permission denied")
+        real_mkdir(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", _refuse)
+
+    assert main(["init"]) == 0
+
+    captured = capsys.readouterr()
+    assert "Findings about AgentMarshal itself go in" in captured.out
+    assert "could not create" in captured.err
+    assert "Permission denied" in captured.err
