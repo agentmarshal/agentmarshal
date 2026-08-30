@@ -99,7 +99,11 @@ def scope_warnings(project_root: Path, scope: list[str]) -> list[str]:
 
     warnings: list[str] = []
     for entry in scope:
-        if not entry:
+        if not entry.strip():
+            # An empty entry reaches the contract and matches nothing: the gate
+            # compares it as an exact path. Silence here would be the very
+            # failure this function exists to prevent.
+            warnings.append("scope entry is empty and matches nothing")
             continue
         if entry.endswith("/"):
             target = project_root / entry.rstrip("/")

@@ -842,3 +842,14 @@ def test_open_warns_but_still_opens(
     assert "matches no directory" in captured.err
     assert "contract.md" in captured.out
     assert (repo / ".agentmarshal/journal/tasks/CR-001/contract.md").is_file()
+
+
+def test_scope_warning_flags_an_empty_entry(tmp_path: Path) -> None:
+    """An empty entry reaches the contract and matches nothing; say so."""
+
+    from agentmarshal.journal.open_task import scope_warnings
+
+    warnings = scope_warnings(tmp_path, ["", "   "])
+
+    assert len(warnings) == 2
+    assert all("empty" in warning for warning in warnings)
