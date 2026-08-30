@@ -44,11 +44,19 @@ to anyone.
 Records gain **`recorded_by`**: the actor that created the record, kept separate
 from the record's semantic fields (a review's `reviewer`, a session's `actor`).
 
-`recorded_by` is derived by the tool rather than typed by the caller wherever
-possible — from the project's declared actors matched against the invoking git
-identity, falling back to that identity — with an explicit override available and
-itself recorded as an override. A field the caller simply types adds nothing over
-the fields we already have.
+`recorded_by` is **derived, not typed**. Actors are declared in an `actors`
+section of `.agentmarshal/project.json`, each with an identifier and the git
+identities that map to it. The tool resolves `recorded_by` by matching the
+invoking checkout's `user.email` against that table; with no match, or no
+`actors` section, it records the git identity itself, so a project that
+configures nothing still gets a value. A caller may override it, and the record
+then also carries the fact that it was overridden — an override that hides
+itself would defeat the field. Precise field names and schema version belong to
+the implementing task; what this ADR fixes is that the value comes from the
+environment by default and that an override is visible.
+
+A field the caller simply types would add nothing over the labels we already
+have.
 
 **What this buys, stated exactly.** It does not prevent a false attribution. It
 separates two claims that are conflated today: *who is said to have reviewed* and
@@ -58,9 +66,15 @@ becomes expressible, and the dishonest one requires a second, explicit lie.
 
 ### 2. What the journal claims before signing
 
-Until review records are signed, AgentMarshal claims exactly this and no more:
+This narrows what the journal claims **about identity**. It leaves every other
+gate guarantee untouched — scope compliance, pipeline attestation, append-only
+integrity, record validity, collision detection and lifecycle consistency are
+unaffected by this ADR and continue to mean what they say.
 
-- a record exists, is well-formed, append-only, and bound to a commit SHA;
+About identity specifically, and until review records are signed, AgentMarshal
+claims exactly this and no more:
+
+- a review record exists, is well-formed, append-only, and bound to a commit SHA;
 - the **declared** reviewer identity differs from the **declared** authors and
   committers of the range.
 
@@ -90,9 +104,17 @@ everything above:
   findings, and never the actor who implemented it;
 - **end-to-end by one actor** — permitted by default; a project may forbid it.
 
-Defaults preserve today's behaviour, because existing adopters run one operator
-and must not be broken by an ADR. A policy that is not configured is not
-enforced, and the gate reports which policies were in force.
+Each default is stated, because "defaults unchanged" is otherwise ambiguous:
+
+| Policy | Default | What holds today |
+|---|---|---|
+| distinct-actor review | **off** | the existing declared-email comparison remains the only check |
+| override authority | **no override exists** | the gate merges only on `approved`; nothing changes until proposal 007 is built |
+| end-to-end by one actor | **permitted** | unchanged |
+
+Existing adopters run one operator and must not be broken by an ADR. A policy
+that is not configured is not enforced, and the gate reports which policies were
+in force.
 
 ### 4. Multi-operator coordination adds no new machinery
 
@@ -109,8 +131,12 @@ Two operators need three things that already work or need only discipline:
   fail-closed at merge, the process remedy costs nothing, and a lock is machinery
   that would have to be maintained for a problem measured in minutes of rework.
 - **Disjoint scope.** Two open tasks may declare overlapping scope and nothing
-  objects. An advisory warning is worth adding later; a refusal is not, because
-  overlap is sometimes correct and the gate already refuses the actual conflict.
+  objects: the gate checks a candidate against **its own** contract and has no
+  view of other open tasks. What eventually stops the collision is git refusing
+  an unmergeable content conflict — a different mechanism, later, and only when
+  the same lines are touched. Operators should therefore agree scopes up front.
+  An advisory cross-task warning is worth adding later; a refusal is not, because
+  overlapping scope is sometimes correct.
 
 ### 5. What this ADR does not decide
 
@@ -123,6 +149,14 @@ Two operators need three things that already work or need only discipline:
 - **Lifecycle hooks** (proposal 009). Policy evaluated by the gate is not a hook:
   it runs no third-party code and widens no trust surface. Hooks remain a
   separate question.
+
+**Dependent corrections.** Accepting this ADR leaves user-facing documentation
+contradicting it, and those are named here so the contradiction is tracked rather
+than tacit: `docs/quickstart.md` ("independence is the property AgentMarshal
+makes durable, so it is enforced") and `docs/overview.md` ("Enforced, not
+assumed") both describe the email comparison as enforcement of independence.
+They must be reworded to declared-identity comparison, together with the gate's
+own output line, as the first task following this ADR.
 
 ## Consequences
 
