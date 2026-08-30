@@ -70,7 +70,9 @@ def _actors_table(project_root: Path) -> dict[str, str]:
         return {}
     mapping: dict[str, str] = {}
     for actor_id, entry in section.items():
-        if not isinstance(actor_id, str) or not isinstance(entry, dict):
+        if not isinstance(actor_id, str) or not actor_id.strip():
+            continue
+        if not isinstance(entry, dict):
             continue
         identities = entry.get("git_identities")
         if not isinstance(identities, list):

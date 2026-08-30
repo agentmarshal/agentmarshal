@@ -959,3 +959,57 @@ def test_write_record_stamps_the_creating_actor(
     stored = read_records(root, "CR-001")[0]
     assert stored["recorded_by"] == "an-agent"
     assert stored["recorded_by_source"] == "override"
+
+
+def test_recorded_by_is_rejected_when_supplied_by_the_caller(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Derived means derived: a supplied value would outrank the override."""
+
+    monkeypatch.setenv("AGENTMARSHAL_ACTOR", "an-agent")
+    root = tmp_path / ".agentmarshal" / "journal"
+    root.mkdir(parents=True)
+    record = create_opened_record("CR-001", "1.0") | {
+        "recorded_by": "someone-else",
+        "recorded_by_source": "override",
+    }
+
+    with pytest.raises(JournalRecordError, match="must not be supplied"):
+        write_record(root, "CR-001", record)
+
+
+def test_an_incoherent_recorded_by_pair_fails_validation(tmp_path: Path) -> None:
+    """The check belongs on the shared path, so a hand-edited record is caught."""
+
+    record = create_opened_record("CR-001", "1.0")
+    record["recorded_by_source"] = "git-identity"  # no recorded_by beside it
+
+    from agentmarshal.journal.records import validate_record_content
+
+    with pytest.raises(JournalRecordError, match="recorded_by"):
+        validate_record_content(
+            "01J00000000000000000000000-opened.json", json.dumps(record)
+        )
+
+
+def test_actors_table_skips_an_empty_actor_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An empty id would resolve to an empty actor and write an invalid record."""
+
+    from agentmarshal.journal.actors import resolve_recorded_by
+
+    monkeypatch.delenv("AGENTMARSHAL_ACTOR", raising=False)
+    subprocess.run(["git", "init", "--quiet", "-b", "master"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "x@example.invalid"], cwd=tmp_path, check=True
+    )
+    (tmp_path / ".agentmarshal").mkdir()
+    (tmp_path / ".agentmarshal" / "project.json").write_text(
+        json.dumps(
+            {"schema": 1, "actors": {"": {"git_identities": ["x@example.invalid"]}}}
+        ),
+        encoding="utf-8",
+    )
+
+    assert resolve_recorded_by(tmp_path) == ("x@example.invalid", "git-identity")

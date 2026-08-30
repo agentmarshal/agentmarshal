@@ -216,6 +216,8 @@ def _validate_record(record: Mapping[str, object]) -> dict[str, object]:
         _validate_session_record(data)
     if schema >= 2:
         _validate_provenance(data)
+    _validate_recorded_by(data)
+
     return data
 
 
@@ -439,10 +441,15 @@ def write_record(
     """
 
     data = _validate_record(record)
-    _validate_recorded_by(data)
     if data["task"] != task_id:
         raise JournalRecordError("record task does not match its destination")
-    if data.get("schema") == 2 and "recorded_by" not in data:
+    if "recorded_by" in record or "recorded_by_source" in record:
+        # The field is derived, never supplied: a caller-provided value would be
+        # just another label, and would silently outrank the override.
+        raise JournalRecordError(
+            "recorded_by is derived from the environment and must not be supplied"
+        )
+    if data.get("schema") == 2:
         resolved = resolve_recorded_by(journal_root.parent.parent)
         if resolved is not None:
             data["recorded_by"], data["recorded_by_source"] = resolved
