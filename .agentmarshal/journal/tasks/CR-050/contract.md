@@ -8,7 +8,7 @@ acceptance = [
   "it names the precedent — the same filesystem/path domain was over-engineered a year earlier from the opposite direction, gold-plated by the implementer and approved by review with no findings",
   "it states the cause it can support and says plainly which hypothesis the data did not support, rather than presenting a tidy explanation",
   "it states the rule adopted: a finding is tested against the contract's stated threat before it is implemented, with the three dispositions",
-  "no adopter, client or product name appears; downstream tasks are referred to by pseudonym",
+  "no adopter, client or third-party product name appears; downstream tasks are referred to by pseudonym (this project's own name is not such a name)",
   "no code change; validate/pytest/ruff/format/mypy stay green",
 ]
 +++
@@ -44,7 +44,8 @@ far as the evidence supports it, and the rule now in force.
 - [ ] The precedent named, including that review missed it then.
 - [ ] Cause stated honestly, including the hypothesis the data did not support.
 - [ ] The adopted rule and its three dispositions.
-- [ ] No adopter/client/product names; pseudonyms for downstream tasks.
+- [ ] No adopter/client/third-party product names; pseudonyms for downstream
+      tasks. This project's own name is not one of them.
 - [ ] No code change; suite green.
 
 ## Non-Goals
