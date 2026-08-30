@@ -84,6 +84,42 @@ def _contract_content(task_id: str, title: str, scope: list[str]) -> str:
     )
 
 
+def scope_warnings(project_root: Path, scope: list[str]) -> list[str]:
+    """Warn about the scope mistakes that are worth catching at open time.
+
+    The gate compares scope entries against paths from ``git diff --name-only``,
+    and git lists files, never directories. So an entry naming a directory
+    without its trailing slash matches nothing, silently, until the gate refuses
+    a change that is in fact correct — the reported failure this exists for.
+
+    **Deliberately bounded.** This catches that mistake, an entry that names
+    nothing on disk, and an empty entry. It is not a path validator: entries in
+    unusual forms are left alone, because no stated threat requires the tool to
+    police them, and a warning that fires on legal input teaches people to
+    ignore warnings.
+
+    Warnings, never refusals: a task may legitimately declare a path it is about
+    to create.
+    """
+
+    warnings: list[str] = []
+    for entry in scope:
+        if not entry:
+            warnings.append("scope entry is empty and matches nothing")
+            continue
+        target = project_root / entry.rstrip("/")
+        if not entry.endswith("/") and target.is_dir():
+            warnings.append(
+                f"scope entry {entry!r} names a directory but has no trailing "
+                f"slash, so it matches nothing — did you mean {entry + '/'!r}?"
+            )
+        elif not target.exists():
+            warnings.append(
+                f"scope entry {entry!r} matches no path in the working tree"
+            )
+    return warnings
+
+
 def open_task(project_root: Path, title: str, scope: list[str]) -> OpenedTask:
     """Create a task contract and its opened record."""
 

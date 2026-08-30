@@ -81,6 +81,14 @@ enforces it) and **`acceptance`** (machine-readable criteria; populate these so
 a merged task doubles as an evaluation case). The markdown body holds the
 objective and prose acceptance.
 
+**Mind the trailing slash.** A scope entry ending in `/` matches everything
+under that directory; without it the entry must equal a path exactly. So
+`--scope src` matches only a file literally named `src`, and gates everything
+under `src/` as out-of-scope. `agentmarshal open` warns about this case by name, and
+about an entry that names nothing on disk — but it still opens the task, because
+a scope may legitimately declare a path the work is about to create. The warning
+is a check on the common mistakes, not a path validator.
+
 ### `project.json`
 
 `agentmarshal init` writes a minimal `.agentmarshal/project.json`
