@@ -40,7 +40,7 @@ changed our roadmap we say that too.
 ## Current batch
 
 Landed 2026-08-30, from three adopters running 0.1.0 in production. Twenty-two
-source files digested into thirteen proposals — seven accepted, five deferred,
+source files digested into thirteen proposals — eight accepted, four deferred,
 one declined. The recurring themes are review protocol robustness, contract
 repair, and session/token accounting; the last was raised independently by two
 adopters.
