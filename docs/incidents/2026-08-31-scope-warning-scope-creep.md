@@ -112,6 +112,22 @@ amended to do that, and the boundary is now itself a criterion — the docstring
 states which forms are deliberately not policed, so the omission reads as a
 decision rather than an oversight.
 
+## A footnote the record earned
+
+Publishing this required amending its own contract twice. One criterion forbade
+"product names", which literally forbids naming this project in its own incident
+record. The other asserted what the investigation would find — that the earlier
+occurrence was implementer gold-plating — so once the commit trail showed
+reviewer-driven escalation instead, a record stating the truth *failed the
+contract*, and review correctly said so.
+
+That second one is the defect an adopter reported to us as proposal 005: a
+criterion that predicts a conclusion cannot be satisfied by work that reaches a
+different one, and without a repair path the task can only be abandoned and
+reopened. We had the repair path — a journal-only amendment — and used it twice
+while writing this. The adopter did not, and closed six tasks as abandoned
+instead.
+
 ## Cost
 
 Five review rounds, roughly fifty lines of code written and removed, and one
