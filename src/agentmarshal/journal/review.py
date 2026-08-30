@@ -12,6 +12,11 @@ import tempfile
 from pathlib import Path
 from typing import cast
 
+# The allowed verdicts have one definition, in records.py, which validation
+# uses. The prompt renders that same set so it cannot drift from what the
+# record layer will accept. (Module-private today; worth making public the
+# next time records.py is opened.)
+from agentmarshal.journal.records import _REVIEW_VERDICTS as REVIEW_VERDICTS
 from agentmarshal.journal.status import TaskStatusError, load_task_status
 from agentmarshal.journal.submit_review import (
     ReviewSubmitError,
@@ -21,7 +26,10 @@ from agentmarshal.journal.submit_review import (
 
 _VERDICT_BEGIN = "AGENTMARSHAL_VERDICT_BEGIN"
 _VERDICT_END = "AGENTMARSHAL_VERDICT_END"
-_VERDICT_FIELDS = {"reviewed_commit", "verdict", "findings"}
+_VERDICT_REQUIRED = {"reviewed_commit", "verdict", "findings"}
+# advisory_findings is in the record schema and create_review_record accepts it;
+# accepting it here is what makes it reachable through the protocol at all.
+_VERDICT_OPTIONAL = {"advisory_findings"}
 
 
 class ReviewLaunchError(Exception):
@@ -59,15 +67,22 @@ def _resolve_commit(project_root: Path, commit: str) -> str:
 def _review_prompt(contract: str, diff: str, commit: str) -> str:
     """Build the reviewer prompt with its required machine-verdict protocol."""
 
+    verdicts = ", ".join(sorted(REVIEW_VERDICTS))
     return f"""You are a read-only code reviewer. Review the supplied task contract
 and diff.
 Do not modify files. Your reviewed commit is {commit}.
 
 At the end, print exactly one JSON object between lines containing exactly
-{_VERDICT_BEGIN} and {_VERDICT_END}. The object must contain only:
+{_VERDICT_BEGIN} and {_VERDICT_END}. The object must contain:
 - reviewed_commit: the exact reviewed commit SHA
-- verdict: an allowed AgentMarshal verdict
-- findings: an array of unique finding-id strings
+- verdict: exactly one of: {verdicts}
+- findings: an array of unique finding-id strings; empty only for "approved",
+  and non-empty for every other verdict
+and may additionally contain:
+- advisory_findings: an array of unique non-blocking finding-id strings,
+  disjoint from findings; allowed with any verdict, including "approved"
+
+No other key is accepted.
 
 Task contract:
 {contract}
@@ -148,30 +163,81 @@ def _run_reviewer(command: list[str], snapshot: Path, prompt: str) -> str:
     return result.stdout
 
 
-def _parse_verdict(output: str) -> tuple[str, str, list[str]]:
+def _preserve_output(output: str) -> Path:
+    """Write a rejected reviewer's raw output where the caller can still read it.
+
+    A verdict that fails validation used to take the whole run with it: the
+    launcher prints only the record path, so the analysis the reviewer was paid
+    to produce had nowhere to survive. The file is deliberately not cleaned up —
+    it exists because the run failed, and removing it is the caller's decision.
+    """
+
+    descriptor, name = tempfile.mkstemp(
+        prefix="agentmarshal-rejected-verdict-", suffix=".txt"
+    )
+    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+        handle.write(output)
+    return Path(name)
+
+
+def _reject(output: str, reason: str) -> ReviewLaunchError:
+    """Build a rejection that names where the reviewer's raw output was kept."""
+
+    try:
+        kept = _preserve_output(output)
+    except OSError as error:  # pragma: no cover - preservation is best effort
+        return ReviewLaunchError(f"{reason} (raw output could not be kept: {error})")
+    return ReviewLaunchError(f"{reason}; reviewer output kept at {kept}")
+
+
+def _parse_verdict(output: str) -> tuple[str, str, list[str], list[str]]:
     lines = output.splitlines()
     begins = [index for index, line in enumerate(lines) if line == _VERDICT_BEGIN]
     ends = [index for index, line in enumerate(lines) if line == _VERDICT_END]
     if len(begins) != 1 or len(ends) != 1 or begins[0] >= ends[0]:
-        raise ReviewLaunchError("reviewer output has invalid verdict sentinels")
+        raise _reject(output, "reviewer output has invalid verdict sentinels")
     try:
         verdict_data = json.loads("\n".join(lines[begins[0] + 1 : ends[0]]))
     except json.JSONDecodeError as error:
-        raise ReviewLaunchError("reviewer verdict is not valid JSON") from error
-    if not isinstance(verdict_data, dict) or set(verdict_data) != _VERDICT_FIELDS:
-        raise ReviewLaunchError(
-            "reviewer verdict must contain only the required fields"
+        raise _reject(output, f"reviewer verdict is not valid JSON: {error}") from error
+    if not isinstance(verdict_data, dict):
+        raise _reject(output, "reviewer verdict must be a JSON object")
+    keys = set(verdict_data)
+    missing = _VERDICT_REQUIRED - keys
+    if missing:
+        raise _reject(
+            output,
+            "reviewer verdict is missing required field(s): "
+            + ", ".join(sorted(missing)),
+        )
+    # An unknown key is still refused — a verdict we do not understand must not
+    # be recorded — but the message names it, instead of reporting a shape
+    # failure the reviewer cannot act on.
+    unknown = keys - _VERDICT_REQUIRED - _VERDICT_OPTIONAL
+    if unknown:
+        raise _reject(
+            output,
+            "reviewer verdict has unsupported field(s): " + ", ".join(sorted(unknown)),
         )
     reviewed_commit = verdict_data["reviewed_commit"]
     verdict = verdict_data["verdict"]
     findings = verdict_data["findings"]
+    advisory = verdict_data.get("advisory_findings", [])
     if not isinstance(reviewed_commit, str) or not isinstance(verdict, str):
-        raise ReviewLaunchError("reviewer verdict fields must be strings")
-    if not isinstance(findings, list) or not all(
-        isinstance(item, str) for item in findings
-    ):
-        raise ReviewLaunchError("reviewer verdict findings must be an array of strings")
-    return reviewed_commit, verdict, cast(list[str], findings)
+        raise _reject(output, "reviewer verdict fields must be strings")
+    for name, value in (("findings", findings), ("advisory_findings", advisory)):
+        if not isinstance(value, list) or not all(
+            isinstance(item, str) for item in value
+        ):
+            raise _reject(
+                output, f"reviewer verdict {name} must be an array of strings"
+            )
+    return (
+        reviewed_commit,
+        verdict,
+        cast(list[str], findings),
+        cast(list[str], advisory),
+    )
 
 
 def _extract_snapshot(project_root: Path, commit: str, snapshot: Path) -> None:
@@ -230,7 +296,8 @@ def launch_review(
     merge_base = _run_git(project_root, ["merge-base", base, resolved_commit]).strip()
     diff = _run_git(project_root, ["diff", f"{merge_base}..{resolved_commit}"])
 
-    review_result: tuple[str, str, list[str]]
+    review_result: tuple[str, str, list[str], list[str]]
+    reviewer_output = ""
     with tempfile.TemporaryDirectory(
         prefix="agentmarshal-review-"
     ) as temporary_directory:
@@ -258,12 +325,13 @@ def launch_review(
             snapshot,
             prompt,
         )
-        reviewed_commit, verdict, findings = _parse_verdict(output)
+        reviewer_output = output
+        reviewed_commit, verdict, findings, advisory = _parse_verdict(output)
         if reviewed_commit != resolved_commit:
-            raise ReviewLaunchError(
-                "reviewer verdict reviewed_commit does not match commit"
+            raise _reject(
+                output, "reviewer verdict reviewed_commit does not match commit"
             )
-        review_result = reviewed_commit, verdict, findings
+        review_result = reviewed_commit, verdict, findings, advisory
     try:
         return submit_review(
             journal_root,
@@ -275,6 +343,11 @@ def launch_review(
             reviewer_model,
             reviewer_email,
             review_result[2],
+            review_result[3] or None,
         )
     except ReviewSubmitError as error:
-        raise ReviewLaunchError(str(error)) from error
+        # A verdict can parse cleanly and still be refused by record validation —
+        # an unknown verdict value, empty findings for a non-approving verdict,
+        # duplicates, or advisory ids overlapping findings. That path discarded
+        # the analysis too, and it is the one seen most often in practice.
+        raise _reject(reviewer_output, str(error)) from error

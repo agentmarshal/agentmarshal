@@ -101,9 +101,28 @@ def _review_args(commit: str) -> list[str]:
     ]
 
 
-def _verdict(commit: str, verdict: str, findings: list[str]) -> str:
-    data = {"reviewed_commit": commit, "verdict": verdict, "findings": findings}
+def _verdict(
+    commit: str,
+    verdict: str,
+    findings: list[str],
+    advisory_findings: list[str] | None = None,
+) -> str:
+    data: dict[str, object] = {
+        "reviewed_commit": commit,
+        "verdict": verdict,
+        "findings": findings,
+    }
+    if advisory_findings is not None:
+        data["advisory_findings"] = advisory_findings
     return f"AGENTMARSHAL_VERDICT_BEGIN\n{json.dumps(data)}\nAGENTMARSHAL_VERDICT_END\n"
+
+
+def _kept_outputs() -> list[Path]:
+    import tempfile as _tempfile
+
+    return list(
+        Path(_tempfile.gettempdir()).glob("agentmarshal-rejected-verdict-*.txt")
+    )
 
 
 def _assert_no_snapshot(repo: Path) -> None:
@@ -326,3 +345,215 @@ def test_review_rejects_unknown_task_or_commit_before_snapshot(
 
     assert len(read_records(repo / ".agentmarshal" / "journal", "CR-001")) == 1
     _assert_no_snapshot(repo)
+
+
+def test_prompt_lists_the_allowed_verdicts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The prompt must name the verdicts, from the definition validation uses."""
+
+    from agentmarshal.journal.records import _REVIEW_VERDICTS
+    from agentmarshal.journal.review import _review_prompt
+
+    prompt = _review_prompt("contract", "diff", "a" * 40)
+
+    for verdict in _REVIEW_VERDICTS:
+        assert verdict in prompt
+    assert "advisory_findings" in prompt
+
+
+def test_advisory_findings_reach_the_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """advisory_findings is in the schema; the protocol must be able to produce it."""
+
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    stub = _reviewer_stub(
+        tmp_path, _verdict(commit, "approved", [], advisory_findings=["A-001"])
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert (
+        main(
+            [
+                "review",
+                "--task",
+                "CR-001",
+                "--commit",
+                commit,
+                "--base",
+                "HEAD~1",
+                "--role",
+                "qa",
+                "--vendor",
+                "test",
+                "--model",
+                "test-model",
+                "--email",
+                "reviewer@test.invalid",
+            ]
+        )
+        == 0
+    )
+
+    records = read_records(repo / ".agentmarshal" / "journal", "CR-001")
+    assert records[-1]["advisory_findings"] == ["A-001"]
+
+
+def test_rejected_verdict_keeps_the_reviewer_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A rejected verdict must not discard the analysis that was paid for."""
+
+    before = set(_kept_outputs())
+    _repo, commit = _review_repo(tmp_path, monkeypatch)
+    analysis = "the reviewer's reasoning that must survive"
+    stub = _reviewer_stub(
+        tmp_path,
+        f'{analysis}\nAGENTMARSHAL_VERDICT_BEGIN\n{{"verdict": "approved"}}\n'
+        "AGENTMARSHAL_VERDICT_END\n",
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert (
+        main(
+            [
+                "review",
+                "--task",
+                "CR-001",
+                "--commit",
+                commit,
+                "--base",
+                "HEAD~1",
+                "--role",
+                "qa",
+                "--vendor",
+                "test",
+                "--model",
+                "test-model",
+                "--email",
+                "reviewer@test.invalid",
+            ]
+        )
+        == 1
+    )
+
+    message = capsys.readouterr().err
+    assert "missing required field(s)" in message
+    assert "reviewed_commit" in message and "findings" in message
+    kept = [path for path in _kept_outputs() if path not in before]
+    try:
+        assert len(kept) == 1, message
+        assert str(kept[0]) in message
+        assert analysis in kept[0].read_text(encoding="utf-8")
+    finally:
+        for path in kept:
+            path.unlink(missing_ok=True)
+
+
+def test_unsupported_verdict_key_is_named(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """An unknown key still fails closed, but the operator is told which one."""
+
+    before = set(_kept_outputs())
+    _repo, commit = _review_repo(tmp_path, monkeypatch)
+    payload = json.dumps(
+        {
+            "reviewed_commit": commit,
+            "verdict": "approved",
+            "findings": [],
+            "confidence": 0.9,
+        }
+    )
+    stub = _reviewer_stub(
+        tmp_path,
+        f"AGENTMARSHAL_VERDICT_BEGIN\n{payload}\nAGENTMARSHAL_VERDICT_END\n",
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert (
+        main(
+            [
+                "review",
+                "--task",
+                "CR-001",
+                "--commit",
+                commit,
+                "--base",
+                "HEAD~1",
+                "--role",
+                "qa",
+                "--vendor",
+                "test",
+                "--model",
+                "test-model",
+                "--email",
+                "reviewer@test.invalid",
+            ]
+        )
+        == 1
+    )
+
+    message = capsys.readouterr().err
+    assert "unsupported field(s): confidence" in message
+    for path in _kept_outputs():
+        if path not in before:
+            path.unlink(missing_ok=True)
+
+
+def test_record_validation_failure_also_keeps_the_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A verdict can parse and still be refused by record validation.
+
+    That path — an approving verdict carrying findings — is the one seen most
+    often in practice, and it discarded the analysis as surely as a parse error.
+    """
+
+    before = set(_kept_outputs())
+    _repo, commit = _review_repo(tmp_path, monkeypatch)
+    analysis = "reasoning that must survive a record-validation refusal"
+    stub = _reviewer_stub(
+        tmp_path, analysis + "\n" + _verdict(commit, "approved", ["F-001"])
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert (
+        main(
+            [
+                "review",
+                "--task",
+                "CR-001",
+                "--commit",
+                commit,
+                "--base",
+                "HEAD~1",
+                "--role",
+                "qa",
+                "--vendor",
+                "test",
+                "--model",
+                "test-model",
+                "--email",
+                "reviewer@test.invalid",
+            ]
+        )
+        == 1
+    )
+
+    message = capsys.readouterr().err
+    kept = [path for path in _kept_outputs() if path not in before]
+    try:
+        assert len(kept) == 1, message
+        assert str(kept[0]) in message
+        assert analysis in kept[0].read_text(encoding="utf-8")
+    finally:
+        for path in kept:
+            path.unlink(missing_ok=True)

@@ -49,9 +49,16 @@ AGENTMARSHAL_VERDICT_BEGIN
 AGENTMARSHAL_VERDICT_END
 ```
 
-Only those three fields are allowed. `verdict` is an AgentMarshal verdict
-(`approved`, `changes_required`, …); `findings` is an array of finding-id
-strings. This is the entire contract a custom or model reviewer must satisfy.
+Required: `reviewed_commit`, `verdict` — one of **`approved`,
+`changes_required`, `blocked`, `rejected`** — and `findings`, an array of unique
+finding-id strings (empty only for `approved`, non-empty for every other
+verdict). Optionally `advisory_findings`: non-blocking finding ids, disjoint
+from `findings`, allowed with any verdict including `approved`.
+
+Any other key is refused, and the error names it. The prompt AgentMarshal builds
+states all of this, so a reviewer does not have to guess. When a verdict is
+refused the reviewer's **raw output is kept** and its path is named in the
+error — a rejected verdict should not cost you the analysis.
 
 ### Gate attestation modes (`--attestation`)
 
