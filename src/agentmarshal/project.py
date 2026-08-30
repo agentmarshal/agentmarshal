@@ -284,17 +284,23 @@ def _scaffold_outbox(project_directory: Path) -> tuple[Path, str | None]:
 
     outbox = project_directory / "upstream"
     readme = outbox / "README.md"
+    # The two steps are kept apart on purpose. FileExistsError means different
+    # things in each: from mkdir it means the path is taken by something that is
+    # not a directory, which is a failure; from opening the README it means the
+    # adopter wrote their own, which is a success.
     try:
         outbox.mkdir(exist_ok=True)
-        # An adopter who already wrote their own does not lose it.
+    except OSError as error:
+        # The reason travels with the failure. A caller that only learned
+        # "no outbox" would have to guess between a permission problem, a
+        # full disk, and a bug of ours.
+        return outbox, str(error)
+    try:
         with readme.open("x", encoding="utf-8", newline="\n") as handle:
             handle.write(_OUTBOX_README)
     except FileExistsError:
         return outbox, None
     except OSError as error:
-        # The reason travels with the failure. A caller that only learned
-        # "no outbox" would have to guess between a permission problem, a
-        # full disk, and a bug of ours.
         return outbox, str(error)
     return outbox, None
 

@@ -1262,3 +1262,23 @@ def test_init_states_the_convention_even_when_the_outbox_is_missing(
     assert "Findings about AgentMarshal itself go in" in captured.out
     assert "could not create" in captured.err
     assert "Permission denied" in captured.err
+
+
+def test_init_does_not_call_a_file_named_upstream_an_outbox(
+    tmp_path: Path,
+) -> None:
+    """A path taken by a file leaves no directory and no README to use."""
+
+    from agentmarshal import project as project_module
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "--quiet", "-b", "master"], cwd=repo, check=True)
+    project_directory = repo / ".agentmarshal"
+    project_directory.mkdir()
+    (project_directory / "upstream").write_text("not a directory", encoding="utf-8")
+
+    initialized = project_module.initialize_project(repo)
+
+    assert not initialized.outbox_created
+    assert not (project_directory / "upstream" / "README.md").exists()
