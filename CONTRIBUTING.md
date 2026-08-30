@@ -72,6 +72,13 @@ same gate the tool ships. This surprises people, so it is worth stating plainly:
 - Evidence records are **append-only**; the contract and prior task state are
   read from the base side, so a change cannot widen its own scope.
 
+**If you contribute with an agent, have it declare itself.** Set
+`AGENTMARSHAL_ACTOR` in the agent's session environment, so the records it
+writes say an agent wrote them. An agent normally commits under your git
+identity, so nothing else can separate the two of you — and a review record
+marked `vendor: human` that an agent produced is exactly the confusion this
+project has already had to correct in its own journal.
+
 For a pull request from a fork this matters more, not less: a fork PR is an
 untrusted boundary — see [docs/github-enforcement.md](docs/github-enforcement.md).
 
