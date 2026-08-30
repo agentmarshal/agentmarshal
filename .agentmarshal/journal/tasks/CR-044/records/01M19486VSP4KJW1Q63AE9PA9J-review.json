@@ -1,0 +1,17 @@
+{
+  "created_at": "2026-08-30T10:43:10.329010Z",
+  "findings": [],
+  "record_type": "review",
+  "reviewed_commit": "739ef9ab495f8fe55618abbab5df0eda9b11241b",
+  "reviewer": {
+    "email": "auto-review@agent.example.invalid",
+    "model": "codex-auto-review",
+    "role": "code-reviewer",
+    "vendor": "openai"
+  },
+  "schema": 2,
+  "source": "live",
+  "task": "CR-044",
+  "tool_version": "0.1.0",
+  "verdict": "approved"
+}
