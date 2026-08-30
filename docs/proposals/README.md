@@ -40,9 +40,10 @@ changed our roadmap we say that too.
 ## Current batch
 
 Landed 2026-08-30, from three adopters running 0.1.0 in production. Twenty-two
-source files digested into twelve proposals; the recurring themes are review
-protocol robustness, contract repair, and session/token accounting — the last
-one raised independently by two adopters.
+source files digested into thirteen proposals — eight accepted, four deferred,
+one declined. The recurring themes are review protocol robustness, contract
+repair, and session/token accounting; the last was raised independently by two
+adopters.
 
 | # | Theme | Reporters | Disposition |
 |---|---|---|---|
@@ -58,6 +59,7 @@ one raised independently by two adopters.
 | [010](010-executor-artifacts-lifecycle.md) | External-executor artifacts have no lifecycle | A | accepted |
 | [011](011-windows-journal-directory-acl.md) | Windows: a new task directory can be unreadable | B | accepted |
 | [012](012-upstream-feedback-channel.md) | No convention for sending findings upstream | A, B | accepted |
+| [013](013-build-tooling-idempotent-artifact-copy.md) | A build script fails when the artifact is already at its target path | B | declined |
 
 ## Reporters
 
