@@ -113,24 +113,40 @@ def scope_warnings(project_root: Path, scope: list[str]) -> list[str]:
             warnings.append("scope entry is empty and matches nothing")
             continue
         parts = entry.split("/")
-        if entry.startswith("/") or "." in parts or ".." in parts:
+        # Git emits normalised, repository-relative POSIX paths. An entry that
+        # is not in that form resolves perfectly well on this machine and still
+        # cannot match anything the gate will ever compare against, so the whole
+        # family is rejected together rather than case by case.
+        if (
+            entry.startswith("/")
+            or "\\" in entry
+            or "//" in entry
+            or "." in parts
+            or ".." in parts
+        ):
             warnings.append(
-                f"scope entry {entry!r} is not a repository-relative path, so it "
-                "cannot match any changed path the gate sees"
+                f"scope entry {entry!r} is not a normalised repository-relative "
+                "path, so it cannot match any changed path the gate sees"
+            )
+            continue
+        base = entry.rstrip("/")
+        target = project_root / base
+        # git stores a symlink as a link, never as a directory it can descend
+        # into, so nothing under a symlinked path is ever emitted as a change.
+        if target.is_symlink():
+            warnings.append(
+                f"scope entry {entry!r} resolves through a symlink; git never "
+                "reports paths beneath one, so it matches nothing"
             )
             continue
         if entry.endswith("/"):
-            base = entry.rstrip("/")
-            if not base:
-                warnings.append(
-                    f"scope entry {entry!r} names no path and matches nothing"
-                )
-            elif not (project_root / base).exists():
+            # A trailing slash matches the slash-stripped path as well as
+            # everything under it, so an existing file of that name satisfies it.
+            if not target.exists():
                 warnings.append(
                     f"scope entry {entry!r} matches no path in the working tree"
                 )
             continue
-        target = project_root / entry
         if target.is_dir():
             warnings.append(
                 f"scope entry {entry!r} names a directory but has no trailing "

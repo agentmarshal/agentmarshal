@@ -836,12 +836,22 @@ def test_scope_warning_rejects_paths_the_gate_can_never_see(tmp_path: Path) -> N
     outside.mkdir(exist_ok=True)
 
     warnings = scope_warnings(
-        tmp_path, ["/etc/", "../outside/", "./README.md", "src/../README.md", "/"]
+        tmp_path,
+        [
+            "/etc/",
+            "../outside/",
+            "./README.md",
+            "src/../README.md",
+            "/",
+            "src//",
+            "src\\a.py",
+        ],
     )
 
-    assert len(warnings) == 5
+    assert len(warnings) == 7
     assert all(
-        "not a repository-relative path" in warning or "matches nothing" in warning
+        "not a normalised repository-relative" in warning
+        or "matches nothing" in warning
         for warning in warnings
     )
 
@@ -888,3 +898,19 @@ def test_scope_warning_flags_an_empty_entry(tmp_path: Path) -> None:
 
     assert len(warnings) == 2
     assert all("empty" in warning for warning in warnings)
+
+
+def test_scope_warning_flags_a_symlinked_entry(tmp_path: Path) -> None:
+    """git stores a symlink as a link; nothing beneath one is ever a changed path."""
+
+    from agentmarshal.journal.open_task import scope_warnings
+
+    real = tmp_path / "real"
+    real.mkdir()
+    (real / "a.py").write_text("x", encoding="utf-8")
+    (tmp_path / "linked").symlink_to(real, target_is_directory=True)
+
+    warnings = scope_warnings(tmp_path, ["linked/"])
+
+    assert len(warnings) == 1
+    assert "symlink" in warnings[0]
