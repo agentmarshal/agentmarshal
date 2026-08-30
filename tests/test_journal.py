@@ -785,3 +785,60 @@ def test_approved_review_still_rejects_blocking_findings(tmp_path: Path) -> None
     )
     with pytest.raises(JournalRecordError, match="approved review records"):
         write_record(tmp_path / "j", "CR-001", record)
+
+
+def test_scope_warning_names_a_directory_missing_its_slash(tmp_path: Path) -> None:
+    """The reported failure: `--scope src` gates everything under src/ as outside."""
+
+    from agentmarshal.journal.open_task import scope_warnings
+
+    (tmp_path / "src").mkdir()
+
+    warnings = scope_warnings(tmp_path, ["src"])
+
+    assert len(warnings) == 1
+    assert "src" in warnings[0]
+    assert "'src/'" in warnings[0]
+
+
+def test_scope_warning_for_a_path_that_is_not_there(tmp_path: Path) -> None:
+    from agentmarshal.journal.open_task import scope_warnings
+
+    warnings = scope_warnings(tmp_path, ["nowhere/", "missing.py"])
+
+    assert len(warnings) == 2
+    assert "matches no directory" in warnings[0]
+    assert "matches no path" in warnings[1]
+
+
+def test_scope_warning_stays_silent_when_entries_match(tmp_path: Path) -> None:
+    from agentmarshal.journal.open_task import scope_warnings
+
+    (tmp_path / "src").mkdir()
+    (tmp_path / "README.md").write_text("x", encoding="utf-8")
+
+    assert scope_warnings(tmp_path, ["src/", "README.md"]) == []
+
+
+def test_open_warns_but_still_opens(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A warning must never become a refusal: a task may declare what it creates."""
+
+    import subprocess
+
+    from agentmarshal.cli import main
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "--quiet", "-b", "master"], cwd=repo, check=True)
+    monkeypatch.chdir(repo)
+    assert main(["init"]) == 0
+    capsys.readouterr()
+
+    assert main(["open", "--title", "T", "--scope", "not-created-yet/"]) == 0
+
+    captured = capsys.readouterr()
+    assert "matches no directory" in captured.err
+    assert "contract.md" in captured.out
+    assert (repo / ".agentmarshal/journal/tasks/CR-001/contract.md").is_file()

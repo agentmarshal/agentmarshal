@@ -20,7 +20,11 @@ from agentmarshal.journal.complete import (
 )
 from agentmarshal.journal.gate import GateError, markers_from_tree, run_gate
 from agentmarshal.journal.gate_context import derive_gate_context
-from agentmarshal.journal.open_task import TaskOpenError, open_task
+from agentmarshal.journal.open_task import (
+    TaskOpenError,
+    open_task,
+    scope_warnings,
+)
 from agentmarshal.journal.report import ReportError, build_report, format_report
 from agentmarshal.journal.review import ReviewLaunchError, launch_review
 from agentmarshal.journal.session import SessionRecordError, record_session
@@ -222,6 +226,8 @@ def _run_open(title: str, scope: list[str], stderr: TextIO) -> int:
     except TaskOpenError as error:
         print(error, file=stderr)
         return 1
+    for warning in scope_warnings(project_root, scope):
+        print(f"warning: {warning}", file=stderr)
     print(opened_task.contract_path)
     print(opened_task.record_path)
     return 0

@@ -84,6 +84,43 @@ def _contract_content(task_id: str, title: str, scope: list[str]) -> str:
     )
 
 
+def scope_warnings(project_root: Path, scope: list[str]) -> list[str]:
+    """Return a warning for every scope entry that matches nothing on disk.
+
+    Scope entries are compared by the gate as directory prefixes only when they
+    end in ``/``, and as exact paths otherwise, so ``--scope src`` gates every
+    file under ``src/`` as out-of-scope. That failure is silent at open time and
+    surfaces at the merge gate on a change that is in fact correct, which is the
+    most expensive moment to discover it.
+
+    These are warnings, never refusals: a task may legitimately declare a path
+    it is about to create.
+    """
+
+    warnings: list[str] = []
+    for entry in scope:
+        if not entry:
+            continue
+        if entry.endswith("/"):
+            target = project_root / entry.rstrip("/")
+            if not target.is_dir():
+                warnings.append(
+                    f"scope entry {entry!r} matches no directory in the working tree"
+                )
+            continue
+        target = project_root / entry
+        if target.is_dir():
+            warnings.append(
+                f"scope entry {entry!r} names a directory but has no trailing "
+                f"slash, so it matches nothing — did you mean {entry + '/'!r}?"
+            )
+        elif not target.exists():
+            warnings.append(
+                f"scope entry {entry!r} matches no path in the working tree"
+            )
+    return warnings
+
+
 def open_task(project_root: Path, title: str, scope: list[str]) -> OpenedTask:
     """Create a task contract and its opened record."""
 
