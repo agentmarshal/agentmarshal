@@ -504,3 +504,56 @@ def test_unsupported_verdict_key_is_named(
     for path in _kept_outputs():
         if path not in before:
             path.unlink(missing_ok=True)
+
+
+def test_record_validation_failure_also_keeps_the_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A verdict can parse and still be refused by record validation.
+
+    That path — an approving verdict carrying findings — is the one seen most
+    often in practice, and it discarded the analysis as surely as a parse error.
+    """
+
+    before = set(_kept_outputs())
+    _repo, commit = _review_repo(tmp_path, monkeypatch)
+    analysis = "reasoning that must survive a record-validation refusal"
+    stub = _reviewer_stub(
+        tmp_path, analysis + "\n" + _verdict(commit, "approved", ["F-001"])
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert (
+        main(
+            [
+                "review",
+                "--task",
+                "CR-001",
+                "--commit",
+                commit,
+                "--base",
+                "HEAD~1",
+                "--role",
+                "qa",
+                "--vendor",
+                "test",
+                "--model",
+                "test-model",
+                "--email",
+                "reviewer@test.invalid",
+            ]
+        )
+        == 1
+    )
+
+    message = capsys.readouterr().err
+    kept = [path for path in _kept_outputs() if path not in before]
+    try:
+        assert len(kept) == 1, message
+        assert str(kept[0]) in message
+        assert analysis in kept[0].read_text(encoding="utf-8")
+    finally:
+        for path in kept:
+            path.unlink(missing_ok=True)

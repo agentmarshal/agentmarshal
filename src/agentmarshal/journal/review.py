@@ -297,6 +297,7 @@ def launch_review(
     diff = _run_git(project_root, ["diff", f"{merge_base}..{resolved_commit}"])
 
     review_result: tuple[str, str, list[str], list[str]]
+    reviewer_output = ""
     with tempfile.TemporaryDirectory(
         prefix="agentmarshal-review-"
     ) as temporary_directory:
@@ -324,6 +325,7 @@ def launch_review(
             snapshot,
             prompt,
         )
+        reviewer_output = output
         reviewed_commit, verdict, findings, advisory = _parse_verdict(output)
         if reviewed_commit != resolved_commit:
             raise _reject(
@@ -344,4 +346,8 @@ def launch_review(
             review_result[3] or None,
         )
     except ReviewSubmitError as error:
-        raise ReviewLaunchError(str(error)) from error
+        # A verdict can parse cleanly and still be refused by record validation —
+        # an unknown verdict value, empty findings for a non-approving verdict,
+        # duplicates, or advisory ids overlapping findings. That path discarded
+        # the analysis too, and it is the one seen most often in practice.
+        raise _reject(reviewer_output, str(error)) from error
