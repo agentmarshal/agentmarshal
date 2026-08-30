@@ -1013,3 +1013,33 @@ def test_actors_table_skips_an_empty_actor_id(
     )
 
     assert resolve_recorded_by(tmp_path) == ("x@example.invalid", "git-identity")
+
+
+def test_recorded_by_null_is_not_the_same_as_absent(tmp_path: Path) -> None:
+    """A field present with a null value names no actor while looking like it does."""
+
+    from agentmarshal.journal.records import validate_record_content
+
+    record = create_opened_record("CR-001", "1.0")
+    record["recorded_by"] = None
+    record["recorded_by_source"] = None
+
+    with pytest.raises(JournalRecordError, match="recorded_by"):
+        validate_record_content(
+            "01J00000000000000000000000-opened.json", json.dumps(record)
+        )
+
+
+def test_a_malformed_recorded_by_source_fails_closed(tmp_path: Path) -> None:
+    """An unhashable value must be refused, not raise TypeError out of validation."""
+
+    from agentmarshal.journal.records import validate_record_content
+
+    record = create_opened_record("CR-001", "1.0")
+    record["recorded_by"] = "someone"
+    record["recorded_by_source"] = ["git-identity"]
+
+    with pytest.raises(JournalRecordError, match="recorded_by_source"):
+        validate_record_content(
+            "01J00000000000000000000000-opened.json", json.dumps(record)
+        )

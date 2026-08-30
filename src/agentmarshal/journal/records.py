@@ -408,17 +408,31 @@ def _prepare_record_directory(journal_root: Path, task_id: str) -> Path:
 
 
 def _validate_recorded_by(data: Mapping[str, object]) -> None:
-    """Check the pair is well-formed and never half-present."""
+    """Check the pair is well-formed and never half-present.
 
-    actor = data.get("recorded_by")
-    origin = data.get("recorded_by_source")
-    if actor is None and origin is None:
+    Presence is what matters, not truthiness: an explicit ``null`` is a record
+    that carries the field without naming an actor, which is neither absent nor
+    valid. And the source is type-checked before the membership test, because a
+    list or dict there would raise TypeError — a validator that crashes on a
+    malformed record fails open in practice.
+    """
+
+    has_actor = "recorded_by" in data
+    has_source = "recorded_by_source" in data
+    if not has_actor and not has_source:
         return
+    if not has_actor or not has_source:
+        raise JournalRecordError(
+            "record fields 'recorded_by' and 'recorded_by_source' must appear "
+            "together or not at all"
+        )
+    actor = data["recorded_by"]
+    origin = data["recorded_by_source"]
     if not isinstance(actor, str) or not actor:
         raise JournalRecordError(
             "record field 'recorded_by' must be a non-empty string"
         )
-    if origin not in _RECORDED_BY_SOURCES:
+    if not isinstance(origin, str) or origin not in _RECORDED_BY_SOURCES:
         raise JournalRecordError(
             "record field 'recorded_by_source' must be one of "
             + ", ".join(sorted(_RECORDED_BY_SOURCES))
