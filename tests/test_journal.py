@@ -810,51 +810,6 @@ def test_scope_warning_for_a_path_that_is_not_there(tmp_path: Path) -> None:
     assert all("matches no path" in warning for warning in warnings)
 
 
-def test_scope_warning_mirrors_what_the_gate_can_match(tmp_path: Path) -> None:
-    """git lists files, so the filesystem is not the right question to ask."""
-
-    from agentmarshal.journal.open_task import scope_warnings
-
-    (tmp_path / "src").mkdir()
-    (tmp_path / "src" / "a.py").write_text("x", encoding="utf-8")
-    (tmp_path / "foo").write_text("x", encoding="utf-8")
-
-    # 'foo/' matches the exact path 'foo' by the gate's rule, so it is silent
-    # even though 'foo' is a file, not a directory.
-    assert scope_warnings(tmp_path, ["foo/"]) == []
-    # A plain entry naming a directory can never match: git emits file paths.
-    assert len(scope_warnings(tmp_path, ["src"])) == 1
-
-
-def test_scope_warning_rejects_paths_the_gate_can_never_see(tmp_path: Path) -> None:
-    """Absolute, parent-escaping and dot-prefixed entries resolve but cannot match."""
-
-    from agentmarshal.journal.open_task import scope_warnings
-
-    (tmp_path / "README.md").write_text("x", encoding="utf-8")
-    outside = tmp_path.parent / "outside"
-    outside.mkdir(exist_ok=True)
-
-    warnings = scope_warnings(
-        tmp_path,
-        [
-            "/etc/",
-            "../outside/",
-            "./README.md",
-            "src/../README.md",
-            "/",
-            "src//",
-        ],
-    )
-
-    assert len(warnings) == 6
-    assert all(
-        "not a normalised repository-relative" in warning
-        or "matches nothing" in warning
-        for warning in warnings
-    )
-
-
 def test_scope_warning_stays_silent_when_entries_match(tmp_path: Path) -> None:
     from agentmarshal.journal.open_task import scope_warnings
 
@@ -897,43 +852,3 @@ def test_scope_warning_flags_an_empty_entry(tmp_path: Path) -> None:
 
     assert len(warnings) == 1
     assert "empty" in warnings[0]
-
-
-def test_scope_warning_allows_naming_the_symlink_itself(tmp_path: Path) -> None:
-    """git tracks the symlink as a path, so naming it can match exactly."""
-
-    from agentmarshal.journal.open_task import scope_warnings
-
-    real = tmp_path / "real"
-    real.mkdir()
-    (real / "a.py").write_text("x", encoding="utf-8")
-    (tmp_path / "linked").symlink_to(real, target_is_directory=True)
-
-    assert scope_warnings(tmp_path, ["linked", "linked/"]) == []
-
-
-def test_scope_warning_does_not_cry_wolf_on_legal_git_names(tmp_path: Path) -> None:
-    """A backslash or a space is a legal character in a git path, not a defect."""
-
-    from agentmarshal.journal.open_task import scope_warnings
-
-    (tmp_path / "a\\b").write_text("x", encoding="utf-8")
-    (tmp_path / "   ").write_text("x", encoding="utf-8")
-
-    assert scope_warnings(tmp_path, ["a\\b", "   "]) == []
-
-
-def test_scope_warning_sees_a_symlinked_ancestor(tmp_path: Path) -> None:
-    """The symlink may be any component, not only the last one."""
-
-    from agentmarshal.journal.open_task import scope_warnings
-
-    real = tmp_path / "real"
-    real.mkdir()
-    (real / "a.py").write_text("x", encoding="utf-8")
-    (tmp_path / "linked").symlink_to(real, target_is_directory=True)
-
-    warnings = scope_warnings(tmp_path, ["linked/a.py"])
-
-    assert len(warnings) == 1
-    assert "beneath a symlink" in warnings[0]

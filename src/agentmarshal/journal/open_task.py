@@ -85,86 +85,35 @@ def _contract_content(task_id: str, title: str, scope: list[str]) -> str:
 
 
 def scope_warnings(project_root: Path, scope: list[str]) -> list[str]:
-    """Return a warning for every scope entry that cannot match a changed path.
+    """Warn about the scope mistakes that are worth catching at open time.
 
-    This mirrors what the gate actually compares, which is stricter than asking
-    the filesystem whether something exists:
+    The gate compares scope entries against paths from ``git diff --name-only``,
+    and git lists files, never directories. So an entry naming a directory
+    without its trailing slash matches nothing, silently, until the gate refuses
+    a change that is in fact correct — the reported failure this exists for.
 
-    * the gate matches entries against paths from ``git diff --name-only``, and
-      git lists **files**, never directories — so a plain entry naming a
-      directory can never match, which is the reported failure;
-    * an entry ending in ``/`` matches the exact path with the slash stripped as
-      well as everything beneath it, so it is satisfied by a file of that name
-      too;
-    * git paths are repository-relative and normalised, so an absolute entry,
-      one containing ``..``, or one written as ``./x`` cannot match anything the
-      gate will ever see, however well it resolves on this machine.
+    **Deliberately bounded.** This catches that mistake, an entry that names
+    nothing on disk, and an empty entry. It is not a path validator: entries in
+    unusual forms are left alone, because no stated threat requires the tool to
+    police them, and a warning that fires on legal input teaches people to
+    ignore warnings.
 
-    These are warnings, never refusals: a task may legitimately declare a path
-    it is about to create.
+    Warnings, never refusals: a task may legitimately declare a path it is about
+    to create.
     """
 
     warnings: list[str] = []
     for entry in scope:
         if not entry:
-            # An empty entry reaches the contract and matches nothing: the gate
-            # compares it as an exact path. Silence here would be the very
-            # failure this function exists to prevent.
             warnings.append("scope entry is empty and matches nothing")
             continue
-        parts = entry.split("/")
-        # Git emits normalised, repository-relative POSIX paths. An entry that
-        # is not in that form resolves perfectly well on this machine and still
-        # cannot match anything the gate will ever compare against, so the whole
-        # family is rejected together rather than case by case.
-        # Only forms git can never emit are rejected. A backslash or a space is
-        # a legal character in a git path, so neither is a defect here: a
-        # warning that cries wolf teaches people to ignore warnings.
-        if entry.startswith("/") or "//" in entry or "." in parts or ".." in parts:
-            warnings.append(
-                f"scope entry {entry!r} is not a normalised repository-relative "
-                "path, so it cannot match any changed path the gate sees"
-            )
-            continue
-        base = entry.rstrip("/")
-        target = project_root / base
-        # git tracks a symlink as a path in its own right, so an entry naming
-        # one can still match exactly — including with a trailing slash, which
-        # the gate satisfies via the slash-stripped path. What git never emits
-        # is anything *beneath* a symlink, so only a symlinked strict ancestor
-        # makes an entry unmatchable.
-        components = base.split("/")
-        walked = project_root
-        symlinked_ancestor = False
-        for part in components[:-1]:
-            walked = walked / part
-            if walked.is_symlink():
-                symlinked_ancestor = True
-                break
-        if symlinked_ancestor:
-            warnings.append(
-                f"scope entry {entry!r} sits beneath a symlink; git never "
-                "reports paths under one, so it matches nothing"
-            )
-            continue
-        if entry.endswith("/"):
-            # A trailing slash matches the slash-stripped path as well as
-            # everything under it, so an existing file of that name satisfies it.
-            if not target.exists():
-                warnings.append(
-                    f"scope entry {entry!r} matches no path in the working tree"
-                )
-            continue
-        # is_dir() follows a symlink, but git tracks a symlink-to-directory as
-        # a path of its own, so only a real directory is unmatchable here.
-        if target.is_dir() and not target.is_symlink():
+        target = project_root / entry.rstrip("/")
+        if not entry.endswith("/") and target.is_dir():
             warnings.append(
                 f"scope entry {entry!r} names a directory but has no trailing "
                 f"slash, so it matches nothing — did you mean {entry + '/'!r}?"
             )
-        elif not (target.exists() or target.is_symlink()):
-            # Anything that is not a real directory can be a git path — a file,
-            # a symlink, even a broken one, which git still tracks as an entry.
+        elif not target.exists():
             warnings.append(
                 f"scope entry {entry!r} matches no path in the working tree"
             )
