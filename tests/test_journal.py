@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -1084,7 +1085,9 @@ def test_find_git_root_refuses_a_non_utf8_path_cleanly(
         returncode = 0
         stdout = b"/tmp/\xff-repo"
 
-    monkeypatch.setattr(project_module.subprocess, "run", lambda *a, **k: _Result())
+    monkeypatch.setattr(
+        "agentmarshal.project.subprocess.run", lambda *a, **k: _Result()
+    )
 
     with pytest.raises(project_module.GitNotAvailableError, match="not valid UTF-8"):
         project_module.find_git_root(tmp_path)
@@ -1129,12 +1132,12 @@ def test_open_fails_when_the_task_it_wrote_is_unreadable(
     monkeypatch.chdir(repo)
     assert main(["init"]) == 0
 
-    real_open = Path.open
+    real_open: Any = Path.open
 
-    def _deny_records(self: Path, *args: object, **kwargs: object):  # type: ignore[no-untyped-def]
+    def _deny_records(self: Path, *args: Any, **kwargs: Any) -> Any:
         if self.suffix == ".json" and "records" in self.parts:
             raise PermissionError(13, "Permission denied")
-        return real_open(self, *args, **kwargs)  # type: ignore[arg-type]
+        return real_open(self, *args, **kwargs)
 
     monkeypatch.setattr(Path, "open", _deny_records)
 
