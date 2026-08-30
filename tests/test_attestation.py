@@ -40,6 +40,21 @@ def _opened_v2(**overrides: object) -> dict[str, object]:
 # --- registry -------------------------------------------------------------
 
 
+def _without_recorder(record: dict[str, object]) -> dict[str, object]:
+    """Drop the stamped actor pair, so a round-trip compares content only.
+
+    write_record stamps recorded_by/recorded_by_source from the invoking
+    identity (ADR-0006), which varies by machine. These assertions are about the
+    record surviving the round trip unchanged, not about who wrote it.
+    """
+
+    return {
+        key: value
+        for key, value in record.items()
+        if key not in {"recorded_by", "recorded_by_source"}
+    }
+
+
 def test_predicate_type_for_returns_registered_uri() -> None:
     assert predicate_type_for("review") == PREDICATE_TYPES["review"]
     assert predicate_type_for("completed").startswith("https://agentmarshal.dev/")
@@ -68,7 +83,9 @@ def test_schema_2_round_trip_with_source_and_artifacts(tmp_path: Path) -> None:
     )
     identifier = "01J00000000000000000000000"
     write_record(root, "CR-001", record, record_id=identifier)
-    assert read_records(root, "CR-001") == [record | {"id": identifier}]
+    assert [_without_recorder(r) for r in read_records(root, "CR-001")] == [
+        record | {"id": identifier}
+    ]
 
 
 def test_schema_2_without_artifacts_is_valid(tmp_path: Path) -> None:
