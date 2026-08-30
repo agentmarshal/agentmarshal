@@ -15,6 +15,15 @@ exact commit SHA. It does **not** cryptographically authenticate who recorded
 a review or which checkout was gated — the recorder and the reviewed tree are
 operator-trusted. Signing/provenance is roadmap, not a 0.1.0 guarantee.
 
+One consequence is worth stating outright, because the gate's output can read
+like more than it is: **a `human` reviewer is a self-declaration.** The gate
+compares an email string against the commit authors'; it establishes nothing
+about a person having read anything. A record an agent produced with
+`--vendor human` is indistinguishable from one a person created, and it passes
+the same check — we have seen exactly that happen in operation. Until review
+records are signed, `vendor` and `model` are labels the recorder chose, and the
+independence check is a string comparison, not evidence of human involvement.
+
 ## Built in the open
 
 AgentMarshal governs its own development. Everything under
