@@ -112,10 +112,26 @@ in an optional `actors` table:
 With no table the git identity is recorded as-is; when nothing can be determined
 both fields are omitted rather than guessed.
 
+**If an agent runs AgentMarshal on your behalf, have it declare itself.** Set
+`AGENTMARSHAL_ACTOR` in the agent's **session environment** — not per command,
+which only works until someone forgets:
+
+```json
+{ "env": { "AGENTMARSHAL_ACTOR": "agent-claude-code" } }
+```
+
+The actors table cannot do this for you. An agent working on your behalf
+normally commits under *your* git identity, so identity alone cannot tell the
+two of you apart — only a declaration can. Without it the field still resolves,
+to the checkout's address, and the journal keeps conflating the party that wrote
+a record with the party it names.
+
 **It is a declaration, not authentication** — like `vendor` and `email`. It does
-not establish that the named actor did anything; it makes the honest case
-expressible and a false attribution require a second, explicit lie. See
-[ADR-0006](adr/ADR-0006-actors-and-identity.md).
+not establish that the named actor did anything, and an agent that declines to
+declare itself is indistinguishable from the human whose identity it uses.
+Nothing detects that, and this is deliberately not presented as a control. What
+it does is make the honest case expressible and a false attribution require a
+second, explicit lie. See [ADR-0006](adr/ADR-0006-actors-and-identity.md).
 
 ### `project.json`
 
