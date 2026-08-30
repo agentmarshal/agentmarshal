@@ -137,9 +137,12 @@ Task state is never edited by hand — it is projected from the records.
 
 ### 4. Record an independent review
 
-The gate requires a review whose **reviewer email differs from the commit
-authors'** — independence is the property AgentMarshal makes durable, so it is
-enforced. Record a verdict for the exact candidate commit:
+The gate requires a review whose **recorded reviewer email differs from the
+commit authors'**, and refuses the merge when it does not. Be clear about what
+that establishes: it compares two declared identities. It does not establish
+that a person reviewed anything — the reviewer fields are labels chosen by
+whoever recorded the verdict (see the trust boundary in the README). Record a
+verdict for the exact candidate commit:
 
 ```sh
 agentmarshal submit-review \
@@ -172,7 +175,7 @@ AGENTMARSHAL_PIPELINE_OK_SHA="$IMPL" \
 PASS: task CR-001 is not closed at base
 PASS: diff within contract scope
 PASS: latest review of <sha> is approved
-PASS: reviewer is independent of the candidate's writers
+PASS: declared reviewer identity differs from the candidate's declared writers
 PASS: pipeline attested for <sha>
 PASS: evidence records are append-only
 PASS: added records are valid

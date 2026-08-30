@@ -356,7 +356,8 @@ def run_gate(
             }
             check(
                 bool(normalized_reviewer) and normalized_reviewer not in writer_emails,
-                "reviewer is independent of the candidate's writers",
+                "declared reviewer identity differs from the candidate's "
+                "declared writers",
             )
 
     if attestation == "ci-required":

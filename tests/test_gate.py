@@ -206,7 +206,7 @@ def test_gate_refuses_dependent_reviewer(
     passed, output = _run(repo, head, base, head)
 
     assert not passed
-    assert "independent" in output
+    assert "declared reviewer identity differs" in output
 
 
 def test_gate_refuses_missing_or_wrong_attestation(
@@ -391,7 +391,7 @@ def test_gate_refuses_case_variant_reviewer_email(
     passed, output = _run(repo, head, base, head)
 
     assert not passed
-    assert "independent" in output
+    assert "declared reviewer identity differs" in output
 
 
 def test_gate_refuses_invalid_added_records(

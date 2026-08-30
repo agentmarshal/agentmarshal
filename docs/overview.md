@@ -85,8 +85,11 @@ task is already closed.
   stored.
 - **Review** — a recorded verdict (`approved`, `changes_required`, …) for an
   exact commit, carrying the reviewer's identity.
-- **Reviewer independence** — the gate requires the reviewer's email to differ
-  from the commit's authors/committers. Enforced, not assumed.
+- **Reviewer independence** — the gate requires the recorded reviewer's email to
+  differ from the commit's authors/committers, and refuses the merge otherwise.
+  It is a comparison of *declared* identities: nothing establishes that the
+  declared reviewer is a real party, or that anyone read the change. Signed
+  review records are roadmap (ADR-0006).
 - **Candidate / base / merge-base** — the commit being gated, the target it
   merges into, and their common ancestor. The gate diffs `merge-base..candidate`
   and reads trusted inputs from the base side.
