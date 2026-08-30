@@ -20,9 +20,16 @@ class ReviewSubmitError(Exception):
 
 @dataclass(frozen=True)
 class SubmittedReview:
-    """The path of a successfully recorded review."""
+    """A successfully recorded review, and any reasoning kept beside it.
+
+    ``reviewer_output_path`` is set only when a launcher preserved the
+    reviewer's raw output — the record itself carries finding ids, never their
+    reasoning. It is ``None`` for a review submitted from a verdict the caller
+    already had.
+    """
 
     record_path: Path
+    reviewer_output_path: Path | None = None
 
 
 def submit_review(

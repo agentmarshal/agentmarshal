@@ -125,6 +125,36 @@ def _kept_outputs() -> list[Path]:
     )
 
 
+def _kept_findings_outputs() -> list[Path]:
+    import tempfile as _tempfile
+
+    return list(
+        Path(_tempfile.gettempdir()).glob("agentmarshal-verdict-findings-*.txt")
+    )
+
+
+def _run_review(commit: str) -> int:
+    return main(
+        [
+            "review",
+            "--task",
+            "CR-001",
+            "--commit",
+            commit,
+            "--base",
+            "HEAD~1",
+            "--role",
+            "qa",
+            "--vendor",
+            "test",
+            "--model",
+            "test-model",
+            "--email",
+            "reviewer@test.invalid",
+        ]
+    )
+
+
 def _assert_no_snapshot(repo: Path) -> None:
     import tempfile as _tempfile
 
@@ -557,3 +587,115 @@ def test_record_validation_failure_also_keeps_the_output(
     finally:
         for path in kept:
             path.unlink(missing_ok=True)
+
+
+def test_blocking_verdict_keeps_the_reasoning_behind_its_findings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A record names findings by id; the claim itself lives only in the output."""
+
+    before = set(_kept_findings_outputs())
+    _repo, commit = _review_repo(tmp_path, monkeypatch)
+    analysis = "the readback opens the file and never reads it"
+    stub = _reviewer_stub(
+        tmp_path,
+        analysis + "\n" + _verdict(commit, "changes_required", ["F-001"]),
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+    capsys.readouterr()  # discard the fixture's own output
+
+    assert _run_review(commit) == 0
+
+    captured = capsys.readouterr()
+    kept = [path for path in _kept_findings_outputs() if path not in before]
+    try:
+        assert len(kept) == 1, captured.err
+        assert str(kept[0]) in captured.err
+        assert analysis in kept[0].read_text(encoding="utf-8")
+        # stdout stays the record path alone, for callers that read it.
+        assert captured.out.strip().endswith(".json")
+        assert len(captured.out.strip().splitlines()) == 1
+    finally:
+        for path in kept:
+            path.unlink(missing_ok=True)
+
+
+def test_advisory_findings_on_an_approval_keep_the_reasoning_too(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """An advisory finding is still a claim, and its reasoning is not in the record."""
+
+    before = set(_kept_findings_outputs())
+    _repo, commit = _review_repo(tmp_path, monkeypatch)
+    analysis = "worth doing later, not now"
+    stub = _reviewer_stub(
+        tmp_path,
+        analysis + "\n" + _verdict(commit, "approved", [], ["F-002"]),
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert _run_review(commit) == 0
+
+    captured = capsys.readouterr()
+    kept = [path for path in _kept_findings_outputs() if path not in before]
+    try:
+        assert len(kept) == 1, captured.err
+        assert analysis in kept[0].read_text(encoding="utf-8")
+    finally:
+        for path in kept:
+            path.unlink(missing_ok=True)
+
+
+def test_a_clean_approval_keeps_nothing_and_says_nothing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """With no finding there is no claim to explain, and no file to leave behind."""
+
+    before = set(_kept_findings_outputs())
+    _repo, commit = _review_repo(tmp_path, monkeypatch)
+    stub = _reviewer_stub(
+        tmp_path, "nothing to report\n" + _verdict(commit, "approved", [])
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert _run_review(commit) == 0
+
+    captured = capsys.readouterr()
+    kept = [path for path in _kept_findings_outputs() if path not in before]
+    try:
+        assert kept == []
+        assert "kept at" not in captured.err
+    finally:
+        for path in kept:
+            path.unlink(missing_ok=True)
+
+
+def test_the_review_is_recorded_even_when_the_output_cannot_be_kept(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Losing the prose must not cost the record, which is the evidence."""
+
+    _repo, commit = _review_repo(tmp_path, monkeypatch)
+    stub = _reviewer_stub(
+        tmp_path, "reasoning\n" + _verdict(commit, "changes_required", ["F-003"])
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    def _refuse(*args: object, **kwargs: object) -> tuple[int, str]:
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr("agentmarshal.journal.review.tempfile.mkstemp", _refuse)
+
+    assert _run_review(commit) == 0
+
+    captured = capsys.readouterr()
+    assert captured.out.strip().endswith(".json")
+    assert "kept at" not in captured.err
