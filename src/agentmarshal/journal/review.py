@@ -9,6 +9,7 @@ import shlex
 import subprocess
 import tarfile
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 from typing import cast
 
@@ -163,18 +164,20 @@ def _run_reviewer(command: list[str], snapshot: Path, prompt: str) -> str:
     return result.stdout
 
 
-def _preserve_output(output: str) -> Path:
-    """Write a rejected reviewer's raw output where the caller can still read it.
+def _preserve_output(
+    output: str, prefix: str = "agentmarshal-rejected-verdict-"
+) -> Path:
+    """Write a reviewer's raw output where the caller can still read it.
 
     A verdict that fails validation used to take the whole run with it: the
     launcher prints only the record path, so the analysis the reviewer was paid
-    to produce had nowhere to survive. The file is deliberately not cleaned up —
-    it exists because the run failed, and removing it is the caller's decision.
+    to produce had nowhere to survive. The same is true of a verdict that is
+    accepted and names a finding — the record keeps the finding's id and not one
+    word of what it claims. The file is deliberately not cleaned up; removing it
+    is the caller's decision.
     """
 
-    descriptor, name = tempfile.mkstemp(
-        prefix="agentmarshal-rejected-verdict-", suffix=".txt"
-    )
+    descriptor, name = tempfile.mkstemp(prefix=prefix, suffix=".txt")
     with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
         handle.write(output)
     return Path(name)
@@ -333,7 +336,7 @@ def launch_review(
             )
         review_result = reviewed_commit, verdict, findings, advisory
     try:
-        return submit_review(
+        submitted = submit_review(
             journal_root,
             task_id,
             review_result[0],
@@ -351,3 +354,14 @@ def launch_review(
         # duplicates, or advisory ids overlapping findings. That path discarded
         # the analysis too, and it is the one seen most often in practice.
         raise _reject(reviewer_output, str(error)) from error
+    # A recorded verdict that names a finding — blocking, or advisory alongside
+    # an approval — is a claim whose reasoning exists only in the reviewer's
+    # output. Keeping it is best effort: losing the prose must not cost the
+    # record, which is the evidence.
+    if review_result[2] or review_result[3]:
+        try:
+            kept = _preserve_output(reviewer_output, "agentmarshal-verdict-findings-")
+        except OSError:
+            kept = None
+        return replace(submitted, reviewer_output_path=kept)
+    return submitted
