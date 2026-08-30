@@ -1,0 +1,19 @@
+{
+  "created_at": "2026-08-30T18:08:28.031269Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "atropichev@hotmail.com",
+  "recorded_by_source": "git-identity",
+  "reviewed_commit": "a408152ebfb1045d05b21f8bfe5057ed18b358f4",
+  "reviewer": {
+    "email": "auto-review@agent.example.invalid",
+    "model": "codex-auto-review",
+    "role": "code-reviewer",
+    "vendor": "openai"
+  },
+  "schema": 2,
+  "source": "live",
+  "task": "CR-051",
+  "tool_version": "0.1.0",
+  "verdict": "approved"
+}
