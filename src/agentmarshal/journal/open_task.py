@@ -163,6 +163,20 @@ def open_task(project_root: Path, title: str, scope: list[str]) -> OpenedTask:
         if task_directory.exists() or task_directory.is_symlink():
             raise TaskOpenError(f"task directory already exists: {task_directory}")
         staged_task_directory.rename(task_directory)
+        # Confirm the postcondition rather than assume it: an adopter reported a
+        # task directory created inside a sandboxed session that the operator's
+        # own account could not read, while open reported success.
+        for written in (
+            task_directory / "contract.md",
+            task_directory / "records" / staged_record_path.name,
+        ):
+            try:
+                with written.open("rb") as handle:
+                    handle.read(1)
+            except OSError as error:
+                raise TaskOpenError(
+                    f"created {written} but cannot read it back: {error}"
+                ) from error
     except (OSError, ValueError, JournalRecordError) as error:
         raise TaskOpenError(f"could not create task {task_id}: {error}") from error
     finally:
