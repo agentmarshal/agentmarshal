@@ -1,6 +1,6 @@
 # 004 — Provider CI integration has slots but no contract
 
-- **Reporter:** Adopter A · **Observed on:** 0.1.0 · **Disposition:** deferred
+- **Reporter:** Adopter A (Python web service on Linux) · **Observed on:** 0.1.0 · **Disposition:** deferred
 
 ## Finding
 

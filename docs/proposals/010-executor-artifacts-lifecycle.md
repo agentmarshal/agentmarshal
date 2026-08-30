@@ -1,6 +1,6 @@
 # 010 — External-executor artifacts have no lifecycle
 
-- **Reporter:** Adopter A · **Observed on:** 0.1.0 · **Disposition:** accepted
+- **Reporter:** Adopter A (Python web service on Linux) · **Observed on:** 0.1.0 · **Disposition:** accepted
 
 ## Finding
 

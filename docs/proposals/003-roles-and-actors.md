@@ -1,6 +1,6 @@
 # 003 — Scope is not bound to an actor
 
-- **Reporter:** Adopter A · **Observed on:** 0.1.0 · **Disposition:** deferred
+- **Reporter:** Adopter A (Python web service on Linux) · **Observed on:** 0.1.0 · **Disposition:** deferred
 
 ## Finding
 

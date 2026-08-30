@@ -1,6 +1,6 @@
 # 012 — No convention for sending findings upstream
 
-- **Reporters:** Adopter A, Adopter B · **Observed on:** 0.1.0 · **Disposition:** accepted, shipped
+- **Reporters:** Adopter A, Adopter B (Python web service on Linux and business-application project on Windows) · **Observed on:** 0.1.0 · **Disposition:** accepted
 
 ## Finding
 
@@ -18,9 +18,9 @@ them diverged within days — an un-owned duplicate drifts almost immediately.
 
 Make the outbox a documented convention rather than a local invention.
 
-## Disposition — accepted, shipped
+## Disposition — accepted
 
-Both halves now exist. Upstream documents the channel, the language rule and the
+Already shipped: both halves now exist. Upstream documents the channel, the language rule and the
 privacy expectation in [CONTRIBUTING.md](../../CONTRIBUTING.md), and this
 directory is the receiving end with a stated disposition for every proposal.
 Downstream the convention is `.agentmarshal/upstream/` in the adopter's own

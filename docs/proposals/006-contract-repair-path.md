@@ -1,6 +1,6 @@
 # 006 — A defective contract can only be abandoned
 
-- **Reporters:** Adopter A, Adopter B · **Observed on:** 0.1.0 · **Disposition:** accepted
+- **Reporters:** Adopter A, Adopter B (Python web service on Linux and business-application project on Windows) · **Observed on:** 0.1.0 · **Disposition:** accepted
 
 ## Finding
 

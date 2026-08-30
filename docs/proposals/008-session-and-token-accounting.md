@@ -1,6 +1,6 @@
 # 008 — Session and token accounting is not in the core
 
-- **Reporters:** Adopter B, Adopter C · **Observed on:** 0.1.0 · **Disposition:** accepted
+- **Reporters:** Adopter B, Adopter C (business-application project on Windows) · **Observed on:** 0.1.0 · **Disposition:** accepted
 
 ## Finding
 

@@ -1,6 +1,6 @@
 # 002 — Scope is silently accepted when it matches nothing
 
-- **Reporter:** Adopter A · **Observed on:** 0.1.0 · **Disposition:** accepted
+- **Reporter:** Adopter A (Python web service on Linux) · **Observed on:** 0.1.0 · **Disposition:** accepted
 
 ## Finding
 

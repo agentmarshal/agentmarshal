@@ -1,6 +1,6 @@
 # 011 — Windows: a new task directory can be created unreadable
 
-- **Reporter:** Adopter B · **Observed on:** 0.1.0 · **Disposition:** accepted
+- **Reporter:** Adopter B (business-application project on Windows) · **Observed on:** 0.1.0 · **Disposition:** accepted
 
 ## Finding
 

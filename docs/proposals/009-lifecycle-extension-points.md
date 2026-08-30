@@ -1,6 +1,6 @@
 # 009 — No lifecycle extension points for evidence storage
 
-- **Reporter:** Adopter C · **Observed on:** 0.1.0 · **Disposition:** deferred
+- **Reporter:** Adopter C (business-application project on Windows) · **Observed on:** 0.1.0 · **Disposition:** deferred
 
 ## Finding
 

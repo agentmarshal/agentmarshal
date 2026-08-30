@@ -57,12 +57,12 @@ one raised independently by two adopters.
 | [009](009-lifecycle-extension-points.md) | No lifecycle extension points for evidence storage | C | deferred |
 | [010](010-executor-artifacts-lifecycle.md) | External-executor artifacts have no lifecycle | A | accepted |
 | [011](011-windows-journal-directory-acl.md) | Windows: a new task directory can be unreadable | B | accepted |
-| [012](012-upstream-feedback-channel.md) | No convention for sending findings upstream | A, B | accepted, shipped |
+| [012](012-upstream-feedback-channel.md) | No convention for sending findings upstream | A, B | accepted |
 
 ## Reporters
 
 | Pseudonym | Profile |
 |---|---|
-| **Adopter A** | Python web service, GitFlic provider, Linux runner, vendored wheel |
+| **Adopter A** | Python web service, Git hosting provider, Linux runner, vendored wheel |
 | **Adopter B** | business-application project, Windows host, external executor |
 | **Adopter C** | business-application project, Windows host |
