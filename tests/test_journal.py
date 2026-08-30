@@ -1071,3 +1071,72 @@ def test_opened_record_uses_the_actors_table_too(
     opened = read_records(repo / ".agentmarshal" / "journal", "CR-001")[0]
     assert opened["recorded_by"] == "lead"
     assert opened["recorded_by_source"] == "project-actor"
+
+
+def test_find_git_root_refuses_a_non_utf8_path_cleanly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """git permits non-UTF-8 path bytes; a decode error must not escape."""
+
+    from agentmarshal import project as project_module
+
+    class _Result:
+        returncode = 0
+        stdout = b"/tmp/\xff-repo"
+
+    monkeypatch.setattr(project_module.subprocess, "run", lambda *a, **k: _Result())
+
+    with pytest.raises(project_module.GitNotAvailableError, match="not valid UTF-8"):
+        project_module.find_git_root(tmp_path)
+
+
+def test_init_reports_when_it_cannot_read_back_what_it_wrote(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Writing without checking leaves the caller a path nobody can use."""
+
+    from agentmarshal import project as project_module
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "--quiet", "-b", "master"], cwd=repo, check=True)
+    monkeypatch.chdir(repo)
+
+    def _unreadable(path: Path) -> None:
+        raise project_module.AgentMarshalProjectError(
+            f"wrote {path} but cannot read it back: simulated"
+        )
+
+    monkeypatch.setattr(project_module, "_assert_readable", _unreadable)
+
+    with pytest.raises(
+        project_module.AgentMarshalProjectError, match="cannot read it back"
+    ):
+        project_module.initialize_project(repo)
+
+
+def test_open_fails_when_the_task_it_wrote_is_unreadable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Adopter proposal 011: open reported success on a journal nobody could read."""
+
+    from agentmarshal.cli import main
+    from agentmarshal.journal import open_task as open_task_module
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "--quiet", "-b", "master"], cwd=repo, check=True)
+    monkeypatch.chdir(repo)
+    assert main(["init"]) == 0
+
+    real_open = Path.open
+
+    def _deny_records(self: Path, *args: object, **kwargs: object):  # type: ignore[no-untyped-def]
+        if self.suffix == ".json" and "records" in self.parts:
+            raise PermissionError(13, "Permission denied")
+        return real_open(self, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(Path, "open", _deny_records)
+
+    with pytest.raises(open_task_module.TaskOpenError, match="cannot read it back"):
+        open_task_module.open_task(repo, "T", ["src/"])

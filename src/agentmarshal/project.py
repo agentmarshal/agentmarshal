@@ -85,14 +85,22 @@ def find_git_root(start: Path | None = None) -> Path | None:
         result = subprocess.run(
             ["git", "-C", str(search_start), "rev-parse", "--show-toplevel"],
             capture_output=True,
-            encoding="utf-8",
             check=False,
         )
     except OSError as error:
         raise GitNotAvailableError(f"cannot run git: {error}") from error
     if result.returncode != 0:
         return None
-    toplevel = result.stdout.strip()
+    try:
+        # git permits non-UTF-8 path bytes. Decoding them here used to raise
+        # UnicodeDecodeError out of a function whose contract is a path or None,
+        # so callers had to guard the call site. The gate already treats
+        # undecodable git output as a controlled refusal; so does this.
+        toplevel = result.stdout.decode("utf-8").strip()
+    except UnicodeDecodeError as error:
+        raise GitNotAvailableError(
+            f"git reported a repository path that is not valid UTF-8: {error}"
+        ) from error
     if not toplevel:
         return None
     return Path(toplevel).resolve()
@@ -190,6 +198,25 @@ def write_project_file(path: Path, data: JsonObject) -> None:
         project_file.write(f"{content}\n")
 
 
+def _assert_readable(path: Path) -> None:
+    """Confirm a file we just wrote can be read back.
+
+    An adopter reported a task directory created inside a sandboxed session
+    inheriting that sandbox's ownership: the operator's own account could not
+    read the journal of the task that had just been created, and the command
+    reported success. Writing without checking leaves the caller a path nobody
+    can use, so the postcondition is checked rather than assumed.
+    """
+
+    try:
+        with path.open("rb"):
+            pass
+    except OSError as error:
+        raise AgentMarshalProjectError(
+            f"wrote {path} but cannot read it back: {error}"
+        ) from error
+
+
 def initialize_project(start: Path | None = None) -> Path:
     """Initialize AgentMarshal in the containing git repository."""
 
@@ -203,8 +230,10 @@ def initialize_project(start: Path | None = None) -> Path:
     if existing_root is not None:
         raise AlreadyInitializedError(existing_root)
 
+    project_file = project_file_path(git_root)
     try:
-        write_project_file(project_file_path(git_root), initial_project_data())
+        write_project_file(project_file, initial_project_data())
     except FileExistsError as error:
         raise AlreadyInitializedError(git_root) from error
+    _assert_readable(project_file)
     return git_root
