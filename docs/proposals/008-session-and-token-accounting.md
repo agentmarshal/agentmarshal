@@ -12,7 +12,7 @@ in the loop produces it: a task's actual cost is not captured unless the adopter
 builds the plumbing. Both reporters did, in different ways, and both concluded
 the mechanism belongs in the core rather than in each project's hooks.
 
-Adopter B, working with an external Codex executor, reports that usage has to be
+Adopter B, working with an external executor, reports that usage has to be
 reconstructed afterwards from provider logs — a per-project procedure that is
 lossy and cannot be verified later. Adopter C asks for it to be part of the
 standard journal contract and, separately, for the quickstart to show token
@@ -28,9 +28,10 @@ its place in the documented loop.
 
 ## Disposition — accepted
 
-Three independent adopters converging on the same gap is the clearest signal
-this project has received. It also matches our own experience: we account for
-cost per task, and we do it with local scripts because the tool does not.
+Two adopters converging independently, in four separate documents, is the
+clearest signal this project has received — and it matches our own practice: we
+account for cost per task, and we do it with local scripts because the tool does
+not.
 
 The economics claim is one of the project's stated purposes, so leaving capture
 to each adopter is a gap in the product, not an integration detail. Accepted for

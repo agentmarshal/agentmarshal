@@ -39,7 +39,7 @@ changed our roadmap we say that too.
 
 ## Current batch
 
-Landed 2026-09-05, from three adopters running 0.1.0 in production. Twenty-two
+Landed 2026-08-30, from three adopters running 0.1.0 in production. Twenty-two
 source files digested into twelve proposals; the recurring themes are review
 protocol robustness, contract repair, and session/token accounting — the last
 one raised independently by two adopters.
@@ -63,6 +63,6 @@ one raised independently by two adopters.
 
 | Pseudonym | Profile |
 |---|---|
-| **Adopter A** | Python/Django service, GitFlic provider, Linux runner, vendored wheel |
-| **Adopter B** | 1C/BSL project, Windows host, external Codex executor |
-| **Adopter C** | 1C/BSL project, Windows host |
+| **Adopter A** | Python web service, GitFlic provider, Linux runner, vendored wheel |
+| **Adopter B** | business-application project, Windows host, external executor |
+| **Adopter C** | business-application project, Windows host |
