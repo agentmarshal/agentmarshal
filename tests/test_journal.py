@@ -38,6 +38,21 @@ def init_git_repo(repo: Path) -> None:
     )
 
 
+def _without_recorder(record: dict[str, object]) -> dict[str, object]:
+    """Drop the stamped actor pair, so a round-trip compares content only.
+
+    write_record stamps recorded_by/recorded_by_source from the invoking
+    identity (ADR-0006), which varies by machine. These assertions are about the
+    record surviving the round trip unchanged, not about who wrote it.
+    """
+
+    return {
+        key: value
+        for key, value in record.items()
+        if key not in {"recorded_by", "recorded_by_source"}
+    }
+
+
 def test_write_record_rejects_symlinked_journal_ancestor(tmp_path: Path) -> None:
     outside = tmp_path / "outside"
     outside.mkdir()
@@ -140,7 +155,9 @@ def test_write_record_is_exclusive_and_preserves_original_content(
         write_record(root, "CR-001", record, record_id=identifier)
 
     assert path.read_bytes() == original
-    assert read_records(root, "CR-001") == [record | {"id": identifier}]
+    assert [_without_recorder(r) for r in read_records(root, "CR-001")] == [
+        record | {"id": identifier}
+    ]
 
 
 def test_builders_emit_schema_2_with_live_provenance(tmp_path: Path) -> None:
@@ -160,7 +177,9 @@ def test_builders_emit_schema_2_with_live_provenance(tmp_path: Path) -> None:
     root = tmp_path / "journal"
     identifier = "01J00000000000000000000000"
     write_record(root, "CR-001", record, record_id=identifier)
-    assert read_records(root, "CR-001") == [record | {"id": identifier}]
+    assert [_without_recorder(r) for r in read_records(root, "CR-001")] == [
+        record | {"id": identifier}
+    ]
 
 
 def test_review_record_round_trip_and_status_detail(
@@ -737,7 +756,9 @@ def test_approved_review_with_advisory_findings_round_trips(tmp_path: Path) -> N
     assert record["advisory_findings"] == ["F1", "F2"]
     identifier = "01J00000000000000000000000"
     write_record(root, "CR-001", record, record_id=identifier)
-    assert read_records(root, "CR-001") == [record | {"id": identifier}]
+    assert [_without_recorder(r) for r in read_records(root, "CR-001")] == [
+        record | {"id": identifier}
+    ]
 
 
 def test_review_without_advisory_omits_the_field() -> None:
@@ -852,3 +873,89 @@ def test_scope_warning_flags_an_empty_entry(tmp_path: Path) -> None:
 
     assert len(warnings) == 1
     assert "empty" in warnings[0]
+
+
+def test_recorded_by_prefers_the_project_actors_table(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A declared actor id is more useful than a raw address."""
+
+    from agentmarshal.journal.actors import resolve_recorded_by
+
+    monkeypatch.delenv("AGENTMARSHAL_ACTOR", raising=False)
+    subprocess.run(["git", "init", "--quiet", "-b", "master"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "Lead@Example.Invalid"],
+        cwd=tmp_path,
+        check=True,
+    )
+    (tmp_path / ".agentmarshal").mkdir()
+    (tmp_path / ".agentmarshal" / "project.json").write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "actors": {"lead": {"git_identities": ["lead@example.invalid"]}},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert resolve_recorded_by(tmp_path) == ("lead", "project-actor")
+
+
+def test_recorded_by_falls_back_to_the_git_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from agentmarshal.journal.actors import resolve_recorded_by
+
+    monkeypatch.delenv("AGENTMARSHAL_ACTOR", raising=False)
+    subprocess.run(["git", "init", "--quiet", "-b", "master"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "solo@example.invalid"],
+        cwd=tmp_path,
+        check=True,
+    )
+
+    assert resolve_recorded_by(tmp_path) == ("solo@example.invalid", "git-identity")
+
+
+def test_recorded_by_override_marks_itself(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An override that hid itself would defeat the field."""
+
+    from agentmarshal.journal.actors import resolve_recorded_by
+
+    monkeypatch.setenv("AGENTMARSHAL_ACTOR", "review-bot")
+
+    assert resolve_recorded_by(tmp_path) == ("review-bot", "override")
+
+
+def test_recorded_by_is_omitted_when_undeterminable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Absent beats guessed: the record stays valid without the pair."""
+
+    from agentmarshal.journal import actors
+
+    monkeypatch.delenv("AGENTMARSHAL_ACTOR", raising=False)
+    monkeypatch.setattr(actors, "_git_identity", lambda _root: None)
+
+    assert actors.resolve_recorded_by(tmp_path) is None
+
+
+def test_write_record_stamps_the_creating_actor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Stamped centrally, so no record type is missed."""
+
+    monkeypatch.setenv("AGENTMARSHAL_ACTOR", "an-agent")
+    root = tmp_path / ".agentmarshal" / "journal"
+    root.mkdir(parents=True)
+    record = create_opened_record("CR-001", "1.0")
+
+    write_record(root, "CR-001", record)
+
+    stored = read_records(root, "CR-001")[0]
+    assert stored["recorded_by"] == "an-agent"
+    assert stored["recorded_by_source"] == "override"

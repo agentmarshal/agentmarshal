@@ -89,6 +89,34 @@ about an entry that names nothing on disk — but it still opens the task, becau
 a scope may legitimately declare a path the work is about to create. The warning
 is a check on the common mistakes, not a path validator.
 
+### Who recorded a record (`actors`)
+
+Every record carries `recorded_by` — the actor that created it — alongside
+`recorded_by_source` saying where that name came from. This is separate from a
+review's `reviewer`: one says who *wrote the record*, the other who is *said to
+have reviewed*. When an agent records a human's verdict, the record says so.
+
+The value is derived, not typed. `AGENTMARSHAL_ACTOR` overrides it and is marked
+as an override; otherwise the invoking checkout's git identity is used, looked up
+in an optional `actors` table:
+
+```json
+{
+  "actors": {
+    "lead": { "git_identities": ["lead@example.invalid"] },
+    "review-bot": { "git_identities": ["bot@ci.example.invalid"] }
+  }
+}
+```
+
+With no table the git identity is recorded as-is; when nothing can be determined
+both fields are omitted rather than guessed.
+
+**It is a declaration, not authentication** — like `vendor` and `email`. It does
+not establish that the named actor did anything; it makes the honest case
+expressible and a false attribution require a second, explicit lie. See
+[ADR-0006](adr/ADR-0006-actors-and-identity.md).
+
 ### `project.json`
 
 `agentmarshal init` writes a minimal `.agentmarshal/project.json`

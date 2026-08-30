@@ -12,6 +12,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
+from agentmarshal.journal.actors import resolve_recorded_by
+
 # Reuse the hardened no-follow exclusive creator from project.py so record
 # files get the same symlink/race guarantees as the project file.
 from agentmarshal.journal.attestation import (
@@ -84,7 +86,14 @@ _RECORD_FIELDS = {
 # Schema 2 adds provenance (ADR-0005): a required ``source`` and optional
 # ``artifacts`` references. They are permitted only on schema 2 — a schema
 # 1 record carrying them is rejected as an unexpected field.
-_SCHEMA_2_FIELDS = frozenset({"source", "artifacts"})
+# ``recorded_by`` names the actor that created the record and
+# ``recorded_by_source`` says where that name came from (ADR-0006). Both are
+# optional, so every record written before they existed stays valid. They are
+# declarations, not authentication.
+_SCHEMA_2_FIELDS = frozenset(
+    {"source", "artifacts", "recorded_by", "recorded_by_source"}
+)
+_RECORDED_BY_SOURCES = frozenset({"project-actor", "git-identity", "override"})
 _SUPPORTED_SCHEMAS = frozenset({1, 2})
 _ARTIFACT_HASH_PATTERN = re.compile(r"[0-9a-f]{64}$")
 _REVIEWED_COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}$")
@@ -396,6 +405,24 @@ def _prepare_record_directory(journal_root: Path, task_id: str) -> Path:
     return records_directory
 
 
+def _validate_recorded_by(data: Mapping[str, object]) -> None:
+    """Check the pair is well-formed and never half-present."""
+
+    actor = data.get("recorded_by")
+    origin = data.get("recorded_by_source")
+    if actor is None and origin is None:
+        return
+    if not isinstance(actor, str) or not actor:
+        raise JournalRecordError(
+            "record field 'recorded_by' must be a non-empty string"
+        )
+    if origin not in _RECORDED_BY_SOURCES:
+        raise JournalRecordError(
+            "record field 'recorded_by_source' must be one of "
+            + ", ".join(sorted(_RECORDED_BY_SOURCES))
+        )
+
+
 def write_record(
     journal_root: Path,
     task_id: str,
@@ -403,11 +430,22 @@ def write_record(
     *,
     record_id: str | None = None,
 ) -> Path:
-    """Exclusively create an evidence record and return its path."""
+    """Exclusively create an evidence record and return its path.
+
+    Every record passes through here, so this is where the creating actor is
+    stamped (ADR-0006) — no record type is missed and no caller has to remember.
+    A record that already carries ``recorded_by`` keeps it; one written where no
+    identity can be determined carries neither field.
+    """
 
     data = _validate_record(record)
+    _validate_recorded_by(data)
     if data["task"] != task_id:
         raise JournalRecordError("record task does not match its destination")
+    if data.get("schema") == 2 and "recorded_by" not in data:
+        resolved = resolve_recorded_by(journal_root.parent.parent)
+        if resolved is not None:
+            data["recorded_by"], data["recorded_by_source"] = resolved
     record_type = cast(str, data["record_type"])
     identifier = generate_ulid() if record_id is None else record_id
     if not _is_ulid(identifier):
