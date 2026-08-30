@@ -1093,6 +1093,33 @@ def test_find_git_root_refuses_a_non_utf8_path_cleanly(
         project_module.find_git_root(tmp_path)
 
 
+def test_readback_catches_a_file_that_opens_but_cannot_be_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Opening can succeed on a file whose first read fails."""
+
+    from agentmarshal import project as project_module
+
+    class _Unreadable:
+        def __enter__(self) -> _Unreadable:
+            return self
+
+        def __exit__(self, *exc: object) -> None:
+            return None
+
+        def read(self, size: int = -1) -> bytes:
+            raise OSError(5, "Input/output error")
+
+    target = tmp_path / "project.json"
+    target.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(Path, "open", lambda *a, **k: _Unreadable())
+
+    with pytest.raises(
+        project_module.AgentMarshalProjectError, match="cannot read it back"
+    ):
+        project_module._assert_readable(target)
+
+
 def test_init_reports_when_it_cannot_read_back_what_it_wrote(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

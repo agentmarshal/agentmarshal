@@ -171,8 +171,8 @@ def open_task(project_root: Path, title: str, scope: list[str]) -> OpenedTask:
             task_directory / "records" / staged_record_path.name,
         ):
             try:
-                with written.open("rb"):
-                    pass
+                with written.open("rb") as handle:
+                    handle.read(1)
             except OSError as error:
                 raise TaskOpenError(
                     f"created {written} but cannot read it back: {error}"

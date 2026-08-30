@@ -206,11 +206,14 @@ def _assert_readable(path: Path) -> None:
     read the journal of the task that had just been created, and the command
     reported success. Writing without checking leaves the caller a path nobody
     can use, so the postcondition is checked rather than assumed.
+
+    A byte is actually read: opening can succeed on a file whose first read
+    fails, and readable is the property the caller is being promised.
     """
 
     try:
-        with path.open("rb"):
-            pass
+        with path.open("rb") as handle:
+            handle.read(1)
     except OSError as error:
         raise AgentMarshalProjectError(
             f"wrote {path} but cannot read it back: {error}"
