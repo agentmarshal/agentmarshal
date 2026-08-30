@@ -844,11 +844,10 @@ def test_scope_warning_rejects_paths_the_gate_can_never_see(tmp_path: Path) -> N
             "src/../README.md",
             "/",
             "src//",
-            "src\\a.py",
         ],
     )
 
-    assert len(warnings) == 7
+    assert len(warnings) == 6
     assert all(
         "not a normalised repository-relative" in warning
         or "matches nothing" in warning
@@ -894,10 +893,10 @@ def test_scope_warning_flags_an_empty_entry(tmp_path: Path) -> None:
 
     from agentmarshal.journal.open_task import scope_warnings
 
-    warnings = scope_warnings(tmp_path, ["", "   "])
+    warnings = scope_warnings(tmp_path, [""])
 
-    assert len(warnings) == 2
-    assert all("empty" in warning for warning in warnings)
+    assert len(warnings) == 1
+    assert "empty" in warnings[0]
 
 
 def test_scope_warning_flags_a_symlinked_entry(tmp_path: Path) -> None:
@@ -911,6 +910,33 @@ def test_scope_warning_flags_a_symlinked_entry(tmp_path: Path) -> None:
     (tmp_path / "linked").symlink_to(real, target_is_directory=True)
 
     warnings = scope_warnings(tmp_path, ["linked/"])
+
+    assert len(warnings) == 1
+    assert "symlink" in warnings[0]
+
+
+def test_scope_warning_does_not_cry_wolf_on_legal_git_names(tmp_path: Path) -> None:
+    """A backslash or a space is a legal character in a git path, not a defect."""
+
+    from agentmarshal.journal.open_task import scope_warnings
+
+    (tmp_path / "a\\b").write_text("x", encoding="utf-8")
+    (tmp_path / "   ").write_text("x", encoding="utf-8")
+
+    assert scope_warnings(tmp_path, ["a\\b", "   "]) == []
+
+
+def test_scope_warning_sees_a_symlinked_ancestor(tmp_path: Path) -> None:
+    """The symlink may be any component, not only the last one."""
+
+    from agentmarshal.journal.open_task import scope_warnings
+
+    real = tmp_path / "real"
+    real.mkdir()
+    (real / "a.py").write_text("x", encoding="utf-8")
+    (tmp_path / "linked").symlink_to(real, target_is_directory=True)
+
+    warnings = scope_warnings(tmp_path, ["linked/a.py"])
 
     assert len(warnings) == 1
     assert "symlink" in warnings[0]

@@ -106,7 +106,7 @@ def scope_warnings(project_root: Path, scope: list[str]) -> list[str]:
 
     warnings: list[str] = []
     for entry in scope:
-        if not entry.strip():
+        if not entry:
             # An empty entry reaches the contract and matches nothing: the gate
             # compares it as an exact path. Silence here would be the very
             # failure this function exists to prevent.
@@ -117,13 +117,10 @@ def scope_warnings(project_root: Path, scope: list[str]) -> list[str]:
         # is not in that form resolves perfectly well on this machine and still
         # cannot match anything the gate will ever compare against, so the whole
         # family is rejected together rather than case by case.
-        if (
-            entry.startswith("/")
-            or "\\" in entry
-            or "//" in entry
-            or "." in parts
-            or ".." in parts
-        ):
+        # Only forms git can never emit are rejected. A backslash or a space is
+        # a legal character in a git path, so neither is a defect here: a
+        # warning that cries wolf teaches people to ignore warnings.
+        if entry.startswith("/") or "//" in entry or "." in parts or ".." in parts:
             warnings.append(
                 f"scope entry {entry!r} is not a normalised repository-relative "
                 "path, so it cannot match any changed path the gate sees"
@@ -133,7 +130,16 @@ def scope_warnings(project_root: Path, scope: list[str]) -> list[str]:
         target = project_root / base
         # git stores a symlink as a link, never as a directory it can descend
         # into, so nothing under a symlinked path is ever emitted as a change.
-        if target.is_symlink():
+        # Every component has to be checked, not just the last one: the entry
+        # may sit beneath a symlinked ancestor.
+        walked = project_root
+        symlinked = False
+        for part in base.split("/"):
+            walked = walked / part
+            if walked.is_symlink():
+                symlinked = True
+                break
+        if symlinked:
             warnings.append(
                 f"scope entry {entry!r} resolves through a symlink; git never "
                 "reports paths beneath one, so it matches nothing"
