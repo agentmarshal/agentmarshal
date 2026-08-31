@@ -2,7 +2,7 @@
 schema = 1
 id = "CR-069"
 title = "Records written now carry schema 3, so a version mismatch says so"
-scope = ["src/agentmarshal/journal/records.py", "src/agentmarshal/journal/backfill.py", "tests/test_journal.py", "docs/adr/ADR-0004-journal-data-model.md"]
+scope = ["src/agentmarshal/journal/records.py", "src/agentmarshal/journal/backfill.py", "tests/test_journal.py", "tests/test_attestation.py", "tests/test_backfill.py", "tests/test_migrate.py", "docs/adr/ADR-0004-journal-data-model.md"]
 acceptance = [
   "every record this version writes carries `schema = 3`",
   "records of schema 1 and 2 keep validating, so existing journals need no migration",
@@ -57,6 +57,7 @@ Write schema 3, keep reading 1 and 2, and say in ADR-0004 what the number means.
 - The rules introduced at schema 2 apply at **schema 2 and above**, not at
   schema 2 exactly.
 - ADR-0004 states what schema 3 denotes and why the bump exists.
+- The existing tests that assert the written schema are updated to the new one.
 
 ## Threat model and boundaries
 
