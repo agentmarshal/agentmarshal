@@ -1,0 +1,11 @@
+{
+  "created_at": "2026-08-31T22:46:52.334213Z",
+  "reason": "The criterion said every claim must be checkable against the repository, which taken literally forbids dating a changelog at all: when a version shipped is a fact about the package index. The reviewer applied the criterion as written, in both runs of two rounds. The criterion is corrected to say what it meant — claims about what the software does — with the release date cited to the index.",
+  "record_type": "amendment",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "schema": 3,
+  "source": "live",
+  "task": "CR-072",
+  "tool_version": "0.1.0"
+}
