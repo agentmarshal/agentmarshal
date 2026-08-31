@@ -375,3 +375,29 @@ def test_a_worktree_hiding_untracked_files_is_not_called_clean(
     assert f"skipped: {linked}" in output
     assert "worktree is dirty" in output
     assert f"eligible: {linked}" not in output
+
+
+def test_the_worktree_you_are_standing_in_is_never_offered(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """git removes the current worktree without complaint; we must not ask it to.
+
+    Doing so leaves the caller in a directory that no longer exists and the rest
+    of the run failing on it — the same reason CR-059 never offers the branch
+    that is checked out.
+    """
+
+    repo = _repo(tmp_path, monkeypatch)
+    _git(repo, "branch", "feat/CR-001-work")
+    linked = tmp_path / "linked"
+    _git(repo, "worktree", "add", "--quiet", str(linked), "feat/CR-001-work")
+    monkeypatch.chdir(linked)
+
+    assert main(["prune"]) == 0
+
+    output = capsys.readouterr().out
+    assert (
+        f"skipped: {linked} (branch feat/CR-001-work; the worktree you are in)"
+        in output
+    )
+    assert f"eligible: {linked}" not in output

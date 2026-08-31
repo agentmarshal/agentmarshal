@@ -209,9 +209,20 @@ def report_worktrees(project_root: Path) -> list[WorktreeDisposition]:
     # that reading calls the linked one main and offers the real main worktree
     # for removal.
     main = worktrees[0][0].resolve() if worktrees else None
+    # The worktree the command is running in is never eligible either. git
+    # removes it without complaint — verified — leaving the caller standing in a
+    # directory that no longer exists and the rest of the run failing on it.
+    # This is the same rule CR-059 already applies to the current branch.
+    current = project_root.resolve()
     for path, branch in worktrees:
-        if main is not None and path.resolve() == main:
+        resolved = path.resolve()
+        if main is not None and resolved == main:
             report.append(WorktreeDisposition(path, branch, False, "main worktree"))
+            continue
+        if resolved == current:
+            report.append(
+                WorktreeDisposition(path, branch, False, "the worktree you are in")
+            )
             continue
         if branch is None:
             report.append(
