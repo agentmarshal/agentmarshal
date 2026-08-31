@@ -92,17 +92,21 @@ def scope_warnings(project_root: Path, scope: list[str]) -> list[str]:
     without its trailing slash matches nothing, silently, until the gate refuses
     a change that is in fact correct — the reported failure this exists for.
 
-    **Deliberately bounded.** This catches that mistake, an entry that names
-    nothing on disk, and an empty entry. It is not a path validator: entries in
-    unusual forms are left alone, because no stated threat requires the tool to
-    police them, and a warning that fires on legal input teaches people to
-    ignore warnings.
+    **Deliberately bounded.** This catches that mistake, a scope with no
+    entries, an entry that names nothing on disk, and an empty entry. It is not
+    a path validator: entries in unusual forms are left alone, because no
+    stated threat requires the tool to police them, and a warning that fires on
+    legal input teaches people to ignore warnings.
 
     Warnings, never refusals: a task may legitimately declare a path it is about
     to create.
     """
 
     warnings: list[str] = []
+    if not scope:
+        warnings.append(
+            "task declares no scope; no change can land until one is declared"
+        )
     for entry in scope:
         if not entry:
             warnings.append("scope entry is empty and matches nothing")

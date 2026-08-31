@@ -1069,6 +1069,16 @@ def test_scope_warning_stays_silent_when_entries_match(tmp_path: Path) -> None:
     assert scope_warnings(tmp_path, ["src/", "README.md"]) == []
 
 
+def test_scope_warning_for_no_declared_scope(tmp_path: Path) -> None:
+    from agentmarshal.journal.open_task import scope_warnings
+
+    warnings = scope_warnings(tmp_path, [])
+
+    assert len(warnings) == 1
+    assert "declares no scope" in warnings[0]
+    assert "no change can land until one is declared" in warnings[0]
+
+
 def test_open_warns_but_still_opens(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -1091,6 +1101,42 @@ def test_open_warns_but_still_opens(
     assert "matches no path" in captured.err
     assert "contract.md" in captured.out
     assert (repo / ".agentmarshal/journal/tasks/CR-001/contract.md").is_file()
+
+
+def test_open_without_scope_warns_but_still_opens(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "--quiet", "-b", "master"], cwd=repo, check=True)
+    monkeypatch.chdir(repo)
+    assert main(["init"]) == 0
+    capsys.readouterr()
+
+    assert main(["open", "--title", "T"]) == 0
+
+    captured = capsys.readouterr()
+    assert "declares no scope" in captured.err
+    assert "no change can land until one is declared" in captured.err
+    assert "declares no scope" not in captured.out
+    assert "contract.md" in captured.out
+    assert (repo / ".agentmarshal/journal/tasks/CR-001/contract.md").is_file()
+
+
+def test_open_with_scope_does_not_warn_that_scope_is_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "tracked.txt").write_text("x", encoding="utf-8")
+    subprocess.run(["git", "init", "--quiet", "-b", "master"], cwd=repo, check=True)
+    monkeypatch.chdir(repo)
+    assert main(["init"]) == 0
+    capsys.readouterr()
+
+    assert main(["open", "--title", "T", "--scope", "tracked.txt"]) == 0
+
+    assert "declares no scope" not in capsys.readouterr().err
 
 
 def test_scope_warning_flags_an_empty_entry(tmp_path: Path) -> None:

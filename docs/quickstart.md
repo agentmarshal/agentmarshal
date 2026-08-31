@@ -93,10 +93,12 @@ objective and prose acceptance.
 **Mind the trailing slash.** A scope entry ending in `/` matches everything
 under that directory; without it the entry must equal a path exactly. So
 `--scope src` matches only a file literally named `src`, and gates everything
-under `src/` as out-of-scope. `agentmarshal open` warns about this case by name, and
-about an entry that names nothing on disk — but it still opens the task, because
-a scope may legitimately declare a path the work is about to create. The warning
-is a check on the common mistakes, not a path validator.
+under `src/` as out-of-scope. `agentmarshal open` warns about this case by name,
+about an entry that names nothing on disk, and when no scope is declared at all.
+An empty scope means no change can land until one is declared. The command still
+opens the task, because a scope may legitimately declare a path the work is about
+to create, or an operator may amend the scope later. The warning is a check on
+the common mistakes, not a path validator.
 
 ### Who recorded a record (`actors`)
 
