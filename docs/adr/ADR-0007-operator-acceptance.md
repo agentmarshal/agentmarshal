@@ -48,9 +48,14 @@ operator who wants this must leave evidence that they wanted it.
 
 ### 2. An acceptance requires a real review to have happened
 
-An acceptance is only valid when a **non-approving review of the same commit
-already exists**, and it must name **every blocking finding that review raised —
+An acceptance is only valid when the **latest review of that exact commit is
+non-approving**, and it must name **every blocking finding that review raised —
 all of them, and nothing else.**
+
+The *latest* review, specifically. An earlier refusal that a later run has
+already withdrawn is not an outstanding objection, and an acceptance leaning on
+one would record an override of something that no longer stands — while the gate,
+consulting the latest verdict, would have merged on the approval anyway.
 
 This is the decision that keeps the feature from being a hole. "Accepting over
 findings" presupposes findings; without the first half of the rule the same
@@ -69,8 +74,8 @@ An operator who agrees with only some of the findings has an honest path
 available, and it is not this one: fix the rest and be reviewed again. The
 acceptance is for the case where the loop, not the work, is what failed.
 
-The comparison is against the blocking `findings` of the **latest** review of
-that commit, which is the same review the approval check would have consulted.
+The review consulted is the same one the approval check would have consulted, so
+the two can never disagree about what the state of review is.
 `advisory_findings` are non-blocking by construction and are neither required
 nor permitted here; nothing is being overridden by shipping past an advisory.
 
@@ -117,20 +122,25 @@ coincide with a writer of the candidate, the surfaces say that too. This is the
 case an operator most needs to see, and the reason the visibility requirement is
 not a formality.
 
-**Relation to ADR-0006.** That decision listed *override authority* among the
-policies a project may configure, with the clause "and never the actor who
-implemented it", while its table recorded that no override existed yet — the
-mechanism was hypothetical and proposal 007 unbuilt. The unconfigured default
-was therefore never decided, and it is what this ADR decides: permitted, and
-visible. When the policy layer of ADR-0006 is built, its constraint governs the
-**configured** case, and a project that wants the stricter rule adopts it there.
+**This supersedes part of ADR-0006, and says so plainly.** That decision listed
+*override authority* among the policies a project may configure, with the clause
+"and never the actor who implemented it", and its table set the default at "no
+override exists" — qualified, in the same row, as holding *until proposal 007 is
+built*. Proposal 007 is now built, so this ADR replaces that default: an
+acceptance exists, and an acceptance by a writer of the candidate is permitted
+and always visible.
 
-We state the tension rather than paper over it. ADR-0006's own closing point is
-what settles it: every identity check in this system is a declaration check
-until signing lands, and anything built on identity inherits that limit. A rule
-that a different name must appear is satisfied by typing a different name. Made
-the default, it would buy the appearance of a control and cost the feature its
-use in the only configuration our adopters run.
+The clause itself is not discarded. It survives as the **policy** ADR-0006
+describes: a project that wants the stricter rule adopts it when that layer is
+built, and this ADR does not weaken what such a policy would enforce.
+
+What we do reject is making it the default, and the reason is ADR-0006's own
+closing point: every identity check in this system is a declaration check until
+signing lands, and anything built on identity inherits that limit. A rule that a
+different name must appear is satisfied by typing a different name. As a default
+it would buy the appearance of a control and cost the feature its use in the
+only configuration our adopters run — a single operator, whose author of record
+is frequently an agent working under that operator's git identity.
 
 ### 5. Accepted is never displayed as approved
 
