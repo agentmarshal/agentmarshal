@@ -347,6 +347,26 @@ event, the approved review bound to the commit SHA, and the completion.
 `validate` checks the whole journal for integrity and is the check you run in
 CI.
 
+### 9. Prune finished-task artifacts
+
+After completed work is merged, inspect the local branches and linked
+worktrees that can be removed:
+
+```sh
+agentmarshal prune
+agentmarshal prune --delete
+```
+
+The report considers only local state and never contacts a remote. A branch is
+eligible under the journal and merge checks shown in the report, and never
+while any worktree has it checked out. A linked worktree is eligible only when
+its checked-out branch names a task whose projected state is `done` and the
+worktree has no uncommitted changes. The main worktree is always skipped.
+
+`--delete` uses Git's non-forcing branch deletion and worktree removal. If Git
+refuses either operation — for example because a worktree is locked —
+AgentMarshal reports the refusal and leaves the artifact in place.
+
 ## What next
 
 That is the complete loop: a merged task now carries portable, SHA-bound
