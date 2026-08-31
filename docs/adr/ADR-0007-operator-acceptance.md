@@ -49,13 +49,30 @@ operator who wants this must leave evidence that they wanted it.
 ### 2. An acceptance requires a real review to have happened
 
 An acceptance is only valid when a **non-approving review of the same commit
-already exists**, and it may only name finding ids that such a review raised.
+already exists**, and it must name **every blocking finding that review raised —
+all of them, and nothing else.**
 
 This is the decision that keeps the feature from being a hole. "Accepting over
-findings" presupposes findings; without this rule the same machinery would merge
-work no reviewer ever looked at, which is a different act entirely and one we
-are not building a path for. Review is not optional; agreeing with the reviewer
-is.
+findings" presupposes findings; without the first half of the rule the same
+machinery would merge work no reviewer ever looked at, which is a different act
+entirely and one we are not building a path for. Review is not optional;
+agreeing with the reviewer is.
+
+The second half matters just as much and is easier to miss. If an acceptance
+could name a subset, an operator would override five objections while recording
+one, and the record would understate what was shipped over — in a record whose
+only purpose is to state exactly that. Naming a finding the review did not raise
+is refused for the mirror reason: an acceptance must correspond to something
+that was actually said.
+
+An operator who agrees with only some of the findings has an honest path
+available, and it is not this one: fix the rest and be reviewed again. The
+acceptance is for the case where the loop, not the work, is what failed.
+
+The comparison is against the blocking `findings` of the **latest** review of
+that commit, which is the same review the approval check would have consulted.
+`advisory_findings` are non-blocking by construction and are neither required
+nor permitted here; nothing is being overridden by shipping past an advisory.
 
 ### 3. It overrides one check, and the enumeration is closed
 
@@ -163,6 +180,11 @@ are complementary, and the quorum's cost in tokens needs measuring first.
 
 **Let the operator edit the review record.** Refused outright. Records are
 append-only because a verdict that can be rewritten is not evidence.
+
+**Allowing a partial acceptance** — naming some findings and leaving the rest
+outstanding. It reads as a finer-grained tool, and it is the opposite: the merge
+happens either way, so the only thing the subset changes is how much of it the
+record admits to.
 
 **A configuration flag that relaxes the gate.** Refused: it would make every
 merge in that project silently unreviewed-capable, and leave nothing in the
