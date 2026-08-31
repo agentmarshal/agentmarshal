@@ -184,9 +184,63 @@ def test_report_includes_mixed_actor_sessions_and_terminal_states(
 
     assert main(["report"]) == 0
     assert capsys.readouterr().out.splitlines() == [
-        "CR-001\tdone\treviews=2\ttokens=15",
-        "CR-002\tabandoned\treviews=1\ttokens=15",
-        "Summary\tabandoned=1 done=1\treviews=3\ttokens=30",
+        "CR-001\tdone\treviews=2\ttokens=15\tusage=unrecorded",
+        "CR-002\tabandoned\treviews=1\ttokens=15\tusage=unrecorded",
+        "Summary\tabandoned=1 done=1\treviews=3\ttokens=30\tusage=unrecorded",
+    ]
+
+
+def test_report_distinguishes_session_usage_provenance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = tmp_path / "repo"
+    _initialize_repo(repo, monkeypatch)
+    for title in ("Reported", "Measured", "Mixed", "Unrecorded"):
+        assert main(["open", "--title", title]) == 0
+    capsys.readouterr()
+
+    sessions = (
+        ("CR-001", "reported"),
+        ("CR-002", "measured"),
+        ("CR-003", "reported"),
+        ("CR-003", "measured"),
+        ("CR-004", None),
+    )
+    for task_id, usage_method in sessions:
+        arguments = [
+            "record-session",
+            "--task",
+            task_id,
+            "--role",
+            "worker",
+            "--actor",
+            "vendor/model",
+            "--activity",
+            "other",
+            "--outcome",
+            "done",
+            "--input-tokens",
+            "2",
+        ]
+        if usage_method is not None:
+            arguments.extend(
+                [
+                    "--usage-provider",
+                    "example-provider",
+                    "--usage-method",
+                    usage_method,
+                ]
+            )
+        assert main(arguments) == 0
+    capsys.readouterr()
+
+    assert main(["report"]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        "CR-001\topen\treviews=0\ttokens=2\tusage=reported",
+        "CR-002\topen\treviews=0\ttokens=2\tusage=measured",
+        "CR-003\topen\treviews=0\ttokens=4\tusage=mixed",
+        "CR-004\topen\treviews=0\ttokens=2\tusage=unrecorded",
+        "Summary\topen=4\treviews=0\ttokens=10\tusage=mixed",
     ]
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -27,6 +28,7 @@ class TaskReport:
     state: str
     review_cycles: int
     tokens: int
+    usage_provenance: str | None = None
 
 
 @dataclass(frozen=True)
@@ -36,6 +38,22 @@ class JournalReport:
     tasks: tuple[TaskReport, ...]
     review_cycles: int
     tokens: int
+    usage_provenance: str | None = None
+
+
+def _usage_provenance(records: Iterable[dict[str, object]]) -> str | None:
+    methods = {
+        cast(dict[str, str], record["usage"])["method"]
+        if "usage" in record
+        else "unrecorded"
+        for record in records
+        if record["record_type"] == "session"
+    }
+    if not methods:
+        return None
+    if len(methods) == 1:
+        return methods.pop()
+    return "mixed"
 
 
 def _task_report(status: TaskStatus) -> TaskReport:
@@ -46,7 +64,13 @@ def _task_report(status: TaskStatus) -> TaskReport:
         for record in records
         if record["record_type"] == "session"
     )
-    return TaskReport(status.task_id, status.state, review_cycles, tokens)
+    return TaskReport(
+        status.task_id,
+        status.state,
+        review_cycles,
+        tokens,
+        _usage_provenance(records),
+    )
 
 
 def build_report(journal_root: Path, task_id: str | None = None) -> JournalReport:
@@ -66,6 +90,7 @@ def build_report(journal_root: Path, task_id: str | None = None) -> JournalRepor
         tasks,
         sum(task.review_cycles for task in tasks),
         sum(task.tokens for task in tasks),
+        _usage_provenance([record for status in statuses for record in status.records]),
     )
 
 
@@ -74,10 +99,15 @@ def format_report(
 ) -> tuple[str, ...]:
     """Return stable, tab-separated report lines for CLI output."""
 
-    lines = [
-        f"{task.task_id}\t{task.state}\treviews={task.review_cycles}\ttokens={task.tokens}"
-        for task in report.tasks
-    ]
+    lines = []
+    for task in report.tasks:
+        line = (
+            f"{task.task_id}\t{task.state}\treviews={task.review_cycles}"
+            f"\ttokens={task.tokens}"
+        )
+        if task.usage_provenance is not None:
+            line += f"\tusage={task.usage_provenance}"
+        lines.append(line)
     if not include_summary:
         return tuple(lines)
     state_counts: dict[str, int] = {}
@@ -86,7 +116,11 @@ def format_report(
     state_summary = " ".join(
         f"{state}={count}" for state, count in sorted(state_counts.items())
     )
-    lines.append(
-        f"Summary\t{state_summary}\treviews={report.review_cycles}\ttokens={report.tokens}"
+    summary = (
+        f"Summary\t{state_summary}\treviews={report.review_cycles}"
+        f"\ttokens={report.tokens}"
     )
+    if report.usage_provenance is not None:
+        summary += f"\tusage={report.usage_provenance}"
+    lines.append(summary)
     return tuple(lines)
