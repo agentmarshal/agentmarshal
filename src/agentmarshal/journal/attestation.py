@@ -25,6 +25,7 @@ PREDICATE_TYPES: dict[str, str] = {
     "review": "https://agentmarshal.dev/attestations/review/v1",
     "completed": "https://agentmarshal.dev/attestations/completion/v1",
     "abandoned": "https://agentmarshal.dev/attestations/abandonment/v1",
+    "amendment": "https://agentmarshal.dev/attestations/amendment/v1",
     "session": "https://agentmarshal.dev/attestations/session/v1",
 }
 
