@@ -163,18 +163,18 @@ def test_write_record_is_exclusive_and_preserves_original_content(
     ]
 
 
-def test_builders_emit_schema_2_with_live_provenance(tmp_path: Path) -> None:
+def test_builders_emit_schema_3_with_live_provenance(tmp_path: Path) -> None:
     # Forward capture is in-toto-complete from the start: builders emit
-    # schema 2 with live provenance, and the record round-trips through the
+    # schema 3 with live provenance, and the record round-trips through the
     # validating writer/reader.
     record = create_opened_record("CR-001", "1.0")
-    assert record["schema"] == 2
+    assert record["schema"] == 3
     assert record["source"] == "live"
 
     review = create_review_record(
         "CR-001", "1.0", "a" * 40, "approved", "r", "v", "m", "r@t.i", []
     )
-    assert review["schema"] == 2
+    assert review["schema"] == 3
     assert review["source"] == "live"
 
     root = tmp_path / "journal"
@@ -183,6 +183,19 @@ def test_builders_emit_schema_2_with_live_provenance(tmp_path: Path) -> None:
     assert [_without_recorder(r) for r in read_records(root, "CR-001")] == [
         record | {"id": identifier}
     ]
+
+
+@pytest.mark.parametrize("schema", [1, 2])
+def test_existing_record_schemas_remain_valid(tmp_path: Path, schema: int) -> None:
+    record = create_opened_record("CR-001", "1.0")
+    record["schema"] = schema
+    if schema == 1:
+        record.pop("source")
+
+    root = tmp_path / "journal"
+    write_record(root, "CR-001", record, record_id="01J00000000000000000000000")
+
+    assert read_records(root, "CR-001")[0]["schema"] == schema
 
 
 def test_session_usage_round_trips_and_remains_optional(tmp_path: Path) -> None:

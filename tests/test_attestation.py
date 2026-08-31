@@ -1,4 +1,4 @@
-"""Tests for the in-toto attestation vocabulary and schema-2 records."""
+"""Tests for the in-toto attestation vocabulary and schema-2+ records."""
 
 from __future__ import annotations
 
@@ -24,9 +24,9 @@ from agentmarshal.journal.records import (
 _HEX64 = "a" * 64
 
 
-def _opened_v2(**overrides: object) -> dict[str, object]:
+def _opened_v2(*, schema: int = 2, **overrides: object) -> dict[str, object]:
     record: dict[str, object] = {
-        "schema": 2,
+        "schema": schema,
         "record_type": "opened",
         "task": "CR-001",
         "created_at": "2026-07-19T00:00:00Z",
@@ -73,12 +73,16 @@ def test_every_accepted_record_type_is_registered() -> None:
     assert set(_RECORD_FIELDS) == set(PREDICATE_TYPES)
 
 
-# --- schema-2 acceptance --------------------------------------------------
+# --- schema-2+ acceptance -------------------------------------------------
 
 
-def test_schema_2_round_trip_with_source_and_artifacts(tmp_path: Path) -> None:
+@pytest.mark.parametrize("schema", [2, 3])
+def test_schema_2_plus_round_trip_with_source_and_artifacts(
+    tmp_path: Path, schema: int
+) -> None:
     root = tmp_path / "journal"
     record = _opened_v2(
+        schema=schema,
         source=SOURCE_IMPORTED,
         artifacts=[{"ref": "runs/CR-001-prompt.md", "hash": _HEX64}],
     )
@@ -89,27 +93,39 @@ def test_schema_2_round_trip_with_source_and_artifacts(tmp_path: Path) -> None:
     ]
 
 
-def test_schema_2_without_artifacts_is_valid(tmp_path: Path) -> None:
+@pytest.mark.parametrize("schema", [2, 3])
+def test_schema_2_plus_without_artifacts_is_valid(tmp_path: Path, schema: int) -> None:
     root = tmp_path / "journal"
-    write_record(root, "CR-001", _opened_v2(), record_id="01J00000000000000000000001")
+    write_record(
+        root,
+        "CR-001",
+        _opened_v2(schema=schema),
+        record_id="01J00000000000000000000001",
+    )
     stored = read_records(root, "CR-001")
     assert stored[0]["source"] == SOURCE_LIVE
     assert "artifacts" not in stored[0]
 
 
-# --- schema-2 rejections --------------------------------------------------
+# --- schema-2+ rejections -------------------------------------------------
 
 
-def test_schema_2_without_source_is_rejected(tmp_path: Path) -> None:
-    record = _opened_v2()
+@pytest.mark.parametrize("schema", [2, 3])
+def test_schema_2_plus_without_source_is_rejected(tmp_path: Path, schema: int) -> None:
+    record = _opened_v2(schema=schema)
     del record["source"]
     with pytest.raises(JournalRecordError, match="source"):
         write_record(tmp_path / "journal", "CR-001", record)
 
 
-def test_schema_2_bad_source_is_rejected(tmp_path: Path) -> None:
+@pytest.mark.parametrize("schema", [2, 3])
+def test_schema_2_plus_bad_source_is_rejected(tmp_path: Path, schema: int) -> None:
     with pytest.raises(JournalRecordError, match="source"):
-        write_record(tmp_path / "journal", "CR-001", _opened_v2(source="fabricated"))
+        write_record(
+            tmp_path / "journal",
+            "CR-001",
+            _opened_v2(schema=schema, source="fabricated"),
+        )
 
 
 @pytest.mark.parametrize(
@@ -123,11 +139,16 @@ def test_schema_2_bad_source_is_rejected(tmp_path: Path) -> None:
         [{"ref": "x", "hash": "A" * 64}],
     ],
 )
-def test_schema_2_malformed_artifacts_are_rejected(
-    tmp_path: Path, artifacts: object
+@pytest.mark.parametrize("schema", [2, 3])
+def test_schema_2_plus_malformed_artifacts_are_rejected(
+    tmp_path: Path, artifacts: object, schema: int
 ) -> None:
     with pytest.raises(JournalRecordError):
-        write_record(tmp_path / "journal", "CR-001", _opened_v2(artifacts=artifacts))
+        write_record(
+            tmp_path / "journal",
+            "CR-001",
+            _opened_v2(schema=schema, artifacts=artifacts),
+        )
 
 
 # --- schema-1 stays strict ------------------------------------------------
@@ -161,4 +182,4 @@ def test_schema_1_carrying_artifacts_is_rejected(tmp_path: Path) -> None:
 
 def test_unknown_schema_is_rejected(tmp_path: Path) -> None:
     with pytest.raises(JournalRecordError, match="schema"):
-        write_record(tmp_path / "journal", "CR-001", _opened_v2(schema=3))
+        write_record(tmp_path / "journal", "CR-001", _opened_v2(schema=4))

@@ -77,7 +77,7 @@ def _write(stats_dir: Path, name: str, stat: dict[str, object]) -> None:
 
 def test_lead_stat_maps_to_imported_session() -> None:
     record = _map(_lead_stat())
-    assert record["schema"] == 2
+    assert record["schema"] == 3
     assert record["record_type"] == "session"
     assert record["source"] == "imported-from-host"
     assert record["created_at"] == "2026-07-19T09:22:04.349Z"  # original, not now

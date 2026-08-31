@@ -134,6 +134,11 @@ is a model that avoids cross-branch mutation, not a database.
   keeping the ledger composable with session observability tooling
   without depending on it.
 - Records declare their schema version from day one; loaders reject
-  versions they do not know.
+  versions they do not know. Schema 3 denotes records written with the
+  schema-2 provenance rules plus creator attribution (`recorded_by` and
+  `recorded_by_source`). The bump makes a reader/writer version mismatch
+  legible as an unsupported schema instead of misreporting those fields as
+  invalid. Loaders continue to accept schemas 1 and 2 unchanged, so existing
+  journals require no migration.
 - This repository's own v1-format journal becomes the first test case
   for the migration tooling the model implies.
