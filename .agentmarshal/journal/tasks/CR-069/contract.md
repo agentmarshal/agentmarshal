@@ -4,7 +4,7 @@ id = "CR-069"
 title = "Records written now carry schema 3, so a version mismatch says so"
 scope = ["src/agentmarshal/journal/records.py", "src/agentmarshal/journal/backfill.py", "tests/test_journal.py", "tests/test_attestation.py", "tests/test_backfill.py", "tests/test_migrate.py", "docs/adr/ADR-0004-journal-data-model.md"]
 acceptance = [
-  "every record this version writes carries `schema = 3`",
+  "every record this version writes through its commands and record factories carries `schema = 3`",
   "records of schema 1 and 2 keep validating, so existing journals need no migration",
   "the schema-2 field rules apply at schema 3 and above rather than at schema 2 exactly",
   "ADR-0004 records what schema 3 denotes and that the bump exists to make a version mismatch legible",
@@ -50,8 +50,16 @@ Write schema 3, keep reading 1 and 2, and say in ADR-0004 what the number means.
 
 ## Acceptance Criteria
 
-- Every record this version writes carries `schema = 3`, including records
-  written by backfill.
+- Every record this version writes **through its commands and record
+  factories** carries `schema = 3`, including records written by backfill and
+  by journal migration.
+
+  Not enforced in `write_record` itself. That is the low-level append
+  primitive, and refusing an older schema there would remove the only way to
+  construct a record at schema 1 or 2 — which is exactly how backward reading
+  is tested, and backward reading is the property that makes this bump safe.
+  The guarantee is about what the tool writes in operation, and it is pinned by
+  a test over the factories rather than by a runtime refusal.
 - Records at schema 1 and 2 keep validating unchanged, so existing journals
   need no migration and nothing has to be rewritten.
 - The rules introduced at schema 2 apply at **schema 2 and above**, not at
