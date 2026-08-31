@@ -102,6 +102,11 @@ everything above:
   than the implementer, not merely a different email string;
 - **override authority** — which actors, if any, may accept work over outstanding
   findings, and never the actor who implemented it;
+  *(the default in the table below is superseded by
+  [ADR-0007](ADR-0007-operator-acceptance.md), which builds the mechanism
+  proposal 007 asked for: an acceptance exists, and one by a writer of the
+  candidate is permitted and always visible. This clause survives as the policy
+  a project may adopt once that layer is built.)*
 - **end-to-end by one actor** — permitted by default; a project may forbid it.
 
 Each default is stated, because "defaults unchanged" is otherwise ambiguous:
@@ -109,7 +114,7 @@ Each default is stated, because "defaults unchanged" is otherwise ambiguous:
 | Policy | Default | What holds today |
 |---|---|---|
 | distinct-actor review | **off** | the existing declared-email comparison remains the only check |
-| override authority | **no override exists** | the gate merges only on `approved`; nothing changes until proposal 007 is built |
+| override authority | **no override exists** *(superseded by [ADR-0007](ADR-0007-operator-acceptance.md))* | the gate merges only on `approved`; nothing changes until proposal 007 is built |
 | end-to-end by one actor | **permitted** | unchanged |
 
 Existing adopters run one operator and must not be broken by an ADR. A policy
