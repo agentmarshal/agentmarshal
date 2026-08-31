@@ -305,8 +305,13 @@ def _run_brief(task_id: str, stderr: TextIO) -> int:
     return 0
 
 
-def _declared_commit_writers(project_root: Path, commit: str) -> set[str]:
-    """Return the commit's declared author and committer names and emails."""
+def _declared_commit_writers(project_root: Path, commit: str) -> set[str] | None:
+    """Return the commit's declared author and committer names and emails.
+
+    ``None`` when git cannot answer — an absent commit, a shallow clone, a
+    directory that is not a repository. That is distinct from an answer of "no
+    match", and the caller must keep the two apart.
+    """
 
     try:
         result = subprocess.run(
@@ -316,17 +321,25 @@ def _declared_commit_writers(project_root: Path, commit: str) -> set[str]:
             check=False,
         )
         if result.returncode != 0:
-            return set()
+            return None
         output = result.stdout.decode("utf-8")
     except (OSError, UnicodeDecodeError):
-        return set()
+        return None
     return {line.strip().casefold() for line in output.splitlines() if line.strip()}
 
 
-def _is_self_accepted(project_root: Path, record: dict[str, object]) -> bool:
-    party = str(record["accepted_by"]).strip().casefold()
+def _is_self_accepted(project_root: Path, record: dict[str, object]) -> bool | None:
+    """Whether the accepting party wrote the commit, or ``None`` if unknown.
+
+    ADR-0007 calls self-acceptance the case an operator most needs to see. If an
+    unanswerable git query were reported as "not self-accepted", the display
+    would quietly lose exactly that — so unknown is carried through and said.
+    """
+
     writers = _declared_commit_writers(project_root, str(record["accepted_commit"]))
-    return party in writers
+    if writers is None:
+        return None
+    return str(record["accepted_by"]).strip().casefold() in writers
 
 
 def _print_task_detail(project_root: Path, task: TaskStatus) -> None:
@@ -337,7 +350,13 @@ def _print_task_detail(project_root: Path, task: TaskStatus) -> None:
         record for record in task.records if record["record_type"] == "acceptance"
     ):
         summary = f"Acceptance: accepted over findings by {acceptance['accepted_by']}"
-        if _is_self_accepted(project_root, acceptance):
+        self_accepted = _is_self_accepted(project_root, acceptance)
+        if self_accepted is None:
+            summary += (
+                " (self-acceptance not checked: git cannot read "
+                f"{str(acceptance['accepted_commit'])[:7]} here)"
+            )
+        elif self_accepted:
             summary += (
                 " (self-accepted: accepting party is a declared author or committer)"
             )
@@ -361,15 +380,17 @@ def _print_task_detail(project_root: Path, task: TaskStatus) -> None:
             )
         elif record["record_type"] == "acceptance":
             findings = cast(list[object], record["findings"])
-            self_accepted = (
-                " self-accepted" if _is_self_accepted(project_root, record) else ""
-            )
+            checked = _is_self_accepted(project_root, record)
+            marker = {
+                None: " self-acceptance-unchecked",
+                True: " self-accepted",
+            }.get(checked, "")
             print(
                 f"- {record['id']} acceptance {record['created_at']} "
                 f"accepted_commit={str(record['accepted_commit'])[:7]} "
                 f"accepted_by={record['accepted_by']} "
                 f"findings={','.join(str(finding) for finding in findings)} "
-                f"reason={record['reason']}{self_accepted}"
+                f"reason={record['reason']}{marker}"
             )
         elif record["record_type"] == "completed":
             print(

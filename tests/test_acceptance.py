@@ -200,3 +200,30 @@ def test_status_summarizes_acceptance_trail_and_self_acceptance(
     assert "acceptance" in output
     assert f"accepted_commit={commit[:7]}" in output
     assert "findings=F-1" in output
+
+
+def test_status_says_when_self_acceptance_could_not_be_checked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An unanswerable git query must not read as "not self-accepted".
+
+    ADR-0007 calls self-acceptance the case an operator most needs to see, so a
+    commit this checkout cannot read is reported as unchecked, not as absent.
+    """
+
+    from agentmarshal import cli as cli_module
+
+    _repo, _journal, commit = _initialize_task(tmp_path, monkeypatch)
+    assert _review(commit, "changes_required", "F-1") == 0
+    assert _accept(commit) == 0
+    capsys.readouterr()
+    monkeypatch.setattr(
+        cli_module, "_declared_commit_writers", lambda *args, **kwargs: None
+    )
+
+    assert main(["status", "CR-001"]) == 0
+
+    output = capsys.readouterr().out
+    assert "self-acceptance not checked" in output
+    assert "self-acceptance-unchecked" in output
+    assert "(self-accepted" not in output
