@@ -164,6 +164,13 @@ agentmarshal init
 This writes `.agentmarshal/project.json`. `agentmarshal doctor` checks the
 project's health at any time.
 
+It also creates `.agentmarshal/upstream/` — the **outbox**, where findings about
+AgentMarshal itself go, one file per finding, to be sent upstream as a batch. Its
+README states the convention, including the part that matters most: sanitize at
+source, because upstream is public and cannot un-publish. An outbox README you
+have already written is never overwritten, and a project that could not create
+the directory is still initialized.
+
 ### 2. Open a task
 
 A **task** declares a **scope** — the paths it may touch. Opening one creates

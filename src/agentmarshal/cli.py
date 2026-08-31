@@ -189,7 +189,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def _run_init(stderr: TextIO) -> int:
     try:
-        project_root = initialize_project(Path.cwd())
+        initialized = initialize_project(Path.cwd())
     except AlreadyInitializedError as error:
         print(error, file=stderr)
         return 1
@@ -197,7 +197,20 @@ def _run_init(stderr: TextIO) -> int:
         print(error, file=stderr)
         return 1
 
-    print(f"Initialized AgentMarshal project at {project_root}")
+    print(f"Initialized AgentMarshal project at {initialized.project_root}")
+    # The convention is stated either way. An operator whose outbox could not be
+    # created still needs to know it was meant to be there, and why it is not —
+    # silence would leave them believing nothing was supposed to happen.
+    print(
+        f"Findings about AgentMarshal itself go in {initialized.outbox} "
+        "— see its README"
+    )
+    if not initialized.outbox_created:
+        print(
+            f"warning: could not create {initialized.outbox}: "
+            f"{initialized.outbox_error}",
+            file=stderr,
+        )
     return 0
 
 

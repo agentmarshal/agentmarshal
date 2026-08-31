@@ -6,6 +6,7 @@ import errno
 import json
 import os
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TextIO, cast
 
@@ -220,7 +221,91 @@ def _assert_readable(path: Path) -> None:
         ) from error
 
 
-def initialize_project(start: Path | None = None) -> Path:
+_OUTBOX_README = """# Upstream outbox
+
+Findings about **AgentMarshal itself** go here — one file per finding — and are
+sent upstream as a batch.
+
+An adopter on a pinned release never patches the tool locally, so everything
+noticed about it has exactly one addressee. Without a place to put it, a finding
+settles in a chat log or a commit message and never arrives.
+
+## What belongs here
+
+A finding, not a bug title: what was run, what happened, how often, and what the
+workaround cost. Measurements are the evidence — counts, ratios, timings — and
+they are what upstream quotes.
+
+## Before sending
+
+**Sanitize at source.** Upstream is public and cannot un-publish. Remove
+anything specific to this repository or its clients: names, hostnames, internal
+paths, task numbers, excerpts of your own code. Send the finding, not the
+context it was found in.
+
+The original stays with you. Upstream publishes a digest of each proposal with a
+stated disposition, under a pseudonym for the reporter.
+
+See the upstream project's CONTRIBUTING for the language convention and how to
+send a batch.
+"""
+
+
+@dataclass(frozen=True)
+class InitializedProject:
+    """What ``init`` produced: the project root, and how the outbox fared.
+
+    A named type rather than a tuple, because the outbox carries two facts —
+    where it belongs and whether it is there — and a caller reading them
+    positionally would not say which is which.
+    """
+
+    project_root: Path
+    outbox: Path
+    outbox_error: str | None
+
+    @property
+    def outbox_created(self) -> bool:
+        return self.outbox_error is None
+
+
+def _scaffold_outbox(project_directory: Path) -> tuple[Path, str | None]:
+    """Create the upstream outbox, and leave an existing one alone.
+
+    Adopter proposal 012: three adopters invented three layouts for the same
+    thing because the convention arrived only by reading the upstream
+    repository. ``init`` is the one moment the operator is looking at project
+    setup, so the convention arrives with the tool.
+
+    Best effort by design — a project that could not write this directory is
+    still an initialized project, and failing here would trade a working setup
+    for a convenience.
+    """
+
+    outbox = project_directory / "upstream"
+    readme = outbox / "README.md"
+    # The two steps are kept apart on purpose. FileExistsError means different
+    # things in each: from mkdir it means the path is taken by something that is
+    # not a directory, which is a failure; from opening the README it means the
+    # adopter wrote their own, which is a success.
+    try:
+        outbox.mkdir(exist_ok=True)
+    except OSError as error:
+        # The reason travels with the failure. A caller that only learned
+        # "no outbox" would have to guess between a permission problem, a
+        # full disk, and a bug of ours.
+        return outbox, str(error)
+    try:
+        with readme.open("x", encoding="utf-8", newline="\n") as handle:
+            handle.write(_OUTBOX_README)
+    except FileExistsError:
+        return outbox, None
+    except OSError as error:
+        return outbox, str(error)
+    return outbox, None
+
+
+def initialize_project(start: Path | None = None) -> InitializedProject:
     """Initialize AgentMarshal in the containing git repository."""
 
     search_start = Path.cwd() if start is None else start
@@ -239,4 +324,5 @@ def initialize_project(start: Path | None = None) -> Path:
     except FileExistsError as error:
         raise AlreadyInitializedError(git_root) from error
     _assert_readable(project_file)
-    return git_root
+    outbox, outbox_error = _scaffold_outbox(project_file.parent)
+    return InitializedProject(git_root, outbox, outbox_error)

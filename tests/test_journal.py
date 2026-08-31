@@ -1170,3 +1170,115 @@ def test_open_fails_when_the_task_it_wrote_is_unreadable(
 
     with pytest.raises(open_task_module.TaskOpenError, match="cannot read it back"):
         open_task_module.open_task(repo, "T", ["src/"])
+
+
+def test_init_scaffolds_the_upstream_outbox(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The convention arrives with the tool instead of having to be found."""
+
+    from agentmarshal.cli import main
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "--quiet", "-b", "master"], cwd=repo, check=True)
+    monkeypatch.chdir(repo)
+
+    assert main(["init"]) == 0
+
+    readme = repo / ".agentmarshal" / "upstream" / "README.md"
+    assert readme.is_file()
+    assert "Sanitize at source" in readme.read_text(encoding="utf-8")
+    assert "upstream" in capsys.readouterr().out
+
+
+def test_init_does_not_overwrite_an_outbox_readme(tmp_path: Path) -> None:
+    """An adopter who wrote their own convention does not lose it."""
+
+    from agentmarshal import project as project_module
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "--quiet", "-b", "master"], cwd=repo, check=True)
+    outbox = repo / ".agentmarshal" / "upstream"
+    outbox.mkdir(parents=True)
+    (outbox / "README.md").write_text("ours", encoding="utf-8")
+
+    initialized = project_module.initialize_project(repo)
+
+    assert (outbox / "README.md").read_text(encoding="utf-8") == "ours"
+    assert initialized.outbox_created
+
+
+def test_init_succeeds_when_the_outbox_cannot_be_written(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A project that could not write a convenience is still a project."""
+
+    from agentmarshal import project as project_module
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "--quiet", "-b", "master"], cwd=repo, check=True)
+    real_mkdir = Path.mkdir
+
+    def _refuse(self: Path, *args: Any, **kwargs: Any) -> None:
+        if self.name == "upstream":
+            raise OSError(13, "Permission denied")
+        real_mkdir(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", _refuse)
+
+    initialized = project_module.initialize_project(repo)
+
+    assert not initialized.outbox_created
+    assert "Permission denied" in (initialized.outbox_error or "")
+    assert (initialized.project_root / ".agentmarshal" / "project.json").is_file()
+
+
+def test_init_states_the_convention_even_when_the_outbox_is_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Silence would leave the operator believing nothing was meant to happen."""
+
+    from agentmarshal.cli import main
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "--quiet", "-b", "master"], cwd=repo, check=True)
+    monkeypatch.chdir(repo)
+    real_mkdir = Path.mkdir
+
+    def _refuse(self: Path, *args: Any, **kwargs: Any) -> None:
+        if self.name == "upstream":
+            raise OSError(13, "Permission denied")
+        real_mkdir(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", _refuse)
+
+    assert main(["init"]) == 0
+
+    captured = capsys.readouterr()
+    assert "Findings about AgentMarshal itself go in" in captured.out
+    assert "could not create" in captured.err
+    assert "Permission denied" in captured.err
+
+
+def test_init_does_not_call_a_file_named_upstream_an_outbox(
+    tmp_path: Path,
+) -> None:
+    """A path taken by a file leaves no directory and no README to use."""
+
+    from agentmarshal import project as project_module
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "--quiet", "-b", "master"], cwd=repo, check=True)
+    project_directory = repo / ".agentmarshal"
+    project_directory.mkdir()
+    (project_directory / "upstream").write_text("not a directory", encoding="utf-8")
+
+    initialized = project_module.initialize_project(repo)
+
+    assert not initialized.outbox_created
+    assert not (project_directory / "upstream" / "README.md").exists()
