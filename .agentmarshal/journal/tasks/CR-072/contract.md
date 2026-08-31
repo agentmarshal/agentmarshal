@@ -2,13 +2,14 @@
 schema = 1
 id = "CR-072"
 title = "A changelog for everything since 0.1.0"
-scope = ["CHANGELOG.md"]
+scope = ["CHANGELOG.md", "UPGRADING.md"]
 acceptance = [
   "CHANGELOG.md exists and records 0.2.0 and the released 0.1.0",
   "the 0.2.0 entry is grouped by what a reader can do differently, not by commit or task order",
   "it states the journal-format break: a journal written by 0.2.0 is refused by 0.1.0, and 0.2.0 reads everything 0.1.0 wrote",
   "it names the commands that are new and the one that was renamed before release",
   "every claim in it is checkable against the repository, and nothing roadmap is described as shipped",
+  "UPGRADING.md exists and gives the procedure per installation method, and the changelog links to it",
 ]
 +++
 
@@ -29,7 +30,7 @@ check.
 ## Objective
 
 Write the changelog that should have accompanied the work, so the release can
-be read rather than reconstructed.
+be read rather than reconstructed — and the upgrade guide it has to point at.
 
 ## Acceptance Criteria
 
@@ -62,7 +63,7 @@ release is published. Those follow.
 
 - **Bumping the version, tagging, or publishing.** Separate tasks; this one only
   writes the record.
-- Upgrade instructions. They get their own document, because they are longer
-  than a changelog entry and are read at a different moment.
+- Instructions for anything but upgrading from 0.1.0 to 0.2.0. The guide covers
+  this transition, not a general migration manual.
 - Rewriting history or back-filling entries for versions before 0.1.0.
 - Describing internal refactors an adopter cannot observe.
