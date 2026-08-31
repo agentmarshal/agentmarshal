@@ -102,6 +102,10 @@ everything above:
   than the implementer, not merely a different email string;
 - **override authority** — which actors, if any, may accept work over outstanding
   findings, and never the actor who implemented it;
+  *(continued in [ADR-0007](ADR-0007-operator-acceptance.md), which builds the
+  mechanism and decides the unconfigured default this clause did not cover: an
+  acceptance by a writer of the candidate is permitted and always visible. This
+  clause governs the configured policy once that layer exists.)*
 - **end-to-end by one actor** — permitted by default; a project may forbid it.
 
 Each default is stated, because "defaults unchanged" is otherwise ambiguous:

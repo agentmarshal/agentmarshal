@@ -109,6 +109,29 @@ party's identity matches a declared writer of the candidate, every surface that
 reports the task says so — self-accepted, in those terms. We do not prevent it;
 we refuse to let it look like something else.
 
+The sharpest form of this is worth naming, because it is ours: an **agent** may
+implement a change and record an acceptance of its own work. Every acceptance
+therefore carries `recorded_by` alongside the accepting party, so a reader can
+see that an agent wrote the record rather than a person, and where the two
+coincide with a writer of the candidate, the surfaces say that too. This is the
+case an operator most needs to see, and the reason the visibility requirement is
+not a formality.
+
+**Relation to ADR-0006.** That decision listed *override authority* among the
+policies a project may configure, with the clause "and never the actor who
+implemented it", while its table recorded that no override existed yet — the
+mechanism was hypothetical and proposal 007 unbuilt. The unconfigured default
+was therefore never decided, and it is what this ADR decides: permitted, and
+visible. When the policy layer of ADR-0006 is built, its constraint governs the
+**configured** case, and a project that wants the stricter rule adopts it there.
+
+We state the tension rather than paper over it. ADR-0006's own closing point is
+what settles it: every identity check in this system is a declaration check
+until signing lands, and anything built on identity inherits that limit. A rule
+that a different name must appear is satisfied by typing a different name. Made
+the default, it would buy the appearance of a control and cost the feature its
+use in the only configuration our adopters run.
+
 ### 5. Accepted is never displayed as approved
 
 An accepted-over-findings task must be distinguishable from a reviewed-and-
