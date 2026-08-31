@@ -15,6 +15,7 @@ from agentmarshal.journal import (
     JournalRecordError,
     create_opened_record,
     create_review_record,
+    create_session_record,
     generate_ulid,
     parse_contract,
     project_status,
@@ -182,6 +183,154 @@ def test_builders_emit_schema_2_with_live_provenance(tmp_path: Path) -> None:
     assert [_without_recorder(r) for r in read_records(root, "CR-001")] == [
         record | {"id": identifier}
     ]
+
+
+def test_session_usage_round_trips_and_remains_optional(tmp_path: Path) -> None:
+    root = tmp_path / "journal"
+    legacy = create_session_record(
+        "CR-001", "0.1.0", "worker", "agent", "other", "done", 3, 2, 1
+    )
+    legacy["schema"] = 1
+    legacy.pop("source")
+    attributed = create_session_record(
+        "CR-001",
+        "1.0",
+        "worker",
+        "agent",
+        "implementation",
+        "done",
+        6,
+        4,
+        2,
+        usage_provider="example-provider",
+        usage_method="reported",
+    )
+
+    write_record(root, "CR-001", legacy, record_id="01J00000000000000000000000")
+    write_record(root, "CR-001", attributed, record_id="01J00000000000000000000001")
+
+    records = [_without_recorder(record) for record in read_records(root, "CR-001")]
+    assert "usage" not in records[0]
+    assert records[1]["usage"] == {
+        "provider": "example-provider",
+        "method": "reported",
+    }
+
+
+@pytest.mark.parametrize(
+    ("usage", "error"),
+    [
+        ({"provider": "example", "method": "estimated"}, "method"),
+        ({"provider": "", "method": "measured"}, "provider"),
+        ({"provider": "example", "method": "reported", "region": "us"}, "region"),
+        ({"provider": "example"}, "usage"),
+        ("reported by example", "object"),
+    ],
+)
+def test_session_usage_rejects_malformed_values(
+    tmp_path: Path, usage: object, error: str
+) -> None:
+    record = create_session_record(
+        "CR-001", "1.0", "worker", "agent", "other", "done", 0, 0, 0
+    )
+    record["usage"] = usage
+
+    with pytest.raises(JournalRecordError, match=error):
+        write_record(tmp_path / "journal", "CR-001", record)
+
+
+@pytest.mark.parametrize(
+    ("argument", "missing"),
+    [
+        (("--usage-provider", "example"), "--usage-method"),
+        (("--usage-method", "measured"), "--usage-provider"),
+    ],
+)
+def test_record_session_requires_both_usage_flags(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    argument: tuple[str, str],
+    missing: str,
+) -> None:
+    repo = tmp_path / "repo"
+    root = initialize_status_repo(repo)
+    monkeypatch.chdir(repo)
+    assert main(["open", "--title", "Task"]) == 0
+    capsys.readouterr()
+
+    arguments = [
+        "record-session",
+        "--task",
+        "CR-001",
+        "--role",
+        "worker",
+        "--actor",
+        "agent",
+        "--activity",
+        "other",
+        "--outcome",
+        "done",
+        *argument,
+    ]
+    assert main(arguments) == 1
+    assert missing in capsys.readouterr().err
+    assert [record["record_type"] for record in read_records(root, "CR-001")] == [
+        "opened"
+    ]
+
+
+def test_record_session_writes_usage_and_validate_accepts_mixed_shapes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = tmp_path / "repo"
+    root = initialize_status_repo(repo)
+    monkeypatch.chdir(repo)
+    assert main(["open", "--title", "Task"]) == 0
+    capsys.readouterr()
+    common = [
+        "record-session",
+        "--task",
+        "CR-001",
+        "--role",
+        "worker",
+        "--actor",
+        "agent",
+        "--activity",
+        "other",
+        "--outcome",
+        "done",
+    ]
+
+    assert main(common) == 0
+    assert (
+        main(
+            [
+                *common,
+                "--usage-provider",
+                "example-provider",
+                "--usage-method",
+                "measured",
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+
+    sessions = [
+        record
+        for record in read_records(root, "CR-001")
+        if record["record_type"] == "session"
+    ]
+    assert "usage" not in sessions[0]
+    assert sessions[1]["usage"] == {
+        "provider": "example-provider",
+        "method": "measured",
+    }
+    assert main(["validate"]) == 0
+    assert "validate: passed" in capsys.readouterr().out
 
 
 def test_review_record_round_trip_and_status_detail(
