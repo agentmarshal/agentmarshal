@@ -111,15 +111,16 @@ def report_branches(project_root: Path, base: str = "HEAD") -> list[BranchDispos
             report.append(BranchDisposition(branch, False, "does not name a task"))
             continue
         if task_id not in states:
-            try:
-                states[task_id] = load_task_status(journal_root, task_id).state
-            except TaskStatusError as error:
-                if str(error).startswith("unknown task id:"):
-                    states[task_id] = "unknown"
-                else:
+            # Absence is asked of the filesystem, not inferred from the text of
+            # an error message: a reworded message elsewhere must not turn a
+            # branch of an unknown task into a failure of the whole command.
+            if not (journal_root / "tasks" / task_id).is_dir():
+                states[task_id] = "unknown"
+            else:
+                try:
+                    states[task_id] = load_task_status(journal_root, task_id).state
+                except (TaskStatusError, OSError, ValueError) as error:
                     raise PruneError(str(error)) from error
-            except (OSError, ValueError) as error:
-                raise PruneError(str(error)) from error
         state = states[task_id]
         if state != "done":
             report.append(
@@ -139,13 +140,37 @@ def report_branches(project_root: Path, base: str = "HEAD") -> list[BranchDispos
     return report
 
 
+@dataclass(frozen=True)
+class BranchDeletion:
+    """What became of one branch the report marked eligible."""
+
+    branch: str
+    deleted: bool
+    detail: str
+
+
 def delete_branches(
     project_root: Path, report: list[BranchDisposition]
-) -> Iterator[str]:
-    """Delete exactly the branches marked eligible in a prior report."""
+) -> Iterator[BranchDeletion]:
+    """Delete the branches a prior report marked eligible, without forcing.
+
+    ``git branch -D`` would remove a branch whether or not git considers it
+    merged, which would leave this module's containment check as the only thing
+    between the operator and lost work — and the point of that check is that it
+    is one of two independent ones. So ``-d`` is used and a refusal is reported.
+
+    A refusal means git and this command disagree about containment, which the
+    operator needs to see rather than have overridden. It can happen honestly:
+    ``-d`` judges against HEAD and its upstream, while ``--base`` may name
+    another ref.
+    """
 
     for item in report:
         if not item.eligible:
             continue
-        _run_git(project_root, ["branch", "--delete", "--force", "--", item.branch])
-        yield item.branch
+        try:
+            _run_git(project_root, ["branch", "--delete", "--", item.branch])
+        except PruneError as error:
+            yield BranchDeletion(item.branch, False, str(error))
+            continue
+        yield BranchDeletion(item.branch, True, item.reason)

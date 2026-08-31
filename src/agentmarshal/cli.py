@@ -582,13 +582,23 @@ def _run_prune_branches(args: argparse.Namespace, stderr: TextIO) -> int:
         for item in report:
             label = "eligible" if item.eligible else "skipped"
             print(f"{label}: {item.branch} ({item.reason})")
+        refused = False
         if args.delete:
-            for branch in delete_branches(project_root, report):
-                print(f"deleted: {branch}")
+            for deletion in delete_branches(project_root, report):
+                if deletion.deleted:
+                    print(f"deleted: {deletion.branch}")
+                    continue
+                # Asked to delete and did not: say so, and do not report
+                # success. git refusing is a disagreement worth surfacing.
+                refused = True
+                print(
+                    f"refused: {deletion.branch} ({deletion.detail})",
+                    file=stderr,
+                )
     except PruneError as error:
         print(f"prune-branches: {error}", file=stderr)
         return 1
-    return 0
+    return 1 if refused else 0
 
 
 def _run_migrate_journal(

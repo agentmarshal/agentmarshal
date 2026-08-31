@@ -147,3 +147,43 @@ def test_base_controls_containment_and_defaults_to_head(
 
     assert main(["prune-branches", "--base", "integration"]) == 0
     assert "eligible: feat/CR-001-work" in capsys.readouterr().out
+
+
+def test_a_refusal_from_git_is_reported_and_the_branch_survives(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """git's own check is the second of two independent guards, so it is kept.
+
+    ``--base`` can honestly name a ref that ``git branch -d`` does not judge
+    against. When the two disagree the operator is told, and nothing is forced.
+    """
+
+    repo = _repo(tmp_path, monkeypatch)
+    _git(repo, "branch", "feat/CR-001-work")
+    _git(repo, "switch", "--quiet", "feat/CR-001-work")
+    unmerged = _commit(repo, "work that master does not contain")
+    _git(repo, "switch", "--quiet", "master")
+    # The branch is contained in itself, so the report finds it eligible; git,
+    # judging against the checked-out master, refuses to delete it.
+    assert main(["prune-branches", "--base", unmerged, "--delete"]) == 1
+
+    captured = capsys.readouterr()
+    assert "eligible: feat/CR-001-work" in captured.out
+    assert "refused: feat/CR-001-work" in captured.err
+    assert "deleted:" not in captured.out
+    assert "feat/CR-001-work" in _local_branches(repo)
+
+
+def test_a_branch_of_an_unknown_task_is_skipped_not_fatal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Absence is asked of the filesystem, never read out of an error message."""
+
+    repo = _repo(tmp_path, monkeypatch)
+    _git(repo, "branch", "feat/CR-404-never-opened")
+
+    assert main(["prune-branches"]) == 0
+
+    captured = capsys.readouterr()
+    assert "skipped: feat/CR-404-never-opened (task CR-404 is unknown)" in captured.out
+    assert "feat/CR-404-never-opened" in _local_branches(repo)
