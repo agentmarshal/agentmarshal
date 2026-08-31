@@ -339,6 +339,11 @@ def run_gate(
             if record.get("record_type") == "acceptance"
             and record.get("accepted_commit") == resolved_commit
         ]
+        # The latest acceptance, judged as it stands — never the best-fitting one.
+        # Searching a record set for whichever entry justifies a merge is the
+        # opposite of what a merge authority does, and it would let a stale or
+        # hand-written record be rescued by an older one. This mirrors the review
+        # rule above: the last record wins and is then held to the requirement.
         acceptance = acceptances[-1] if acceptances else None
         valid_acceptance: tuple[str, list[str]] | None = None
         if latest is not None and not approved and acceptance is not None:

@@ -1071,3 +1071,37 @@ def test_gate_leak_scan_degrades_to_warning_on_bad_config(
     assert passed, output
     assert output.count("FAIL") == 0
     assert "WARN: leak-scan skipped" in output
+
+
+def test_gate_judges_the_latest_acceptance_and_does_not_hunt_for_a_fitting_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An older valid acceptance must not rescue a later record that does not fit.
+
+    Searching a record set for whichever entry justifies a merge is the opposite
+    of what a merge authority does, so the last acceptance is judged as it
+    stands — the same rule the review check already follows.
+    """
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    head = _implement(repo, "src/module.py")
+    _require_changes(repo, head, "F-001")
+    _accept(repo, head)
+    write_record(
+        repo / ".agentmarshal" / "journal",
+        "CR-001",
+        create_acceptance_record(
+            "CR-001",
+            "0.1.0",
+            head,
+            "operator@example.invalid",
+            ["F-999"],
+            "a later acceptance that does not fit",
+        ),
+    )
+
+    passed, output = _run(repo, head, base, head)
+
+    assert not passed
+    assert "does not cover the latest" in output
+    assert "accepted over findings" not in output
