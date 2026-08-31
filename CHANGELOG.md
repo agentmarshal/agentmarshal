@@ -8,9 +8,9 @@ capability is partial, the entry says so.
 
 ## 0.2.0 — unreleased
 
-Thirty-three tasks since 0.1.0. The headline is that the operator, not the
-reviewer, now owns the acceptance decision — and that a task's lifecycle has a
-way back.
+The headline is that the operator, not the reviewer, now owns the acceptance
+decision — and that a task's lifecycle has a way back. The per-task evidence for
+everything below is in the journal.
 
 ### Before you upgrade
 
@@ -25,8 +25,9 @@ were written at.
 
 Everything that runs AgentMarshal against a shared journal must therefore be
 upgraded together — every operator's machine, every CI runner, the merge
-wrapper. See [UPGRADING.md](UPGRADING.md) for the procedure per installation
-method, and pin your version if you share a journal.
+wrapper — before any of them writes a record. If you share a journal, pin the
+version: an unpinned install moves on its own schedule and will break the very
+coordination this requires.
 
 A version mismatch now reports `record has an unknown or missing schema
 version` rather than naming an unrecognised field, so the failure says what it
@@ -88,9 +89,11 @@ The reasoning, including what an acceptance does *not* establish, is in
 
 ### Records say who wrote them
 
-- Every record carries `recorded_by` and `recorded_by_source`, derived from
-  `AGENTMARSHAL_ACTOR` or the invoking checkout's git identity, optionally
-  mapped through an `actors` table in `project.json`.
+- Records written by this version carry `recorded_by` and `recorded_by_source`,
+  derived from `AGENTMARSHAL_ACTOR` or the invoking checkout's git identity,
+  optionally mapped through an `actors` table in `project.json`. Where no
+  identity can be determined at all, both fields are **omitted rather than
+  guessed**; records written before this release do not carry them.
 - This is a **declaration, not authentication** — like `vendor` and `email`. It
   makes the honest case expressible and a false attribution require a second,
   explicit lie. See [ADR-0006](docs/adr/ADR-0006-actors-and-identity.md).
@@ -151,8 +154,8 @@ The reasoning, including what an acceptance does *not* establish, is in
 - Records written by this version carry `schema = 3`. Schemas 1 and 2 keep
   validating.
 - New record types: `amendment`, `acceptance`, `reopened`.
-- Fields added: `recorded_by`, `recorded_by_source` (all records);
-  `usage` (session records).
+- Fields added: `recorded_by`, `recorded_by_source` (any record, when an
+  identity is resolvable); `usage` (session records, optional).
 
 ## 0.1.0 — 2026-07-30
 
