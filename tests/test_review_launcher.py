@@ -2,6 +2,7 @@
 
 import json
 import subprocess
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -9,6 +10,14 @@ import pytest
 from agentmarshal.cli import main
 from agentmarshal.journal import review
 from agentmarshal.journal.records import read_records
+
+
+@pytest.fixture(autouse=True)
+def _isolated_temp_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    system_temp = Path(tempfile.gettempdir())
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+    monkeypatch.setattr(tempfile, "tempdir", None)
+    return system_temp
 
 
 def _git(repo: Path, *arguments: str) -> str:
@@ -117,20 +126,12 @@ def _verdict(
     return f"AGENTMARSHAL_VERDICT_BEGIN\n{json.dumps(data)}\nAGENTMARSHAL_VERDICT_END\n"
 
 
-def _kept_outputs() -> list[Path]:
-    import tempfile as _tempfile
-
-    return list(
-        Path(_tempfile.gettempdir()).glob("agentmarshal-rejected-verdict-*.txt")
-    )
+def _kept_outputs(tmp_path: Path) -> list[Path]:
+    return list(tmp_path.glob("agentmarshal-rejected-verdict-*.txt"))
 
 
-def _kept_findings_outputs() -> list[Path]:
-    import tempfile as _tempfile
-
-    return list(
-        Path(_tempfile.gettempdir()).glob("agentmarshal-verdict-findings-*.txt")
-    )
+def _kept_findings_outputs(tmp_path: Path) -> list[Path]:
+    return list(tmp_path.glob("agentmarshal-verdict-findings-*.txt"))
 
 
 def _run_review(commit: str) -> int:
@@ -155,12 +156,46 @@ def _run_review(commit: str) -> int:
     )
 
 
-def _assert_no_snapshot(repo: Path) -> None:
-    import tempfile as _tempfile
-
-    leftovers = list(Path(_tempfile.gettempdir()).glob("agentmarshal-review-*"))
+def _assert_no_snapshot(repo: Path, tmp_path: Path) -> None:
+    leftovers = list(tmp_path.glob("agentmarshal-review-*"))
     assert leftovers == []
     assert _git(repo, "worktree", "list", "--porcelain").count("worktree ") == 1
+
+
+def test_snapshot_assertion_is_isolated_and_still_detects_leaks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    _isolated_temp_directory: Path,
+) -> None:
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    unrelated = Path(
+        tempfile.mkdtemp(
+            prefix="agentmarshal-review-unrelated-",
+            dir=_isolated_temp_directory,
+        )
+    )
+    try:
+        _assert_no_snapshot(repo, tmp_path)
+
+        class LeakingTemporaryDirectory:
+            def __init__(self, *, prefix: str) -> None:
+                self.path = tempfile.mkdtemp(prefix=prefix)
+
+            def __enter__(self) -> str:
+                return self.path
+
+            def __exit__(self, *args: object) -> None:
+                return None
+
+        stub = _reviewer_stub(tmp_path, _verdict(commit, "approved", []))
+        monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+        monkeypatch.setattr(tempfile, "TemporaryDirectory", LeakingTemporaryDirectory)
+        assert main(_review_args(commit)) == 0
+
+        with pytest.raises(AssertionError):
+            _assert_no_snapshot(repo, tmp_path)
+    finally:
+        unrelated.rmdir()
 
 
 def _metadata_probe_reviewer_stub(tmp_path: Path, output: str) -> Path:
@@ -194,7 +229,7 @@ def test_snapshot_has_no_git_metadata_and_writes_stay_ephemeral(
 
     assert len(read_records(repo / ".agentmarshal" / "journal", "CR-001")) == 2
     assert not (repo / "reviewer-scratch.txt").exists()
-    _assert_no_snapshot(repo)
+    _assert_no_snapshot(repo, tmp_path)
 
 
 def test_review_of_commit_without_contract_fails_closed(
@@ -211,7 +246,7 @@ def test_review_of_commit_without_contract_fails_closed(
     assert main(_review_args(first_commit)) == 1
 
     assert len(read_records(repo / ".agentmarshal" / "journal", "CR-001")) == 1
-    _assert_no_snapshot(repo)
+    _assert_no_snapshot(repo, tmp_path)
 
 
 def test_snapshot_extraction_failure_leaves_no_record(
@@ -230,7 +265,7 @@ def test_snapshot_extraction_failure_leaves_no_record(
     assert main(_review_args(commit)) == 1
 
     assert len(read_records(repo / ".agentmarshal" / "journal", "CR-001")) == 1
-    _assert_no_snapshot(repo)
+    _assert_no_snapshot(repo, tmp_path)
 
 
 def test_reviewer_command_requires_explicit_command_no_bundled_vendor(
@@ -284,7 +319,7 @@ def test_review_uses_contract_from_reviewed_commit(
     prompt = prompt_output.read_text(encoding="utf-8")
     assert "Review task" in prompt
     assert "UNCOMMITTED CONTRACT CHANGE" not in prompt
-    _assert_no_snapshot(repo)
+    _assert_no_snapshot(repo, tmp_path)
 
 
 @pytest.mark.parametrize(
@@ -312,7 +347,7 @@ def test_review_records_stub_verdict(
     capsys.readouterr()
     assert main(["status", "CR-001"]) == 0
     assert "reviewed_commit=" in main_output(capsys)
-    _assert_no_snapshot(repo)
+    _assert_no_snapshot(repo, tmp_path)
 
 
 def main_output(capsys: pytest.CaptureFixture[str]) -> str:
@@ -352,7 +387,7 @@ def test_review_failure_leaves_no_record_or_snapshot(
 
     assert read_records(repo / ".agentmarshal" / "journal", "CR-001")
     assert len(read_records(repo / ".agentmarshal" / "journal", "CR-001")) == 1
-    _assert_no_snapshot(repo)
+    _assert_no_snapshot(repo, tmp_path)
 
 
 @pytest.mark.parametrize(
@@ -374,7 +409,7 @@ def test_review_rejects_unknown_task_or_commit_before_snapshot(
     assert main(arguments) == 1
 
     assert len(read_records(repo / ".agentmarshal" / "journal", "CR-001")) == 1
-    _assert_no_snapshot(repo)
+    _assert_no_snapshot(repo, tmp_path)
 
 
 def test_prompt_requests_human_readable_claims_and_lists_the_allowed_verdicts(
@@ -444,7 +479,6 @@ def test_rejected_verdict_keeps_the_reviewer_output(
 ) -> None:
     """A rejected verdict must not discard the analysis that was paid for."""
 
-    before = set(_kept_outputs())
     _repo, commit = _review_repo(tmp_path, monkeypatch)
     analysis = "the reviewer's reasoning that must survive"
     stub = _reviewer_stub(
@@ -480,7 +514,7 @@ def test_rejected_verdict_keeps_the_reviewer_output(
     message = capsys.readouterr().err
     assert "missing required field(s)" in message
     assert "reviewed_commit" in message and "findings" in message
-    kept = [path for path in _kept_outputs() if path not in before]
+    kept = _kept_outputs(tmp_path)
     try:
         assert len(kept) == 1, message
         assert str(kept[0]) in message
@@ -497,7 +531,6 @@ def test_unsupported_verdict_key_is_named(
 ) -> None:
     """An unknown key still fails closed, but the operator is told which one."""
 
-    before = set(_kept_outputs())
     _repo, commit = _review_repo(tmp_path, monkeypatch)
     payload = json.dumps(
         {
@@ -538,9 +571,8 @@ def test_unsupported_verdict_key_is_named(
 
     message = capsys.readouterr().err
     assert "unsupported field(s): confidence" in message
-    for path in _kept_outputs():
-        if path not in before:
-            path.unlink(missing_ok=True)
+    for path in _kept_outputs(tmp_path):
+        path.unlink(missing_ok=True)
 
 
 def test_record_validation_failure_also_keeps_the_output(
@@ -554,7 +586,6 @@ def test_record_validation_failure_also_keeps_the_output(
     often in practice, and it discarded the analysis as surely as a parse error.
     """
 
-    before = set(_kept_outputs())
     _repo, commit = _review_repo(tmp_path, monkeypatch)
     analysis = "reasoning that must survive a record-validation refusal"
     stub = _reviewer_stub(
@@ -586,7 +617,7 @@ def test_record_validation_failure_also_keeps_the_output(
     )
 
     message = capsys.readouterr().err
-    kept = [path for path in _kept_outputs() if path not in before]
+    kept = _kept_outputs(tmp_path)
     try:
         assert len(kept) == 1, message
         assert str(kept[0]) in message
@@ -603,7 +634,6 @@ def test_blocking_verdict_keeps_the_reasoning_behind_its_findings(
 ) -> None:
     """A record names findings by id; the claim itself lives only in the output."""
 
-    before = set(_kept_findings_outputs())
     _repo, commit = _review_repo(tmp_path, monkeypatch)
     analysis = "the readback opens the file and never reads it"
     stub = _reviewer_stub(
@@ -616,7 +646,7 @@ def test_blocking_verdict_keeps_the_reasoning_behind_its_findings(
     assert _run_review(commit) == 0
 
     captured = capsys.readouterr()
-    kept = [path for path in _kept_findings_outputs() if path not in before]
+    kept = _kept_findings_outputs(tmp_path)
     try:
         assert len(kept) == 1, captured.err
         assert str(kept[0]) in captured.err
@@ -636,7 +666,6 @@ def test_advisory_findings_on_an_approval_keep_the_reasoning_too(
 ) -> None:
     """An advisory finding is still a claim, and its reasoning is not in the record."""
 
-    before = set(_kept_findings_outputs())
     _repo, commit = _review_repo(tmp_path, monkeypatch)
     analysis = "worth doing later, not now"
     stub = _reviewer_stub(
@@ -648,7 +677,7 @@ def test_advisory_findings_on_an_approval_keep_the_reasoning_too(
     assert _run_review(commit) == 0
 
     captured = capsys.readouterr()
-    kept = [path for path in _kept_findings_outputs() if path not in before]
+    kept = _kept_findings_outputs(tmp_path)
     try:
         assert len(kept) == 1, captured.err
         assert analysis in kept[0].read_text(encoding="utf-8")
@@ -664,7 +693,6 @@ def test_a_clean_approval_keeps_nothing_and_says_nothing(
 ) -> None:
     """With no finding there is no claim to explain, and no file to leave behind."""
 
-    before = set(_kept_findings_outputs())
     _repo, commit = _review_repo(tmp_path, monkeypatch)
     stub = _reviewer_stub(
         tmp_path, "nothing to report\n" + _verdict(commit, "approved", [])
@@ -674,7 +702,7 @@ def test_a_clean_approval_keeps_nothing_and_says_nothing(
     assert _run_review(commit) == 0
 
     captured = capsys.readouterr()
-    kept = [path for path in _kept_findings_outputs() if path not in before]
+    kept = _kept_findings_outputs(tmp_path)
     try:
         assert kept == []
         assert "kept at" not in captured.err
