@@ -2,7 +2,7 @@
 schema = 1
 id = "CR-066"
 title = "The gate honours an acceptance, and says it is not an approval"
-scope = ["src/agentmarshal/journal/gate.py", "tests/test_gate.py", "docs/quickstart.md", "docs/overview.md"]
+scope = ["src/agentmarshal/journal/gate.py", "src/agentmarshal/journal/records.py", "tests/test_gate.py", "tests/test_acceptance.py", "docs/quickstart.md", "docs/overview.md"]
 acceptance = [
   "the gate passes its review check when the latest review of the candidate is non-approving and a valid acceptance of that exact commit exists",
   "the gate re-derives validity itself: the acceptance must name exactly the blocking findings of the latest review of that commit, and is refused when they differ in either direction",
@@ -11,6 +11,7 @@ acceptance = [
   "every other gate check is unchanged, including reviewer independence, which is still evaluated against the non-approving review",
   "with no acceptance and no approving review the gate refuses exactly as it does today",
   "the quickstart and overview describe the accepted path and state that it is not an approval",
+  "an acceptance record carrying a control character in a field the surfaces render inline is refused as invalid",
 ]
 +++
 
@@ -69,6 +70,14 @@ Two hazards belong specifically to this change:
 - **An acceptance quietly reading as an approval.** ADR-0007 forbids it, and the
   gate's output is the surface an operator watches most. A merge that happened
   over an objection must be legible as one in the transcript.
+
+  This includes the record's own contents. The accepting party and the finding
+  ids are rendered inline by the gate, by `status` and by `report`, so a value
+  carrying a newline could add lines to that output — including a line reading
+  as an approval. In a single-operator project that is self-deception; in the
+  multi-operator setting ADR-0006 describes, it is one party forging what
+  another reads. Refusing such a record is the fix, because a value that can
+  forge a transcript is not a valid identity.
 
 The following are **not** defects in this task and must not be guarded against:
 
