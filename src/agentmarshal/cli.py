@@ -25,6 +25,7 @@ from agentmarshal.journal.open_task import (
     open_task,
     scope_warnings,
 )
+from agentmarshal.journal.prune import PruneError, delete_branches, report_branches
 from agentmarshal.journal.records import (
     JournalRecordError,
     create_amendment_record,
@@ -174,6 +175,17 @@ def _build_parser() -> argparse.ArgumentParser:
         "report", help="summarize task delegation economics"
     )
     report_parser.add_argument("--task", help="task identifier")
+    prune_parser = subparsers.add_parser(
+        "prune-branches", help="report merged local branches for finished tasks"
+    )
+    prune_parser.add_argument(
+        "--base",
+        default="HEAD",
+        help="ref used to judge merged branches (default: current HEAD)",
+    )
+    prune_parser.add_argument(
+        "--delete", action="store_true", help="delete the branches reported eligible"
+    )
     migrate_parser = subparsers.add_parser(
         "migrate-journal", help="convert a v1 journal into a new v2 journal"
     )
@@ -557,6 +569,38 @@ def _run_status(task_id: str | None, stderr: TextIO) -> int:
     return 0
 
 
+def _run_prune_branches(args: argparse.Namespace, stderr: TextIO) -> int:
+    project_root = find_project_root(Path.cwd())
+    if project_root is None:
+        print(
+            "agentmarshal prune-branches must be run inside an initialized project",
+            file=stderr,
+        )
+        return 1
+    try:
+        report = report_branches(project_root, args.base)
+        for item in report:
+            label = "eligible" if item.eligible else "skipped"
+            print(f"{label}: {item.branch} ({item.reason})")
+        refused = False
+        if args.delete:
+            for deletion in delete_branches(project_root, report):
+                if deletion.deleted:
+                    print(f"deleted: {deletion.branch}")
+                    continue
+                # Asked to delete and did not: say so, and do not report
+                # success. git refusing is a disagreement worth surfacing.
+                refused = True
+                print(
+                    f"refused: {deletion.branch} ({deletion.detail})",
+                    file=stderr,
+                )
+    except PruneError as error:
+        print(f"prune-branches: {error}", file=stderr)
+        return 1
+    return 1 if refused else 0
+
+
 def _run_migrate_journal(
     source: Path, target: Path, stderr: TextIO, *, lenient: bool = False
 ) -> int:
@@ -710,6 +754,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_record_session(args, sys.stderr)
     if args.command == "report":
         return _run_report(args.task, sys.stderr)
+    if args.command == "prune-branches":
+        return _run_prune_branches(args, sys.stderr)
     if args.command == "migrate-journal":
         return _run_migrate_journal(
             args.source, args.target, sys.stderr, lenient=args.lenient
