@@ -53,10 +53,11 @@ abandon the task or to keep re-running until a verdict happened to approve.
 - An accepted task never reads as an approved one. The gate says
   `accepted over findings … by …; not an approving review`, `status` says it in
   the task summary, and `report` marks the task `decision=accepted-over-findings`.
-- Accepting your own work is permitted, and labelled `self-accepted` wherever
-  the task is reported. Where the accepted commit is not readable in the current
-  checkout the label cannot be derived, and the surfaces say that rather than
-  falling silent.
+- Accepting your own work is permitted, and `status` labels it `self-accepted`
+  — in the task summary and in the record trail. Where the accepted commit is
+  not readable in the current checkout the label cannot be derived, and `status`
+  says that rather than falling silent. `report` distinguishes an accepted task
+  from an approved one but does not carry the self-acceptance label.
 
 The reasoning, including what an acceptance does *not* establish, is in
 [ADR-0007](docs/adr/ADR-0007-operator-acceptance.md).
