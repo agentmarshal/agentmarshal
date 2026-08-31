@@ -3,6 +3,11 @@
 Status: Accepted
 Date: 2026-08-31
 
+This ADR records a decision. The mechanism it describes is **not implemented by
+this document** — the record type, the command and the gate's handling of them
+are built in a following task. Statements below are in the present tense because
+that is how a decision is written, not because the behaviour ships with it.
+
 ## Context
 
 The gate merges an implementation candidate only when the latest review of that
@@ -126,9 +131,10 @@ not a formality.
 *override authority* among the policies a project may configure, with the clause
 "and never the actor who implemented it", and its table set the default at "no
 override exists" — qualified, in the same row, as holding *until proposal 007 is
-built*. Proposal 007 is now built, so this ADR replaces that default: an
-acceptance exists, and an acceptance by a writer of the candidate is permitted
-and always visible.
+built*. This ADR is the decision proposal 007 was waiting for, so it replaces
+that default: an acceptance exists as a decided design, and an acceptance by a
+writer of the candidate is permitted and always visible. The default changes
+here; the code follows.
 
 The clause itself is not discarded. It survives as the **policy** ADR-0006
 describes: a project that wants the stricter rule adopts it when that layer is

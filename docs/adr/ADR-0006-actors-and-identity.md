@@ -114,7 +114,7 @@ Each default is stated, because "defaults unchanged" is otherwise ambiguous:
 | Policy | Default | What holds today |
 |---|---|---|
 | distinct-actor review | **off** | the existing declared-email comparison remains the only check |
-| override authority | **no override exists** | the gate merges only on `approved`; nothing changes until proposal 007 is built |
+| override authority | **no override exists** *(superseded by [ADR-0007](ADR-0007-operator-acceptance.md))* | the gate merges only on `approved`; nothing changes until proposal 007 is built |
 | end-to-end by one actor | **permitted** | unchanged |
 
 Existing adopters run one operator and must not be broken by an ADR. A policy
