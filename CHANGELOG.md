@@ -35,10 +35,10 @@ is.
 
 ### The operator can accept work over findings
 
-The gate merged an implementation candidate only on an `approved` verdict — the
+The gate passed an implementation candidate only on an `approved` verdict — the
 journal-only lane for openings and completions has never required review — which
 meant the acceptance decision belonged to the reviewer while the operator
-carried the accountability. When review does not converge — remarks changing from round to
+carried the accountability. (The gate decides; the provider performs the merge.) When review does not converge — remarks changing from round to
 round while the verdict stays `changes_required` — the only exits were to
 abandon the task or to keep re-running until a verdict happened to approve.
 
@@ -131,10 +131,13 @@ The reasoning, including what an acceptance does *not* establish, is in
 
 ### Robustness
 
-- `init` and `open` read back what they wrote and fail with the path and the
-  underlying error instead of reporting success on a journal nobody can read —
-  reported by an adopter on Windows, where a task directory inherited a sandbox's
-  ownership.
+- `init` reads back the project file it wrote, and `open` reads back the
+  contract and the record it wrote; either fails with the path and the
+  underlying error instead of reporting success on something nobody can read.
+  Reported by an adopter on Windows, where a task directory inherited a
+  sandbox's ownership. The outbox README is scaffolded best-effort and is not
+  part of that check — a project that could not write it is still initialized,
+  and `init` says so.
 - `find_git_root` refuses a repository path git reports as non-UTF-8 through the
   project error type instead of raising a decode error out of a function
   contracted to return a path.
@@ -163,5 +166,9 @@ The reasoning, including what an acceptance does *not* establish, is in
 
 First public release. The governed loop end to end: contracts with declared
 scope, append-only SHA-bound records, state as a projection, and a
-provider-agnostic gate that passes fail-closed only when scope, an independent
-review, pipeline attestation and journal integrity all hold.
+provider-agnostic gate that decides fail-closed.
+
+An implementation candidate passes only when scope, an independent review,
+pipeline attestation and journal integrity all hold. A journal-only transaction
+— an opening or a completion — takes a deterministic lane and needs no review,
+since it carries no work to review.
