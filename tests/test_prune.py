@@ -328,3 +328,50 @@ def test_git_worktree_removal_refusal_is_reported(
     assert f"eligible: {locked}" in output.out
     assert f"refused worktree: {locked}" in output.err
     assert locked in _worktree_paths(repo)
+
+
+def test_the_main_worktree_is_never_offered_even_from_inside_a_linked_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """git lists the main worktree first; the invoking directory is not it.
+
+    This is the case the command exists for — proposal 010's executor runs from
+    inside a worktree — and taking the invocation root for "main" would offer
+    the real main worktree for removal.
+    """
+
+    repo = _repo(tmp_path, monkeypatch)
+    _git(repo, "branch", "feat/CR-001-work")
+    linked = tmp_path / "linked"
+    _git(repo, "worktree", "add", "--quiet", str(linked), "feat/CR-001-work")
+    monkeypatch.chdir(linked)
+
+    assert main(["prune"]) == 0
+
+    output = capsys.readouterr().out
+    assert f"skipped: {repo} (branch master; main worktree)" in output
+    assert f"eligible: {repo}" not in output
+
+
+def test_a_worktree_hiding_untracked_files_is_not_called_clean(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """status.showUntrackedFiles=no would otherwise make it read as clean.
+
+    Untracked files in a worktree exist nowhere else, which is the whole reason
+    a worktree carries a cleanliness condition its branch does not.
+    """
+
+    repo = _repo(tmp_path, monkeypatch)
+    _git(repo, "branch", "feat/CR-001-work")
+    linked = tmp_path / "linked"
+    _git(repo, "worktree", "add", "--quiet", str(linked), "feat/CR-001-work")
+    _git(repo, "config", "status.showUntrackedFiles", "no")
+    (linked / "notes.txt").write_text("work that exists nowhere else", encoding="utf-8")
+
+    assert main(["prune"]) == 0
+
+    output = capsys.readouterr().out
+    assert f"skipped: {linked}" in output
+    assert "worktree is dirty" in output
+    assert f"eligible: {linked}" not in output

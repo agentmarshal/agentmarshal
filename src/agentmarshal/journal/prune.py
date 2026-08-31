@@ -202,9 +202,15 @@ def report_worktrees(project_root: Path) -> list[WorktreeDisposition]:
     journal_root = project_root / ".agentmarshal" / "journal"
     states: dict[str, str] = {}
     report: list[WorktreeDisposition] = []
-    root = project_root.resolve()
-    for path, branch in _worktrees(project_root):
-        if path.resolve() == root:
+    worktrees = _worktrees(project_root)
+    # git lists the main worktree first, always. Taking the *invoking* directory
+    # for it would be wrong precisely where this command is most useful: run
+    # from inside a linked worktree — the executor case proposal 010 describes —
+    # that reading calls the linked one main and offers the real main worktree
+    # for removal.
+    main = worktrees[0][0].resolve() if worktrees else None
+    for path, branch in worktrees:
+        if main is not None and path.resolve() == main:
             report.append(WorktreeDisposition(path, branch, False, "main worktree"))
             continue
         if branch is None:
@@ -224,7 +230,23 @@ def report_worktrees(project_root: Path) -> list[WorktreeDisposition]:
                 WorktreeDisposition(path, branch, False, f"task {task_id} is {state}")
             )
             continue
-        if _run_git(path, ["status", "--porcelain"]):
+        # --untracked-files=all overrides status.showUntrackedFiles: a
+        # repository configured to hide untracked files would otherwise read as
+        # clean, and untracked files are exactly the data that exists nowhere
+        # else. A worktree whose directory has gone is reported, not fatal —
+        # git lists such entries, and one stale entry must not cost the report.
+        try:
+            dirty = bool(
+                _run_git(path, ["status", "--porcelain", "--untracked-files=all"])
+            )
+        except PruneError as error:
+            report.append(
+                WorktreeDisposition(
+                    path, branch, False, f"cannot be inspected: {error}"
+                )
+            )
+            continue
+        if dirty:
             report.append(
                 WorktreeDisposition(
                     path, branch, False, f"task {task_id} is done but worktree is dirty"
