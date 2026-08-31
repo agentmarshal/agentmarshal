@@ -80,7 +80,8 @@ Worth knowing:
   [ADR-0007](docs/adr/ADR-0007-operator-acceptance.md) before using it — an
   acceptance is evidence that someone took a decision, and it is meant to cost
   something.
-- `agentmarshal prune` clears the branches and worktrees of finished tasks.
+- `agentmarshal prune` reports the branches and worktrees of finished tasks;
+  `--delete` removes the ones it listed as eligible.
 - If an agent runs the rails on your behalf, set `AGENTMARSHAL_ACTOR` in its
   session environment. Without it the journal cannot tell the agent from the
   human whose git identity it uses.

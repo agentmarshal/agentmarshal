@@ -1,6 +1,8 @@
 # Changelog
 
-Notable changes to AgentMarshal. Dates are release dates; the journal under
+Notable changes to AgentMarshal. Dates are **PyPI upload dates**, checkable
+against <https://pypi.org/project/agentmarshal/#history> — a git tag carries a
+local timestamp that can read a day either side of it. The journal under
 `.agentmarshal/` carries the per-task evidence behind every entry.
 
 This project describes what it does and not what it intends to do. Where a
