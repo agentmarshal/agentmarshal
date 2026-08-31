@@ -10,23 +10,26 @@ New here? [overview.md](overview.md) explains the idea and the vocabulary
 (**host repo**, task, contract, scope, gate, …) in a page. This guide is the
 hands-on companion.
 
-Requirements: **Python ≥ 3.12** and **git** on your `PATH`.
+Requirements: **Python ≥ 3.12** and **git** on your `PATH`. Until 0.2.0 is
+published you also need **[uv](https://docs.astral.sh/uv/)**, because the only
+way to get this version is to build it from source.
 
 ## Install
 
-From an AgentMarshal 0.2.0 source checkout, build and install the same kind of
-artifact used to verify this guide:
+Version 0.2.0 is **not yet on the package index**, so it is installed from a
+source checkout. These are the exact commands this guide was verified with:
 
 ```sh
 uv build
-python -m pip install dist/agentmarshal-0.2.0-py3-none-any.whl
-agentmarshal --version
+uv venv .venv
+uv pip install dist/agentmarshal-0.2.0-py3-none-any.whl
+./.venv/bin/agentmarshal --version
 ```
 
-Version 0.2.0 is not yet on the package index. After it is published,
-`python -m pip install agentmarshal==0.2.0` installs the matching release;
-plain `pip install agentmarshal` installs the latest published release, which
-may not be the version described here.
+After 0.2.0 is published, `pip install agentmarshal==0.2.0` installs the same
+release and uv is no longer needed. Plain `pip install agentmarshal` installs
+the latest published release, which may not be the version described here — pin
+it if you share a journal, and see [UPGRADING.md](../UPGRADING.md) for why.
 
 AgentMarshal is a single, dependency-free CLI. It stores everything in git
 under `.agentmarshal/`, so there is no server and no database.

@@ -112,8 +112,9 @@ task is already closed.
 - **Gate** — `agentmarshal gate`: the provider-agnostic merge authority. Passes
   fail-closed only when every check holds.
 - **Lane** — the gate recognizes two kinds of change: a **journal-only** (a.k.a.
-  deterministic) transaction — opening or completion — needs no review; an
-  **implementation** candidate takes the full review-bound lane.
+  deterministic) transaction — one that touches nothing outside `.agentmarshal/`,
+  such as an opening, a completion, a contract amendment or a reopening — needs
+  no review; an **implementation** candidate takes the full review-bound lane.
 - **Merge authority** — the gate *decides*; the provider *merges*. A host
   wrapper (e.g. `am-merge` / a GitHub Action) runs the gate and, on a pass,
   performs the merge.
