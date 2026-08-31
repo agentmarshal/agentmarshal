@@ -43,10 +43,16 @@ one that named an unrecognised field instead.
 This is the method to prefer if you share a journal: an upgrade happens when you
 decide it does.
 
-**Unpinned (`pip install agentmarshal`)** — this is the case that needs care.
-An unpinned install moves to the newest release **whenever it is next
-installed**, which on different machines is different days. That is exactly the
-uncoordinated cutover the format break cannot tolerate.
+**Unpinned (`pip install agentmarshal`)** — this is the case that needs care,
+and not for the reason it first appears. An unpinned install does not reliably
+move: `pip install agentmarshal` where 0.1.0 is already present keeps it, since
+the requirement is already satisfied. It moves on a fresh environment, on
+`pip install -U`, or when a container is rebuilt.
+
+So the fleet does not upgrade together and does not stay together either — it
+**diverges**, on each machine's own schedule, which is worse for a format break
+than either extreme. Whichever party rebuilds first starts writing records the
+others cannot read.
 
 Either pin now:
 
