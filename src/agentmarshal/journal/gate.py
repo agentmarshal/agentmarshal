@@ -356,6 +356,19 @@ def run_gate(
                 f"PASS: accepted over findings {findings} by {accepted_by}; "
                 "not an approving review"
             )
+        elif acceptance is not None and latest is not None and not approved:
+            # An operator who has just recorded an acceptance and sees only
+            # "latest review is approved: FAIL" learns nothing about why the
+            # mechanism they used did not count. Findings can grow between an
+            # acceptance and a gate run, and that is the usual reason.
+            outstanding = sorted(set(cast(list[str], latest["findings"])))
+            accepted = sorted(set(cast(list[str], acceptance["findings"])))
+            check(
+                False,
+                f"acceptance of {resolved_commit[:12]} does not cover the latest "
+                f"review's findings (outstanding: {', '.join(outstanding)}; "
+                f"accepted: {', '.join(accepted)})",
+            )
         else:
             check(
                 approved,

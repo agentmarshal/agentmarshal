@@ -274,7 +274,9 @@ def test_gate_re_derives_acceptance_findings_exactly(
     passed, output = _run(repo, head, base, head)
 
     assert not passed
-    assert f"FAIL: latest review of {head[:12]} is approved" in output
+    # The acceptance exists but does not cover what is outstanding, and the
+    # refusal says so rather than reporting only a missing approval.
+    assert f"FAIL: acceptance of {head[:12]} does not cover the latest" in output
     assert "accepted over findings" not in output
 
 
@@ -290,7 +292,9 @@ def test_gate_refuses_acceptance_made_stale_by_a_later_review(
     passed, output = _run(repo, head, base, head)
 
     assert not passed
-    assert f"FAIL: latest review of {head[:12]} is approved" in output
+    # The acceptance exists but does not cover what is outstanding, and the
+    # refusal says so rather than reporting only a missing approval.
+    assert f"FAIL: acceptance of {head[:12]} does not cover the latest" in output
     assert "accepted over findings" not in output
 
 
