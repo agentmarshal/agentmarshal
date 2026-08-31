@@ -45,7 +45,7 @@ def commit_empty(repo: Path) -> None:
 
 
 def test_version_is_declared() -> None:
-    assert agentmarshal.__version__ == "0.1.0"
+    assert agentmarshal.__version__ == "0.2.0"
 
 
 def test_console_version_prints_package_version() -> None:

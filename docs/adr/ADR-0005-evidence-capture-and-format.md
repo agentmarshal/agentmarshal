@@ -22,6 +22,15 @@ Date: 2026-07-28
 > candidate's added content, and a provider-neutral `agentmarshal leak-scan`
 > command is available for any CI. It is best-effort and never blocks a merge;
 > the mandatory block-on-leak enforcement above remains roadmap.
+>
+> **Status in 0.2.0.** The capture-policy parser exists, but no policy-driven
+> supplementary-artifact writer or private store does; the in-toto Statement,
+> DSSE/Sigstore output, and public backfill command also remain unshipped.
+> Reviewer output is now preserved best-effort in a temporary file when a
+> verdict is refused or names findings, outside that durable capture design.
+> The lifecycle has also gained append-only `amendment`, `acceptance`, and
+> `reopened` records; reopening makes the historical immutability rule in
+> Decision 3 no longer the current lifecycle rule.
 
 ## Context
 

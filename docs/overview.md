@@ -55,7 +55,8 @@ Two properties make that trustworthy:
 ```
 
 - You **open** a task with a declared **scope**. Its contract is committed
-  first, so it is in the base before any work builds on it.
+  first, so it is in the base before any work builds on it. `brief` delivers
+  that contract to an implementer; `amend` records a later contract repair.
 - You **implement** within scope on a branch, and an **independent** reviewer
   records a verdict for the exact commit.
 - If that latest verdict is non-approving, an operator may record acceptance of
@@ -66,6 +67,9 @@ Two properties make that trustworthy:
   It is provider-agnostic: it never performs the merge itself; the provider
   does, gated on the gate's answer.
 - **Completion** re-runs the gate and writes the durable `completed` record.
+- **Reopening** appends a reason and projects a completed task back to `open`;
+  it does not erase the earlier completion. `prune` reports removable local
+  branches and worktrees after work is done.
 
 The gate reads the contract and prior task state from the **base** side, never
 from the candidate, so a change can never widen its own scope or hide that its
@@ -85,8 +89,8 @@ task is already closed.
 - **Scope** — the paths a task is allowed to change. The gate refuses a diff
   that touches anything outside it.
 - **Record** — one append-only JSON evidence file: `opened`, `review`,
-  `acceptance`, `completed`, `abandoned`, or a `session` (measurement). Written
-  once, never edited.
+  `acceptance`, `amendment`, `completed`, `reopened`, `abandoned`, or a
+  `session` (measurement). Written once, never edited.
 - **Projection / state** — a task's status computed from its records, never
   stored.
 - **Review** — a recorded verdict (`approved`, `changes_required`, …) for an
@@ -108,31 +112,34 @@ task is already closed.
 - **Gate** — `agentmarshal gate`: the provider-agnostic merge authority. Passes
   fail-closed only when every check holds.
 - **Lane** — the gate recognizes two kinds of change: a **journal-only** (a.k.a.
-  deterministic) transaction — opening or completion — needs no review; an
-  **implementation** candidate takes the full review-bound lane.
+  deterministic) transaction — one that touches nothing outside `.agentmarshal/`,
+  such as an opening, a completion, a contract amendment or a reopening — needs
+  no review; an **implementation** candidate takes the full review-bound lane.
 - **Merge authority** — the gate *decides*; the provider *merges*. A host
   wrapper (e.g. `am-merge` / a GitHub Action) runs the gate and, on a pass,
   performs the merge.
 
 ## Direction (roadmap)
 
-The design is broader than the shipped 0.1.0 release; the honest boundary is
-stated in the ADRs and [migration-v1-to-v2.md](migration-v1-to-v2.md). What is
-designed but **not active in 0.1.0**, in rough order (features land in later
-releases — `agentmarshal --version` shows yours):
+The design is broader than the shipped 0.2.0 repository version; the honest
+boundary is stated in the ADRs and
+[migration-v1-to-v2.md](migration-v1-to-v2.md). What is designed but **not
+active in 0.2.0**, in rough order (features land in later releases —
+`agentmarshal --version` shows yours):
 
 - **Verifiable attestation** — projecting records to an in-toto Statement and
   signing it (DSSE / Sigstore), so provenance is cryptographically checkable,
   not just recorded. Adjacent to (not a claim of) SLSA Source; not yet emitted.
-- **Capture policy** — token-economics/session records already accrue in 0.1.0
+- **Capture policy** — token-economics/session records accrue in 0.2.0
   (`record-session` / `report`). What is roadmap is the *capture policy* that
   governs retaining heavier supplementary evidence — full review and prompt
-  text, raw session transcripts — public or in a private store: in 0.1.0
-  `capture.py` carries the policy parser and a leak-scan primitive but does not
-  yet retain those artifacts.
-- **Leak-scan enforcement** — an advisory merge-time leak-scan that warns on
-  possible leaks in a candidate's additions (with a `leak-scan` command) landed
-  *after* 0.1.0; making a block-on-leak mandatory is further roadmap. It is
+  text, raw session transcripts — public or in a private store. In 0.2.0 the
+  policy parser exists but no policy-driven writer or private store retains
+  those artifacts. Reviewer output with findings is kept separately in a
+  best-effort temporary file; that is not policy-governed durable capture.
+- **Mandatory leak-scan enforcement** — 0.2.0 ships a standalone `leak-scan`
+  command and an advisory merge-time scan that warns on possible leaks in a
+  candidate's additions. Making a match block is roadmap. The scan is
   best-effort by design (ADR-0005) — never a guarantee.
 - **Contract-extension RFC** — required machine-readable acceptance criteria
   plus a threat-model field, so every merged task doubles as an evaluation
