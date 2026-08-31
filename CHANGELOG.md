@@ -8,7 +8,7 @@ local timestamp that can read a day either side of it. The journal under
 This project describes what it does and not what it intends to do. Where a
 capability is partial, the entry says so.
 
-## 0.2.0 — unreleased
+## 0.2.0 — 2026-09-01
 
 The headline is that the operator, not the reviewer, now owns the acceptance
 decision — and that a task's lifecycle has a way back. The per-task evidence for
