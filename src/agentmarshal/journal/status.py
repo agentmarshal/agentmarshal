@@ -22,6 +22,7 @@ _RECORD_TYPE_STATES: Mapping[str, str | None] = {
     "amendment": None,
     "completed": "done",
     "abandoned": "abandoned",
+    "reopened": "open",
 }
 _TERMINAL_RECORD_TYPES = frozenset({"completed", "abandoned"})
 
@@ -52,10 +53,16 @@ def project_status(records: Sequence[Mapping[str, object]]) -> str:
             raise TaskStatusError(f"record has no status projection: {record_type!r}")
         # Measurements are not lifecycle (ADR-0005 Decision 3): a session
         # record projects to no state and may accrue after a terminal
-        # record. Any other record type after a terminal one is a
-        # lifecycle mutation of a closed task and stays forbidden.
-        if has_terminal_record and record_type != "session":
+        # record. Reopening is the sole lifecycle mutation admitted after
+        # completion; all work records remain forbidden until it occurs.
+        if has_terminal_record and record_type not in {"session", "reopened"}:
             raise TaskStatusError("task has a lifecycle record after a terminal record")
+        if record_type == "reopened":
+            if not has_terminal_record:
+                raise TaskStatusError("task has a reopened record while it is open")
+            if state != "done":
+                raise TaskStatusError("an abandoned task cannot be reopened")
+            has_terminal_record = False
         if record_type == "opened":
             if has_opened_record:
                 raise TaskStatusError("task records contain multiple opened records")

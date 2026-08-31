@@ -1105,3 +1105,31 @@ def test_gate_judges_the_latest_acceptance_and_does_not_hunt_for_a_fitting_one(
     assert not passed
     assert "does not cover the latest" in output
     assert "accepted over findings" not in output
+
+
+def test_gate_sees_a_reopening_and_lets_work_land_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Closed-ness at base is the latest lifecycle record, not a terminal one.
+
+    A task completed and then reopened projects as open, and the gate must
+    agree — otherwise the reopening would be a projection with no effect and
+    every candidate would still be refused.
+    """
+
+    repo, _base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    journal = repo / ".agentmarshal" / "journal"
+    write_record(
+        journal, "CR-001", create_completed_record("CR-001", "0.1.0", "0" * 40)
+    )
+    assert main(["reopen", "--task", "CR-001", "--reason", "not usable"]) == 0
+    _git(repo, "add", ".agentmarshal")
+    _git(repo, *_WRITER, "commit", "--quiet", "-m", "close and reopen CR-001")
+    base = _git(repo, "rev-parse", "HEAD")
+    head = _implement(repo, "src/module.py")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    assert passed, output
+    assert "PASS: task CR-001 is not closed at base" in output

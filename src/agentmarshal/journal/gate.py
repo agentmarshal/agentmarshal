@@ -256,10 +256,20 @@ def run_gate(
     # passes while work merged onto an already-closed task is refused.
     task_records_prefix = f"{_JOURNAL_PREFIX}tasks/{task_id}/records/"
     task_dir_prefix = f"{_JOURNAL_PREFIX}tasks/{task_id}/"
-    closed_at_base = any(
-        path.startswith(task_records_prefix)
-        and (path.endswith("-completed.json") or path.endswith("-abandoned.json"))
+    # Closed-ness is the *latest* lifecycle record at base, not the presence of
+    # a terminal one: a task may be reopened after completion (CR-067), and a
+    # check that stopped at "a -completed.json exists" would refuse every
+    # candidate on a task the projection calls open. Record identifiers are
+    # monotonic and lead the file name, so the latest is the greatest name and
+    # this stays a comparison over names — no record is read here.
+    lifecycle_at_base = sorted(
+        path
         for path in base_tree
+        if path.startswith(task_records_prefix)
+        and path.endswith(("-completed.json", "-abandoned.json", "-reopened.json"))
+    )
+    closed_at_base = bool(lifecycle_at_base) and not lifecycle_at_base[-1].endswith(
+        "-reopened.json"
     )
     # A task closed at base still admits measurements, but only a strictly
     # additive candidate confined to this task's own journal subtree that
