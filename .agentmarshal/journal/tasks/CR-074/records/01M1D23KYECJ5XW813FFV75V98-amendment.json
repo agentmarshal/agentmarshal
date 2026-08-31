@@ -1,0 +1,11 @@
+{
+  "created_at": "2026-08-31T23:22:40.462149Z",
+  "reason": "tests/test_smoke.py asserts the reported version and fails on the bump. The scope was drawn from the documents and the version constants without noticing the test that pins them; the implementer stopped at the boundary and reported it rather than editing outside scope.",
+  "record_type": "amendment",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "schema": 3,
+  "source": "live",
+  "task": "CR-074",
+  "tool_version": "0.1.0"
+}
