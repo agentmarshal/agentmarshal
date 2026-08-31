@@ -16,6 +16,16 @@ Three rules this module encodes:
   is a best-effort safeguard, never authorization to publish: callers stay
   private-by-default regardless of what the scan does or does not find.
 
+The leak scan defends additions in a candidate before they are stored or
+published. It does not defend content already in the tree, removed content, or
+any other publication path. It is best-effort by design (ADR-0005): no pattern
+list can enumerate every secret, so a clean scan can never be permission to
+publish. Callers remain private-by-default regardless of the result.
+
+For the policy parsers, ``project.json`` is operator input read from a trusted
+tree, not contributor input. The gate reads it from the base side for exactly
+that reason.
+
 This module is pure policy: it writes nothing and stores nothing.
 """
 
