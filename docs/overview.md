@@ -26,8 +26,10 @@ project's whole governance history is committed files under `.agentmarshal/`.
 
 Two properties make that trustworthy:
 
-- **Records are append-only and SHA-bound.** A review names the exact commit
-  it approved. You cannot retroactively edit a verdict; you can only append.
+- **Records are append-only and SHA-bound.** A review names the exact commit it
+  assessed, and an operator acceptance names the exact commit and blocking
+  findings accepted over. You cannot retroactively edit either; you can only
+  append.
 - **State is a projection, never a stored field.** A task's status (`open`,
   `done`, `abandoned`) is *computed* from its records. Nothing ever writes
   `status: done` by hand, so the status cannot lie about the evidence.
@@ -56,6 +58,10 @@ Two properties make that trustworthy:
   first, so it is in the base before any work builds on it.
 - You **implement** within scope on a branch, and an **independent** reviewer
   records a verdict for the exact commit.
+- If that latest verdict is non-approving, an operator may record acceptance of
+  that exact commit over exactly its blocking findings. The gate re-checks that
+  correspondence when it runs. Acceptance substitutes only for an approving
+  verdict; it is **not an approving review**.
 - The **gate** — the merge authority — reads git and the journal and decides.
   It is provider-agnostic: it never performs the merge itself; the provider
   does, gated on the gate's answer.
@@ -79,12 +85,15 @@ task is already closed.
 - **Scope** — the paths a task is allowed to change. The gate refuses a diff
   that touches anything outside it.
 - **Record** — one append-only JSON evidence file: `opened`, `review`,
-  `completed`, `abandoned`, or a `session` (measurement). Written once, never
-  edited.
+  `acceptance`, `completed`, `abandoned`, or a `session` (measurement). Written
+  once, never edited.
 - **Projection / state** — a task's status computed from its records, never
   stored.
 - **Review** — a recorded verdict (`approved`, `changes_required`, …) for an
   exact commit, carrying the reviewer's identity.
+- **Acceptance** — an operator's recorded decision to ship an exact commit over
+  all blocking findings in its latest non-approving review. It is not an
+  approval and does not bypass reviewer independence or any other gate check.
 - **Reviewer independence** — the gate requires the recorded reviewer's email to
   differ from the commit's authors/committers, and refuses the merge otherwise.
   It is a comparison of *declared* identities: nothing establishes that the

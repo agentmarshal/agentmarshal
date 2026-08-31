@@ -17,6 +17,7 @@ import json
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 from agentmarshal.journal.capture import (
     CaptureError,
@@ -323,19 +324,45 @@ def run_gate(
             else f"paths outside contract scope: {', '.join(sorted(outside))}",
         )
 
+        records = read_records(journal_root, task_id)
         reviews = [
             record
-            for record in read_records(journal_root, task_id)
+            for record in records
             if record.get("record_type") == "review"
             and record.get("reviewed_commit") == resolved_commit
         ]
         latest = reviews[-1] if reviews else None
-        check(
-            latest is not None and latest.get("verdict") == "approved",
-            f"latest review of {resolved_commit[:12]} is approved"
-            if latest is not None
-            else f"no review record for {resolved_commit[:12]}",
-        )
+        approved = latest is not None and latest.get("verdict") == "approved"
+        acceptances = [
+            record
+            for record in records
+            if record.get("record_type") == "acceptance"
+            and record.get("accepted_commit") == resolved_commit
+        ]
+        acceptance = acceptances[-1] if acceptances else None
+        valid_acceptance: tuple[str, list[str]] | None = None
+        if latest is not None and not approved and acceptance is not None:
+            review_findings = cast(list[str], latest["findings"])
+            acceptance_findings = cast(list[str], acceptance["findings"])
+            if set(acceptance_findings) == set(review_findings):
+                valid_acceptance = (
+                    cast(str, acceptance["accepted_by"]),
+                    acceptance_findings,
+                )
+        if valid_acceptance is not None:
+            accepted_by, accepted_findings = valid_acceptance
+            findings = ", ".join(accepted_findings)
+            lines.append(
+                f"PASS: accepted over findings {findings} by {accepted_by}; "
+                "not an approving review"
+            )
+        else:
+            check(
+                approved,
+                f"latest review of {resolved_commit[:12]} is approved"
+                if latest is not None
+                else f"no review record for {resolved_commit[:12]}",
+            )
 
         if latest is not None:
             reviewer = latest.get("reviewer")
