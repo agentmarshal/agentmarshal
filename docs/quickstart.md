@@ -196,6 +196,15 @@ git commit -m "open CR-001: add a greeting helper"
 BASE=$(git rev-parse HEAD)   # the base the work is gated against
 ```
 
+Deliver the complete governed task to the implementer through the briefing
+command. It includes the declared scope and acceptance criteria, the rules the
+tool enforces, and the contract's prose boundaries verbatim. The output is only
+the briefing, so it can be piped into whichever agent you use:
+
+```sh
+agentmarshal brief --task CR-001 | some-agent
+```
+
 ### 3. Do the work
 
 Branch, make the change **within the declared scope**, and commit:

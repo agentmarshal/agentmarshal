@@ -12,6 +12,7 @@ from typing import TextIO, cast
 
 from agentmarshal import __version__
 from agentmarshal.doctor import run_doctor
+from agentmarshal.journal.brief import build_brief
 from agentmarshal.journal.capture import CaptureError, scan_diff_for_leaks
 from agentmarshal.journal.complete import (
     LifecycleError,
@@ -71,6 +72,10 @@ def _build_parser() -> argparse.ArgumentParser:
         default=[],
         help="path included in the task scope (repeatable)",
     )
+    brief_parser = subparsers.add_parser(
+        "brief", help="print an open task's implementer briefing"
+    )
+    brief_parser.add_argument("--task", required=True, help="task identifier")
     status_parser = subparsers.add_parser("status", help="show journal task status")
     status_parser.add_argument("task_id", nargs="?", help="task identifier")
     review_parser = subparsers.add_parser(
@@ -267,6 +272,23 @@ def _run_open(title: str, scope: list[str], stderr: TextIO) -> int:
         print(f"warning: {warning}", file=stderr)
     print(opened_task.contract_path)
     print(opened_task.record_path)
+    return 0
+
+
+def _run_brief(task_id: str, stderr: TextIO) -> int:
+    project_root = find_project_root(Path.cwd())
+    if project_root is None:
+        print(
+            "agentmarshal brief must be run inside an initialized project",
+            file=stderr,
+        )
+        return 1
+    try:
+        briefing = build_brief(project_root / ".agentmarshal" / "journal", task_id)
+    except (OSError, TaskStatusError, ValueError) as error:
+        print(error, file=stderr)
+        return 1
+    sys.stdout.write(briefing)
     return 0
 
 
@@ -736,6 +758,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_validate(sys.stderr)
     if args.command == "open":
         return _run_open(args.title, args.scope, sys.stderr)
+    if args.command == "brief":
+        return _run_brief(args.task, sys.stderr)
     if args.command == "status":
         return _run_status(args.task_id, sys.stderr)
     if args.command == "submit-review":
