@@ -48,16 +48,29 @@ def _run_git(project_root: Path, arguments: list[str]) -> str:
 
 
 def _local_branches(project_root: Path) -> list[tuple[str, bool]]:
+    """List local branches, saying which are checked out anywhere.
+
+    ``%(HEAD)`` marks only the branch checked out in *this* worktree, so
+    ``%(worktreepath)`` is read as well: proposal 010 is about executor
+    worktrees — the reporting adopter had forty-five — and a branch held by a
+    linked worktree must not be offered for deletion.
+    """
+
     output = _run_git(
         project_root,
-        ["for-each-ref", "--format=%(HEAD)%00%(refname:short)", "refs/heads"],
+        [
+            "for-each-ref",
+            "--format=%(HEAD)%00%(refname:short)%00%(worktreepath)",
+            "refs/heads",
+        ],
     )
     branches: list[tuple[str, bool]] = []
     for line in output.splitlines():
-        marker, separator, branch = line.partition("\0")
-        if separator != "\0" or marker not in {" ", "*"} or not branch:
+        fields = line.split("\0")
+        if len(fields) != 3 or fields[0] not in {" ", "*"} or not fields[1]:
             raise PruneError("git returned an unparseable local branch name")
-        branches.append((branch, marker == "*"))
+        marker, branch, worktree = fields
+        branches.append((branch, marker == "*" or bool(worktree)))
     return branches
 
 
@@ -104,7 +117,7 @@ def report_branches(project_root: Path, base: str = "HEAD") -> list[BranchDispos
     report: list[BranchDisposition] = []
     for branch, current in _local_branches(project_root):
         if current:
-            report.append(BranchDisposition(branch, False, "currently checked out"))
+            report.append(BranchDisposition(branch, False, "checked out in a worktree"))
             continue
         task_id = _task_from_branch(branch)
         if task_id is None:

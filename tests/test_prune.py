@@ -126,7 +126,7 @@ def test_current_branch_is_never_eligible(
     assert main(["prune-branches", "--delete"]) == 0
 
     output = capsys.readouterr().out
-    assert "skipped: feat/CR-001-current (currently checked out)" in output
+    assert "skipped: feat/CR-001-current (checked out in a worktree)" in output
     assert "feat/CR-001-current" in _local_branches(repo)
 
 
@@ -187,3 +187,30 @@ def test_a_branch_of_an_unknown_task_is_skipped_not_fatal(
     captured = capsys.readouterr()
     assert "skipped: feat/CR-404-never-opened (task CR-404 is unknown)" in captured.out
     assert "feat/CR-404-never-opened" in _local_branches(repo)
+
+
+def test_a_branch_held_by_a_linked_worktree_is_never_eligible(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Proposal 010 is about executor worktrees; a branch one holds is in use.
+
+    ``%(HEAD)`` marks only this worktree's branch, so a branch checked out
+    elsewhere would otherwise be offered for deletion.
+    """
+
+    repo = _repo(tmp_path, monkeypatch)
+    _git(repo, "branch", "feat/CR-001-elsewhere")
+    _git(
+        repo,
+        "worktree",
+        "add",
+        "--quiet",
+        str(tmp_path / "wt"),
+        "feat/CR-001-elsewhere",
+    )
+
+    assert main(["prune-branches"]) == 0
+
+    output = capsys.readouterr().out
+    assert "skipped: feat/CR-001-elsewhere (checked out in a worktree)" in output
+    assert "eligible: feat/CR-001-elsewhere" not in output
