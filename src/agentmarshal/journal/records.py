@@ -103,12 +103,14 @@ _RECORD_FIELDS = {
 _SCHEMA_2_FIELDS = frozenset(
     {"source", "artifacts", "recorded_by", "recorded_by_source"}
 )
+_SCHEMA_2_SESSION_FIELDS = frozenset({"usage"})
 _RECORDED_BY_SOURCES = frozenset({"project-actor", "git-identity", "override"})
 _SUPPORTED_SCHEMAS = frozenset({1, 2})
 _ARTIFACT_HASH_PATTERN = re.compile(r"[0-9a-f]{64}$")
 _REVIEWED_COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}$")
 _REVIEW_VERDICTS = frozenset({"approved", "changes_required", "blocked", "rejected"})
 _SESSION_ACTIVITIES = frozenset({"implementation", "review", "other"})
+_SESSION_USAGE_METHODS = frozenset({"measured", "reported"})
 _ulid_lock = threading.Lock()
 _last_timestamp = -1
 _last_randomness = 0
@@ -178,6 +180,8 @@ def _validate_record(record: Mapping[str, object]) -> dict[str, object]:
     allowed_fields = _RECORD_FIELDS[record_type]
     if schema >= 2:
         allowed_fields = allowed_fields | _SCHEMA_2_FIELDS
+        if record_type == "session":
+            allowed_fields = allowed_fields | _SCHEMA_2_SESSION_FIELDS
     unexpected_fields = data.keys() - allowed_fields
     if unexpected_fields:
         raise JournalRecordError(
@@ -367,6 +371,32 @@ def _validate_session_record(data: Mapping[str, object]) -> None:
                 f"session record token {field!r} must be an integer greater "
                 "than or equal to zero"
             )
+    if "usage" not in data:
+        return
+    usage = data["usage"]
+    if not isinstance(usage, dict):
+        raise JournalRecordError("session record field 'usage' must be an object")
+    expected_fields = {"provider", "method"}
+    unexpected_fields = usage.keys() - expected_fields
+    if unexpected_fields:
+        raise JournalRecordError(
+            "session record field 'usage' has unsupported fields: "
+            + ", ".join(sorted(str(field) for field in unexpected_fields))
+        )
+    if usage.keys() != expected_fields:
+        raise JournalRecordError(
+            "session record field 'usage' must contain provider and method"
+        )
+    provider = usage["provider"]
+    if not isinstance(provider, str) or not provider:
+        raise JournalRecordError(
+            "session record usage field 'provider' must be a non-empty string"
+        )
+    method = usage["method"]
+    if not isinstance(method, str) or method not in _SESSION_USAGE_METHODS:
+        raise JournalRecordError(
+            "session record usage field 'method' must be one of measured or reported"
+        )
 
 
 def _record_path(
@@ -591,11 +621,18 @@ def create_session_record(
     output_tokens: int,
     cache_tokens: int,
     *,
+    usage_provider: str | None = None,
+    usage_method: str | None = None,
     source: str = SOURCE_LIVE,
 ) -> dict[str, object]:
     """Build an attributed work session record."""
 
-    return {
+    if (usage_provider is None) != (usage_method is None):
+        missing = "usage_method" if usage_method is None else "usage_provider"
+        raise JournalRecordError(
+            f"session record argument {missing!r} is required when its pair is supplied"
+        )
+    record: dict[str, object] = {
         "schema": 2,
         "record_type": "session",
         "task": task_id,
@@ -612,6 +649,9 @@ def create_session_record(
         },
         "source": source,
     }
+    if usage_provider is not None:
+        record["usage"] = {"provider": usage_provider, "method": usage_method}
+    return record
 
 
 def create_review_record(

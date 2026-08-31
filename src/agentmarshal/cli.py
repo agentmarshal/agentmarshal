@@ -168,6 +168,8 @@ def _build_parser() -> argparse.ArgumentParser:
     session_parser.add_argument("--input-tokens", type=int, default=0)
     session_parser.add_argument("--output-tokens", type=int, default=0)
     session_parser.add_argument("--cache-tokens", type=int, default=0)
+    session_parser.add_argument("--usage-provider")
+    session_parser.add_argument("--usage-method", choices=("reported", "measured"))
     report_parser = subparsers.add_parser(
         "report", help="summarize task delegation economics"
     )
@@ -475,6 +477,16 @@ def _run_amend(args: argparse.Namespace, stderr: TextIO) -> int:
 
 
 def _run_record_session(args: argparse.Namespace, stderr: TextIO) -> int:
+    if args.usage_provider is None and args.usage_method is not None:
+        print(
+            "--usage-provider is required when --usage-method is supplied", file=stderr
+        )
+        return 1
+    if args.usage_method is None and args.usage_provider is not None:
+        print(
+            "--usage-method is required when --usage-provider is supplied", file=stderr
+        )
+        return 1
     project_root = find_project_root(Path.cwd())
     if project_root is None:
         print(
@@ -493,6 +505,8 @@ def _run_record_session(args: argparse.Namespace, stderr: TextIO) -> int:
             args.input_tokens,
             args.output_tokens,
             args.cache_tokens,
+            usage_provider=args.usage_provider,
+            usage_method=args.usage_method,
         )
     except SessionRecordError as error:
         print(error, file=stderr)

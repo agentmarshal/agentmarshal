@@ -27,6 +27,9 @@ def record_session(
     input_tokens: int,
     output_tokens: int,
     cache_tokens: int,
+    *,
+    usage_provider: str | None = None,
+    usage_method: str | None = None,
 ) -> Path:
     """Validate and append an attributed session against an open task."""
 
@@ -46,6 +49,8 @@ def record_session(
             input_tokens,
             output_tokens,
             cache_tokens,
+            usage_provider=usage_provider,
+            usage_method=usage_method,
         )
         return write_record(journal_root, task_id, record)
     except (JournalRecordError, TaskStatusError, OSError, ValueError) as error:
