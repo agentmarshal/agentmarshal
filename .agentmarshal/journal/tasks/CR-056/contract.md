@@ -53,3 +53,13 @@ with the tool instead of having to be discovered.
 - Scaffolding anything else — agent guides, harness permission templates. Those
   are vendor-specific and are a separate decision.
 - Validating or linting the contents of the outbox.
+- **Symlink hardening of the outbox path.** `init` runs in the operator's own
+  checkout with the operator's own privileges; a symlink at
+  `.agentmarshal/upstream` was put there by the operator, so following it is
+  doing what they asked, not an escape. The project's existing symlink
+  protections guard a different boundary — the gate reads *candidate* content a
+  contributor supplies, where an adversary exists. Refusing a symlink here would
+  break an operator who deliberately points the outbox at a shared location, and
+  would add a threat model this task does not have. Recorded because the same
+  finding has now been raised across several tasks; see
+  `docs/incidents/2026-08-31-scope-warning-scope-creep.md`.
