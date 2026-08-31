@@ -2,7 +2,7 @@
 schema = 1
 id = "CR-074"
 title = "Version 0.2.0, and every claim about what 0.1.0 contained re-checked"
-scope = ["pyproject.toml", "src/agentmarshal/__init__.py", "README.md", "docs/quickstart.md", "docs/overview.md", "docs/adr/ADR-0004-journal-data-model.md", "docs/adr/ADR-0005-evidence-capture-and-format.md", "tests/test_smoke.py"]
+scope = ["pyproject.toml", "src/agentmarshal/__init__.py", "README.md", "docs/quickstart.md", "docs/overview.md", "docs/adr/ADR-0004-journal-data-model.md", "docs/adr/ADR-0005-evidence-capture-and-format.md", "tests/test_smoke.py", "uv.lock"]
 acceptance = [
   "the project version is 0.2.0 in pyproject.toml and in `agentmarshal --version`",
   "every statement about what a release does or does not contain is re-checked against the code and corrected where it is now false",
@@ -38,8 +38,8 @@ Bump the version, and make every claim about a release's contents true again.
 ## Acceptance Criteria
 
 - The version is `0.2.0` in `pyproject.toml` and reported by
-  `agentmarshal --version`, and the smoke test that pins the reported version
-  is updated with it.
+  `agentmarshal --version`, and everything else that pins it moves with it: the
+  smoke test, and `uv.lock`, which CI verifies with `uv sync --locked`.
 - Every statement about what a release contains is re-checked against the code
   and corrected where it is now false. A statement that is still true stays.
 - The living documents describe 0.2.0. The ADRs keep their historical notes and
