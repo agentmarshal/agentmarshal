@@ -136,3 +136,26 @@ def test_malformed_contract_raises_contract_error_and_cli_reports_it(
     captured = capsys.readouterr()
     assert captured.out == ""
     assert "contract must start with a +++ header delimiter" in captured.err
+
+
+def test_an_empty_scope_is_briefed_as_the_strictest_limit_not_as_none(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An empty scope forbids every path; a dash would read as no limit at all."""
+
+    repo = _repo(tmp_path, monkeypatch)
+    # _repo already opened CR-001 with a scope; this one declares none.
+    assert main(["open", "--title", "No scope declared"]) == 0
+    capsys.readouterr()
+
+    assert main(["brief", "--task", "CR-002"]) == 0
+
+    briefing = capsys.readouterr().out
+    assert "Declared scope: empty" in briefing
+    assert "no file may" in briefing
+    assert "only these paths may change" not in briefing
+    # "(none)" is honest for acceptance criteria, which the gate does not
+    # enforce; it is not honest for a scope, which the gate enforces absolutely.
+    scope_section = briefing.split("Acceptance criteria")[0]
+    assert "(none)" not in scope_section
+    assert (repo / ".agentmarshal").is_dir()

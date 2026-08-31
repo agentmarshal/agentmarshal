@@ -30,7 +30,20 @@ def build_brief(journal_root: Path, task_id: str) -> str:
     with contract_path.open("r", encoding="utf-8-sig", newline="") as contract_file:
         body = _contract_body(contract_file.read())
 
-    scope = "".join(f"- {path}\n" for path in task.contract.scope) or "- (none)\n"
+    # An empty scope is not the absence of a restriction, it is the strictest
+    # one: the gate matches every changed path against the entries, so with no
+    # entries every path is outside scope. A dash under "only these paths may
+    # change" would read as "no limits", which is the opposite of what happens.
+    if task.contract.scope:
+        scope_section = "Declared scope (only these paths may change):\n" + "".join(
+            f"- {path}\n" for path in task.contract.scope
+        )
+    else:
+        scope_section = (
+            "Declared scope: empty. This task declares no paths, so no file may\n"
+            "change at all — the gate refuses every path. Do not treat this as an\n"
+            "absence of limits; the contract needs a scope before work can land.\n"
+        )
     acceptance = (
         "".join(f"- {criterion}\n" for criterion in task.contract.acceptance)
         or "- (none)\n"
@@ -38,8 +51,7 @@ def build_brief(journal_root: Path, task_id: str) -> str:
     return (
         "You are implementing one governed AgentMarshal task.\n\n"
         f"Task id: {task.task_id}\n\n"
-        "Declared scope (only these paths may change):\n"
-        f"{scope}\n"
+        f"{scope_section}\n"
         "Acceptance criteria (the definition of done):\n"
         f"{acceptance}\n"
         "Rules enforced by AgentMarshal:\n"
