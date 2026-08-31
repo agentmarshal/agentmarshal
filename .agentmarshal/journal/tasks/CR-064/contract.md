@@ -2,13 +2,14 @@
 schema = 1
 id = "CR-064"
 title = "ADR-0007: the operator accepts work over findings"
-scope = ["docs/adr/ADR-0007-operator-acceptance.md"]
+scope = ["docs/adr/ADR-0007-operator-acceptance.md", "docs/adr/ADR-0006-actors-and-identity.md"]
 acceptance = [
   "the ADR states what an acceptance overrides and, explicitly, what it does not",
   "it states that an acceptance requires a non-approving review of the same commit to exist, so it cannot be used to skip review",
   "it decides whether an author may accept their own work, and states the reasoning either way",
   "it states where an accepted-over-findings task must be distinguishable from an approved one",
   "it states the claim boundary: what an acceptance record does and does not establish",
+  "it reconciles its position on self-acceptance with ADR-0006's policy clause, and ADR-0006 carries a pointer so a reader of the older decision is not misled",
 ]
 +++
 
@@ -62,6 +63,9 @@ not in guarding a file.
 
 - **Implementing anything.** No record type, no command, no gate change; those
   follow in their own task.
+- **Rewriting ADR-0006's reasoning.** An ADR is a historical record; the only
+  change it takes here is a pointer saying where a later decision continues the
+  question.
 - Deciding the record's field names or the command's spelling. The ADR settles
   the shape of the decision, not its syntax.
 - Revisiting reviewer non-determinism itself. That it exists is measured; this
