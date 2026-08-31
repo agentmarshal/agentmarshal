@@ -73,6 +73,10 @@ def _review_prompt(contract: str, diff: str, commit: str) -> str:
 and diff.
 Do not modify files. Your reviewed commit is {commit}.
 
+For each blocking or advisory finding id you report, print one line of prose
+before the verdict block, naming what is wrong and where. The ids are labels
+for the machine; the prose is what a human will read.
+
 At the end, print exactly one JSON object between lines containing exactly
 {_VERDICT_BEGIN} and {_VERDICT_END}. The object must contain:
 - reviewed_commit: the exact reviewed commit SHA

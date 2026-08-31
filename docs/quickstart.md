@@ -56,9 +56,12 @@ verdict). Optionally `advisory_findings`: non-blocking finding ids, disjoint
 from `findings`, allowed with any verdict including `approved`.
 
 Any other key is refused, and the error names it. The prompt AgentMarshal builds
-states all of this, so a reviewer does not have to guess. When a verdict is
-refused the reviewer's **raw output is kept** and its path is named in the
-error — a rejected verdict should not cost you the analysis.
+states all of this, so a reviewer does not have to guess. It also asks for one
+line of prose per blocking or advisory finding id before the verdict block,
+naming what is wrong and where: ids are labels for the machine, while the prose
+is what a human will read. When a verdict is refused the reviewer's **raw
+output is kept** and its path is named in the error — a rejected verdict should
+not cost you the analysis.
 
 The same holds for a verdict that is *accepted* and **names a finding** —
 blocking, or advisory alongside an approval. A record carries finding **ids**
@@ -67,7 +70,8 @@ and not the reasoning behind them, so the raw output is kept and
 path alone, for callers that read it. Keeping the output is best effort: if the
 file cannot be written the review is still recorded, because the record is the
 evidence. And it keeps only what the reviewer actually wrote — a reviewer that
-emits an id with no prose leaves you a file with no prose in it.
+ignores the prompt and emits an id with no prose leaves you a file with no prose
+in it.
 
 ### Gate attestation modes (`--attestation`)
 

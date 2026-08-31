@@ -377,16 +377,23 @@ def test_review_rejects_unknown_task_or_commit_before_snapshot(
     _assert_no_snapshot(repo)
 
 
-def test_prompt_lists_the_allowed_verdicts(
+def test_prompt_requests_human_readable_claims_and_lists_the_allowed_verdicts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The prompt must name the verdicts, from the definition validation uses."""
+    """Finding labels need prose, while verdicts come from record validation."""
 
     from agentmarshal.journal.records import _REVIEW_VERDICTS
     from agentmarshal.journal.review import _review_prompt
 
     prompt = _review_prompt("contract", "diff", "a" * 40)
 
+    prose_request = "For each blocking or advisory finding id you report"
+    assert prose_request in prompt
+    assert "print one line of prose" in prompt
+    assert "before the verdict block, naming what is wrong and where" in prompt
+    assert "ids are labels\nfor the machine" in prompt
+    assert "the prose is what a human will read" in prompt
+    assert prompt.index(prose_request) < prompt.index("At the end, print exactly")
     for verdict in _REVIEW_VERDICTS:
         assert verdict in prompt
     assert "advisory_findings" in prompt
