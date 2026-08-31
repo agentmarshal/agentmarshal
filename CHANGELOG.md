@@ -24,10 +24,10 @@ journal needs migrating and nothing is rewritten. Records keep the schema they
 were written at.
 
 Everything that runs AgentMarshal against a shared journal must therefore be
-upgraded together — every operator's machine, every CI runner, the merge
-wrapper — before any of them writes a record. If you share a journal, pin the
-version: an unpinned install moves on its own schedule and will break the very
-coordination this requires.
+upgraded together, before any of them writes a record.
+**[UPGRADING.md](UPGRADING.md)** has the procedure and what it means for each
+installation method — in particular for an unpinned `pip install`, which moves
+on its own schedule and breaks the coordination this requires.
 
 A version mismatch now reports `record has an unknown or missing schema
 version` rather than naming an unrecognised field, so the failure says what it
@@ -35,9 +35,10 @@ is.
 
 ### The operator can accept work over findings
 
-The gate merged only on an `approved` verdict, which meant the acceptance
-decision belonged to the reviewer while the operator carried the
-accountability. When review does not converge — remarks changing from round to
+The gate merged an implementation candidate only on an `approved` verdict — the
+journal-only lane for openings and completions has never required review — which
+meant the acceptance decision belonged to the reviewer while the operator
+carried the accountability. When review does not converge — remarks changing from round to
 round while the verdict stays `changes_required` — the only exits were to
 abandon the task or to keep re-running until a verdict happened to approve.
 
@@ -59,8 +60,9 @@ The reasoning, including what an acceptance does *not* establish, is in
 
 ### The lifecycle has repairs
 
-- **`agentmarshal amend`** records that a task's contract was repaired, with the
-  reason. Previously a defective contract could only be escaped by abandoning
+- **`agentmarshal amend`** records the claim that a task's contract was
+  repaired, with the reason. Like every identity and provenance field in this
+  project, it is a declaration: nothing detects an unrecorded edit. Previously a defective contract could only be escaped by abandoning
   the task, which left the journal blaming the work for a defect in the
   specification.
 - **`agentmarshal reopen`** returns a completed task to `open` with a reason.
