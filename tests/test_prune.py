@@ -401,3 +401,31 @@ def test_the_worktree_you_are_standing_in_is_never_offered(
         in output
     )
     assert f"eligible: {linked}" not in output
+
+
+def test_a_subdirectory_of_the_current_worktree_is_still_the_current_worktree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The project root is found by walking up, so depth does not change it.
+
+    Pinned because it is not obvious from the comparison alone: the check reads
+    as "path == project_root", and project_root is derived from the working
+    directory rather than being it.
+    """
+
+    repo = _repo(tmp_path, monkeypatch)
+    _git(repo, "branch", "feat/CR-001-work")
+    linked = tmp_path / "linked"
+    _git(repo, "worktree", "add", "--quiet", str(linked), "feat/CR-001-work")
+    nested = linked / "deep" / "nested"
+    nested.mkdir(parents=True)
+    monkeypatch.chdir(nested)
+
+    assert main(["prune"]) == 0
+
+    output = capsys.readouterr().out
+    assert (
+        f"skipped: {linked} (branch feat/CR-001-work; the worktree you are in)"
+        in output
+    )
+    assert f"eligible: {linked}" not in output
