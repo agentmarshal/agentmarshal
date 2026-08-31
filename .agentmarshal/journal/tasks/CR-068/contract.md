@@ -6,7 +6,7 @@ scope = ["src/agentmarshal/journal/prune.py", "src/agentmarshal/cli.py", "tests/
 acceptance = [
   "the command is `agentmarshal prune`, and it reports both branches and worktrees of finished tasks",
   "a worktree is eligible only when its checked-out branch names a task the journal projects as done and the worktree has no uncommitted changes",
-  "the main worktree is never eligible",
+  "neither the main worktree nor the worktree the command is running in is ever eligible",
   "`--delete` removes an eligible worktree without forcing, and reports a refusal instead of overriding it",
   "a worktree whose task is open, abandoned or unknown is skipped, and the report says which",
   "branch pruning keeps the behaviour CR-059 established, including that a branch held by a worktree is never eligible",
@@ -45,7 +45,12 @@ that govern branches, and give the command a name that covers what it does.
 - A worktree is eligible only when both hold: the branch checked out in it names
   a task the journal projects as `done`, and the worktree has no uncommitted
   changes.
-- The main worktree is never eligible.
+- **Neither the main worktree nor the worktree the command is running in** is
+  ever eligible. `git worktree remove` deletes the current worktree without
+  complaint — verified by running it — leaving the caller in a directory that no
+  longer exists and the rest of the run failing on it. git offers no refusal
+  here, so this command must, exactly as CR-059 never offers the branch that is
+  checked out.
 - `--delete` removes an eligible worktree **without forcing**, and reports a
   refusal from git rather than overriding it.
 - A worktree whose task is open, abandoned or unknown to the journal is skipped,
@@ -61,8 +66,8 @@ named: **irreversible loss of the operator's own work**, not an attacker. A
 worktree is worse than a branch in one respect — it can hold *uncommitted*
 changes, which exist nowhere else at all.
 
-That is why a worktree carries an extra condition its branch does not: it must
-be clean. And why removal must not force: `git worktree remove` refuses a dirty
+That is why a worktree carries two conditions its branch does not: it must be
+clean, and it must not be the one the caller is standing in. And why removal must not force: `git worktree remove` refuses a dirty
 or locked worktree, and that refusal is a second, independent opinion about
 whether the operator is about to lose something. Overriding it would leave our
 own check as the only thing standing between them and the loss — the mistake
