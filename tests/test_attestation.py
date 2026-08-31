@@ -58,6 +58,7 @@ def _without_recorder(record: dict[str, object]) -> dict[str, object]:
 def test_predicate_type_for_returns_registered_uri() -> None:
     assert predicate_type_for("review") == PREDICATE_TYPES["review"]
     assert predicate_type_for("completed").startswith("https://agentmarshal.dev/")
+    assert predicate_type_for("amendment").endswith("/amendment/v1")
 
 
 def test_predicate_type_for_unregistered_fails_closed() -> None:

@@ -68,6 +68,16 @@ _RECORD_FIELDS = {
             "reason",
         }
     ),
+    "amendment": frozenset(
+        {
+            "schema",
+            "record_type",
+            "task",
+            "created_at",
+            "tool_version",
+            "reason",
+        }
+    ),
     "session": frozenset(
         {
             "schema",
@@ -211,6 +221,12 @@ def _validate_record(record: Mapping[str, object]) -> dict[str, object]:
         if not isinstance(reason, str) or not reason:
             raise JournalRecordError(
                 "abandoned record field 'reason' must be a non-empty string"
+            )
+    elif record_type == "amendment":
+        reason = data.get("reason")
+        if not isinstance(reason, str) or not reason.strip():
+            raise JournalRecordError(
+                "amendment record field 'reason' must be a non-empty string"
             )
     elif record_type == "session":
         _validate_session_record(data)
@@ -540,6 +556,22 @@ def create_abandoned_record(
     return {
         "schema": 2,
         "record_type": "abandoned",
+        "task": task_id,
+        "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "tool_version": tool_version,
+        "reason": reason,
+        "source": source,
+    }
+
+
+def create_amendment_record(
+    task_id: str, tool_version: str, reason: str, *, source: str = SOURCE_LIVE
+) -> dict[str, object]:
+    """Build the evidence record emitted when a contract is amended."""
+
+    return {
+        "schema": 2,
+        "record_type": "amendment",
         "task": task_id,
         "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "tool_version": tool_version,

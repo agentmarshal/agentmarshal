@@ -22,6 +22,7 @@ from agentmarshal.journal import (
     write_record,
 )
 from agentmarshal.journal.open_task import TaskOpenError, journal_root, open_task
+from agentmarshal.journal.records import create_abandoned_record
 
 
 def initialize_status_repo(repo: Path) -> Path:
@@ -330,6 +331,84 @@ def test_review_records_do_not_change_projected_status() -> None:
     ]
 
     assert project_status(records) == "open"
+
+
+def test_amend_records_reason_without_changing_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = tmp_path / "repo"
+    root = initialize_status_repo(repo)
+    monkeypatch.chdir(repo)
+    assert main(["open", "--title", "Task"]) == 0
+    capsys.readouterr()
+
+    reason = "Clarify the review boundary"
+    assert main(["amend", "--task", "CR-001", "--reason", reason]) == 0
+    output = capsys.readouterr().out
+    records = read_records(root, "CR-001")
+    amendment = records[-1]
+    assert output.strip().endswith(f"/{amendment['id']}-amendment.json")
+    assert amendment["record_type"] == "amendment"
+    assert amendment["reason"] == reason
+    assert project_status(records) == "open"
+
+    assert main(["status", "CR-001"]) == 0
+    status_output = capsys.readouterr().out
+    assert "Status: open" in status_output
+    assert f"amendment {amendment['created_at']} reason={reason}" in status_output
+
+    assert main(["validate"]) == 0
+    assert "validate: passed" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("reason", ["", "   "])
+def test_amend_refuses_empty_reason(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    reason: str,
+) -> None:
+    repo = tmp_path / "repo"
+    root = initialize_status_repo(repo)
+    monkeypatch.chdir(repo)
+    assert main(["open", "--title", "Task"]) == 0
+    capsys.readouterr()
+
+    assert main(["amend", "--task", "CR-001", "--reason", reason]) == 1
+    assert "reason must not be empty" in capsys.readouterr().err
+    assert [record["record_type"] for record in read_records(root, "CR-001")] == [
+        "opened"
+    ]
+
+
+def test_amend_requires_reason() -> None:
+    with pytest.raises(SystemExit):
+        main(["amend", "--task", "CR-001"])
+
+
+def test_amend_refuses_unknown_and_terminal_tasks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = tmp_path / "repo"
+    root = initialize_status_repo(repo)
+    monkeypatch.chdir(repo)
+
+    assert main(["amend", "--task", "CR-999", "--reason", "Correction"]) == 1
+    assert "unknown task id: CR-999" in capsys.readouterr().err
+
+    assert main(["open", "--title", "Task"]) == 0
+    capsys.readouterr()
+    write_record(
+        root,
+        "CR-001",
+        create_abandoned_record("CR-001", "1.0", "No longer needed"),
+    )
+    assert main(["amend", "--task", "CR-001", "--reason", "Too late"]) == 1
+    assert "task CR-001 is not open (state: abandoned)" in capsys.readouterr().err
+    assert [record["record_type"] for record in read_records(root, "CR-001")] == [
+        "opened",
+        "abandoned",
+    ]
 
 
 @pytest.mark.parametrize(

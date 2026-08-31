@@ -25,6 +25,11 @@ from agentmarshal.journal.open_task import (
     open_task,
     scope_warnings,
 )
+from agentmarshal.journal.records import (
+    JournalRecordError,
+    create_amendment_record,
+    write_record,
+)
 from agentmarshal.journal.report import ReportError, build_report, format_report
 from agentmarshal.journal.review import ReviewLaunchError, launch_review
 from agentmarshal.journal.session import SessionRecordError, record_session
@@ -145,6 +150,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     abandon_parser.add_argument("--task", required=True, help="task identifier")
     abandon_parser.add_argument("--reason", required=True, help="abandonment reason")
+    amend_parser = subparsers.add_parser(
+        "amend", help="record an amendment to an open task contract"
+    )
+    amend_parser.add_argument("--task", required=True, help="task identifier")
+    amend_parser.add_argument("--reason", required=True, help="amendment reason")
     session_parser = subparsers.add_parser(
         "record-session", help="record attributed task work"
     )
@@ -275,6 +285,11 @@ def _print_task_detail(task: TaskStatus) -> None:
         elif record["record_type"] == "abandoned":
             print(
                 f"- {record['id']} abandoned {record['created_at']} "
+                f"reason={record['reason']}"
+            )
+        elif record["record_type"] == "amendment":
+            print(
+                f"- {record['id']} amendment {record['created_at']} "
                 f"reason={record['reason']}"
             )
         else:
@@ -431,6 +446,31 @@ def _run_abandon(args: argparse.Namespace, stderr: TextIO) -> int:
         return 1
     print(record_path)
     print("abandoned")
+    return 0
+
+
+def _run_amend(args: argparse.Namespace, stderr: TextIO) -> int:
+    project_root = find_project_root(Path.cwd())
+    if project_root is None:
+        print(
+            "agentmarshal amend must be run inside an initialized project",
+            file=stderr,
+        )
+        return 1
+    if not args.reason.strip():
+        print("amend reason must not be empty", file=stderr)
+        return 1
+    journal_root = project_root / ".agentmarshal" / "journal"
+    try:
+        task = load_task_status(journal_root, args.task)
+        if task.state != "open":
+            raise TaskStatusError(f"task {args.task} is not open (state: {task.state})")
+        record = create_amendment_record(args.task, __version__, args.reason)
+        record_path = write_record(journal_root, args.task, record)
+    except (JournalRecordError, OSError, TaskStatusError, ValueError) as error:
+        print(error, file=stderr)
+        return 1
+    print(record_path)
     return 0
 
 
@@ -650,6 +690,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_complete(args, sys.stderr)
     if args.command == "abandon":
         return _run_abandon(args, sys.stderr)
+    if args.command == "amend":
+        return _run_amend(args, sys.stderr)
     if args.command == "record-session":
         return _run_record_session(args, sys.stderr)
     if args.command == "report":
