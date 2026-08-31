@@ -48,6 +48,19 @@ _RECORD_FIELDS = {
             "advisory_findings",
         }
     ),
+    "acceptance": frozenset(
+        {
+            "schema",
+            "record_type",
+            "task",
+            "created_at",
+            "tool_version",
+            "accepted_commit",
+            "accepted_by",
+            "findings",
+            "reason",
+        }
+    ),
     "completed": frozenset(
         {
             "schema",
@@ -210,6 +223,8 @@ def _validate_record(record: Mapping[str, object]) -> dict[str, object]:
         )
     if record_type == "review":
         _validate_review_record(data)
+    elif record_type == "acceptance":
+        _validate_acceptance_record(data)
     elif record_type == "completed":
         completed_commit = data.get("completed_commit")
         if (
@@ -344,6 +359,38 @@ def _validate_review_record(data: Mapping[str, object]) -> None:
             raise JournalRecordError(
                 "review record findings and advisory_findings must be disjoint"
             )
+
+
+def _validate_acceptance_record(data: Mapping[str, object]) -> None:
+    accepted_commit = data.get("accepted_commit")
+    if (
+        not isinstance(accepted_commit, str)
+        or _REVIEWED_COMMIT_PATTERN.fullmatch(accepted_commit) is None
+    ):
+        raise JournalRecordError(
+            "acceptance record field 'accepted_commit' must be exactly 40 "
+            "lowercase hex characters"
+        )
+    for field in ("accepted_by", "reason"):
+        value = data.get(field)
+        if not isinstance(value, str) or not value.strip():
+            raise JournalRecordError(
+                f"acceptance record field {field!r} must be a non-empty string"
+            )
+    findings = data.get("findings")
+    if (
+        not isinstance(findings, list)
+        or not findings
+        or not all(isinstance(finding, str) and finding for finding in findings)
+    ):
+        raise JournalRecordError(
+            "acceptance record field 'findings' must be a non-empty array of "
+            "finding ids"
+        )
+    if len(set(findings)) != len(findings):
+        raise JournalRecordError(
+            "acceptance record findings must have unique finding ids"
+        )
 
 
 def _validate_session_record(data: Mapping[str, object]) -> None:
@@ -696,6 +743,32 @@ def create_review_record(
     if advisory_findings:
         record["advisory_findings"] = advisory_findings
     return record
+
+
+def create_acceptance_record(
+    task_id: str,
+    tool_version: str,
+    accepted_commit: str,
+    accepted_by: str,
+    findings: list[str],
+    reason: str,
+    *,
+    source: str = SOURCE_LIVE,
+) -> dict[str, object]:
+    """Build an operator acceptance over a review's blocking findings."""
+
+    return {
+        "schema": 2,
+        "record_type": "acceptance",
+        "task": task_id,
+        "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "tool_version": tool_version,
+        "accepted_commit": accepted_commit,
+        "accepted_by": accepted_by,
+        "findings": findings,
+        "reason": reason,
+        "source": source,
+    }
 
 
 def validate_record_content(filename: str, content: str) -> dict[str, object]:

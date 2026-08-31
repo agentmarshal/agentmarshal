@@ -13,6 +13,7 @@ from agentmarshal.journal import status
 from agentmarshal.journal.records import (
     JournalRecordError,
     create_abandoned_record,
+    create_acceptance_record,
     create_completed_record,
     create_session_record,
     read_records,
@@ -184,7 +185,7 @@ def test_report_includes_mixed_actor_sessions_and_terminal_states(
 
     assert main(["report"]) == 0
     assert capsys.readouterr().out.splitlines() == [
-        "CR-001\tdone\treviews=2\ttokens=15\tusage=unrecorded",
+        "CR-001\tdone\treviews=2\ttokens=15\tusage=unrecorded\tdecision=approved",
         "CR-002\tabandoned\treviews=1\ttokens=15\tusage=unrecorded",
         "Summary\tabandoned=1 done=1\treviews=3\ttokens=30\tusage=unrecorded",
     ]
@@ -299,3 +300,59 @@ def test_report_uses_each_task_status_record_snapshot_once(
     build_report(journal)
 
     assert calls == ["CR-001", "CR-002"]
+
+
+def test_report_distinguishes_acceptance_from_approval(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = tmp_path / "repo"
+    journal = _initialize_repo(repo, monkeypatch)
+    assert main(["open", "--title", "Accepted task"]) == 0
+    assert main(["open", "--title", "Approved task"]) == 0
+    for task_id, verdict, findings in (
+        ("CR-001", "blocked", ["F-1"]),
+        ("CR-002", "approved", []),
+    ):
+        assert (
+            main(
+                [
+                    "submit-review",
+                    "--task",
+                    task_id,
+                    "--commit",
+                    "a" * 40,
+                    "--verdict",
+                    verdict,
+                    "--role",
+                    "reviewer",
+                    "--vendor",
+                    "test",
+                    "--model",
+                    "model",
+                    "--email",
+                    "reviewer@test.invalid",
+                    *[
+                        value
+                        for finding in findings
+                        for value in ("--finding", finding)
+                    ],
+                ]
+            )
+            == 0
+        )
+    write_record(
+        journal,
+        "CR-001",
+        create_acceptance_record(
+            "CR-001", "1.0", "a" * 40, "operator", ["F-1"], "accepted"
+        ),
+    )
+    write_record(journal, "CR-002", create_completed_record("CR-002", "1.0", "a" * 40))
+    capsys.readouterr()
+
+    assert main(["report"]) == 0
+    output = capsys.readouterr().out
+    assert (
+        "CR-001\topen\treviews=1\ttokens=0\tdecision=accepted-over-findings" in output
+    )
+    assert "CR-002\tdone\treviews=1\ttokens=0\tdecision=approved" in output
