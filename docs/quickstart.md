@@ -22,9 +22,14 @@ source checkout. These are the exact commands this guide was verified with:
 ```sh
 uv build
 uv venv .venv
+source .venv/bin/activate
 uv pip install dist/agentmarshal-0.2.0-py3-none-any.whl
-./.venv/bin/agentmarshal --version
+agentmarshal --version
 ```
+
+Activate the environment before going on: every later command in this guide
+calls `agentmarshal` by name, and without activation you would get whatever
+other install happens to be on your `PATH` — or none.
 
 After 0.2.0 is published, `pip install agentmarshal==0.2.0` installs the same
 release and uv is no longer needed. Plain `pip install agentmarshal` installs
