@@ -210,7 +210,26 @@ IMPL=$(git rev-parse HEAD)
 
 Task state is never edited by hand — it is projected from the records.
 
-### 4. Record an independent review
+### 4. Record the session and inspect its economics
+
+Record the work while its token counts and their origin are still available,
+then read the task report as part of the loop:
+
+```sh
+agentmarshal record-session \
+  --task CR-001 --role implementer --actor example/model \
+  --activity implementation --outcome implemented \
+  --input-tokens 1200 --output-tokens 300 --cache-tokens 100 \
+  --usage-provider example --usage-method reported
+agentmarshal report --task CR-001
+```
+
+Use `--usage-method measured` when the counts were reconstructed afterwards
+from logs. Omit both usage flags when their provenance is unavailable; the
+report identifies those counts as unrecorded rather than silently treating
+them as provider-reported.
+
+### 5. Record an independent review
 
 The gate requires a review whose **recorded reviewer email differs from the
 commit authors'**, and refuses the merge when it does not. Be clear about what
@@ -237,7 +256,7 @@ The review record is written into the journal working tree. It stays
 uncommitted until you record completion, so a review never has to be part of
 the very diff it attests.
 
-### 5. Gate the candidate
+### 6. Gate the candidate
 
 The gate is the merge authority. It passes only when every check holds:
 
@@ -267,7 +286,7 @@ Wiring the gate to block merges on GitHub, GitFlic, or a self-hosted setup is
 covered in [self-hosting-workflow.md](self-hosting-workflow.md) and
 [github-enforcement.md](github-enforcement.md).
 
-### 6. Complete the task
+### 7. Complete the task
 
 Completion re-runs the gate and, on a pass, writes the `completed` record.
 `--base` must stay the merge base the candidate was gated against:
@@ -278,7 +297,7 @@ AGENTMARSHAL_PIPELINE_OK_SHA="$IMPL" \
 git add .agentmarshal && git commit -m "complete CR-001"
 ```
 
-### 7. Inspect the evidence
+### 8. Inspect the evidence
 
 ```sh
 agentmarshal status CR-001
@@ -298,9 +317,7 @@ independently reviewed. From here:
 
 - fill in **machine-readable acceptance criteria** in each contract;
 - **enforce the gate** on your provider ([self-hosting-workflow.md](self-hosting-workflow.md),
-  [github-enforcement.md](github-enforcement.md));
-- record **token-economics** with `agentmarshal record-session` and read them
-  back with `agentmarshal report`.
+  [github-enforcement.md](github-enforcement.md)).
 
 For the concepts, terminology, and roadmap, see [overview.md](overview.md); for
 the design decisions and the honest implemented-vs-roadmap boundary, the
