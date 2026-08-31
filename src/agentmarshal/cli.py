@@ -31,6 +31,7 @@ from agentmarshal.journal.prune import PruneError, delete_branches, report_branc
 from agentmarshal.journal.records import (
     JournalRecordError,
     create_amendment_record,
+    create_reopened_record,
     write_record,
 )
 from agentmarshal.journal.report import ReportError, build_report, format_report
@@ -169,6 +170,9 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     abandon_parser.add_argument("--task", required=True, help="task identifier")
     abandon_parser.add_argument("--reason", required=True, help="abandonment reason")
+    reopen_parser = subparsers.add_parser("reopen", help="reopen a completed task")
+    reopen_parser.add_argument("--task", required=True, help="task identifier")
+    reopen_parser.add_argument("--reason", required=True, help="reopening reason")
     amend_parser = subparsers.add_parser(
         "amend", help="record an amendment to an open task contract"
     )
@@ -402,6 +406,11 @@ def _print_task_detail(project_root: Path, task: TaskStatus) -> None:
                 f"- {record['id']} abandoned {record['created_at']} "
                 f"reason={record['reason']}"
             )
+        elif record["record_type"] == "reopened":
+            print(
+                f"- {record['id']} reopened {record['created_at']} "
+                f"reason={record['reason']}"
+            )
         elif record["record_type"] == "amendment":
             print(
                 f"- {record['id']} amendment {record['created_at']} "
@@ -585,6 +594,34 @@ def _run_abandon(args: argparse.Namespace, stderr: TextIO) -> int:
         return 1
     print(record_path)
     print("abandoned")
+    return 0
+
+
+def _run_reopen(args: argparse.Namespace, stderr: TextIO) -> int:
+    project_root = find_project_root(Path.cwd())
+    if project_root is None:
+        print(
+            "agentmarshal reopen must be run inside an initialized project",
+            file=stderr,
+        )
+        return 1
+    if not args.reason.strip():
+        print("reopen reason must not be empty", file=stderr)
+        return 1
+    journal_root = project_root / ".agentmarshal" / "journal"
+    try:
+        task = load_task_status(journal_root, args.task)
+        if task.state != "done":
+            raise TaskStatusError(
+                f"task {args.task} cannot be reopened (state: {task.state})"
+            )
+        record = create_reopened_record(args.task, __version__, args.reason)
+        record_path = write_record(journal_root, args.task, record)
+    except (JournalRecordError, OSError, TaskStatusError, ValueError) as error:
+        print(error, file=stderr)
+        return 1
+    print(record_path)
+    print("reopened")
     return 0
 
 
@@ -877,6 +914,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_complete(args, sys.stderr)
     if args.command == "abandon":
         return _run_abandon(args, sys.stderr)
+    if args.command == "reopen":
+        return _run_reopen(args, sys.stderr)
     if args.command == "amend":
         return _run_amend(args, sys.stderr)
     if args.command == "record-session":
