@@ -1,0 +1,11 @@
+{
+  "created_at": "2026-08-31T04:11:14.912510Z",
+  "reason": "Deletion must not discard git's own merged-ness check: use 'git branch -d' and report a refusal, instead of forcing with -D. The contract's threat model rests on two independent conditions, and -D collapsed them into one — our own. Found by the lead agent; two reviewer runs approved the commit without raising it.",
+  "record_type": "amendment",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "schema": 2,
+  "source": "live",
+  "task": "CR-059",
+  "tool_version": "0.1.0"
+}

@@ -6,7 +6,7 @@ scope = ["src/agentmarshal/journal/prune.py", "src/agentmarshal/cli.py", "tests/
 acceptance = [
   "`agentmarshal prune-branches` lists local branches eligible for deletion and deletes nothing",
   "a branch is eligible only when its name names a task the journal projects as done AND it is fully merged into the base ref",
-  "`--delete` deletes exactly the branches the report listed, printing each",
+  "`--delete` attempts to delete exactly the branches the report listed, and reports any that git itself refuses rather than forcing them",
   "the branch currently checked out is never eligible, even when it satisfies every other condition",
   "a branch whose task is open, abandoned, or unknown to the journal is never eligible, and the report says why it was skipped",
   "no remote is contacted and no remote ref is deleted by either mode",
@@ -45,8 +45,9 @@ fully merged, and deletes them only when explicitly asked.
   nothing**.
 - A branch is eligible only when both hold: its name contains a task id the
   journal projects as `done`, and git reports it fully merged into the base ref.
-- `--delete` deletes exactly the branches the report listed, naming each as it
-  goes.
+- `--delete` attempts to delete exactly the branches the report listed, naming
+  each as it goes, and **reports** any that git itself refuses instead of
+  forcing them through.
 - The currently checked-out branch is never eligible.
 - A branch whose task is `open`, `abandoned`, or absent from the journal is
   never eligible, and the report states which of those it was.
@@ -72,6 +73,15 @@ by the default being a report:
   in progress regardless of what git says about its commits.
 - **the default mode deletes nothing**, so the destructive path is always a
   second, deliberate invocation.
+
+Because these conditions are independent, the deletion itself must not discard
+git's own. `git branch -D` removes a branch whether or not git considers it
+merged, which would leave our containment check as the only thing standing
+between the operator and lost work. The deletion uses `git branch -d` and
+surfaces a refusal. A refusal is information — it means git and this command
+disagree about containment, which is exactly the case the operator needs to see
+rather than have overridden. It can happen legitimately: `-d` judges against
+HEAD and its upstream, while `--base` may name another ref.
 
 **Remotes are out of reach by construction, not by a check.** Proposal 010 warns
 that cleanup must target the working remote only and never a backup mirror. This
