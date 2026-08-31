@@ -2,7 +2,7 @@
 schema = 1
 id = "CR-067"
 title = "A closed task can be reopened, and the record says why"
-scope = ["src/agentmarshal/journal/records.py", "src/agentmarshal/journal/attestation.py", "src/agentmarshal/journal/status.py", "src/agentmarshal/cli.py", "tests/test_reopen.py"]
+scope = ["src/agentmarshal/journal/records.py", "src/agentmarshal/journal/attestation.py", "src/agentmarshal/journal/status.py", "src/agentmarshal/cli.py", "src/agentmarshal/journal/gate.py", "tests/test_reopen.py", "tests/test_gate.py"]
 acceptance = [
   "`agentmarshal reopen --task <id> --reason <text>` appends a `reopened` record carrying the reason",
   "the projection returns the task to `open`, and work may follow as it does after `open`",
@@ -12,6 +12,7 @@ acceptance = [
   "a terminal record after a `reopened` record closes the task again, and the trail keeps every cycle",
   "the record type has a registered predicateType and `agentmarshal validate` accepts a journal containing one",
   "`agentmarshal status <id>` shows the reopening in the trail with its reason",
+  "the gate treats a task whose latest lifecycle record at base is a reopening as not closed, so work can land on it",
 ]
 +++
 
@@ -73,6 +74,14 @@ Note what reopening does **not** unlock. The gate reads task state from the base
 side, so a reopening only has effect once it is committed there — a candidate
 cannot reopen its own task to escape "closed at base" any more than it can widen
 its own scope.
+
+The gate's base-side check decides closed-ness from the **names** of the record
+files in the base tree, not by reading them: any `-completed.json` or
+`-abandoned.json` under the task means closed. That is deliberately cheap, and
+it must keep working — but it cannot stay blind to a reopening, or the feature
+this task builds would project `open` while the gate refused every candidate.
+Record identifiers are monotonic, so the base-side answer is the *latest*
+lifecycle record by name, not the mere presence of a terminal one.
 
 Not defects in this task, and not to be guarded against: symlinks or path
 traversal on the journal; an operator reopening a task frivolously, which is a
