@@ -3,7 +3,8 @@
 This walks through the whole AgentMarshal loop on a throwaway repository —
 from installing the package to a task that carries durable, SHA-bound
 evidence that its work was independently reviewed. Every command below was
-verified against the published `agentmarshal` 0.1.0 (the current release).
+verified against a wheel built from the `agentmarshal` 0.2.0 source. Version
+0.2.0 was not yet published to the package index at verification time.
 
 New here? [overview.md](overview.md) explains the idea and the vocabulary
 (**host repo**, task, contract, scope, gate, …) in a page. This guide is the
@@ -13,13 +14,19 @@ Requirements: **Python ≥ 3.12** and **git** on your `PATH`.
 
 ## Install
 
+From an AgentMarshal 0.2.0 source checkout, build and install the same kind of
+artifact used to verify this guide:
+
 ```sh
-pip install agentmarshal==0.1.0   # the version this guide was verified against
+uv build
+python -m pip install dist/agentmarshal-0.2.0-py3-none-any.whl
 agentmarshal --version
 ```
 
-(Plain `pip install agentmarshal` installs the latest release; pin `==0.1.0`
-to match this walkthrough exactly.)
+Version 0.2.0 is not yet on the package index. After it is published,
+`python -m pip install agentmarshal==0.2.0` installs the matching release;
+plain `pip install agentmarshal` installs the latest published release, which
+may not be the version described here.
 
 AgentMarshal is a single, dependency-free CLI. It stores everything in git
 under `.agentmarshal/`, so there is no server and no database.
@@ -151,11 +158,11 @@ second, explicit lie. See [ADR-0006](adr/ADR-0006-actors-and-identity.md).
 ### `project.json`
 
 `agentmarshal init` writes a minimal `.agentmarshal/project.json`
-(`schema` + framework version); no hand-editing is needed for the loop. A
-`capture` policy and a `leak_scan.private_markers` list are **not active in the
-0.1.0 release** — the merge-time leak-scan they configure landed after 0.1.0 —
-so ignore them here; they are described in the roadmap in
-[overview.md](overview.md).
+(`schema` + framework version); no hand-editing is needed for the loop. The
+supplementary-artifact `capture` policy is parsed but not acted on in
+0.2.0: there is no policy-driven artifact writer or private store yet. The
+`leak_scan.private_markers` list is active in 0.2.0 and adds project-specific
+strings to the built-in advisory scan used by `leak-scan` and the gate.
 
 ## The governed loop
 
@@ -201,6 +208,17 @@ git add .agentmarshal
 git commit -m "open CR-001: add a greeting helper"
 BASE=$(git rev-parse HEAD)   # the base the work is gated against
 ```
+
+If an open task's contract needs correction, edit it and record the repair
+before continuing, then commit the journal-only repair and advance the base:
+
+```sh
+agentmarshal amend --task CR-001 --reason "Clarify the greeting behaviour"
+git add .agentmarshal && git commit -m "amend CR-001 contract"
+BASE=$(git rev-parse HEAD)
+```
+
+`amend` records the reason; git history remains the contract's content trail.
 
 Deliver the complete governed task to the implementer through the briefing
 command. It includes the declared scope and acceptance criteria, the rules the
@@ -289,7 +307,16 @@ other gate check still apply.
 
 ### 6. Gate the candidate
 
-The gate is the merge authority. It passes only when every check holds:
+Run the same advisory added-content scan independently when your CI needs a
+separate check:
+
+```sh
+agentmarshal leak-scan --commit "$IMPL" --base "$BASE"
+```
+
+The gate runs this scan too and warns on matches; in 0.2.0 a match does not
+block. The gate is the merge authority. It passes only when every blocking
+check holds:
 
 ```sh
 AGENTMARSHAL_PIPELINE_OK_SHA="$IMPL" \
@@ -346,6 +373,15 @@ agentmarshal validate
 event, the approved review bound to the commit SHA, and the completion.
 `validate` checks the whole journal for integrity and is the check you run in
 CI.
+
+If later evidence shows that completed work is unfinished, reopen the task
+without rewriting its earlier completion:
+
+```sh
+agentmarshal reopen --task CR-001 --reason "A missing case was found"
+```
+
+The task projects as open again; an abandoned task cannot be reopened.
 
 ### 9. Prune finished-task artifacts
 

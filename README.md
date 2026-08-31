@@ -9,11 +9,11 @@ rather than of someone's memory: task contracts, review verdicts bound to
 exact commits, and merge gates — with the evidence living in git, not in
 an ephemeral session log.
 
-**Trust boundary (0.1.0):** the merge gate enforces that a review's recorded
+**Trust boundary (0.2.0):** the merge gate enforces that a review's recorded
 reviewer email differs from the commit authors', and binds the verdict to the
 exact commit SHA. It does **not** cryptographically authenticate who recorded
 a review or which checkout was gated — the recorder and the reviewed tree are
-operator-trusted. Signing/provenance is roadmap, not a 0.1.0 guarantee.
+operator-trusted. Signing/provenance is roadmap, not a 0.2.0 guarantee.
 
 One consequence is worth stating outright, because the gate's output can read
 like more than it is: **a `human` reviewer is a self-declaration.** The gate
@@ -38,12 +38,13 @@ We do **not** rewrite history: the SHA-bound audit trail *is* the product, and
 rewriting it would destroy the very property AgentMarshal exists to provide.
 
 That honesty cuts both ways — the shipped design docs are explicit about the
-0.1.0 boundary, implemented versus roadmap:
+historical 0.1.0 boundary and note what has changed since:
 
 - [ADR-0004](docs/adr/ADR-0004-journal-data-model.md) and
   [ADR-0005](docs/adr/ADR-0005-evidence-capture-and-format.md) mark planned
-  capture, the private store, and the in-toto/attestation projection as
-  roadmap — not active in 0.1.0.
+  supplementary-artifact capture policy, the private store, and the
+  in-toto/attestation projection as roadmap. They remain inactive in 0.2.0;
+  ADR-0005 separately records the advisory leak-scan that has shipped.
 - [docs/migration-v1-to-v2.md](docs/migration-v1-to-v2.md) records what the
   v1→v2 migration lost (contract prose) and that the machine-readable
   acceptance array was empty in every contract through CR-038 — without
@@ -53,15 +54,21 @@ To see how the project actually evolved, token costs and all, read the journal.
 
 ## Status
 
-**Pre-alpha.** The first Python CLI slice: `agentmarshal init` writes project
-metadata into a git repository; the journal, gate, and review/completion
-commands follow. APIs, schemas, and CLI are subject to change without notice.
+**Pre-alpha.** Version 0.2.0 ships the governed loop end to end: task contracts,
+review and operator-acceptance evidence, lifecycle repair, the fail-closed gate,
+completion, reporting, validation, advisory leak scanning, and local pruning.
+APIs, schemas, and CLI are subject to change without notice.
 
 ## Install
 
+The repository version is 0.2.0, which is not yet published to the package
+index. From a 0.2.0 source checkout:
+
 ```sh
-pip install agentmarshal
+pip install .
 ```
+
+After publication, `pip install agentmarshal==0.2.0` installs this release.
 
 Requirements: **Python >= 3.12** and **git** on `PATH` — the gate, review,
 and completion commands shell out to git. No Python dependencies.
