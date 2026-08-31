@@ -12,6 +12,7 @@ from typing import TextIO, cast
 
 from agentmarshal import __version__
 from agentmarshal.doctor import run_doctor
+from agentmarshal.journal.acceptance import AcceptanceError, accept_findings
 from agentmarshal.journal.brief import build_brief
 from agentmarshal.journal.capture import CaptureError, scan_diff_for_leaks
 from agentmarshal.journal.complete import (
@@ -97,6 +98,18 @@ def _build_parser() -> argparse.ArgumentParser:
     review_parser.add_argument("--vendor", required=True, help="reviewer vendor")
     review_parser.add_argument("--model", required=True, help="reviewer model")
     review_parser.add_argument("--email", required=True, help="reviewer email")
+    accept_parser = subparsers.add_parser(
+        "accept", help="record acceptance over a review's blocking findings"
+    )
+    accept_parser.add_argument("--task", required=True, help="task identifier")
+    accept_parser.add_argument("--commit", required=True, help="reviewed commit SHA")
+    accept_parser.add_argument("--by", required=True, help="accepting party")
+    accept_parser.add_argument("--reason", required=True, help="acceptance reason")
+    accept_parser.add_argument(
+        "--finding",
+        action="append",
+        help="assert a blocking finding id (repeatable; normally omitted)",
+    )
     launch_parser = subparsers.add_parser(
         "review", help="run and record a read-only task review"
     )
@@ -292,10 +305,43 @@ def _run_brief(task_id: str, stderr: TextIO) -> int:
     return 0
 
 
-def _print_task_detail(task: TaskStatus) -> None:
+def _declared_commit_writers(project_root: Path, commit: str) -> set[str]:
+    """Return the commit's declared author and committer names and emails."""
+
+    try:
+        result = subprocess.run(
+            ["git", "show", "-s", "--format=%an%n%ae%n%cn%n%ce", commit],
+            cwd=project_root,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return set()
+        output = result.stdout.decode("utf-8")
+    except (OSError, UnicodeDecodeError):
+        return set()
+    return {line.strip().casefold() for line in output.splitlines() if line.strip()}
+
+
+def _is_self_accepted(project_root: Path, record: dict[str, object]) -> bool:
+    party = str(record["accepted_by"]).strip().casefold()
+    writers = _declared_commit_writers(project_root, str(record["accepted_commit"]))
+    return party in writers
+
+
+def _print_task_detail(project_root: Path, task: TaskStatus) -> None:
     print(f"ID: {task.task_id}")
     print(f"Status: {task.state}")
     print(f"Title: {task.contract.title}")
+    for acceptance in (
+        record for record in task.records if record["record_type"] == "acceptance"
+    ):
+        summary = f"Acceptance: accepted over findings by {acceptance['accepted_by']}"
+        if _is_self_accepted(project_root, acceptance):
+            summary += (
+                " (self-accepted: accepting party is a declared author or committer)"
+            )
+        print(summary)
     print("Scope:")
     if task.contract.scope:
         for path in task.contract.scope:
@@ -312,6 +358,18 @@ def _print_task_detail(task: TaskStatus) -> None:
                 f"reviewed_commit={str(record['reviewed_commit'])[:7]} "
                 f"verdict={record['verdict']} findings={len(findings)} "
                 f"advisory={len(advisory)}"
+            )
+        elif record["record_type"] == "acceptance":
+            findings = cast(list[object], record["findings"])
+            self_accepted = (
+                " self-accepted" if _is_self_accepted(project_root, record) else ""
+            )
+            print(
+                f"- {record['id']} acceptance {record['created_at']} "
+                f"accepted_commit={str(record['accepted_commit'])[:7]} "
+                f"accepted_by={record['accepted_by']} "
+                f"findings={','.join(str(finding) for finding in findings)} "
+                f"reason={record['reason']}{self_accepted}"
             )
         elif record["record_type"] == "completed":
             print(
@@ -357,6 +415,30 @@ def _run_submit_review(args: argparse.Namespace, stderr: TextIO) -> int:
         print(error, file=stderr)
         return 1
     print(submitted.record_path)
+    return 0
+
+
+def _run_accept(args: argparse.Namespace, stderr: TextIO) -> int:
+    project_root = find_project_root(Path.cwd())
+    if project_root is None:
+        print(
+            "agentmarshal accept must be run inside an initialized project",
+            file=stderr,
+        )
+        return 1
+    try:
+        record_path = accept_findings(
+            project_root / ".agentmarshal" / "journal",
+            args.task,
+            args.commit,
+            args.by,
+            args.reason,
+            args.finding,
+        )
+    except AcceptanceError as error:
+        print(error, file=stderr)
+        return 1
+    print(record_path)
     return 0
 
 
@@ -584,7 +666,7 @@ def _run_status(task_id: str | None, stderr: TextIO) -> int:
             for task in tasks:
                 print(f"{task.task_id}\t{task.state}\t{task.contract.title}")
         else:
-            _print_task_detail(load_task_status(journal, task_id))
+            _print_task_detail(project_root, load_task_status(journal, task_id))
     except (OSError, TaskStatusError, ValueError) as error:
         print(error, file=stderr)
         return 1
@@ -764,6 +846,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_status(args.task_id, sys.stderr)
     if args.command == "submit-review":
         return _run_submit_review(args, sys.stderr)
+    if args.command == "accept":
+        return _run_accept(args, sys.stderr)
     if args.command == "review":
         return _run_review(args, sys.stderr)
     if args.command == "gate":

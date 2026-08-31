@@ -23,6 +23,7 @@ from __future__ import annotations
 PREDICATE_TYPES: dict[str, str] = {
     "opened": "https://agentmarshal.dev/attestations/opening/v1",
     "review": "https://agentmarshal.dev/attestations/review/v1",
+    "acceptance": "https://agentmarshal.dev/attestations/acceptance/v1",
     "completed": "https://agentmarshal.dev/attestations/completion/v1",
     "abandoned": "https://agentmarshal.dev/attestations/abandonment/v1",
     "amendment": "https://agentmarshal.dev/attestations/amendment/v1",

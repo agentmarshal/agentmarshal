@@ -29,6 +29,7 @@ class TaskReport:
     review_cycles: int
     tokens: int
     usage_provenance: str | None = None
+    decision: str | None = None
 
 
 @dataclass(frozen=True)
@@ -64,12 +65,35 @@ def _task_report(status: TaskStatus) -> TaskReport:
         for record in records
         if record["record_type"] == "session"
     )
+    decision = None
+    if any(record["record_type"] == "acceptance" for record in records):
+        decision = "accepted-over-findings"
+    else:
+        completed = next(
+            (
+                record
+                for record in reversed(records)
+                if record["record_type"] == "completed"
+            ),
+            None,
+        )
+        if completed is not None:
+            commit = completed["completed_commit"]
+            reviews = [
+                record
+                for record in records
+                if record["record_type"] == "review"
+                and record["reviewed_commit"] == commit
+            ]
+            if reviews and reviews[-1]["verdict"] == "approved":
+                decision = "approved"
     return TaskReport(
         status.task_id,
         status.state,
         review_cycles,
         tokens,
         _usage_provenance(records),
+        decision,
     )
 
 
@@ -107,6 +131,8 @@ def format_report(
         )
         if task.usage_provenance is not None:
             line += f"\tusage={task.usage_provenance}"
+        if task.decision is not None:
+            line += f"\tdecision={task.decision}"
         lines.append(line)
     if not include_summary:
         return tuple(lines)
