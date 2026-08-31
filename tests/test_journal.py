@@ -1569,3 +1569,48 @@ def test_init_does_not_call_a_file_named_upstream_an_outbox(
 
     assert not initialized.outbox_created
     assert not (project_directory / "upstream" / "README.md").exists()
+
+
+def test_every_record_factory_writes_the_current_schema() -> None:
+    """The guarantee is about what the tool writes, not what write_record accepts.
+
+    write_record deliberately still persists an older record: constructing one
+    is how backward reading is tested, and backward reading is what makes the
+    schema bump safe. So the promise is pinned here, over the factories.
+    """
+
+    import inspect
+
+    from agentmarshal.journal import records as records_module
+
+    factories = [
+        value
+        for name, value in vars(records_module).items()
+        if name.startswith("create_") and name.endswith("_record")
+    ]
+    assert factories, "no record factories found"
+    for factory in factories:
+        parameters = inspect.signature(factory).parameters
+        arguments: list[object] = []
+        for name, parameter in parameters.items():
+            if parameter.kind is inspect.Parameter.KEYWORD_ONLY:
+                continue
+            if parameter.default is not inspect.Parameter.empty:
+                continue
+            arguments.append(_placeholder_for(name))
+        assert factory(*arguments)["schema"] == 3, factory.__name__
+
+
+def _placeholder_for(name: str) -> object:
+    if name.endswith("_commit"):
+        return "a" * 40
+    if "findings" in name:
+        return ["F-1"]
+    if "tokens" in name:
+        return 0
+    return {
+        "task_id": "CR-001",
+        "tool_version": "0.1.0",
+        "verdict": "changes_required",
+        "activity": "implementation",
+    }.get(name, "value")
