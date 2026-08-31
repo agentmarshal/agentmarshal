@@ -1,4 +1,4 @@
-"""Tests for reporting and deleting finished task branches."""
+"""Tests for reporting and deleting finished task branches and worktrees."""
 
 import subprocess
 from pathlib import Path
@@ -57,6 +57,15 @@ def _local_branches(repo: Path) -> set[str]:
     return set(output.splitlines())
 
 
+def _worktree_paths(repo: Path) -> set[Path]:
+    output = _git(repo, "worktree", "list", "--porcelain")
+    return {
+        Path(line.removeprefix("worktree "))
+        for line in output.splitlines()
+        if line.startswith("worktree ")
+    }
+
+
 def test_report_lists_only_done_merged_branch_and_deletes_nothing(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -76,7 +85,7 @@ def test_report_lists_only_done_merged_branch_and_deletes_nothing(
     before = _local_branches(repo)
     capsys.readouterr()
 
-    assert main(["prune-branches"]) == 0
+    assert main(["prune"]) == 0
 
     output = capsys.readouterr()
     assert "eligible: feat/CR-001-merged" in output.out
@@ -102,7 +111,7 @@ def test_delete_removes_exactly_the_reported_branches(
     _git(repo, "update-ref", "refs/remotes/origin/CR-001-backup", remote_sha)
     capsys.readouterr()
 
-    assert main(["prune-branches", "--delete"]) == 0
+    assert main(["prune", "--delete"]) == 0
 
     output = capsys.readouterr()
     assert "deleted: feat/CR-001-one" in output.out
@@ -123,7 +132,7 @@ def test_current_branch_is_never_eligible(
     _git(repo, "switch", "--quiet", "-c", "feat/CR-001-current")
     capsys.readouterr()
 
-    assert main(["prune-branches", "--delete"]) == 0
+    assert main(["prune", "--delete"]) == 0
 
     output = capsys.readouterr().out
     assert "skipped: feat/CR-001-current (checked out in a worktree)" in output
@@ -142,10 +151,10 @@ def test_base_controls_containment_and_defaults_to_head(
     _git(repo, "branch", "integration", work)
     capsys.readouterr()
 
-    assert main(["prune-branches"]) == 0
+    assert main(["prune"]) == 0
     assert "skipped: feat/CR-001-work" in capsys.readouterr().out
 
-    assert main(["prune-branches", "--base", "integration"]) == 0
+    assert main(["prune", "--base", "integration"]) == 0
     assert "eligible: feat/CR-001-work" in capsys.readouterr().out
 
 
@@ -165,7 +174,7 @@ def test_a_refusal_from_git_is_reported_and_the_branch_survives(
     _git(repo, "switch", "--quiet", "master")
     # The branch is contained in itself, so the report finds it eligible; git,
     # judging against the checked-out master, refuses to delete it.
-    assert main(["prune-branches", "--base", unmerged, "--delete"]) == 1
+    assert main(["prune", "--base", unmerged, "--delete"]) == 1
 
     captured = capsys.readouterr()
     assert "eligible: feat/CR-001-work" in captured.out
@@ -182,7 +191,7 @@ def test_a_branch_of_an_unknown_task_is_skipped_not_fatal(
     repo = _repo(tmp_path, monkeypatch)
     _git(repo, "branch", "feat/CR-404-never-opened")
 
-    assert main(["prune-branches"]) == 0
+    assert main(["prune"]) == 0
 
     captured = capsys.readouterr()
     assert "skipped: feat/CR-404-never-opened (task CR-404 is unknown)" in captured.out
@@ -209,8 +218,113 @@ def test_a_branch_held_by_a_linked_worktree_is_never_eligible(
         "feat/CR-001-elsewhere",
     )
 
-    assert main(["prune-branches"]) == 0
+    assert main(["prune"]) == 0
 
     output = capsys.readouterr().out
     assert "skipped: feat/CR-001-elsewhere (checked out in a worktree)" in output
     assert "eligible: feat/CR-001-elsewhere" not in output
+
+
+def test_worktree_report_requires_done_task_and_clean_tree(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path, monkeypatch)
+    worktrees: dict[str, Path] = {}
+    for branch in (
+        "feat/CR-001-clean",
+        "feat/CR-001-dirty",
+        "feat/CR-002-open",
+        "feat/CR-003-abandoned",
+        "feat/CR-999-unknown",
+    ):
+        path = tmp_path / branch.rsplit("-", 1)[-1]
+        worktrees[branch] = path
+        _git(repo, "worktree", "add", "--quiet", "-b", branch, str(path), "HEAD")
+    (worktrees["feat/CR-001-dirty"] / "uncommitted.txt").write_text(
+        "precious work\n", encoding="utf-8"
+    )
+    capsys.readouterr()
+
+    assert main(["prune"]) == 0
+
+    output = capsys.readouterr()
+    assert "Branches:" in output.out
+    assert "Worktrees:" in output.out
+    assert (
+        f"eligible: {worktrees['feat/CR-001-clean']} "
+        "(branch feat/CR-001-clean; task CR-001 is done and clean)"
+    ) in output.out
+    assert f"skipped: {worktrees['feat/CR-001-dirty']}" in output.out
+    assert "task CR-001 is done but worktree is dirty" in output.out
+    assert "task CR-002 is open" in output.out
+    assert "task CR-003 is abandoned" in output.out
+    assert "task CR-999 is unknown" in output.out
+    assert output.err == ""
+
+
+def test_main_worktree_is_never_eligible(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path, monkeypatch)
+    _git(repo, "switch", "--quiet", "-c", "feat/CR-001-main")
+    capsys.readouterr()
+
+    assert main(["prune", "--delete"]) == 0
+
+    output = capsys.readouterr().out
+    assert f"skipped: {repo} (branch feat/CR-001-main; main worktree)" in output
+    assert repo in _worktree_paths(repo)
+
+
+def test_delete_removes_only_eligible_worktree_without_its_branch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path, monkeypatch)
+    clean = tmp_path / "clean"
+    dirty = tmp_path / "dirty"
+    _git(repo, "worktree", "add", "--quiet", "-b", "feat/CR-001-clean", str(clean))
+    _git(repo, "worktree", "add", "--quiet", "-b", "feat/CR-001-dirty", str(dirty))
+    (dirty / "uncommitted.txt").write_text("keep me\n", encoding="utf-8")
+    capsys.readouterr()
+
+    assert main(["prune", "--delete"]) == 0
+
+    output = capsys.readouterr()
+    assert f"removed worktree: {clean}" in output.out
+    assert f"removed worktree: {dirty}" not in output.out
+    assert clean not in _worktree_paths(repo)
+    assert dirty in _worktree_paths(repo)
+    assert "feat/CR-001-clean" in _local_branches(repo)
+
+
+def test_git_worktree_removal_refusal_is_reported(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path, monkeypatch)
+    locked = tmp_path / "locked"
+    _git(
+        repo,
+        "worktree",
+        "add",
+        "--quiet",
+        "-b",
+        "feat/CR-001-locked",
+        str(locked),
+    )
+    _git(repo, "worktree", "lock", str(locked))
+    capsys.readouterr()
+
+    assert main(["prune", "--delete"]) == 1
+
+    output = capsys.readouterr()
+    assert f"eligible: {locked}" in output.out
+    assert f"refused worktree: {locked}" in output.err
+    assert locked in _worktree_paths(repo)
