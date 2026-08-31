@@ -363,6 +363,13 @@ while any worktree has it checked out. A linked worktree is eligible only when
 its checked-out branch names a task whose projected state is `done` and the
 worktree has no uncommitted changes. The main worktree is always skipped.
 
+In a repository with more than one remote, configure any surrounding pruning
+or cleanup automation to target the working remote, never a backup mirror.
+Remote selection is the operator's responsibility because `agentmarshal prune`
+contacts no remote. Keep the working remote tidy: at least one provider fails
+closed beyond roughly a hundred branches, turning accumulated branches into an
+outage rather than a cosmetic nuisance.
+
 `--delete` uses Git's non-forcing branch deletion and worktree removal. If Git
 refuses either operation — for example because a worktree is locked —
 AgentMarshal reports the refusal and leaves the artifact in place.
