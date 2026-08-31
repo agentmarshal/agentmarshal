@@ -271,6 +271,22 @@ The review record is written into the journal working tree. It stays
 uncommitted until you record completion, so a review never has to be part of
 the very diff it attests.
 
+If the latest review of the candidate is non-approving, an operator may instead
+accept that exact commit over all of its blocking findings:
+
+```sh
+agentmarshal accept \
+  --task CR-001 --commit "$IMPL" \
+  --by operator@example.com \
+  --reason "The review loop did not converge"
+```
+
+The command derives the findings from the latest review. At gate time,
+AgentMarshal checks them again and refuses a stale, partial, extra-finding, or
+different-commit acceptance. This acceptance satisfies only the review-verdict
+check: it is **not an approving review**, and reviewer independence and every
+other gate check still apply.
+
 ### 6. Gate the candidate
 
 The gate is the merge authority. It passes only when every check holds:
@@ -293,8 +309,15 @@ PASS: task lifecycle records are consistent
 gate: passed
 ```
 
+For a candidate accepted over findings, the approval line is replaced by an
+explicit line such as:
+
+```
+PASS: accepted over findings F-001 by operator@example.com; not an approving review
+```
+
 It refuses, fail-closed, on any violation — an out-of-scope path, a missing or
-non-independent review, a stale attestation.
+non-independent review, a stale acceptance or attestation.
 
 The gate only **decides**; performing the actual merge is your provider's job.
 Wiring the gate to block merges on GitHub, GitFlic, or a self-hosted setup is

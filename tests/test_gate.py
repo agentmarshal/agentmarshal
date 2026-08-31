@@ -9,6 +9,7 @@ import pytest
 from agentmarshal.cli import main
 from agentmarshal.journal.gate import GateError, markers_from_tree, run_gate
 from agentmarshal.journal.records import (
+    create_acceptance_record,
     create_completed_record,
     create_session_record,
     write_record,
@@ -79,6 +80,55 @@ def _approve(repo: Path, commit: str, email: str = _REVIEWER_EMAIL) -> None:
                 "test-model",
                 "--email",
                 email,
+            ]
+        )
+        == 0
+    )
+
+
+def _require_changes(
+    repo: Path,
+    commit: str,
+    *findings: str,
+    email: str = _REVIEWER_EMAIL,
+) -> None:
+    arguments = [
+        "submit-review",
+        "--task",
+        "CR-001",
+        "--commit",
+        commit,
+        "--verdict",
+        "changes_required",
+        "--role",
+        "qa",
+        "--vendor",
+        "test",
+        "--model",
+        "test-model",
+        "--email",
+        email,
+    ]
+    for finding in findings:
+        arguments.extend(["--finding", finding])
+    assert main(arguments) == 0
+
+
+def _accept(
+    repo: Path, commit: str, accepted_by: str = "operator@example.invalid"
+) -> None:
+    assert (
+        main(
+            [
+                "accept",
+                "--task",
+                "CR-001",
+                "--commit",
+                commit,
+                "--by",
+                accepted_by,
+                "--reason",
+                "The review loop did not converge",
             ]
         )
         == 0
@@ -165,35 +215,128 @@ def test_gate_refuses_non_approved_latest_review(
     repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
     head = _implement(repo, "src/module.py")
     _approve(repo, head)
+    _require_changes(repo, head, "F-001")
+
+    passed, output = _run(repo, head, base, head)
+
+    assert not passed
+    assert f"FAIL: latest review of {head[:12]} is approved" in output
+
+
+def test_gate_passes_valid_acceptance_without_reporting_approval(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    head = _implement(repo, "src/module.py")
+    _require_changes(repo, head, "F-001", "F-002")
+    _accept(repo, head, accepted_by="operator@example.invalid")
+
+    passed, output = _run(repo, head, base, head)
+
+    assert passed, output
     assert (
-        main(
-            [
-                "submit-review",
-                "--task",
-                "CR-001",
-                "--commit",
-                head,
-                "--verdict",
-                "changes_required",
-                "--finding",
-                "F-001",
-                "--role",
-                "qa",
-                "--vendor",
-                "test",
-                "--model",
-                "test-model",
-                "--email",
-                _REVIEWER_EMAIL,
-            ]
-        )
-        == 0
+        "PASS: accepted over findings F-001, F-002 by "
+        "operator@example.invalid; not an approving review"
+    ) in output
+    assert f"latest review of {head[:12]} is approved" not in output
+
+
+@pytest.mark.parametrize(
+    ("review_findings", "acceptance_findings"),
+    [
+        (("F-001", "F-002"), ["F-001"]),
+        (("F-001",), ["F-001", "F-002"]),
+    ],
+)
+def test_gate_re_derives_acceptance_findings_exactly(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    review_findings: tuple[str, ...],
+    acceptance_findings: list[str],
+) -> None:
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    head = _implement(repo, "src/module.py")
+    _require_changes(repo, head, *review_findings)
+    journal = repo / ".agentmarshal" / "journal"
+    write_record(
+        journal,
+        "CR-001",
+        create_acceptance_record(
+            "CR-001",
+            "test",
+            head,
+            "operator@example.invalid",
+            acceptance_findings,
+            "Crafted without the accept command's validation",
+        ),
     )
 
     passed, output = _run(repo, head, base, head)
 
     assert not passed
-    assert "review" in output
+    # The acceptance exists but does not cover what is outstanding, and the
+    # refusal says so rather than reporting only a missing approval.
+    assert f"FAIL: acceptance of {head[:12]} does not cover the latest" in output
+    assert "accepted over findings" not in output
+
+
+def test_gate_refuses_acceptance_made_stale_by_a_later_review(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    head = _implement(repo, "src/module.py")
+    _require_changes(repo, head, "F-001")
+    _accept(repo, head)
+    _require_changes(repo, head, "F-001", "F-002")
+
+    passed, output = _run(repo, head, base, head)
+
+    assert not passed
+    # The acceptance exists but does not cover what is outstanding, and the
+    # refusal says so rather than reporting only a missing approval.
+    assert f"FAIL: acceptance of {head[:12]} does not cover the latest" in output
+    assert "accepted over findings" not in output
+
+
+def test_gate_refuses_acceptance_for_a_different_commit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    head = _implement(repo, "src/module.py")
+    _require_changes(repo, head, "F-001")
+    journal = repo / ".agentmarshal" / "journal"
+    write_record(
+        journal,
+        "CR-001",
+        create_acceptance_record(
+            "CR-001",
+            "test",
+            "a" * 40,
+            "operator@example.invalid",
+            ["F-001"],
+            "Acceptance of another commit",
+        ),
+    )
+
+    passed, output = _run(repo, head, base, head)
+
+    assert not passed
+    assert f"FAIL: latest review of {head[:12]} is approved" in output
+
+
+def test_gate_still_refuses_dependent_reviewer_with_valid_acceptance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    head = _implement(repo, "src/module.py")
+    _require_changes(repo, head, "F-001", email="worker@test.invalid")
+    _accept(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    assert not passed
+    assert "accepted over findings" in output
+    assert "declared reviewer identity differs" in output
 
 
 def test_gate_refuses_dependent_reviewer(
@@ -928,3 +1071,37 @@ def test_gate_leak_scan_degrades_to_warning_on_bad_config(
     assert passed, output
     assert output.count("FAIL") == 0
     assert "WARN: leak-scan skipped" in output
+
+
+def test_gate_judges_the_latest_acceptance_and_does_not_hunt_for_a_fitting_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An older valid acceptance must not rescue a later record that does not fit.
+
+    Searching a record set for whichever entry justifies a merge is the opposite
+    of what a merge authority does, so the last acceptance is judged as it
+    stands — the same rule the review check already follows.
+    """
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    head = _implement(repo, "src/module.py")
+    _require_changes(repo, head, "F-001")
+    _accept(repo, head)
+    write_record(
+        repo / ".agentmarshal" / "journal",
+        "CR-001",
+        create_acceptance_record(
+            "CR-001",
+            "0.1.0",
+            head,
+            "operator@example.invalid",
+            ["F-999"],
+            "a later acceptance that does not fit",
+        ),
+    )
+
+    passed, output = _run(repo, head, base, head)
+
+    assert not passed
+    assert "does not cover the latest" in output
+    assert "accepted over findings" not in output

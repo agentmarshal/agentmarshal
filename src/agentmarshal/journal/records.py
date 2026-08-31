@@ -377,6 +377,7 @@ def _validate_acceptance_record(data: Mapping[str, object]) -> None:
             raise JournalRecordError(
                 f"acceptance record field {field!r} must be a non-empty string"
             )
+        _reject_control_characters(value, f"acceptance record field {field!r}")
     findings = data.get("findings")
     if (
         not isinstance(findings, list)
@@ -387,10 +388,33 @@ def _validate_acceptance_record(data: Mapping[str, object]) -> None:
             "acceptance record field 'findings' must be a non-empty array of "
             "finding ids"
         )
+    for finding in cast(list[str], findings):
+        _reject_control_characters(finding, "acceptance record finding id")
     if len(set(findings)) != len(findings):
         raise JournalRecordError(
             "acceptance record findings must have unique finding ids"
         )
+
+
+def _reject_control_characters(value: str, what: str) -> None:
+    """Refuse a value that could add lines to a rendered transcript.
+
+    The gate, ``status`` and ``report`` all render an acceptance's party, its
+    finding ids and its reason inline. A newline in any of them would put extra
+    lines into that output — including one that reads as an approval, which is
+    the thing ADR-0007 forbids above all. In a single-operator project that is
+    self-deception; where two operators share a journal it is one party forging
+    what the other reads.
+
+    So the record is refused rather than the display escaped: a value that can
+    forge a transcript is not a valid identity, and evidence we cannot render
+    faithfully should not be written.
+    """
+
+    if any(
+        character.isprintable() is False and character != " " for character in value
+    ):
+        raise JournalRecordError(f"{what} must not contain control characters")
 
 
 def _validate_session_record(data: Mapping[str, object]) -> None:

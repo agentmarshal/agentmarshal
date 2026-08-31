@@ -17,6 +17,7 @@ import json
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 from agentmarshal.journal.capture import (
     CaptureError,
@@ -323,19 +324,63 @@ def run_gate(
             else f"paths outside contract scope: {', '.join(sorted(outside))}",
         )
 
+        records = read_records(journal_root, task_id)
         reviews = [
             record
-            for record in read_records(journal_root, task_id)
+            for record in records
             if record.get("record_type") == "review"
             and record.get("reviewed_commit") == resolved_commit
         ]
         latest = reviews[-1] if reviews else None
-        check(
-            latest is not None and latest.get("verdict") == "approved",
-            f"latest review of {resolved_commit[:12]} is approved"
-            if latest is not None
-            else f"no review record for {resolved_commit[:12]}",
-        )
+        approved = latest is not None and latest.get("verdict") == "approved"
+        acceptances = [
+            record
+            for record in records
+            if record.get("record_type") == "acceptance"
+            and record.get("accepted_commit") == resolved_commit
+        ]
+        # The latest acceptance, judged as it stands — never the best-fitting one.
+        # Searching a record set for whichever entry justifies a merge is the
+        # opposite of what a merge authority does, and it would let a stale or
+        # hand-written record be rescued by an older one. This mirrors the review
+        # rule above: the last record wins and is then held to the requirement.
+        acceptance = acceptances[-1] if acceptances else None
+        valid_acceptance: tuple[str, list[str]] | None = None
+        if latest is not None and not approved and acceptance is not None:
+            review_findings = cast(list[str], latest["findings"])
+            acceptance_findings = cast(list[str], acceptance["findings"])
+            if set(acceptance_findings) == set(review_findings):
+                valid_acceptance = (
+                    cast(str, acceptance["accepted_by"]),
+                    acceptance_findings,
+                )
+        if valid_acceptance is not None:
+            accepted_by, accepted_findings = valid_acceptance
+            findings = ", ".join(accepted_findings)
+            lines.append(
+                f"PASS: accepted over findings {findings} by {accepted_by}; "
+                "not an approving review"
+            )
+        elif acceptance is not None and latest is not None and not approved:
+            # An operator who has just recorded an acceptance and sees only
+            # "latest review is approved: FAIL" learns nothing about why the
+            # mechanism they used did not count. Findings can grow between an
+            # acceptance and a gate run, and that is the usual reason.
+            outstanding = sorted(set(cast(list[str], latest["findings"])))
+            accepted = sorted(set(cast(list[str], acceptance["findings"])))
+            check(
+                False,
+                f"acceptance of {resolved_commit[:12]} does not cover the latest "
+                f"review's findings (outstanding: {', '.join(outstanding)}; "
+                f"accepted: {', '.join(accepted)})",
+            )
+        else:
+            check(
+                approved,
+                f"latest review of {resolved_commit[:12]} is approved"
+                if latest is not None
+                else f"no review record for {resolved_commit[:12]}",
+            )
 
         if latest is not None:
             reviewer = latest.get("reviewer")
