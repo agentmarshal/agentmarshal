@@ -163,18 +163,18 @@ def test_write_record_is_exclusive_and_preserves_original_content(
     ]
 
 
-def test_builders_emit_schema_2_with_live_provenance(tmp_path: Path) -> None:
+def test_builders_emit_schema_3_with_live_provenance(tmp_path: Path) -> None:
     # Forward capture is in-toto-complete from the start: builders emit
-    # schema 2 with live provenance, and the record round-trips through the
+    # schema 3 with live provenance, and the record round-trips through the
     # validating writer/reader.
     record = create_opened_record("CR-001", "1.0")
-    assert record["schema"] == 2
+    assert record["schema"] == 3
     assert record["source"] == "live"
 
     review = create_review_record(
         "CR-001", "1.0", "a" * 40, "approved", "r", "v", "m", "r@t.i", []
     )
-    assert review["schema"] == 2
+    assert review["schema"] == 3
     assert review["source"] == "live"
 
     root = tmp_path / "journal"
@@ -183,6 +183,19 @@ def test_builders_emit_schema_2_with_live_provenance(tmp_path: Path) -> None:
     assert [_without_recorder(r) for r in read_records(root, "CR-001")] == [
         record | {"id": identifier}
     ]
+
+
+@pytest.mark.parametrize("schema", [1, 2])
+def test_existing_record_schemas_remain_valid(tmp_path: Path, schema: int) -> None:
+    record = create_opened_record("CR-001", "1.0")
+    record["schema"] = schema
+    if schema == 1:
+        record.pop("source")
+
+    root = tmp_path / "journal"
+    write_record(root, "CR-001", record, record_id="01J00000000000000000000000")
+
+    assert read_records(root, "CR-001")[0]["schema"] == schema
 
 
 def test_session_usage_round_trips_and_remains_optional(tmp_path: Path) -> None:
@@ -1556,3 +1569,48 @@ def test_init_does_not_call_a_file_named_upstream_an_outbox(
 
     assert not initialized.outbox_created
     assert not (project_directory / "upstream" / "README.md").exists()
+
+
+def test_every_record_factory_writes_the_current_schema() -> None:
+    """The guarantee is about what the tool writes, not what write_record accepts.
+
+    write_record deliberately still persists an older record: constructing one
+    is how backward reading is tested, and backward reading is what makes the
+    schema bump safe. So the promise is pinned here, over the factories.
+    """
+
+    import inspect
+
+    from agentmarshal.journal import records as records_module
+
+    factories = [
+        value
+        for name, value in vars(records_module).items()
+        if name.startswith("create_") and name.endswith("_record")
+    ]
+    assert factories, "no record factories found"
+    for factory in factories:
+        parameters = inspect.signature(factory).parameters
+        arguments: list[object] = []
+        for name, parameter in parameters.items():
+            if parameter.kind is inspect.Parameter.KEYWORD_ONLY:
+                continue
+            if parameter.default is not inspect.Parameter.empty:
+                continue
+            arguments.append(_placeholder_for(name))
+        assert factory(*arguments)["schema"] == 3, factory.__name__
+
+
+def _placeholder_for(name: str) -> object:
+    if name.endswith("_commit"):
+        return "a" * 40
+    if "findings" in name:
+        return ["F-1"]
+    if "tokens" in name:
+        return 0
+    return {
+        "task_id": "CR-001",
+        "tool_version": "0.1.0",
+        "verdict": "changes_required",
+        "activity": "implementation",
+    }.get(name, "value")

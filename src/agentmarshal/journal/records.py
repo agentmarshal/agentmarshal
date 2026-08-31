@@ -117,8 +117,8 @@ _RECORD_FIELDS = {
     ),
 }
 # Schema 2 adds provenance (ADR-0005): a required ``source`` and optional
-# ``artifacts`` references. They are permitted only on schema 2 — a schema
-# 1 record carrying them is rejected as an unexpected field.
+# ``artifacts`` references. They are permitted on schema 2 and above — a
+# schema 1 record carrying them is rejected as an unexpected field.
 # ``recorded_by`` names the actor that created the record and
 # ``recorded_by_source`` says where that name came from (ADR-0006). Both are
 # optional, so every record written before they existed stays valid. They are
@@ -128,7 +128,7 @@ _SCHEMA_2_FIELDS = frozenset(
 )
 _SCHEMA_2_SESSION_FIELDS = frozenset({"usage"})
 _RECORDED_BY_SOURCES = frozenset({"project-actor", "git-identity", "override"})
-_SUPPORTED_SCHEMAS = frozenset({1, 2})
+_SUPPORTED_SCHEMAS = frozenset({1, 2, 3})
 _ARTIFACT_HASH_PATTERN = re.compile(r"[0-9a-f]{64}$")
 _REVIEWED_COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}$")
 _REVIEW_VERDICTS = frozenset({"approved", "changes_required", "blocked", "rejected"})
@@ -612,7 +612,7 @@ def write_record(
         raise JournalRecordError(
             "recorded_by is derived from the environment and must not be supplied"
         )
-    if data.get("schema") == 2:
+    if cast(int, data["schema"]) >= 2:
         resolved = resolve_recorded_by(_project_root_for(journal_root))
         if resolved is not None:
             data["recorded_by"], data["recorded_by_source"] = resolved
@@ -640,7 +640,7 @@ def create_opened_record(
     """Build the lifecycle record emitted when a task is opened."""
 
     return {
-        "schema": 2,
+        "schema": 3,
         "record_type": "opened",
         "task": task_id,
         "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
@@ -655,7 +655,7 @@ def create_completed_record(
     """Build the terminal record emitted when a task is completed."""
 
     return {
-        "schema": 2,
+        "schema": 3,
         "record_type": "completed",
         "task": task_id,
         "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
@@ -671,7 +671,7 @@ def create_abandoned_record(
     """Build the terminal record emitted when a task is abandoned."""
 
     return {
-        "schema": 2,
+        "schema": 3,
         "record_type": "abandoned",
         "task": task_id,
         "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
@@ -687,7 +687,7 @@ def create_reopened_record(
     """Build the lifecycle record emitted when a completed task is reopened."""
 
     return {
-        "schema": 2,
+        "schema": 3,
         "record_type": "reopened",
         "task": task_id,
         "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
@@ -703,7 +703,7 @@ def create_amendment_record(
     """Build the evidence record emitted when a contract is amended."""
 
     return {
-        "schema": 2,
+        "schema": 3,
         "record_type": "amendment",
         "task": task_id,
         "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
@@ -736,7 +736,7 @@ def create_session_record(
             f"session record argument {missing!r} is required when its pair is supplied"
         )
     record: dict[str, object] = {
-        "schema": 2,
+        "schema": 3,
         "record_type": "session",
         "task": task_id,
         "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
@@ -780,7 +780,7 @@ def create_review_record(
     """
 
     record: dict[str, object] = {
-        "schema": 2,
+        "schema": 3,
         "record_type": "review",
         "task": task_id,
         "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
@@ -814,7 +814,7 @@ def create_acceptance_record(
     """Build an operator acceptance over a review's blocking findings."""
 
     return {
-        "schema": 2,
+        "schema": 3,
         "record_type": "acceptance",
         "task": task_id,
         "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),

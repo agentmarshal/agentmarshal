@@ -82,7 +82,7 @@ def test_migrate_journal_converts_lifecycle_states(tmp_path: Path) -> None:
     assert open_task.records[1]["verdict"] == "changes_required"
 
 
-def test_migrated_records_are_schema_2_imported_from_host(tmp_path: Path) -> None:
+def test_migrated_records_are_schema_3_imported_from_host(tmp_path: Path) -> None:
     # Migrated evidence is imported, not live: every record carries the
     # honest imported-from-host provenance (ADR-0005 Decision 4).
     source = tmp_path / "v1"
@@ -101,7 +101,7 @@ def test_migrated_records_are_schema_2_imported_from_host(tmp_path: Path) -> Non
     records = load_task_status(target, "CR-001").records
     assert records  # opened + review + completed
     for record in records:
-        assert record["schema"] == 2
+        assert record["schema"] == 3
         assert record["source"] == "imported-from-host"
 
 

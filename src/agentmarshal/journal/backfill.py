@@ -8,7 +8,7 @@ as *provenance-marked* records: every imported record is
 moment of the event.
 
 This module is the pure mapping layer: it turns a v1 stat record into a
-schema-2 ``session`` record, preserving the original timestamp, and
+schema-3 ``session`` record, preserving the original timestamp, and
 validates it. It writes nothing to the journal — the restore run that
 commits the records through the measurements lane (CR-028) is a separate
 data operation that consumes this library.
@@ -105,7 +105,7 @@ def session_record_from_stat(
     source_digest: str,
     imported_at: str,
 ) -> dict[str, object]:
-    """Map a v1 stat record to a validated schema-2 imported session record.
+    """Map a v1 stat record to a validated schema-3 imported session record.
 
     ``created_at`` is the stat's original ``recorded_at`` (not now), and
     ``source`` is always ``imported-from-host``. The cache token count sums
@@ -151,7 +151,7 @@ def session_record_from_stat(
     )
 
     record: dict[str, object] = {
-        "schema": 2,
+        "schema": 3,
         "record_type": "session",
         "task": stat["task"],
         "created_at": stat["recorded_at"],
