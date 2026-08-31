@@ -71,8 +71,10 @@ commit *is* the upgrade for that party.
 
 ### After upgrading
 
-Nothing is required. The new commands are additive and the loop is unchanged.
-Worth knowing:
+Nothing is required, and the loop you already run behaves as it did: open,
+implement, review, gate, complete. What 0.2.0 adds are further paths you may
+take — an acceptance when review will not converge, and a way to reopen a task
+that turned out to be unfinished. Worth knowing:
 
 - `agentmarshal brief --task <id>` gives an implementer the contract; the tool
   had no delivery for it before.
