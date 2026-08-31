@@ -53,7 +53,10 @@ abandon the task or to keep re-running until a verdict happened to approve.
 - An accepted task never reads as an approved one. The gate says
   `accepted over findings … by …; not an approving review`, `status` says it in
   the task summary, and `report` marks the task `decision=accepted-over-findings`.
-- Accepting your own work is permitted and always labelled `self-accepted`.
+- Accepting your own work is permitted, and labelled `self-accepted` wherever
+  the task is reported. Where the accepted commit is not readable in the current
+  checkout the label cannot be derived, and the surfaces say that rather than
+  falling silent.
 
 The reasoning, including what an acceptance does *not* establish, is in
 [ADR-0007](docs/adr/ADR-0007-operator-acceptance.md).
@@ -71,9 +74,10 @@ The reasoning, including what an acceptance does *not* establish, is in
 
 ### Contracts reach the implementer
 
-- **`agentmarshal brief`** prints everything an implementer needs — the scope,
-  the acceptance criteria, the rules the tool enforces, and the contract body
-  verbatim — to stdout, to be piped into whatever agent does the work.
+- **`agentmarshal brief`** prints what the journal knows about a task — the
+  scope, the acceptance criteria, the rules the tool enforces, and the contract
+  body verbatim — to stdout, to be piped into whatever agent does the work. It
+  does not know your project's own commands; add those yourself.
   AgentMarshal bundles no implementer and takes no position on which one you use.
 - `open` warns when a scope entry names nothing on disk, names a directory
   without its trailing slash, or when a task declares **no scope at all** —
@@ -83,10 +87,12 @@ The reasoning, including what an acceptance does *not* establish, is in
 
 - The review prompt names the permitted verdicts, describes `advisory_findings`,
   and asks the reviewer to state each finding's claim in one line of prose.
-- The reviewer's raw output is preserved whenever a verdict is refused **or**
-  when a recorded verdict names a finding; the path is reported on stderr. What
-  is kept is what the reviewer wrote — a reviewer that emits an id with no prose
-  leaves a file with no prose in it.
+- The reviewer's raw output is kept when a verdict is refused **or** when a
+  recorded verdict names a finding, and the path is reported on stderr. Keeping
+  it is **best-effort**: if the file cannot be written the review is still
+  recorded, because the record is the evidence and the prose is not. And what is
+  kept is what the reviewer wrote — one that emits an id with no prose leaves a
+  file with no prose in it.
 - A verdict carrying an unsupported field is refused with that field named.
 
 ### Records say who wrote them
