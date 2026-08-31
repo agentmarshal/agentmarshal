@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "_comment": "Starting-point allowlist for running the AgentMarshal rails. Copy to .claude/settings.local.json and adapt paths and command families to your project. Keep this file out of version control.",
+  "_comment": "Starting-point allowlist for Claude Code, verified against the settings format in use on 2026-08-31. This template will age as Claude Code changes; you own verifying and maintaining it. Copy it to .claude/settings.local.json, adapt paths and command families to your project, and keep that local file out of version control.",
   "permissions": {
     "allow": [
       "Bash(git *)",
