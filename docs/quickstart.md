@@ -359,6 +359,18 @@ provider logs, which is the usual case for an external executor. Omit both
 usage flags when the provenance is unavailable; the report calls those counts
 unrecorded rather than silently treating them as provider-reported.
 
+Then commit it, like every other record:
+
+```sh
+git add .agentmarshal && git commit -m "record CR-001 economics"
+```
+
+That commit is a **journal-only additive candidate**, which the gate accepts
+against a task that is already closed — its measurements-only lane exists for
+exactly this. Leaving the record uncommitted would defeat the point: the cost
+would live in a working tree instead of in git, which is the thing this project
+exists to stop.
+
 Nothing calls this for you. Recording the cost is a step of your loop — put it
 in whatever wrapper runs the loop, or it will not happen.
 

@@ -1924,22 +1924,13 @@ def test_a_session_is_recorded_when_the_cost_is_known(
     open-only guard put that lane out of the CLI's reach.
     """
 
-    from agentmarshal.cli import main
-    from agentmarshal.journal.records import (
-        create_abandoned_record,
-        create_completed_record,
-        read_records,
-        write_record,
-    )
-
     repo = tmp_path / "repo"
-    repo.mkdir()
-    subprocess.run(["git", "init", "--quiet", "-b", "master"], cwd=repo, check=True)
+    init_git_repo(repo)
     monkeypatch.chdir(repo)
     assert main(["init"]) == 0
     assert main(["open", "--title", "Done task", "--scope", "src/"]) == 0
     assert main(["open", "--title", "Abandoned task", "--scope", "src/"]) == 0
-    journal = repo / ".agentmarshal" / "journal"
+    journal = journal_root(repo)
     write_record(
         journal, "CR-001", create_completed_record("CR-001", "0.1.0", "a" * 40)
     )
@@ -1976,8 +1967,6 @@ def test_a_session_is_recorded_when_the_cost_is_known(
     # The measurement changes no state: that is what makes it safe after a
     # terminal record, and it is the projection's job rather than this
     # command's.
-    from agentmarshal.journal.status import project_status
-
     assert project_status(read_records(journal, "CR-001")) == "done"
     assert project_status(read_records(journal, "CR-002")) == "abandoned"
 

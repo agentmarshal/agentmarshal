@@ -4,13 +4,16 @@
 # unanchored "runs/" matches at any depth and silently swept up stats/runs/.
 /runs/
 
-# Scratch space for in-flight journal work.
-/tmp/
+# Scratch space for in-flight journal work. Deliberately left unanchored: it
+# was, and changing that would alter what is publishable without a decision.
+tmp/
 
 # Per-run logs alongside transcripts.
 *.log
 
-# v1-schema per-run statistics, written by the legacy stats tooling. Local
-# working data, not evidence: the journal's own session records are the
-# supported economics and they are published with the rest of the journal.
-/stats/
+# v1-schema per-run statistics from the legacy stats tooling. Local working
+# data, not evidence: the journal's own session records are the supported
+# economics and are published with the rest of the journal. Scoped to runs/
+# alone — stats/evaluations/ is a configured store (config/runtime.conf) whose
+# publication status is not this rule's to decide.
+/stats/runs/
