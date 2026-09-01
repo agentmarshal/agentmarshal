@@ -1,0 +1,21 @@
+{
+  "created_at": "2026-09-01T15:12:24.078018Z",
+  "findings": [
+    "CR083-compatibility-contradiction"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "d4f94d46daa9c4da03ce98f7cb57c2bbe1f65a24",
+  "reviewer": {
+    "email": "auto-review@agent.example.invalid",
+    "model": "codex-auto-review",
+    "role": "code-reviewer",
+    "vendor": "openai"
+  },
+  "schema": 3,
+  "source": "live",
+  "task": "CR-083",
+  "tool_version": "0.3.0",
+  "verdict": "changes_required"
+}
