@@ -1,5 +1,68 @@
 # Upgrading
 
+## 0.2.0 → 0.3.0
+
+### What you must know first
+
+**Nothing needs migrating, and nothing breaks in either direction.** The record
+schema is 3 in both releases. A 0.3.0 journal is readable by 0.2.0 and the other
+way round, so there is no coordination window here and no order to respect: 
+upgrade each place when it suits you.
+
+One exception, and it is loud rather than subtle.
+
+### A sidecar journal requires 0.3.0 everywhere that reads it
+
+The sidecar placement is new in 0.3.0. If you use it — `agentmarshal init --host
+PATH`, a journal in its own repository naming a host — then **every checkout that
+runs AgentMarshal against that journal must be on 0.3.0.**
+
+A 0.2.0 install does not fail on it. That is the problem. It does not know the
+`placement` and `host` keys in `project.json`, so it treats the journal
+repository as the repository being governed. `status` and `validate` then work
+and say nothing about the placement, and the gate does this:
+
+```
+PASS: task CR-001 is not closed at base
+PASS: journal-only transaction (deterministic lane; review not required)
+PASS: pipeline attested for 1d9461e88503
+PASS: evidence records are append-only
+PASS: added records are valid
+PASS: no record-path collisions with the base tree
+PASS: task lifecycle records are consistent
+gate: passed
+```
+
+Every line is true of the wrong repository. Everything in a sidecar lives under
+`.agentmarshal/`, so the candidate looks like a journal-only transaction, the
+review requirement is waived on that basis, and the result prints the merge
+authority's own wording — for a placement whose gate is supposed to say it
+decides nothing. That transcript is from the published 0.2.0, run against a real
+sidecar journal.
+
+If you do not use the sidecar placement, none of this applies to you.
+
+### The procedure
+
+1. **Upgrade wherever AgentMarshal runs:** each operator's machine, every CI
+   runner that executes `validate`, `gate` or `complete`, and the host running
+   your merge wrapper.
+2. **Verify:** `agentmarshal --version` reports `0.3.0`, and `agentmarshal
+   validate` passes on the journal.
+3. If you run a sidecar journal, verify before anyone gates against it — a 0.2.0
+   checkout left behind produces the transcript above rather than an error.
+
+### Per installation method
+
+**Pinned (`agentmarshal==0.2.0`)** — change the pin to `==0.3.0` and reinstall.
+
+**Unpinned (`pip install agentmarshal`)** — an unpinned install does not move on
+its own where the requirement is already satisfied; it moves on a fresh
+environment, on `pip install -U`, or when a container is rebuilt. For this
+upgrade that divergence is harmless unless you run a sidecar journal, in which
+case pin, because the failure it produces is a passing transcript rather than a
+refusal.
+
 ## 0.1.0 → 0.2.0
 
 ### What you must know first

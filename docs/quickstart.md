@@ -156,8 +156,8 @@ second, explicit lie. See [ADR-0006](adr/ADR-0006-actors-and-identity.md).
 `agentmarshal init` writes a minimal `.agentmarshal/project.json`
 (`schema` + framework version); no hand-editing is needed for the loop. The
 supplementary-artifact `capture` policy is parsed but not acted on in
-0.2.0: there is no policy-driven artifact writer or private store yet. The
-`leak_scan.private_markers` list is active in 0.2.0 and adds project-specific
+0.3.0: there is no policy-driven artifact writer or private store yet. The
+`leak_scan.private_markers` list is active in 0.3.0 and adds project-specific
 strings to the built-in advisory scan used by `leak-scan` and the gate.
 
 ## The governed loop
@@ -291,7 +291,7 @@ separate check:
 agentmarshal leak-scan --commit "$IMPL" --base "$BASE"
 ```
 
-The gate runs this scan too and warns on matches; in 0.2.0 a match does not
+The gate runs this scan too and warns on matches; in 0.3.0 a match does not
 block. In an embedded journal, the gate is the merge authority. It passes only
 when every blocking check holds:
 
@@ -332,8 +332,8 @@ This guide describes the **embedded** placement throughout. A journal can
 instead live in a repository of its own and name the host it records evidence
 about — where the evidence must stay private, or where you cannot install
 anything into the repository you work in. There the gate **advises and decides
-no merge**, and several other commands differ. That placement is experimental
-and not in 0.2.0: [sidecar.md](sidecar.md) is its own install-and-operate path.
+no merge**, and several other commands differ. That placement is new in 0.3.0
+and experimental: [sidecar.md](sidecar.md) is its own install-and-operate path.
 
 ### 6. Complete the task
 

@@ -83,7 +83,7 @@ task is already closed.
 - **Placement** — where a journal sits relative to the repository it records
   evidence about: **embedded** (inside it, the default, everything below
   assumes it) or **sidecar** (a repository of its own naming a host, which it
-  only ever reads). Sidecar is **experimental** and not in 0.2.0; its gate
+  only ever reads). Sidecar is new in 0.3.0 and **experimental**; its gate
   advises and decides no merge. See [sidecar.md](sidecar.md) and
   [ADR-0008](adr/ADR-0008-journal-placements.md).
 - **Journal** — everything under `.agentmarshal/journal/`: the per-task
@@ -127,23 +127,23 @@ task is already closed.
 
 ## Direction (roadmap)
 
-The design is broader than the shipped 0.2.0 repository version; the honest
+The design is broader than the shipped 0.3.0 repository version; the honest
 boundary is stated in the ADRs and
 [migration-v1-to-v2.md](migration-v1-to-v2.md). What is designed but **not
-active in 0.2.0**, in rough order (features land in later releases —
+active in 0.3.0**, in rough order (features land in later releases —
 `agentmarshal --version` shows yours):
 
 - **Verifiable attestation** — projecting records to an in-toto Statement and
   signing it (DSSE / Sigstore), so provenance is cryptographically checkable,
   not just recorded. Adjacent to (not a claim of) SLSA Source; not yet emitted.
-- **Capture policy** — token-economics/session records accrue in 0.2.0
+- **Capture policy** — token-economics/session records accrue in 0.3.0
   (`record-session` / `report`). What is roadmap is the *capture policy* that
   governs retaining heavier supplementary evidence — full review and prompt
-  text, raw session transcripts — public or in a private store. In 0.2.0 the
+  text, raw session transcripts — public or in a private store. In 0.3.0 the
   policy parser exists but no policy-driven writer or private store retains
   those artifacts. Reviewer output with findings is kept separately in a
   best-effort temporary file; that is not policy-governed durable capture.
-- **Mandatory leak-scan enforcement** — 0.2.0 ships a standalone `leak-scan`
+- **Mandatory leak-scan enforcement** — 0.3.0 ships a standalone `leak-scan`
   command and an advisory merge-time scan that warns on possible leaks in a
   candidate's additions. Making a match block is roadmap. The scan is
   best-effort by design (ADR-0005) — never a guarantee.

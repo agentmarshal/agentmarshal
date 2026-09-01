@@ -102,7 +102,7 @@ is a model that avoids cross-branch mutation, not a database.
    session double-opt-in are **planned, not implemented** (`capture.py`
    writes nothing). ADR-0005 marks the same capture boundary.
 
-   **Status in 0.2.0.** The historical boundary still applies to durable
+   **Status in 0.3.0.** The historical boundary still applies to durable
    supplementary capture: the parser exists, but there is no policy-driven
    artifact writer or private store. An advisory added-content leak-scan now
    ships at the gate and as `agentmarshal leak-scan`; reviewer output that

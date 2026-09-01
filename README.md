@@ -9,11 +9,11 @@ rather than of someone's memory: task contracts, review verdicts bound to
 exact commits, and merge gates — with the evidence living in git, not in
 an ephemeral session log.
 
-**Trust boundary (0.2.0):** the merge gate enforces that a review's recorded
+**Trust boundary (0.3.0):** the merge gate enforces that a review's recorded
 reviewer email differs from the commit authors', and binds the verdict to the
 exact commit SHA. It does **not** cryptographically authenticate who recorded
 a review or which checkout was gated — the recorder and the reviewed tree are
-operator-trusted. Signing/provenance is roadmap, not a 0.2.0 guarantee.
+operator-trusted. Signing/provenance is roadmap, not a 0.3.0 guarantee.
 
 One consequence is worth stating outright, because the gate's output can read
 like more than it is: **a `human` reviewer is a self-declaration.** The gate
@@ -43,7 +43,7 @@ historical 0.1.0 boundary and note what has changed since:
 - [ADR-0004](docs/adr/ADR-0004-journal-data-model.md) and
   [ADR-0005](docs/adr/ADR-0005-evidence-capture-and-format.md) mark planned
   supplementary-artifact capture policy, the private store, and the
-  in-toto/attestation projection as roadmap. They remain inactive in 0.2.0;
+  in-toto/attestation projection as roadmap. They remain inactive in 0.3.0;
   ADR-0005 separately records the advisory leak-scan that has shipped.
 - [docs/migration-v1-to-v2.md](docs/migration-v1-to-v2.md) records what the
   v1→v2 migration lost (contract prose) and that the machine-readable
@@ -54,10 +54,13 @@ To see how the project actually evolved, token costs and all, read the journal.
 
 ## Status
 
-**Pre-alpha.** Version 0.2.0 ships the governed loop end to end: task contracts,
+**Pre-alpha.** Version 0.3.0 ships the governed loop end to end: task contracts,
 review and operator-acceptance evidence, lifecycle repair, the fail-closed gate,
 completion, reporting, validation, advisory leak scanning, and local pruning.
-APIs, schemas, and CLI are subject to change without notice.
+New in 0.3.0: a journal can live in a repository of its own and record evidence
+about a host it never writes to — an **experimental** placement whose gate
+advises and decides no merge. APIs, schemas, and CLI are subject to change
+without notice.
 
 ## Install
 
@@ -128,8 +131,8 @@ to block merges is covered in
 **Cannot install into the repository you work in, or need the evidence to stay
 private?** A journal can live in a repository of its own and name the one it
 records evidence about — see
-[docs/sidecar.md](docs/sidecar.md). That placement is **experimental**, is not
-in 0.2.0, and its gate advises rather than decides.
+[docs/sidecar.md](docs/sidecar.md). That placement is new in 0.3.0, is
+**experimental**, and its gate advises rather than decides.
 
 ## Development
 
