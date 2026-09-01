@@ -1,7 +1,7 @@
 # Sidecar journals (experimental)
 
 > **Experimental.** This placement is **not in the published 0.2.0 release** —
-> it lands in the next one, and this document describes the behaviour on
+> it is planned for the next one, and this document describes the behaviour on
 > `master`. Its command surface, its output wording and its record content may
 > change. Do not build automation on it that you are not prepared to fix, and
 > do not rely on a sidecar journal as your only copy of anything.
@@ -154,8 +154,10 @@ relationship to any `CR-001` in the host.
 ### Brief the implementer, work in the host
 
 ```sh
-agentmarshal brief --task CR-001 | your-agent
+agentmarshal brief --task CR-001 | your-agent   # whichever agent you use
 ```
+
+The output is only the briefing, so it pipes into anything.
 
 The work happens in the host repository, on a host branch, exactly as it would
 without AgentMarshal. Note the two commits you need:
@@ -164,10 +166,14 @@ without AgentMarshal. Note the two commits you need:
 cd ~/src/work-repo
 git switch -c feat/greeting
 # … change only what the scope declares …
-git commit -am "implement the greeting helper"
+git add -A && git commit -m "implement the greeting helper"
+
+BASE=$(git merge-base main feat/greeting)   # what the work branched from
+IMPL=$(git rev-parse feat/greeting)         # the candidate
 ```
 
-`BASE` is the host commit the work branched from; `IMPL` is the candidate.
+Both are **host** commits. Every command from here names them by SHA from the
+sidecar, so keep them in the shell you run the journal from.
 
 ### Record the review in the sidecar
 
@@ -203,6 +209,9 @@ PASS: task lifecycle records are consistent
 gate: advisory checks passed; decides no merge
 ```
 
+The SHAs in that transcript are from an actual run on a throwaway pair of
+repositories; yours will differ.
+
 Two lines say "none examined" rather than `PASS` in the ordinary sense: the
 candidate is a host diff, and a host diff adds no records to this journal.
 Saying `PASS` without saying what was looked at would be a check that examined
@@ -230,6 +239,9 @@ AGENTMARSHAL_PIPELINE_OK_SHA="$IMPL" \
   agentmarshal complete --task CR-001 --commit "$IMPL" --base "$BASE"
 ```
 
+It prints the advisory notice and the same nine check lines the gate printed,
+then the path of the record it wrote, and ends:
+
 ```
 completed after advisory checks; decides no merge
 ```
@@ -255,11 +267,16 @@ no marker of the existence of, any sidecar.** Not a link, not a config key, not
 a placeholder record, not an ignore rule — a reader with full access to the
 host must be unable to tell whether a sidecar exists.
 
-The tool holds up its end: it writes nothing to the host and reads it only
-through git. After a full loop, a host repository has no modified files and the
-string `agentmarshal` appears nowhere in it. `prune --delete` is refused in a
-sidecar for the same reason, and reports what it would consider without
-touching anything.
+The tool holds up its end: it **writes** nothing to the host. It reads it
+mostly through git, and directly from the filesystem where a check needs to —
+resolving the configured host path, and checking whether the paths a scope
+declares exist. Reads either way; writes never. After a full loop, a host
+repository has no modified files and the string `agentmarshal` appears nowhere
+in it.
+
+`prune --delete` is refused in a sidecar for the same reason. It prints the
+refusal and stops, printing no report at all — run plain `agentmarshal prune`
+for that.
 
 Your end is the part the tool cannot enforce:
 
