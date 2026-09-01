@@ -4,12 +4,13 @@
 
 ### What you must know first
 
-**Nothing needs migrating, and nothing breaks in either direction.** The record
-schema is 3 in both releases. A 0.3.0 journal is readable by 0.2.0 and the other
-way round, so there is no coordination window here and no order to respect: 
-upgrade each place when it suits you.
+**The record format does not change.** The schema is 3 in both releases, a
+0.3.0 journal is readable by 0.2.0 and the other way round, and nothing needs
+migrating. For an embedded journal there is no coordination window and no order
+to respect: upgrade each place when it suits you.
 
-One exception, and it is loud rather than subtle.
+One arrangement does break, and it breaks **silently** — which is why it gets
+the rest of this section.
 
 ### A sidecar journal requires 0.3.0 everywhere that reads it
 
@@ -53,6 +54,10 @@ If you do not use the sidecar placement, none of this applies to you.
    checkout left behind produces the transcript above rather than an error.
 
 ### Per installation method
+
+This procedure applies once 0.3.0 is on the package index; until then the only
+build with the sidecar placement is the one you install from the repository, as
+[docs/sidecar.md](docs/sidecar.md) describes.
 
 **Pinned (`agentmarshal==0.2.0`)** — change the pin to `==0.3.0` and reinstall.
 

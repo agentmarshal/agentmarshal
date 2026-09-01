@@ -66,9 +66,9 @@ The tool is the same tool — one package, one command surface, one record
 schema. There is no "lite" build.
 
 Until 0.3.0 reaches the package index, `pip install agentmarshal` will **not**
-give you a build that has this placement. Install from the repository — pinned to the commit this document was
-verified against, because `master` moves and an experimental surface moves with
-it:
+give you a build that has this placement. Install from the repository — pinned
+to the commit this document was verified against, because `master` moves and an
+experimental surface moves with it:
 
 ```sh
 pip install "git+https://github.com/agentmarshal/agentmarshal@3dfeadda6ab10342bd288b6777681175b63d9582"
@@ -138,10 +138,10 @@ is `.agentmarshal/project.json`:
 ```
 
 `framework.version` records the build that wrote the file, so yours says
-whichever version you installed. `host` is written absolute. A relative value is supported for a hand-edited
-file and resolves against the project root — never against your shell's working
-directory, which would mean different repositories from different
-subdirectories.
+whichever version you installed. `host` is written absolute. A relative value
+is supported for a hand-edited file and resolves against the project root —
+never against your shell's working directory, which would mean different
+repositories from different subdirectories.
 
 Run every `agentmarshal` command **from the sidecar**, naming host commits by
 SHA. The host is only ever read.
@@ -370,6 +370,12 @@ Publishing something from a sidecar later — a proposal, an incident write-up �
 is **declassification by hand**. The tool does not sanitize for you;
 `agentmarshal leak-scan` is an advisory scan of added content, not a
 declassification review.
+
+The two placements coexist over one project, and the rule that keeps them
+coherent is operational, not theoretical: an embedded journal for the public
+lifecycle and a sidecar for private work are **two journals with disjoint
+tasks**. No task's records are ever split across them, and state is never
+projected across them — a projection with two sources would be a guess.
 
 ## Command differences, in one place
 
