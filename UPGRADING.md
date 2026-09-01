@@ -59,10 +59,6 @@ If you do not use the sidecar placement, none of this applies to you.
 
 ### Per installation method
 
-This procedure applies once 0.3.0 is on the package index; until then the only
-build with the sidecar placement is the one you install from the repository, as
-[docs/sidecar.md](docs/sidecar.md) describes.
-
 **Pinned (`agentmarshal==0.2.0`)** — change the pin to `==0.3.0` and reinstall.
 
 **Unpinned (`pip install agentmarshal`)** — an unpinned install does not move on

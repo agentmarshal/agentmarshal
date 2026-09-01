@@ -65,39 +65,27 @@ that sentence are true and neither should be dropped when quoting it.
 The tool is the same tool — one package, one command surface, one record
 schema. There is no "lite" build.
 
-Until 0.3.0 reaches the package index, `pip install agentmarshal` will **not**
-give you a build that has this placement. Install from the repository — pinned
-to the commit this document was verified against, because `master` moves and an
-experimental surface moves with it:
+The placement is in the published release, so an ordinary install has it:
 
 ```sh
-pip install "git+https://github.com/agentmarshal/agentmarshal@3dfeadda6ab10342bd288b6777681175b63d9582"
+pip install agentmarshal==0.3.0
 ```
 
-That address is not this document's word alone: the repository declares it in
-`[project.urls]` of `pyproject.toml`. Check it there — the pinned commit
-predates that line, so the package you install from the pin carries no URL in
-its own metadata.
-
-That commit is the one whose behaviour this document describes and whose output
-it quotes; the document itself lands after it. Replace the pin with `@master`
-when you want the newest build, and accept that what you read here may already
-have changed.
+Pin it rather than taking the latest: this surface is experimental, and a shared
+journal should move when you decide it does, not when a container is rebuilt.
 
 Requirements are unchanged: **Python ≥ 3.12** and **git** on your `PATH`. You
 install it for yourself, not into the host repository, so a user-level install
 (`pipx`, `uv tool install`, a virtualenv you own) is the normal choice.
 
-Check what you got by capability rather than by version:
+If you are unsure what a machine already has, ask it what it can do:
 
 ```sh
 agentmarshal init --help | grep -- --host
 ```
 
-A build with the placement prints the `--host` option; the published 0.2.0
-prints nothing. `agentmarshal --version` is the wrong probe here: the pinned
-commit reports `0.2.0`, because the version was raised after it, and so does the
-last published release — two different builds behind one number.
+A build with the placement prints the `--host` option; 0.2.0 prints no such
+line.
 
 ## Set up the sidecar
 
@@ -130,7 +118,7 @@ is `.agentmarshal/project.json`:
 ```json
 {
   "framework": {
-    "version": "0.2.0"
+    "version": "0.3.0"
   },
   "host": "/home/you/src/work-repo",
   "placement": "sidecar",

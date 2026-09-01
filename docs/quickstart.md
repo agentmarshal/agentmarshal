@@ -3,8 +3,8 @@
 This walks through the whole AgentMarshal loop on a throwaway repository —
 from installing the package to a task that carries durable, SHA-bound
 evidence that its work was independently reviewed. Every command below was
-verified by running it against the published `agentmarshal` 0.2.0 release —
-except step 7, which needs **0.3.0** and says so there.
+verified by running the guide end to end against the published `agentmarshal`
+0.3.0 release.
 
 New here? [overview.md](overview.md) explains the idea and the vocabulary
 (**host repo**, task, contract, scope, gate, …) in a page. This guide is the
@@ -17,7 +17,7 @@ Requirements: **Python ≥ 3.12** and **git** on your `PATH`.
 These are the exact commands this guide was verified with:
 
 ```sh
-pip install agentmarshal==0.2.0
+pip install agentmarshal==0.3.0
 agentmarshal --version
 ```
 
@@ -334,9 +334,7 @@ instead live in a repository of its own and name the host it records evidence
 about — where the evidence must stay private, or where you cannot install
 anything into the repository you work in. There the gate **advises and decides
 no merge**, and several other commands differ. That placement is new in 0.3.0
-and experimental, so the 0.2.0 install above does not have it —
-[sidecar.md](sidecar.md) is its own install-and-operate path and carries the
-install that does.
+and experimental: [sidecar.md](sidecar.md) is its own install-and-operate path.
 
 ### 6. Complete the task
 
@@ -355,11 +353,10 @@ Now, not earlier: a task's cost is known when it ends. AgentMarshal accepts a
 session record after the task is closed for exactly this reason — a session
 changes no state, so recording one cannot revive or alter a finished task.
 
-**This step needs 0.3.0.** It is the one place this guide leaves the release it
-installs above: 0.2.0 refuses a session record for a task that is not open, with
-`task CR-001 is not open (state: done)`, and removing that refusal is a 0.3.0
-change. Until 0.3.0 reaches the index, either take the cost record on trust or
-install from the repository as [sidecar.md](sidecar.md) describes.
+This is a 0.3.0 capability: 0.2.0 refuses a session record for a task that is
+not open, answering `task CR-001 is not open (state: done)`. The step needs a
+0.3.0 checkout to run it — the record it writes is readable by 0.2.0 like any
+other.
 
 ```sh
 agentmarshal record-session \
@@ -399,7 +396,9 @@ agentmarshal validate
 
 `status` shows the task as `done` with its full record trail — the opened
 event, the approved review bound to the commit SHA, the completion, and the
-session you recorded after it.
+session you recorded after it. Since 0.3.0 both `status` and `report` also print
+which placement produced the evidence — here `Placement: embedded` — on
+**stderr**, so their stdout stays exactly as anything parsing it expects.
 `validate` checks the whole journal for integrity and is the check you run in
 CI.
 
