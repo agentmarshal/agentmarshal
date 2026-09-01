@@ -19,7 +19,10 @@ a step in the loop does not get executed.
 A record type for findings produced by a task, so that research output lands in
 the journal instead of chat.
 
-## Disposition — accepted (2026-09-01; deferred at intake, reasoning below preserved)
+## Disposition — deferred
+
+> Superseded 2026-09-01: **accepted**. The deferral's reasoning below stands
+> as history; the decision and what changed are in the dated section at the end.
 
 The gap is real and we have felt it too. Deferring on sequencing, not merit:
 this interacts with the record schema and with the in-toto projection that is
@@ -30,7 +33,7 @@ Worth noting what the report is careful not to ask for: it does not propose that
 AgentMarshal store research content itself, only that a task's findings have
 somewhere to be recorded.
 
-### Re-read 2026-09-01 — accepted
+## Disposition — accepted (re-read 2026-09-01)
 
 The deferral was sequencing, and the sequence has arrived. The in-toto
 Statement projection this waited on is scheduled in the current release plan,
