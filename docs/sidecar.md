@@ -83,9 +83,10 @@ it:
 pip install "git+https://github.com/agentmarshal/agentmarshal@3dfeadda6ab10342bd288b6777681175b63d9582"
 ```
 
-That address is the one the package itself declares, in `[project.urls]` of
-`pyproject.toml` — you do not have to take this document's word for where the
-source lives.
+That address is not this document's word alone: the repository declares it in
+`[project.urls]` of `pyproject.toml`. Check it there — the pinned commit
+predates that line, so the package you install from the pin carries no URL in
+its own metadata.
 
 That commit is the one whose behaviour this document describes and whose output
 it quotes; the document itself lands after it. Replace the pin with `@master`
@@ -129,7 +130,9 @@ host's repository: a journal inside the host's tree, and a journal that is a
 linked worktree of the host (which sits elsewhere on disk but shares the host's
 object database).
 
-The result is `.agentmarshal/project.json` in the sidecar:
+`init` also scaffolds `.agentmarshal/upstream/`, an outbox for findings about
+AgentMarshal itself, and says so on stderr; the commit you make later includes
+it. The configuration it writes is `.agentmarshal/project.json`:
 
 ```json
 {
