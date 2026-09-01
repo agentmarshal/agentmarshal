@@ -1,0 +1,23 @@
+{
+  "created_at": "2026-09-01T14:57:14.295214Z",
+  "findings": [
+    "CR-083-F1",
+    "CR-083-F2",
+    "CR-083-F3"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "ce5b7ac4fcd3dc07b484aafdfcaadd592620861b",
+  "reviewer": {
+    "email": "auto-review@agent.example.invalid",
+    "model": "codex-auto-review",
+    "role": "code-reviewer",
+    "vendor": "openai"
+  },
+  "schema": 3,
+  "source": "live",
+  "task": "CR-083",
+  "tool_version": "0.3.0",
+  "verdict": "changes_required"
+}

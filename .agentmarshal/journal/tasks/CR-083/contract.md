@@ -5,7 +5,7 @@ title = "0.3.0: the version, the changelog, and the documentation that must be t
 scope = ["pyproject.toml", "uv.lock", "src/agentmarshal/__init__.py", "tests/test_smoke.py", "CHANGELOG.md", "UPGRADING.md", "README.md", "docs/overview.md", "docs/quickstart.md", "docs/sidecar.md", "docs/adr/ADR-0004-journal-data-model.md", "docs/adr/ADR-0005-evidence-capture-and-format.md"]
 acceptance = [
   "every place that encodes the version reads 0.3.0: pyproject, __init__, uv.lock and the smoke test that pins it",
-  "the changelog entry names what actually landed since 0.2.0 and says plainly what each capability does not do",
+  "the changelog entry names what actually landed since 0.2.0 — verified against the v0.2.0..HEAD range, not against one commit — and says plainly what each capability does not do",
   "UPGRADING states what upgrading from 0.2.0 requires, including the one arrangement that breaks: a sidecar journal read by a 0.2.0 checkout",
   "no document says a capability is active in a release where it is not; every 'Status in 0.2.0' note either still holds or is corrected",
   "docs/sidecar.md drops its duplicated argument and keeps its operational content; the three advisory findings recorded against CR-082 are fixed",
@@ -42,9 +42,9 @@ documentation debts in the same pass rather than in two review cycles.
   `uv.lock`, and `tests/test_smoke.py`, which pins it. `uv sync --locked`
   accepts the tree afterwards.
 - `CHANGELOG.md` gains a 0.3.0 entry naming what landed: the sidecar placement
-  and its advisory gate, session records after a task closes, the economics
-  channels, the second documentation path, and the package's declared
-  repository URL. Each entry says what the capability does **not** do — in
+  and its advisory gate, the session record accepted after a task closes — the
+  change that made cost recording possible at all — the second documentation
+  path, and the package's declared repository URL. Each entry says what the capability does **not** do — in
   particular that a sidecar gate decides no merge and that a sidecar contract is
   not pinned to a base commit.
 - `UPGRADING.md` states the procedure from 0.2.0 and names the one arrangement
@@ -98,3 +98,21 @@ rather than a fault in it.
   D2 and E′. They are not in this release, and the changelog does not pretend
   otherwise.
 - Rewriting the Russian sidecar guide, which lives in another repository.
+
+## Amendment 2 (2026-09-02)
+
+The criterion said the changelog must name "the economics channels". Read
+literally — which is a reviewer's job — it demands a false entry. The session
+record's `usage.provider` and `usage.method` shipped in **0.2.0**
+(`CHANGELOG.md:193`), and the measurement drivers that attribute lead and Codex
+usage live in the operator's `bin/`, outside the package this changelog
+describes. Nothing named "economics channels" landed in 0.3.0.
+
+What did land from that wave is already in the entry: the guard removal that
+lets a session record be accepted after a task closes, without which no cost was
+ever recorded live. The criterion now names that instead.
+
+Two reviewers also read `[project.urls]` as unlanded because this commit does not
+touch `pyproject.toml`. It landed in CR-082 (`ceb4c8c`, `89cad31`), after the
+v0.2.0 tag, so it ships in 0.3.0. The criterion now says what a changelog entry
+is checked against: the release range, not one diff.
