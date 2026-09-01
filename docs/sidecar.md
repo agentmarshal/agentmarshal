@@ -185,6 +185,7 @@ BASE=$(git rev-parse HEAD)                  # what the work branches from
 git switch -c feat/greeting
 
 # the change itself, inside the declared scope
+mkdir -p src
 printf 'def greet(name):\n    return f"Hello, {name}!"\n' >> src/app.py
 
 git add -A && git commit -m "implement the greeting helper"
@@ -204,9 +205,12 @@ agentmarshal submit-review --task CR-001 --commit "$IMPL" \
   --email reviewer@example.com
 ```
 
-The independence check compares the recorded reviewer's email against the
-**host** commit's declared writers. `agentmarshal review` (the model-reviewer
-path) likewise snapshots the host tree and writes the record to the sidecar.
+`submit-review` records the verdict and checks nothing about it. The
+independence comparison happens later, when the gate runs, between the recorded
+reviewer's email and the **host** commit's declared writers — recording a
+verdict never establishes that it passes anything. `agentmarshal review` (the
+model-reviewer path) likewise snapshots the host tree and writes the record to
+the sidecar.
 
 ### Run the gate — advisory
 
@@ -299,20 +303,27 @@ Records:
 
 ```sh
 agentmarshal report --task CR-001
-agentmarshal validate
 ```
 
 ```
 Placement: sidecar
 CR-001	done	reviews=1	tokens=1500	usage=reported	decision=approved
+```
+
+```sh
+agentmarshal validate
+```
+
+```
 OK: CR-001 (done, 4 records)
 validate: passed
 ```
 
-The `Placement: sidecar` line is on **stderr** in both commands, so the
-machine-readable stdout formats stay unchanged for anything that parses them.
-`validate` is the whole-journal integrity check, and in a sidecar it checks the
-sidecar's journal — the host has none to check.
+`status` and `report` are the two commands that state the placement, and they
+state it on **stderr**, so the machine-readable stdout formats stay unchanged
+for anything that parses them. `validate` prints no placement line at all: it is
+the whole-journal integrity check, and in a sidecar it checks the sidecar's
+journal — the host has none to check.
 
 ## What the host never gets
 
