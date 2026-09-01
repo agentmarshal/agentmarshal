@@ -43,11 +43,14 @@ than gaps to be closed later:
   transcript says so on the scope line. Scope discipline there rests on the
   sidecar's own history.
 
-Every surface that presents evidence carries the placement: `status` and `report`
-print it on stderr, leaving their machine-readable stdout unchanged. `gate`,
-`complete`, `review`, `prune` and `leak-scan` resolve the host and the journal as
-two separate roots. `validate` does not: it checks the journal it is run in, and
-a sidecar's host has no journal to check. `prune --delete` is refused in a sidecar, because deleting
+The surfaces that present evidence say which regime produced it: `status` and
+`report` print the placement on stderr, leaving their machine-readable stdout
+unchanged, and the gate and `complete` transcripts say it in words.
+
+`open`, `gate`, `complete`, `review`, `prune` and `leak-scan` resolve the host
+and the journal as two separate roots. `validate` is the exception, and not an
+oversight: it checks the journal it is run in, and a sidecar's host has no
+journal to check. `prune --delete` is refused in a sidecar, because deleting
 branches and worktrees would write to the host.
 
 The design and its boundaries are

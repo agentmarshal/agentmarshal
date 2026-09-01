@@ -333,7 +333,9 @@ instead live in a repository of its own and name the host it records evidence
 about — where the evidence must stay private, or where you cannot install
 anything into the repository you work in. There the gate **advises and decides
 no merge**, and several other commands differ. That placement is new in 0.3.0
-and experimental: [sidecar.md](sidecar.md) is its own install-and-operate path.
+and experimental, so the 0.2.0 install above does not have it —
+[sidecar.md](sidecar.md) is its own install-and-operate path and carries the
+install that does.
 
 ### 6. Complete the task
 
