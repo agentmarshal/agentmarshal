@@ -1,3 +1,16 @@
-runs/
-tmp/
+# Raw agent transcripts. Private by default at every capture preset
+# (ADR-0005 Decision 2); publishing one is a separate escalation needing two
+# independent opt-ins. Anchored so it matches this directory only — an
+# unanchored "runs/" matches at any depth and silently swept up stats/runs/.
+/runs/
+
+# Scratch space for in-flight journal work.
+/tmp/
+
+# Per-run logs alongside transcripts.
 *.log
+
+# v1-schema per-run statistics, written by the legacy stats tooling. Local
+# working data, not evidence: the journal's own session records are the
+# supported economics and they are published with the rest of the journal.
+/stats/

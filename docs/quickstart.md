@@ -239,26 +239,7 @@ IMPL=$(git rev-parse HEAD)
 
 Task state is never edited by hand — it is projected from the records.
 
-### 4. Record the session and inspect its economics
-
-Record the work while its token counts and their origin are still available,
-then read the task report as part of the loop:
-
-```sh
-agentmarshal record-session \
-  --task CR-001 --role implementer --actor example/model \
-  --activity implementation --outcome implemented \
-  --input-tokens 1200 --output-tokens 300 --cache-tokens 100 \
-  --usage-provider example --usage-method reported
-agentmarshal report --task CR-001
-```
-
-Use `--usage-method measured` when the counts were reconstructed afterwards
-from logs. Omit both usage flags when their provenance is unavailable; the
-report identifies those counts as unrecorded rather than silently treating
-them as provider-reported.
-
-### 5. Record an independent review
+### 4. Record an independent review
 
 The gate requires a review whose **recorded reviewer email differs from the
 commit authors'**, and refuses the merge when it does not. Be clear about what
@@ -301,7 +282,7 @@ different-commit acceptance. This acceptance satisfies only the review-verdict
 check: it is **not an approving review**, and reviewer independence and every
 other gate check still apply.
 
-### 6. Gate the candidate
+### 5. Gate the candidate
 
 Run the same advisory added-content scan independently when your CI needs a
 separate check:
@@ -347,7 +328,7 @@ Wiring the gate to block merges on GitHub, GitFlic, or a self-hosted setup is
 covered in [self-hosting-workflow.md](self-hosting-workflow.md) and
 [github-enforcement.md](github-enforcement.md).
 
-### 7. Complete the task
+### 6. Complete the task
 
 Completion re-runs the gate and, on a pass, writes the `completed` record.
 `--base` must stay the merge base the candidate was gated against:
@@ -357,6 +338,29 @@ AGENTMARSHAL_PIPELINE_OK_SHA="$IMPL" \
   agentmarshal complete --task CR-001 --commit "$IMPL" --base "$BASE"
 git add .agentmarshal && git commit -m "complete CR-001"
 ```
+
+### 7. Record what the task cost
+
+Now, not earlier: a task's cost is known when it ends. AgentMarshal accepts a
+session record after the task is closed for exactly this reason — a session
+changes no state, so recording one cannot revive or alter a finished task.
+
+```sh
+agentmarshal record-session \
+  --task CR-001 --role implementer --actor example/model \
+  --activity implementation --outcome implemented \
+  --input-tokens 1200 --output-tokens 300 --cache-tokens 100 \
+  --usage-provider example --usage-method reported
+agentmarshal report --task CR-001
+```
+
+Use `--usage-method measured` when the counts were reassembled afterwards from
+provider logs, which is the usual case for an external executor. Omit both
+usage flags when the provenance is unavailable; the report calls those counts
+unrecorded rather than silently treating them as provider-reported.
+
+Nothing calls this for you. Recording the cost is a step of your loop — put it
+in whatever wrapper runs the loop, or it will not happen.
 
 ### 8. Inspect the evidence
 
