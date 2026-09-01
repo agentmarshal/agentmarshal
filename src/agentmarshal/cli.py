@@ -38,6 +38,7 @@ from agentmarshal.journal.prune import (
 from agentmarshal.journal.records import (
     JournalRecordError,
     create_amendment_record,
+    create_completed_record,
     create_reopened_record,
     write_record,
 )
@@ -533,17 +534,12 @@ def _run_validate(stderr: TextIO) -> int:
 
 
 def _run_gate(args: argparse.Namespace, stderr: TextIO) -> int:
-    placement = _placement("gate", stderr)
+    placement = _placement("gate", stderr, require_host=True)
     if placement is None:
         return 1
-    if placement.is_sidecar:
-        print(
-            "gate: sidecar placement is refused because advisory mode lands in "
-            "a following task; running now would misstate its authority",
-            file=stderr,
-        )
-        return 1
-    project_root = placement.project_root
+    if placement.advisory_notice is not None:
+        print(placement.advisory_notice)
+    project_root = placement.host_root
     pipeline_sha = args.pipeline_sha or os.environ.get("AGENTMARSHAL_PIPELINE_OK_SHA")
     try:
         context = derive_gate_context(project_root, args.task, args.commit, args.base)
@@ -554,46 +550,93 @@ def _run_gate(args: argparse.Namespace, stderr: TextIO) -> int:
             context.base,
             pipeline_sha,
             attestation=args.attestation,
+            journal_root=placement.journal_root if placement.is_sidecar else None,
         )
     except GateError as error:
         print(error, file=stderr)
+        if placement.is_sidecar:
+            print(
+                "gate: this invalid invocation is not the former refusal where "
+                "advisory mode lands in a following task",
+                file=stderr,
+            )
         return 1
     for line in report.lines:
         print(line)
     if not report.passed:
         print("gate: refused", file=stderr)
         return 1
-    print("gate: passed")
+    if placement.is_sidecar:
+        print("gate: advisory checks passed; decides no merge")
+    else:
+        print("gate: passed")
     return 0
 
 
 def _run_complete(args: argparse.Namespace, stderr: TextIO) -> int:
-    placement = _placement("complete", stderr)
+    placement = _placement("complete", stderr, require_host=True)
     if placement is None:
         return 1
-    if placement.is_sidecar:
-        print(
-            "complete: sidecar placement is refused because advisory mode lands "
-            "in a following task; running now would misstate its authority",
-            file=stderr,
-        )
-        return 1
-    project_root = placement.project_root
+    if placement.advisory_notice is not None:
+        print(placement.advisory_notice)
     pipeline_sha = args.pipeline_sha or os.environ.get("AGENTMARSHAL_PIPELINE_OK_SHA")
     try:
-        result = complete_task(
-            project_root, args.task, args.commit, args.base, pipeline_sha
-        )
-    except LifecycleError as error:
+        if placement.is_sidecar:
+            task = load_task_status(placement.journal_root, args.task)
+            if task.state != "open":
+                raise LifecycleError(
+                    f"task {args.task} is not open (state: {task.state})"
+                )
+            report = run_gate(
+                placement.host_root,
+                args.task,
+                args.commit,
+                args.base,
+                pipeline_sha,
+                journal_root=placement.journal_root,
+            )
+            record_path = None
+            if report.passed:
+                record = create_completed_record(
+                    args.task, __version__, report.resolved_commit
+                )
+                record_path = write_record(placement.journal_root, args.task, record)
+        else:
+            result = complete_task(
+                placement.project_root,
+                args.task,
+                args.commit,
+                args.base,
+                pipeline_sha,
+            )
+            report = result.report
+            record_path = result.record_path
+    except (
+        GateError,
+        JournalRecordError,
+        LifecycleError,
+        OSError,
+        TaskStatusError,
+        ValueError,
+    ) as error:
         print(error, file=stderr)
+        if placement.is_sidecar:
+            print(
+                "complete: the advisory statement remains explicit and does not "
+                "misstate its authority",
+                file=stderr,
+            )
         return 1
-    for line in result.report.lines:
+    for line in report.lines:
         print(line)
-    if result.record_path is None:
+    if record_path is None:
         print("complete: gate refused; task not completed", file=stderr)
         return 1
-    print(result.record_path)
-    print("completed")
+    print(record_path)
+    if placement.is_sidecar:
+        print("completed after advisory checks; decides no merge")
+    else:
+        print("completed")
     return 0
 
 
@@ -695,6 +738,7 @@ def _run_report(task_id: str | None, stderr: TextIO) -> int:
     placement = _placement("report", stderr)
     if placement is None:
         return 1
+    print(placement.evidence_line, file=stderr)
     try:
         report = build_report(placement.journal_root, task_id)
     except ReportError as error:
@@ -709,6 +753,7 @@ def _run_status(task_id: str | None, stderr: TextIO) -> int:
     placement = _placement("status", stderr)
     if placement is None:
         return 1
+    print(placement.evidence_line, file=stderr)
     journal = placement.journal_root
     try:
         if task_id is None:
@@ -855,13 +900,21 @@ def _run_leak_scan(args: argparse.Namespace, stderr: TextIO) -> int:
             file=stderr,
         )
         return 1
-    project_root = find_project_root(Path.cwd(), stop_at=git_root) or git_root
+    project_root = find_project_root(Path.cwd(), stop_at=git_root)
+    if project_root is None:
+        scan_root = git_root
+    else:
+        try:
+            scan_root = resolve_placement(project_root, require_host=True).host_root
+        except PlacementError as error:
+            print(error, file=stderr)
+            return 1
     # Resolve the merge base explicitly: markers are read from that trusted
     # tree (as the gate does) so a candidate cannot weaken its own scan, and
     # only the candidate's own additions since the merge base are scanned.
     try:
         merge_base = _leak_scan_git(
-            project_root, ["merge-base", args.base, args.commit]
+            scan_root, ["merge-base", args.base, args.commit]
         ).strip()
     except _LeakScanGitError as error:
         print(
@@ -871,7 +924,7 @@ def _run_leak_scan(args: argparse.Namespace, stderr: TextIO) -> int:
         )
         return 1
     try:
-        markers = markers_from_tree(project_root, merge_base)
+        markers = markers_from_tree(scan_root, merge_base)
     except (GateError, ValueError, CaptureError) as error:
         print(f"leak-scan: cannot read project config: {error}", file=stderr)
         return 1
@@ -881,7 +934,7 @@ def _run_leak_scan(args: argparse.Namespace, stderr: TextIO) -> int:
     # stop the repo's own diff drivers from rewriting what the scanner sees.
     try:
         diff_text = _leak_scan_git(
-            project_root,
+            scan_root,
             [
                 "diff",
                 "--text",

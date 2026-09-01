@@ -125,6 +125,41 @@ def _is_record_path(path: str) -> bool:
     return path.startswith(_JOURNAL_PREFIX) and "/records/" in path
 
 
+def _sidecar_tampered_records(journal_root: Path) -> list[str]:
+    """Return tracked sidecar records changed other than by addition."""
+
+    project_root = journal_root.parents[1]
+    output = _run_git(
+        project_root,
+        [
+            "status",
+            "--porcelain=v1",
+            "-z",
+            "--untracked-files=all",
+            "--",
+            str(journal_root.relative_to(project_root)),
+        ],
+    )
+    tokens = output.split("\0")
+    tampered: set[str] = set()
+    index = 0
+    while index < len(tokens):
+        entry = tokens[index]
+        if not entry:
+            index += 1
+            continue
+        status = entry[:2]
+        paths = [entry[3:]]
+        if "R" in status or "C" in status:
+            index += 1
+            if index < len(tokens) and tokens[index]:
+                paths.append(tokens[index])
+        if status != "??" and "A" not in status:
+            tampered.update(path for path in paths if _is_record_path(path))
+        index += 1
+    return sorted(tampered)
+
+
 def _range_emails(project_root: Path, merge_base: str, commit: str) -> set[str]:
     output = _run_git(
         project_root, ["log", "--format=%ae%n%ce", f"{merge_base}..{commit}"]
@@ -183,6 +218,8 @@ def run_gate(
     base: str,
     pipeline_sha: str | None,
     attestation: str = "commit",
+    *,
+    journal_root: Path | None = None,
 ) -> GateReport:
     """Evaluate a merge candidate; fail closed on every violation.
 
@@ -213,7 +250,9 @@ def run_gate(
             violations += 1
             lines.append(f"FAIL: {message}")
 
-    journal_root = project_root / ".agentmarshal" / "journal"
+    sidecar = journal_root is not None
+    if journal_root is None:
+        journal_root = project_root / ".agentmarshal" / "journal"
     # load_task_status validates that the post-candidate journal is
     # well-formed (single opened record, no record after a terminal one,
     # contract id matches); it raises on an inconsistent projection.
@@ -313,19 +352,27 @@ def run_gate(
         # The contract is read from the merge-base tree: the trusted
         # side, so the candidate cannot widen its own scope.
         contract_path = f"{_JOURNAL_PREFIX}tasks/{task_id}/contract.md"
-        try:
-            contract_text = _run_git(
-                project_root, ["show", f"{merge_base}:{contract_path}"]
-            )
-        except GateError:
-            raise GateError(
-                f"contract for {task_id} is not present in the base tree; "
-                "the opening transaction must merge before implementation"
-            ) from None
-        try:
-            contract = parse_contract_text(contract_text, contract_path)
-        except JournalContractError as error:
-            raise GateError(f"contract in the base tree is invalid: {error}") from error
+        if sidecar:
+            # The host deliberately has no journal tree. The sidecar's projected
+            # contract is the trusted side of this comparison; only the diff and
+            # commit identities come from the host.
+            contract = task.contract
+        else:
+            try:
+                contract_text = _run_git(
+                    project_root, ["show", f"{merge_base}:{contract_path}"]
+                )
+            except GateError:
+                raise GateError(
+                    f"contract for {task_id} is not present in the base tree; "
+                    "the opening transaction must merge before implementation"
+                ) from None
+            try:
+                contract = parse_contract_text(contract_text, contract_path)
+            except JournalContractError as error:
+                raise GateError(
+                    f"contract in the base tree is invalid: {error}"
+                ) from error
         outside = [path for path in changed if not _scope_covers(contract.scope, path)]
         check(
             not outside,
@@ -433,7 +480,11 @@ def run_gate(
     # modification, deletion or rename of an existing record rewrites
     # history at the merge boundary and is refused (ADR-0004). The record
     # changes were computed once above for the measurements lane.
-    tampered = sorted(path for status, path in record_changes if status != "A")
+    tampered = (
+        _sidecar_tampered_records(journal_root)
+        if sidecar
+        else sorted(path for status, path in record_changes if status != "A")
+    )
     check(
         not tampered,
         "evidence records are append-only"

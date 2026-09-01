@@ -30,6 +30,20 @@ class Placement:
     def is_sidecar(self) -> bool:
         return self.kind == "sidecar"
 
+    @property
+    def evidence_line(self) -> str:
+        """Label evidence with the regime that produced it."""
+
+        return f"Placement: {self.kind}"
+
+    @property
+    def advisory_notice(self) -> str | None:
+        """State the authority boundary for sidecar gate evidence."""
+
+        if not self.is_sidecar:
+            return None
+        return "Sidecar checks are advisory and decide no merge."
+
 
 def _sidecar_host(project_root: Path, value: object) -> Path:
     if not isinstance(value, str) or not value:

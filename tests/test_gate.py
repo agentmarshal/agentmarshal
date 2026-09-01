@@ -143,7 +143,9 @@ def _run(
 
 
 def test_gate_passes_a_clean_candidate(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
     head = _implement(repo, "src/module.py")
@@ -155,6 +157,27 @@ def test_gate_passes_a_clean_candidate(
 
     assert passed, output
     assert output.count("FAIL") == 0
+
+    capsys.readouterr()
+    assert (
+        main(
+            [
+                "gate",
+                "--task",
+                "CR-001",
+                "--commit",
+                head,
+                "--base",
+                base,
+                "--pipeline-sha",
+                head,
+            ]
+        )
+        == 0
+    )
+    transcript = capsys.readouterr()
+    assert transcript.out.endswith("gate: passed\n")
+    assert "advisory" not in transcript.out
 
 
 def test_gate_refuses_path_outside_scope(

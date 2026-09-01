@@ -173,3 +173,115 @@ def test_a_sidecar_inside_the_hosts_git_directory_is_refused(
     assert main(["init", "--host", str(host)]) == 1
 
     assert "must live outside host worktree" in capsys.readouterr().err
+
+
+def _tree_snapshot(root: Path) -> dict[str, tuple[int, bytes]]:
+    return {
+        str(path.relative_to(root)): (path.stat().st_mode, path.read_bytes())
+        for path in root.rglob("*")
+        if path.is_file()
+    }
+
+
+def _commit(path: Path, message: str) -> str:
+    subprocess.run(["git", "add", "-A"], cwd=path, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=Worker",
+            "-c",
+            "user.email=worker@test.invalid",
+            "commit",
+            "--quiet",
+            "-m",
+            message,
+        ],
+        cwd=path,
+        check=True,
+    )
+    return subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=path,
+        check=True,
+        capture_output=True,
+        encoding="utf-8",
+    ).stdout.strip()
+
+
+def test_sidecar_gate_complete_and_leak_scan_read_only_the_host(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    host = tmp_path / "host"
+    sidecar = tmp_path / "sidecar"
+    _git_init(host)
+    _git_init(sidecar)
+    (host / "README.md").write_text("host\n", encoding="utf-8")
+    base = _commit(host, "base")
+    (host / "src").mkdir()
+    (host / "src" / "change.py").write_text(
+        "key = 'AKIAIOSFODNN7EXAMPLE'\n", encoding="utf-8"
+    )
+    head = _commit(host, "implement")
+
+    monkeypatch.chdir(sidecar)
+    assert main(["init", "--host", str(host)]) == 0
+    assert main(["open", "--title", "Sidecar gate", "--scope", "src/"]) == 0
+    assert (
+        main(
+            [
+                "submit-review",
+                "--task",
+                "CR-001",
+                "--commit",
+                head,
+                "--verdict",
+                "approved",
+                "--role",
+                "qa",
+                "--vendor",
+                "test",
+                "--model",
+                "test",
+                "--email",
+                "reviewer@test.invalid",
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+    before = _tree_snapshot(host)
+    gate_args = [
+        "--task",
+        "CR-001",
+        "--commit",
+        head,
+        "--base",
+        base,
+        "--pipeline-sha",
+        head,
+    ]
+
+    assert main(["gate", *gate_args]) == 0
+    gate_output = capsys.readouterr().out
+    assert "Sidecar checks are advisory and decide no merge." in gate_output
+    assert "gate: passed" not in gate_output
+    assert main(["complete", *gate_args]) == 0
+    complete_output = capsys.readouterr().out
+    assert "Sidecar checks are advisory and decide no merge." in complete_output
+    assert "gate: passed" not in complete_output
+    records = sidecar / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "records"
+    assert list(records.glob("*-completed.json"))
+
+    assert main(["status", "CR-001"]) == 0
+    status_output = capsys.readouterr()
+    assert "Placement: sidecar" in status_output.err
+    assert main(["report", "--task", "CR-001"]) == 0
+    report_output = capsys.readouterr()
+    assert "Placement: sidecar" in report_output.err
+
+    assert main(["leak-scan", "--base", base, "--commit", head]) == 1
+    assert "possible leak categories" in capsys.readouterr().out
+    assert _tree_snapshot(host) == before

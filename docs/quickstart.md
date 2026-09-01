@@ -292,8 +292,8 @@ agentmarshal leak-scan --commit "$IMPL" --base "$BASE"
 ```
 
 The gate runs this scan too and warns on matches; in 0.2.0 a match does not
-block. The gate is the merge authority. It passes only when every blocking
-check holds:
+block. In an embedded journal, the gate is the merge authority. It passes only
+when every blocking check holds:
 
 ```sh
 AGENTMARSHAL_PIPELINE_OK_SHA="$IMPL" \
@@ -327,6 +327,15 @@ The gate only **decides**; performing the actual merge is your provider's job.
 Wiring the gate to block merges on GitHub, GitFlic, or a self-hosted setup is
 covered in [self-hosting-workflow.md](self-hosting-workflow.md) and
 [github-enforcement.md](github-enforcement.md).
+
+In a sidecar journal the same command reads the candidate diff, commit writers,
+and leak-scan input from the configured host while it reads contracts, reviews,
+and lifecycle evidence from the sidecar. Its transcript says
+`Sidecar checks are advisory and decide no merge.` and never prints the
+embedded `gate: passed` line. `complete` applies the same advisory checks and
+writes the completed record only to the sidecar. The host worktree and its Git
+metadata remain read-only. `status` and `report` identify the journal placement
+on stderr so their stable machine-readable stdout formats remain intact.
 
 ### 6. Complete the task
 
