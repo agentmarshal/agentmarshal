@@ -31,6 +31,7 @@ from agentmarshal.journal.records import (
     validate_record_content,
 )
 from agentmarshal.journal.status import TaskStatusError, load_task_status
+from agentmarshal.project import project_file_path, read_project_file
 
 _JOURNAL_PREFIX = ".agentmarshal/journal/"
 _PROJECT_FILE = ".agentmarshal/project.json"
@@ -125,6 +126,94 @@ def _is_record_path(path: str) -> bool:
     return path.startswith(_JOURNAL_PREFIX) and "/records/" in path
 
 
+def _sidecar_history_tampering(project_root: Path, journal_path: str) -> list[str]:
+    """Return records that a sidecar commit modified, deleted or renamed.
+
+    The working-tree check below only sees what is not yet committed — and a
+    committed journal is the only state in which its history proves anything
+    (ADR-0008 Decision 7: append-only *within the sidecar's own history*). A
+    substitution that landed in a commit would otherwise be invisible, and the
+    transcript would report append-only integrity it never examined.
+    """
+
+    # A sidecar with no commits yet is an ordinary state — the first records are
+    # written before the first commit — and git log refuses on an unborn HEAD.
+    # No history is not a failure to read history; anything else still raises.
+    # Whether history exists is asked positively, not read out of an error
+    # message: matching text would make a corrupt repository look like an empty
+    # one, and reporting append-only integrity we never examined is precisely
+    # what this check exists to prevent. rev-list on a repository with no
+    # commits succeeds and prints nothing; on a broken one it fails, and that
+    # failure propagates.
+    if not _run_git(project_root, ["rev-list", "-n", "1", "--all"]).strip():
+        return []
+    output = _run_git(
+        project_root,
+        [
+            "log",
+            # -m --first-parent: without it git shows no diff for a merge
+            # commit, so a record substituted during a merge — content in
+            # neither parent — is invisible while every ordinary commit is
+            # seen. Verified: an evil merge scores zero without these flags.
+            "-m",
+            "--first-parent",
+            "--diff-filter=MDR",
+            "--name-only",
+            "--format=",
+            "--",
+            journal_path,
+        ],
+    )
+    return sorted(
+        {line for line in output.splitlines() if line and _is_record_path(line)}
+    )
+
+
+def _sidecar_tampered_records(journal_root: Path) -> list[str]:
+    """Return sidecar records changed other than by addition.
+
+    Both the working tree and the committed history: a record rewritten before
+    a commit and one rewritten by a commit are the same violation, and only the
+    pair of checks sees both.
+    """
+
+    project_root = journal_root.parents[1]
+    output = _run_git(
+        project_root,
+        [
+            "status",
+            "--porcelain=v1",
+            "-z",
+            "--untracked-files=all",
+            "--",
+            str(journal_root.relative_to(project_root)),
+        ],
+    )
+    tokens = output.split("\0")
+    tampered: set[str] = set()
+    index = 0
+    while index < len(tokens):
+        entry = tokens[index]
+        if not entry:
+            index += 1
+            continue
+        status = entry[:2]
+        paths = [entry[3:]]
+        if "R" in status or "C" in status:
+            index += 1
+            if index < len(tokens) and tokens[index]:
+                paths.append(tokens[index])
+        if status != "??" and "A" not in status:
+            tampered.update(path for path in paths if _is_record_path(path))
+        index += 1
+    tampered.update(
+        _sidecar_history_tampering(
+            project_root, str(journal_root.relative_to(project_root))
+        )
+    )
+    return sorted(tampered)
+
+
 def _range_emails(project_root: Path, merge_base: str, commit: str) -> set[str]:
     output = _run_git(
         project_root, ["log", "--format=%ae%n%ce", f"{merge_base}..{commit}"]
@@ -140,6 +229,22 @@ def _scope_covers(scope: tuple[str, ...], path: str) -> bool:
         elif path == entry:
             return True
     return False
+
+
+def markers_from_config(project_root: Path) -> tuple[str, ...]:
+    """Read ``leak_scan.private_markers`` from a project's working config.
+
+    Used where the trusted side is a working tree rather than a git tree: a
+    sidecar's own repository is the operator's private one, so its checked-out
+    configuration is the trusted source, while the content being scanned comes
+    from the host.
+    """
+
+    try:
+        data = read_project_file(project_file_path(project_root))
+    except (OSError, ValueError) as error:
+        raise GateError(f"cannot read project configuration: {error}") from error
+    return private_markers_from_project(data)
 
 
 def markers_from_tree(project_root: Path, tree_ref: str) -> tuple[str, ...]:
@@ -183,6 +288,8 @@ def run_gate(
     base: str,
     pipeline_sha: str | None,
     attestation: str = "commit",
+    *,
+    journal_root: Path | None = None,
 ) -> GateReport:
     """Evaluate a merge candidate; fail closed on every violation.
 
@@ -213,7 +320,9 @@ def run_gate(
             violations += 1
             lines.append(f"FAIL: {message}")
 
-    journal_root = project_root / ".agentmarshal" / "journal"
+    sidecar = journal_root is not None
+    if journal_root is None:
+        journal_root = project_root / ".agentmarshal" / "journal"
     # load_task_status validates that the post-candidate journal is
     # well-formed (single opened record, no record after a terminal one,
     # contract id matches); it raises on an inconsistent projection.
@@ -248,7 +357,25 @@ def run_gate(
         (status, path) for status, path in changes_with_status if _is_record_path(path)
     ]
     added_records = [path for status, path in record_changes if status == "A"]
+    if sidecar:
+        # One rule, applied once: in a sidecar no host path is ever a journal
+        # path. The evidence lives in the sidecar and the candidate is a host
+        # change, so a host that keeps an .agentmarshal/ of its own must not
+        # drive record validity, path collisions or duplicate-opened detection
+        # — those would decide this task from a different journal's records
+        # (ADR-0008 Decision 2). Carving out one check at a time left the rest
+        # reading host paths as evidence, which is how this was wrong twice.
+        record_changes = []
+        added_records = []
+        base_tree = {path for path in base_tree if not path.startswith(_JOURNAL_PREFIX)}
     journal_only = all(path.startswith(_JOURNAL_PREFIX) for path in changed)
+    if sidecar:
+        # The deterministic lane exists because a journal-only change carries no
+        # work to review. In a sidecar the evidence lives elsewhere, so a host
+        # candidate is work whatever paths it touches — and a host that keeps a
+        # journal of its own would otherwise reach the lane and skip scope,
+        # review and independence on an unreviewed change.
+        journal_only = False
 
     # "Open" is decided from the base tree, never the candidate: opening,
     # implementation and completion candidates all merge onto a task that
@@ -271,6 +398,17 @@ def run_gate(
     closed_at_base = bool(lifecycle_at_base) and not lifecycle_at_base[-1].endswith(
         "-reopened.json"
     )
+    if sidecar:
+        # The host carries no journal, so lifecycle_at_base is empty there and
+        # this check would assert "not closed" about every task, including ones
+        # the sidecar journal projects as done — a false PASS in a transcript
+        # whose whole purpose is to not overstate. The journal is not versioned
+        # alongside the host, so its own projection is the only truthful
+        # source; if the host happens to be an AgentMarshal project of its own,
+        # its records belong to a different journal entirely (ADR-0008
+        # Decision 2) and must not decide anything here.
+        closed_at_base = task.state != "open"
+        lifecycle_at_base = []
     # A task closed at base still admits measurements, but only a strictly
     # additive candidate confined to this task's own journal subtree that
     # adds at least one session record and no non-session record: economics
@@ -313,23 +451,42 @@ def run_gate(
         # The contract is read from the merge-base tree: the trusted
         # side, so the candidate cannot widen its own scope.
         contract_path = f"{_JOURNAL_PREFIX}tasks/{task_id}/contract.md"
-        try:
-            contract_text = _run_git(
-                project_root, ["show", f"{merge_base}:{contract_path}"]
-            )
-        except GateError:
-            raise GateError(
-                f"contract for {task_id} is not present in the base tree; "
-                "the opening transaction must merge before implementation"
-            ) from None
-        try:
-            contract = parse_contract_text(contract_text, contract_path)
-        except JournalContractError as error:
-            raise GateError(f"contract in the base tree is invalid: {error}") from error
+        if sidecar:
+            # The host deliberately has no journal tree. The sidecar's projected
+            # contract is the trusted side of this comparison; only the diff and
+            # commit identities come from the host.
+            contract = task.contract
+        else:
+            try:
+                contract_text = _run_git(
+                    project_root, ["show", f"{merge_base}:{contract_path}"]
+                )
+            except GateError:
+                raise GateError(
+                    f"contract for {task_id} is not present in the base tree; "
+                    "the opening transaction must merge before implementation"
+                ) from None
+            try:
+                contract = parse_contract_text(contract_text, contract_path)
+            except JournalContractError as error:
+                raise GateError(
+                    f"contract in the base tree is invalid: {error}"
+                ) from error
         outside = [path for path in changed if not _scope_covers(contract.scope, path)]
+        # The embedded gate reads the contract from the base tree, so a
+        # candidate cannot widen its own scope. A sidecar's contract is not in
+        # the host's history at all — the candidate cannot reach it, but nor is
+        # it pinned to a commit, so what is compared is the working copy. That
+        # is a weaker provenance than embedded and the transcript says so
+        # rather than letting the two lines read alike.
         check(
             not outside,
-            "diff within contract scope"
+            (
+                "diff within contract scope (contract read from the sidecar "
+                "working tree, not pinned to a commit)"
+                if sidecar
+                else "diff within contract scope"
+            )
             if not outside
             else f"paths outside contract scope: {', '.join(sorted(outside))}",
         )
@@ -433,7 +590,11 @@ def run_gate(
     # modification, deletion or rename of an existing record rewrites
     # history at the merge boundary and is refused (ADR-0004). The record
     # changes were computed once above for the measurements lane.
-    tampered = sorted(path for status, path in record_changes if status != "A")
+    tampered = (
+        _sidecar_tampered_records(journal_root)
+        if sidecar
+        else sorted(path for status, path in record_changes if status != "A")
+    )
     check(
         not tampered,
         "evidence records are append-only"
@@ -453,22 +614,36 @@ def run_gate(
         expected_task = path.removeprefix(f"{_JOURNAL_PREFIX}tasks/").split("/", 1)[0]
         if record.get("task") != expected_task:
             invalid.append(f"{path}: record task does not match its directory")
-    check(
-        not invalid,
-        "added records are valid"
-        if not invalid
-        else f"invalid added records: {'; '.join(sorted(invalid))}",
-    )
+    if invalid:
+        check(False, f"invalid added records: {'; '.join(sorted(invalid))}")
+    else:
+        # In a sidecar there are no added records to validate: the candidate is
+        # a host change and the host carries no journal. Saying so beats a PASS
+        # that reports a check nothing exercised.
+        check(
+            True,
+            "added records are valid (none examined: a host journal is not "
+            "this journal's evidence)"
+            if sidecar
+            else "added records are valid",
+        )
 
     # Collisions are checked against the merge target's tip: a record
     # path independently created on both sides would collide at merge.
     colliding = [path for path in added_records if path in base_tree]
-    check(
-        not colliding,
-        "no record-path collisions with the base tree"
-        if not colliding
-        else f"record paths already exist on the base: {', '.join(sorted(colliding))}",
-    )
+    if colliding:
+        check(
+            False,
+            f"record paths already exist on the base: {', '.join(sorted(colliding))}",
+        )
+    else:
+        check(
+            True,
+            "no record-path collisions (none examined: the candidate adds no "
+            "record to this journal)"
+            if sidecar
+            else "no record-path collisions with the base tree",
+        )
 
     # A single record is valid in isolation yet corrupts the lifecycle
     # projection in aggregate — a second 'opened' record makes the task
@@ -511,7 +686,15 @@ def run_gate(
     # scanned, so accepted historical residuals already in the tree are not
     # re-flagged.
     try:
-        markers = markers_from_tree(project_root, merge_base)
+        # Markers come from the trusted side. In a sidecar that is the
+        # operator's own journal repository, not the host: reading them from
+        # the host means a host without a project.json silently disables the
+        # operator's configured guard while the scan still reports success.
+        markers = (
+            markers_from_config(journal_root.parents[1])
+            if sidecar and journal_root is not None
+            else markers_from_tree(project_root, merge_base)
+        )
         # Pin raw text patch output: --text forces content even for files a
         # repo marks binary/non-diffable (otherwise git emits "Binary files
         # differ" and the added content is never scanned); --no-textconv /

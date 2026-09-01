@@ -1684,11 +1684,24 @@ print("AGENTMARSHAL_VERDICT_END")
     assert main(["status", "CR-001"]) == 0
     assert main(["report", "--task", "CR-001"]) == 0
     assert main(["validate"]) == 0
-    write_record(
-        sidecar / ".agentmarshal" / "journal",
-        "CR-001",
-        create_completed_record("CR-001", "test", head),
+    # gate and complete issue the most host-side git of any command —
+    # rev-parse, merge-base, diff, ls-tree, log, show — so they are the ones
+    # that most need the index-skew probe this test carries. Recording the
+    # completion through the command, rather than writing the record directly,
+    # is what puts them inside the snapshot.
+    # The skew above is on the linked worktree, whose index only a command
+    # running inside it can refresh. gate and complete run git in the host
+    # root, so its index needs the same treatment or their coverage here
+    # probes nothing — checked by making the gate refresh it and watching this
+    # test still pass without this line.
+    host_app = host / "app.txt"
+    host_stat = host_app.stat()
+    os.utime(
+        host_app, ns=(host_stat.st_atime_ns, host_stat.st_mtime_ns + 2_000_000_000)
     )
+    monkeypatch.setenv("AGENTMARSHAL_PIPELINE_OK_SHA", head)
+    assert main(["gate", "--task", "CR-001", "--commit", head, "--base", base]) == 0
+    assert main(["complete", "--task", "CR-001", "--commit", head, "--base", base]) == 0
     assert main(["prune"]) == 0
     # Exit code alone passed while prune read task state from the host, which
     # has no journal, and called every task unknown. The report's content is
@@ -1740,13 +1753,17 @@ def test_sidecar_refuses_authoritative_commands_and_host_mutation(
     assert main(["init", "--host", str(host)]) == 0
     capsys.readouterr()
 
+    # CR-081 replaced the refusal this once asserted: a sidecar gate now runs
+    # and advises. What must still hold is that a bare invocation is refused —
+    # the host's branch names a task in the host's numbering, not this
+    # journal's — and that the refusal does not borrow the authority's wording.
     assert main(["gate"]) == 1
-    assert "advisory mode lands in a following task" in capsys.readouterr().err
+    assert "--task is required in a sidecar" in capsys.readouterr().err
     assert (
         main(["complete", "--task", "CR-001", "--commit", "HEAD", "--base", "HEAD"])
         == 1
     )
-    assert "misstate its authority" in capsys.readouterr().err
+    assert "could not evaluate this candidate" in capsys.readouterr().err
     assert main(["prune", "--delete"]) == 1
     assert (
         "host worktree and repository must remain read-only" in capsys.readouterr().err
