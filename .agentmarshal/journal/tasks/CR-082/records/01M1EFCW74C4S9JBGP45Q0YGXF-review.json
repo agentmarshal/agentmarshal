@@ -1,0 +1,23 @@
+{
+  "advisory_findings": [
+    "open-scope-warning-unshown",
+    "gate-leak-scan-warn-unexplained"
+  ],
+  "created_at": "2026-09-01T12:34:09.764824Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "89cad313830425384586afc3ccbaf506a168c579",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 3,
+  "source": "live",
+  "task": "CR-082",
+  "tool_version": "0.2.0",
+  "verdict": "approved"
+}
