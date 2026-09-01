@@ -1,0 +1,23 @@
+{
+  "advisory_findings": [
+    "stale-checkout-caveat",
+    "verification-method-wider-than-run"
+  ],
+  "created_at": "2026-09-01T21:24:23.737505Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "73bda2a56c97cd6508785c57d241cec484b64e73",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 3,
+  "source": "live",
+  "task": "CR-084",
+  "tool_version": "0.3.0",
+  "verdict": "approved"
+}

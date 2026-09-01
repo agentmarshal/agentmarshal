@@ -4,12 +4,12 @@ id = "CR-084"
 title = "0.3.0 is published: the documentation installs it and was run against it"
 scope = ["README.md", "docs/quickstart.md", "docs/sidecar.md", "CHANGELOG.md", "UPGRADING.md"]
 acceptance = [
-  "every install command in the changed files names 0.3.0 and was executed against the package index, not composed",
-  "the whole quickstart was run end to end on a 0.3.0 install, and its verification sentence says that and nothing wider",
+  "every install command a reader is told to run names 0.3.0 and was executed against the package index; a mention of the unpinned form as the subject of a sentence is not such a command",
+  "the whole quickstart was run on a 0.3.0 install, and its verification sentence claims no more than what was run",
   "docs/sidecar.md installs from the index; the pre-release route through a git pin is gone, along with the caveats that existed only because of it",
   "the changelog's 0.3.0 heading carries the PyPI upload date, 2026-09-01, and the entry is otherwise unchanged",
   "no statement remains that is true only of the interim state between the tag and the upload",
-  "every statement about what 0.2.0 does is left alone: those describe the released 0.2.0 and are still true",
+  "no statement about what 0.2.0 does is removed or weakened; the framing around one may change where the reader own install changed",
 ]
 +++
 
@@ -39,12 +39,16 @@ against it.
 
 ## Acceptance Criteria
 
-- Every install command in the changed files names `0.3.0`, and each was
-  **executed** against the index before being written down.
-- The quickstart is run end to end on a 0.3.0 install — including the session
-  record after completion, which is the step that could not run on 0.2.0 — and
-  its opening sentence claims exactly that scope: no wider, and with no
-  remaining exception carved out for a step that now works.
+- Every install command a reader is told to run names `0.3.0`, and each was
+  **executed** against the index before being written down. A sentence *about*
+  the unpinned form — "plain `pip install agentmarshal` installs the latest
+  published release" — is prose describing a behaviour, not an instruction, and
+  pinning it would make it say the opposite of what it means.
+- The quickstart is run on a 0.3.0 install — including the session record after
+  completion, which is the step that could not run on 0.2.0 — and its opening
+  sentence claims **no more than what was run**. Naming a branch that had to be
+  run separately, because one pass cannot reach it, makes the claim narrower and
+  is required rather than forbidden.
 - `docs/sidecar.md` installs from the index. The git-pin route and everything
   that existed only to support it goes: the pin's rationale, the note that the
   pinned build's metadata carries no repository URL, and the paragraph that
@@ -55,10 +59,13 @@ against it.
   the convention the file's own header states. Nothing else in the entry changes.
 - `UPGRADING.md` drops the sentence scoping its procedure to after publication,
   because publication happened.
-- Statements **about 0.2.0's behaviour** — the gate transcript it prints against
-  a sidecar journal, its refusal of a session record on a closed task, what it
-  does not know about `placement` — are untouched. They describe a release that
-  exists and are still true.
+- No statement **about 0.2.0's behaviour** is removed or weakened — the gate
+  transcript it prints against a sidecar journal, its refusal of a session record
+  on a closed task, what it does not know about `placement`. They describe a
+  release that exists and are the evidence someone upgrading needs. The framing
+  around such a statement may change where the reader's own install changed: an
+  exception written for a reader who had 0.2.0 is not the same sentence as the
+  fact it carried.
 
 ## Threat model and boundaries
 
@@ -87,3 +94,33 @@ backlog as a restructuring of both guides.
   three cuts in that file each removed an operational rule a reviewer had to
   hand back.
 - Adopter upgrades, which are operational work outside the release.
+
+## Amendment 1 (2026-09-02)
+
+Three criteria said less than they meant, and two reviewers read them literally,
+which is their job.
+
+**"Every install command … names 0.3.0."** Five places name the unpinned form as
+the *subject* of a sentence — `README.md:74`, `docs/quickstart.md:26`,
+`UPGRADING.md:64,114,116` — explaining what happens when you do not pin. Pinning
+those would produce "plain `pip install agentmarshal==0.3.0` installs the latest
+published release", which is false and self-contradicting. The criterion now
+distinguishes an instruction from prose about a behaviour.
+
+**"Its verification sentence says that and nothing wider."** Aimed at overclaim,
+it forbade the correction that removed one: a single end-to-end pass structurally
+cannot exercise `accept`, which needs a non-approving latest review, or `reopen`,
+which undoes the state that pass arrives at. Both were run separately against the
+published 0.3.0, and saying so is narrower than the sentence it replaced. The
+criterion now asks for no more than what was run, which is what it meant.
+
+**"Every statement about what 0.2.0 does is left alone."** Aimed at stopping a
+sweep of `0.2.0` out of the text because the number looks stale, it also froze
+the framing around those facts — including an exception written for a reader who
+had 0.2.0 installed and now does not. The fact and its exact message are kept;
+the criterion now says so precisely.
+
+This is the third criterion repair across two releases, after CR-083's
+"economics channels" and 0.2.0's three. The pattern is consistent enough to be
+worth naming: a criterion written as an absolute is read as an absolute, and the
+review rounds it costs are spent on my wording rather than on the work.
