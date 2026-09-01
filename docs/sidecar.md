@@ -83,6 +83,10 @@ it:
 pip install "git+https://github.com/agentmarshal/agentmarshal@3dfeadda6ab10342bd288b6777681175b63d9582"
 ```
 
+That address is the one the package itself declares, in `[project.urls]` of
+`pyproject.toml` — you do not have to take this document's word for where the
+source lives.
+
 That commit is the one whose behaviour this document describes and whose output
 it quotes; the document itself lands after it. Replace the pin with `@master`
 when you want the newest build, and accept that what you read here may already
@@ -177,16 +181,19 @@ without AgentMarshal. Note the two commits you need:
 
 ```sh
 cd ~/src/work-repo
+BASE=$(git rev-parse HEAD)                  # what the work branches from
 git switch -c feat/greeting
-# … change only what the scope declares …
-git add -A && git commit -m "implement the greeting helper"
 
-BASE=$(git merge-base main feat/greeting)   # what the work branched from
-IMPL=$(git rev-parse feat/greeting)         # the candidate
+# the change itself, inside the declared scope
+printf 'def greet(name):\n    return f"Hello, {name}!"\n' >> src/app.py
+
+git add -A && git commit -m "implement the greeting helper"
+IMPL=$(git rev-parse HEAD)                  # the candidate
 ```
 
-Both are **host** commits. Every command from here names them by SHA from the
-sidecar, so keep them in the shell you run the journal from.
+`BASE` is read before branching, so this works whatever the host's default
+branch is called. Both are **host** commits, and every command from here names
+them by SHA from the sidecar — keep them in the shell you run the journal from.
 
 ### Record the review in the sidecar
 

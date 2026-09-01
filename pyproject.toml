@@ -27,6 +27,10 @@ classifiers = [
     "Typing :: Typed",
 ]
 
+[project.urls]
+Repository = "https://github.com/agentmarshal/agentmarshal"
+Changelog = "https://github.com/agentmarshal/agentmarshal/blob/master/CHANGELOG.md"
+
 [project.scripts]
 agentmarshal = "agentmarshal.cli:main"
 
