@@ -83,8 +83,10 @@ it:
 pip install "git+https://github.com/agentmarshal/agentmarshal@3dfeadda6ab10342bd288b6777681175b63d9582"
 ```
 
-Replace the pin with `@master` when you want the newest build and accept that
-what you read here may already have changed.
+That commit is the one whose behaviour this document describes and whose output
+it quotes; the document itself lands after it. Replace the pin with `@master`
+when you want the newest build, and accept that what you read here may already
+have changed.
 
 Requirements are unchanged: **Python ≥ 3.12** and **git** on your `PATH`. You
 install it for yourself, not into the host repository, so a user-level install
@@ -101,6 +103,10 @@ A build with the placement prints the `--host` option; the published 0.2.0
 prints nothing.
 
 ## Set up the sidecar
+
+Paths, email addresses and model names below are placeholders — `~/src/work-repo`
+is your host, `~/work-journal` is your sidecar. Substitute your own; everything
+shown was run that way.
 
 The sidecar is an ordinary git repository somewhere you control. It must live
 **outside the host's working tree** — not inside it under an ignore rule, which
@@ -123,7 +129,9 @@ The result is `.agentmarshal/project.json` in the sidecar:
 
 ```json
 {
-  "framework": { "version": "0.2.0" },
+  "framework": {
+    "version": "0.2.0"
+  },
   "host": "/home/you/src/work-repo",
   "placement": "sidecar",
   "schema": 1
@@ -310,8 +318,9 @@ The tool holds up its end: it **writes** nothing to the host. It reads it
 mostly through git, and directly from the filesystem where a check needs to —
 resolving the configured host path, and checking whether the paths a scope
 declares exist. Reads either way; writes never. After a full loop, a host
-repository has no modified files and the string `agentmarshal` appears nowhere
-in it.
+repository has no modified files, and a host that did not contain the string
+`agentmarshal` before still does not after. What the host already said about
+AgentMarshal is its own business — the tool adds nothing and removes nothing.
 
 `prune --delete` is refused in a sidecar for the same reason. It prints the
 refusal and stops, printing no report at all — run plain `agentmarshal prune`
@@ -347,6 +356,7 @@ declassification review.
 | `complete` | Same advisory checks; writes `completed` only to the sidecar |
 | `prune` | Reports; `--delete` is refused, because the host stays read-only |
 | `status`, `report` | Print `Placement: sidecar` on stderr; stdout unchanged |
+| `leak-scan` | Scans the **host's** added content, with the private markers read from the sidecar's own `project.json` |
 | `submit-review`, `review`, `accept`, `amend`, `reopen`, `abandon`, `record-session`, `validate` | Unchanged, writing to the sidecar and reading host git facts where needed |
 
 ## Known rough edges
