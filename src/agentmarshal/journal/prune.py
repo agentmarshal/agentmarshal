@@ -162,11 +162,18 @@ def _task_state(journal_root: Path, task_id: str, states: dict[str, str]) -> str
     return states[task_id]
 
 
-def report_branches(project_root: Path, base: str = "HEAD") -> list[BranchDisposition]:
-    """Classify local branches against journal state and commit containment."""
+def report_branches(
+    project_root: Path, journal_root: Path, base: str = "HEAD"
+) -> list[BranchDisposition]:
+    """Classify local branches against journal state and commit containment.
+
+    The two roots are separate arguments because they are separate things: git
+    facts come from ``project_root``, task state from ``journal_root``. They
+    coincide in an embedded journal and differ in a sidecar, where the
+    repository being pruned carries no journal at all (ADR-0008).
+    """
 
     _run_git(project_root, ["rev-parse", "--verify", f"{base}^{{commit}}"])
-    journal_root = project_root / ".agentmarshal" / "journal"
     states: dict[str, str] = {}
     report: list[BranchDisposition] = []
     for branch, current in _local_branches(project_root):
@@ -196,10 +203,11 @@ def report_branches(project_root: Path, base: str = "HEAD") -> list[BranchDispos
     return report
 
 
-def report_worktrees(project_root: Path) -> list[WorktreeDisposition]:
+def report_worktrees(
+    project_root: Path, journal_root: Path
+) -> list[WorktreeDisposition]:
     """Classify worktrees against journal state and working-tree cleanliness."""
 
-    journal_root = project_root / ".agentmarshal" / "journal"
     states: dict[str, str] = {}
     report: list[WorktreeDisposition] = []
     worktrees = _worktrees(project_root)
@@ -248,7 +256,20 @@ def report_worktrees(project_root: Path) -> list[WorktreeDisposition]:
         # git lists such entries, and one stale entry must not cost the report.
         try:
             dirty = bool(
-                _run_git(path, ["status", "--porcelain", "--untracked-files=all"])
+                _run_git(
+                    path,
+                    [
+                        # --no-optional-locks: reading the host must not rewrite
+                        # its index. Without it, git status refreshes .git/index
+                        # and takes index.lock — invisible to a test that
+                        # excludes .git, and still a write into a repository
+                        # ADR-0008 promises we never write to.
+                        "--no-optional-locks",
+                        "status",
+                        "--porcelain",
+                        "--untracked-files=all",
+                    ],
+                )
             )
         except PruneError as error:
             report.append(

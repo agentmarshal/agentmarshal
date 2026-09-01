@@ -745,10 +745,9 @@ def _run_prune(args: argparse.Namespace, stderr: TextIO) -> int:
             file=stderr,
         )
         return 1
-    project_root = placement.host_root
     try:
-        report = report_branches(project_root, args.base)
-        worktrees = report_worktrees(project_root)
+        report = report_branches(placement.host_root, placement.journal_root, args.base)
+        worktrees = report_worktrees(placement.host_root, placement.journal_root)
         print("Branches:")
         for item in report:
             label = "eligible" if item.eligible else "skipped"
@@ -762,7 +761,7 @@ def _run_prune(args: argparse.Namespace, stderr: TextIO) -> int:
             print(f"{label}: {worktree.path} ({branch}{worktree.reason})")
         refused = False
         if args.delete:
-            for removal in delete_worktrees(project_root, worktrees):
+            for removal in delete_worktrees(placement.host_root, worktrees):
                 if removal.removed:
                     print(f"removed worktree: {removal.path}")
                     continue
@@ -771,7 +770,7 @@ def _run_prune(args: argparse.Namespace, stderr: TextIO) -> int:
                     f"refused worktree: {removal.path} ({removal.detail})",
                     file=stderr,
                 )
-            for deletion in delete_branches(project_root, report):
+            for deletion in delete_branches(placement.host_root, report):
                 if deletion.deleted:
                     print(f"deleted: {deletion.branch}")
                     continue

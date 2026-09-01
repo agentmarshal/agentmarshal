@@ -25,7 +25,10 @@ from agentmarshal.journal import (
     write_record,
 )
 from agentmarshal.journal.open_task import TaskOpenError, journal_root, open_task
-from agentmarshal.journal.records import create_abandoned_record
+from agentmarshal.journal.records import (
+    create_abandoned_record,
+    create_completed_record,
+)
 
 
 def initialize_status_repo(repo: Path) -> Path:
@@ -1508,6 +1511,16 @@ def test_init_scaffolds_the_upstream_outbox(
     assert "upstream" in capsys.readouterr().out
 
 
+def _host_snapshot(host: Path) -> dict[Path, bytes]:
+    """Every file under the host, .git included."""
+
+    return {
+        path.relative_to(host): path.read_bytes()
+        for path in host.rglob("*")
+        if path.is_file()
+    }
+
+
 def test_full_sidecar_session_never_changes_host(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1519,6 +1532,27 @@ def test_full_sidecar_session_never_changes_host(
     init_git_repo(sidecar)
     base = _commit_file(host, "app.txt", "one\n")
     head = _commit_file(host, "app.txt", "two\n")
+    linked = tmp_path / "linked"
+    subprocess.run(
+        [
+            "git",
+            "worktree",
+            "add",
+            "--quiet",
+            "-b",
+            "feat/CR-001-recorded",
+            str(linked),
+            "HEAD",
+        ],
+        cwd=host,
+        check=True,
+    )
+    linked_app = linked / "app.txt"
+    linked_stat = linked_app.stat()
+    os.utime(
+        linked_app,
+        ns=(linked_stat.st_atime_ns, linked_stat.st_mtime_ns + 2_000_000_000),
+    )
     reviewer = tmp_path / "reviewer.py"
     reviewer.write_text(
         """import json
@@ -1541,11 +1575,12 @@ print("AGENTMARSHAL_VERDICT_END")
 """,
         encoding="utf-8",
     )
-    before_files = {
-        path.relative_to(host): path.read_bytes()
-        for path in host.rglob("*")
-        if path.is_file() and ".git" not in path.relative_to(host).parts
-    }
+    # .git is included deliberately. Excluding it tested the letter of
+    # ADR-0008 Decision 3 while leaving its spirit unchecked: a host-side
+    # 'git status' without --no-optional-locks rewrites .git/index, which is a
+    # write into a repository we promise never to write to and which an
+    # exclusion would hide.
+    before_files = _host_snapshot(host)
     before_untracked = subprocess.run(
         ["git", "ls-files", "--others", "--exclude-standard"],
         cwd=host,
@@ -1641,16 +1676,26 @@ print("AGENTMARSHAL_VERDICT_END")
     assert main(["status", "CR-001"]) == 0
     assert main(["report", "--task", "CR-001"]) == 0
     assert main(["validate"]) == 0
+    write_record(
+        sidecar / ".agentmarshal" / "journal",
+        "CR-001",
+        create_completed_record("CR-001", "test", head),
+    )
     assert main(["prune"]) == 0
+    # Exit code alone passed while prune read task state from the host, which
+    # has no journal, and called every task unknown. The report's content is
+    # the thing under test.
+    pruned = capsys.readouterr().out
+    assert (
+        f"eligible: {linked} "
+        "(branch feat/CR-001-recorded; task CR-001 is done and clean)" in pruned
+    )
+    assert "unknown" not in pruned
     assert main(["open", "--title", "Abandoned", "--scope", "app.txt"]) == 0
     assert main(["abandon", "--task", "CR-002", "--reason", "Superseded"]) == 0
     capsys.readouterr()
 
-    after_files = {
-        path.relative_to(host): path.read_bytes()
-        for path in host.rglob("*")
-        if path.is_file() and ".git" not in path.relative_to(host).parts
-    }
+    after_files = _host_snapshot(host)
     status = subprocess.run(
         ["git", "status", "--porcelain"],
         cwd=host,
