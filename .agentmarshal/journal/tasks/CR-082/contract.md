@@ -2,7 +2,7 @@
 schema = 1
 id = "CR-082"
 title = "The second install-and-operate path: a journal without rails"
-scope = ["docs/sidecar.md", "docs/quickstart.md", "docs/overview.md", "README.md"]
+scope = ["docs/sidecar.md", "docs/quickstart.md", "docs/overview.md", "README.md", "pyproject.toml"]
 acceptance = [
   "docs/sidecar.md exists and is a complete install-and-operate path: install, initialization, the loop end to end, and inspection",
   "it is labelled experimental and states that the placement is not in the published 0.2.0 release",
@@ -13,6 +13,7 @@ acceptance = [
   "it states the host-inviolability invariant and separates what the tool enforces from what the operator must do",
   "the embedded path stays the default: quickstart, overview and README point at the new document instead of teaching two paths at once",
   "no claim in it asserts enforcement, authentication or verification that 0.2.0 does not perform",
+  "the install command it gives is corroborated by the repository itself, so a reader offline can check the source it names",
 ]
 +++
 
@@ -81,11 +82,31 @@ and the fact that an advisory gate can be ignored, which is what advisory means.
 
 ## Non-Goals
 
-- **Any code change.** This task is documentation. A friction found while
-  writing it is recorded in the document and, if it deserves fixing, opened as
-  its own task.
+- **Any code change.** This task is documentation, with one amended exception
+  (below). A friction found while writing it is recorded in the document and,
+  if it deserves fixing, opened as its own task.
 - Changing the default placement, or recommending a sidecar where the embedded
   placement is available.
 - A record type for research findings. Accepted as proposal 005, built
   separately.
 - Translating or restructuring the rest of the documentation set.
+
+## Amendment (2026-09-01)
+
+`pyproject.toml` is added to the scope for one line: `[project.urls]`.
+
+Four consecutive review rounds refused the document's very first command —
+`pip install "git+https://github.com/agentmarshal/agentmarshal@<pin>"` — on the
+ground that the repository publishes that address nowhere. The premise is true
+and checkable: the string occurs exactly once in the whole tree, in the new
+document itself, and the published package declares no project URLs at all. The
+conclusion drawn from it (that the command was never run) is false — it was run
+twice into clean environments — but a reader has no more way to check that than
+the reviewer did.
+
+That is a defect in the repository, not a disagreement about the document. A
+project whose install instructions cannot be corroborated from its own source is
+one line short, and the document cannot satisfy its own acceptance criterion
+about verified commands while that line is missing.
+
+The exception is exactly that line. No other code, no other file.

@@ -1,0 +1,21 @@
+{
+  "created_at": "2026-09-01T12:08:54.313499Z",
+  "findings": [
+    "install-url-fabricated"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "91bec99bf5d1cedac11a1d95d9ad81ad3a2287fe",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 3,
+  "source": "live",
+  "task": "CR-082",
+  "tool_version": "0.2.0",
+  "verdict": "changes_required"
+}
