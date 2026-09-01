@@ -151,6 +151,12 @@ def _sidecar_history_tampering(project_root: Path, journal_path: str) -> list[st
         project_root,
         [
             "log",
+            # -m --first-parent: without it git shows no diff for a merge
+            # commit, so a record substituted during a merge — content in
+            # neither parent — is invisible while every ordinary commit is
+            # seen. Verified: an evil merge scores zero without these flags.
+            "-m",
+            "--first-parent",
             "--diff-filter=MDR",
             "--name-only",
             "--format=",
@@ -467,9 +473,20 @@ def run_gate(
                     f"contract in the base tree is invalid: {error}"
                 ) from error
         outside = [path for path in changed if not _scope_covers(contract.scope, path)]
+        # The embedded gate reads the contract from the base tree, so a
+        # candidate cannot widen its own scope. A sidecar's contract is not in
+        # the host's history at all — the candidate cannot reach it, but nor is
+        # it pinned to a commit, so what is compared is the working copy. That
+        # is a weaker provenance than embedded and the transcript says so
+        # rather than letting the two lines read alike.
         check(
             not outside,
-            "diff within contract scope"
+            (
+                "diff within contract scope (contract read from the sidecar "
+                "working tree, not pinned to a commit)"
+                if sidecar
+                else "diff within contract scope"
+            )
             if not outside
             else f"paths outside contract scope: {', '.join(sorted(outside))}",
         )

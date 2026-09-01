@@ -484,3 +484,86 @@ def test_sidecar_append_only_sees_a_committed_substitution(
     captured = capsys.readouterr()
     assert "append-only violation" in captured.out
     assert review.name in captured.out
+
+
+def test_sidecar_append_only_sees_a_record_substituted_in_a_merge(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """git shows no diff for a merge commit unless asked.
+
+    A record whose content appears in neither parent — substituted while
+    resolving a merge — was invisible to the history walk while every ordinary
+    commit was seen.
+    """
+
+    import json
+
+    from agentmarshal.cli import main
+
+    _host, sidecar, base, head = _host_and_sidecar(tmp_path, monkeypatch)
+    writer = ["-c", "user.name=T", "-c", "user.email=t@t.invalid"]
+
+    def git(*args: str) -> None:
+        subprocess.run(
+            ["git", *writer, *args], cwd=sidecar, check=True, capture_output=True
+        )
+
+    assert main(["open", "--title", "Private", "--scope", "app.txt"]) == 0
+    assert (
+        main(
+            [
+                "submit-review",
+                "--task",
+                "CR-001",
+                "--commit",
+                head,
+                "--verdict",
+                "changes_required",
+                "--finding",
+                "F-1",
+                "--role",
+                "reviewer",
+                "--vendor",
+                "human",
+                "--model",
+                "none",
+                "--email",
+                "reviewer@example.invalid",
+            ]
+        )
+        == 0
+    )
+    git("add", "-A")
+    git("commit", "--quiet", "-m", "journal")
+
+    git("switch", "--quiet", "-c", "side")
+    (sidecar / "note.txt").write_text("side\n", encoding="utf-8")
+    git("add", "-A")
+    git("commit", "--quiet", "-m", "side")
+    git("switch", "--quiet", "master")
+    (sidecar / "other.txt").write_text("master\n", encoding="utf-8")
+    git("add", "-A")
+    git("commit", "--quiet", "-m", "master")
+    subprocess.run(
+        ["git", *writer, "merge", "--no-commit", "--no-ff", "side"],
+        cwd=sidecar,
+        check=False,
+        capture_output=True,
+    )
+    review = next(
+        (sidecar / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "records").glob(
+            "*-review.json"
+        )
+    )
+    record = json.loads(review.read_text(encoding="utf-8"))
+    record["verdict"] = "approved"
+    record["findings"] = []
+    review.write_text(json.dumps(record, indent=2), encoding="utf-8")
+    git("add", "-A")
+    git("commit", "--quiet", "-m", "evil merge")
+    capsys.readouterr()
+
+    monkeypatch.setenv("AGENTMARSHAL_PIPELINE_OK_SHA", head)
+    assert main(["gate", "--task", "CR-001", "--commit", head, "--base", base]) == 1
+
+    assert "append-only violation" in capsys.readouterr().out
