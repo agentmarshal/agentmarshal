@@ -136,7 +136,9 @@ In the manner of ADR-0006, stated rather than implied.
 Sidecar evidence establishes the same declarations embedded evidence does —
 who is said to have reviewed what commit, with what verdict, recorded by whom,
 at what time — bound to the host's SHAs and append-only **within the sidecar's
-own history**.
+own history**. They remain declarations in ADR-0006's sense: identities are
+declared, not authenticated, and nothing establishes that the named party read
+anything. Placement changes none of that in either direction.
 
 It does not establish that any of it was enforced. The append-only property of
 a sidecar is protected only by the sidecar's own governance — its owner can run
