@@ -1,0 +1,27 @@
+{
+  "advisory_findings": [
+    "sidecar-error-hint-misdirects",
+    "unqualified-lifecycle-pass",
+    "placement-line-on-stderr",
+    "history-guard-walks-a-different-ref",
+    "duplicated-marker-comment",
+    "completed-record-omits-its-regime"
+  ],
+  "created_at": "2026-09-01T10:03:20.391226Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "e534efa3c86edb9bbdae88e7e8d88684cea78c55",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 3,
+  "source": "live",
+  "task": "CR-081",
+  "tool_version": "0.2.0",
+  "verdict": "approved"
+}
