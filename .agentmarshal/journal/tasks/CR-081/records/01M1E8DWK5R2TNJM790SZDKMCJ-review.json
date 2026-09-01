@@ -1,0 +1,26 @@
+{
+  "advisory_findings": [
+    "advisory-error-hint-misdirects",
+    "advisory-tamper-path-prefix",
+    "advisory-unqualified-vacuous-pass",
+    "advisory-ci-required-in-sidecar",
+    "advisory-stale-leak-scan-comment"
+  ],
+  "created_at": "2026-09-01T10:32:22.885577Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "9ec040571be4d55a920d6a008e942dea12489b88",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 3,
+  "source": "live",
+  "task": "CR-081",
+  "tool_version": "0.2.0",
+  "verdict": "approved"
+}
