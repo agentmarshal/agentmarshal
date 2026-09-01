@@ -118,15 +118,19 @@ def read_project_file(path: Path) -> JsonObject:
     return cast(JsonObject, data)
 
 
-def initial_project_data() -> JsonObject:
+def initial_project_data(host: Path | None = None) -> JsonObject:
     """Build the initial project configuration."""
 
-    return {
+    data: JsonObject = {
         "schema": 1,
         "framework": {
             "version": __version__,
         },
     }
+    if host is not None:
+        data["placement"] = "sidecar"
+        data["host"] = str(host)
+    return data
 
 
 _DIR_FD_SUPPORTED = (
@@ -305,7 +309,41 @@ def _scaffold_outbox(project_directory: Path) -> tuple[Path, str | None]:
     return outbox, None
 
 
-def initialize_project(start: Path | None = None) -> InitializedProject:
+def _git_common_dir(worktree: Path) -> Path | None:
+    """Return a worktree's shared git directory, or ``None`` if git cannot say.
+
+    Two worktrees of one repository report the same common directory even
+    though their paths are unrelated — which is how a sidecar that is secretly
+    a worktree of its own host is recognised.
+    """
+
+    try:
+        result = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(worktree),
+                "rev-parse",
+                "--path-format=absolute",
+                "--git-common-dir",
+            ],
+            capture_output=True,
+            check=False,
+        )
+    except OSError:
+        return None
+    if result.returncode != 0:
+        return None
+    try:
+        text = result.stdout.decode("utf-8").strip()
+    except UnicodeDecodeError:
+        return None
+    return Path(text).resolve() if text else None
+
+
+def initialize_project(
+    start: Path | None = None, *, host: Path | None = None
+) -> InitializedProject:
     """Initialize AgentMarshal in the containing git repository."""
 
     search_start = Path.cwd() if start is None else start
@@ -314,13 +352,45 @@ def initialize_project(start: Path | None = None) -> InitializedProject:
         msg = "AgentMarshal init must be run inside a git repository"
         raise NotGitRepositoryError(msg)
 
+    resolved_host: Path | None = None
+    if host is not None:
+        configured_host = host.expanduser().resolve()
+        if not configured_host.exists():
+            raise NotGitRepositoryError(
+                f"sidecar host {configured_host}: path does not exist"
+            )
+        if not configured_host.is_dir():
+            raise NotGitRepositoryError(
+                f"sidecar host {configured_host}: path is not a directory"
+            )
+        resolved_host = find_git_root(configured_host)
+        if resolved_host is None:
+            raise NotGitRepositoryError(
+                f"sidecar host {configured_host}: not a git worktree"
+            )
+        if git_root == resolved_host or git_root.is_relative_to(resolved_host):
+            raise AgentMarshalProjectError(
+                f"sidecar journal {git_root} must live outside host worktree "
+                f"{resolved_host}"
+            )
+        # Outside the host's tree is not enough: a linked worktree of the host
+        # sits elsewhere on disk and still writes into the host's object
+        # database, which is the thing the check above exists to prevent. The
+        # shared git directory is what actually distinguishes them.
+        if _git_common_dir(git_root) == _git_common_dir(resolved_host):
+            raise AgentMarshalProjectError(
+                f"sidecar journal {git_root} is a worktree of host "
+                f"{resolved_host}: its commits would land in the host's "
+                "repository"
+            )
+
     existing_root = find_project_root(search_start, stop_at=git_root)
     if existing_root is not None:
         raise AlreadyInitializedError(existing_root)
 
     project_file = project_file_path(git_root)
     try:
-        write_project_file(project_file, initial_project_data())
+        write_project_file(project_file, initial_project_data(resolved_host))
     except FileExistsError as error:
         raise AlreadyInitializedError(git_root) from error
     _assert_readable(project_file)

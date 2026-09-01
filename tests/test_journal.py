@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -23,7 +25,10 @@ from agentmarshal.journal import (
     write_record,
 )
 from agentmarshal.journal.open_task import TaskOpenError, journal_root, open_task
-from agentmarshal.journal.records import create_abandoned_record
+from agentmarshal.journal.records import (
+    create_abandoned_record,
+    create_completed_record,
+)
 
 
 def initialize_status_repo(repo: Path) -> Path:
@@ -39,6 +44,33 @@ def init_git_repo(repo: Path) -> None:
     subprocess.run(
         ["git", "init", "--quiet"], cwd=repo, check=True, capture_output=True
     )
+
+
+def _commit_file(repo: Path, name: str, content: str) -> str:
+    (repo / name).write_text(content, encoding="utf-8")
+    subprocess.run(["git", "add", name], cwd=repo, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.invalid",
+            "commit",
+            "--quiet",
+            "-m",
+            name,
+        ],
+        cwd=repo,
+        check=True,
+    )
+    return subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
 
 
 def _without_recorder(record: dict[str, object]) -> dict[str, object]:
@@ -1477,6 +1509,272 @@ def test_init_scaffolds_the_upstream_outbox(
     assert readme.is_file()
     assert "Sanitize at source" in readme.read_text(encoding="utf-8")
     assert "upstream" in capsys.readouterr().out
+
+
+def _host_snapshot(host: Path) -> dict[Path, bytes]:
+    """Every file under the host, .git included."""
+
+    return {
+        path.relative_to(host): path.read_bytes()
+        for path in host.rglob("*")
+        if path.is_file()
+    }
+
+
+def test_full_sidecar_session_never_changes_host(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    host = tmp_path / "host"
+    sidecar = tmp_path / "sidecar"
+    init_git_repo(host)
+    init_git_repo(sidecar)
+    base = _commit_file(host, "app.txt", "one\n")
+    head = _commit_file(host, "app.txt", "two\n")
+    linked = tmp_path / "linked"
+    subprocess.run(
+        [
+            "git",
+            "worktree",
+            "add",
+            "--quiet",
+            "-b",
+            "feat/CR-001-recorded",
+            str(linked),
+            "HEAD",
+        ],
+        cwd=host,
+        check=True,
+    )
+    linked_app = linked / "app.txt"
+    linked_stat = linked_app.stat()
+    os.utime(
+        linked_app,
+        ns=(linked_stat.st_atime_ns, linked_stat.st_mtime_ns + 2_000_000_000),
+    )
+    reviewer = tmp_path / "reviewer.py"
+    reviewer.write_text(
+        """import json
+import re
+import sys
+from pathlib import Path
+
+prompt = sys.stdin.read()
+assert Path("app.txt").read_text(encoding="utf-8") == "two\\n"
+assert not Path(".git").exists()
+commit = re.search(r"reviewed commit is ([0-9a-f]{40})", prompt).group(1)
+print("AGENTMARSHAL_VERDICT_BEGIN")
+verdict = {
+    "reviewed_commit": commit,
+    "verdict": "changes_required",
+    "findings": ["F-1"],
+}
+print(json.dumps(verdict))
+print("AGENTMARSHAL_VERDICT_END")
+""",
+        encoding="utf-8",
+    )
+    # .git is included deliberately. Excluding it tested the letter of
+    # ADR-0008 Decision 3 while leaving its spirit unchecked: a host-side
+    # 'git status' without --no-optional-locks rewrites .git/index, which is a
+    # write into a repository we promise never to write to and which an
+    # exclusion would hide.
+    before_files = _host_snapshot(host)
+    before_untracked = subprocess.run(
+        ["git", "ls-files", "--others", "--exclude-standard"],
+        cwd=host,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    monkeypatch.chdir(sidecar)
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", f"{sys.executable} {reviewer}")
+
+    assert main(["init", "--host", str(host)]) == 0
+    assert main(["open", "--title", "Private task", "--scope", "app.txt"]) == 0
+    # app.txt exists in the host and not in the sidecar, so a scope check
+    # against the wrong root would warn. Warnings go to stderr and never
+    # change the exit code, so without this assertion the criterion could be
+    # broken with the suite still green.
+    assert "matches no path" not in capsys.readouterr().err
+    assert main(["open", "--title", "Absent", "--scope", "not-in-host.txt"]) == 0
+    assert "matches no path" in capsys.readouterr().err
+    assert main(["abandon", "--task", "CR-002", "--reason", "probe"]) == 0
+    assert main(["brief", "--task", "CR-001"]) == 0
+    assert main(["amend", "--task", "CR-001", "--reason", "Clarify scope"]) == 0
+    assert (
+        main(
+            [
+                "submit-review",
+                "--task",
+                "CR-001",
+                "--commit",
+                head,
+                "--verdict",
+                "approved",
+                "--role",
+                "reviewer",
+                "--vendor",
+                "test",
+                "--model",
+                "test",
+                "--email",
+                "reviewer@example.invalid",
+            ]
+        )
+        == 0
+    )
+    assert (
+        main(
+            [
+                "review",
+                "--task",
+                "CR-001",
+                "--commit",
+                head,
+                "--base",
+                base,
+                "--role",
+                "reviewer",
+                "--vendor",
+                "test",
+                "--model",
+                "test",
+                "--email",
+                "reviewer@example.invalid",
+            ]
+        )
+        == 0
+    )
+    assert (
+        main(
+            [
+                "accept",
+                "--task",
+                "CR-001",
+                "--commit",
+                head,
+                "--by",
+                "operator@example.invalid",
+                "--reason",
+                "Accepted for this private workflow",
+            ]
+        )
+        == 0
+    )
+    assert (
+        main(
+            [
+                "record-session",
+                "--task",
+                "CR-001",
+                "--role",
+                "implementer",
+                "--actor",
+                "operator",
+                "--activity",
+                "implementation",
+                "--outcome",
+                "done",
+            ]
+        )
+        == 0
+    )
+    assert main(["status", "CR-001"]) == 0
+    assert main(["report", "--task", "CR-001"]) == 0
+    assert main(["validate"]) == 0
+    write_record(
+        sidecar / ".agentmarshal" / "journal",
+        "CR-001",
+        create_completed_record("CR-001", "test", head),
+    )
+    assert main(["prune"]) == 0
+    # Exit code alone passed while prune read task state from the host, which
+    # has no journal, and called every task unknown. The report's content is
+    # the thing under test.
+    pruned = capsys.readouterr().out
+    assert (
+        f"eligible: {linked} "
+        "(branch feat/CR-001-recorded; task CR-001 is done and clean)" in pruned
+    )
+    assert "unknown" not in pruned
+    # F-2: reopen is named in the sidecar command list and was the one command
+    # in it no test exercised there.
+    assert main(["reopen", "--task", "CR-001", "--reason", "More to do"]) == 0
+    assert main(["open", "--title", "Abandoned", "--scope", "app.txt"]) == 0
+    assert main(["abandon", "--task", "CR-003", "--reason", "Superseded"]) == 0
+    capsys.readouterr()
+
+    after_files = _host_snapshot(host)
+    status = subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=host,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    after_untracked = subprocess.run(
+        ["git", "ls-files", "--others", "--exclude-standard"],
+        cwd=host,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert status == ""
+    assert after_untracked == before_untracked
+    assert after_files == before_files
+
+
+def test_sidecar_refuses_authoritative_commands_and_host_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    host = tmp_path / "host"
+    sidecar = tmp_path / "sidecar"
+    init_git_repo(host)
+    init_git_repo(sidecar)
+    _commit_file(host, "app.txt", "one\n")
+    monkeypatch.chdir(sidecar)
+    assert main(["init", "--host", str(host)]) == 0
+    capsys.readouterr()
+
+    assert main(["gate"]) == 1
+    assert "advisory mode lands in a following task" in capsys.readouterr().err
+    assert (
+        main(["complete", "--task", "CR-001", "--commit", "HEAD", "--base", "HEAD"])
+        == 1
+    )
+    assert "misstate its authority" in capsys.readouterr().err
+    assert main(["prune", "--delete"]) == 1
+    assert (
+        "host worktree and repository must remain read-only" in capsys.readouterr().err
+    )
+
+
+def test_missing_sidecar_host_fails_only_when_command_needs_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    host = tmp_path / "host"
+    sidecar = tmp_path / "sidecar"
+    init_git_repo(host)
+    init_git_repo(sidecar)
+    monkeypatch.chdir(sidecar)
+    assert main(["init", "--host", str(host)]) == 0
+    assert main(["open", "--title", "Task"]) == 0
+    os.rename(host, tmp_path / "moved-host")
+    capsys.readouterr()
+
+    assert main(["status"]) == 0
+    assert main(["status", "CR-001"]) == 0
+    assert main(["open", "--title", "Another task"]) == 1
+    error = capsys.readouterr().err
+    assert str(host) in error
+    assert "does not exist" in error
+    assert "Traceback" not in error
 
 
 def test_init_does_not_overwrite_an_outbox_readme(tmp_path: Path) -> None:
