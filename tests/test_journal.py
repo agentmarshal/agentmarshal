@@ -1976,11 +1976,8 @@ def test_record_session_still_refuses_an_unknown_task(
 ) -> None:
     """Dropping the state guard must not drop the existence check."""
 
-    from agentmarshal.cli import main
-
     repo = tmp_path / "repo"
-    repo.mkdir()
-    subprocess.run(["git", "init", "--quiet", "-b", "master"], cwd=repo, check=True)
+    init_git_repo(repo)
     monkeypatch.chdir(repo)
     assert main(["init"]) == 0
 

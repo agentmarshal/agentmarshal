@@ -382,7 +382,8 @@ agentmarshal validate
 ```
 
 `status` shows the task as `done` with its full record trail — the opened
-event, the approved review bound to the commit SHA, and the completion.
+event, the approved review bound to the commit SHA, the completion, and the
+session you recorded after it.
 `validate` checks the whole journal for integrity and is the check you run in
 CI.
 
