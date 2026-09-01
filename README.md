@@ -64,11 +64,10 @@ without notice.
 
 ## Install
 
-Install the published release. 0.3.0 is not on the package index yet, so this
-installs 0.2.0 — without the sidecar placement described below:
+Install the published release:
 
 ```sh
-pip install agentmarshal==0.2.0
+pip install agentmarshal==0.3.0
 agentmarshal --version
 ```
 

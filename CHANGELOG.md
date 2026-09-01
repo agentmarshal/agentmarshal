@@ -8,7 +8,7 @@ local timestamp that can read a day either side of it. The journal under
 This project describes what it does and not what it intends to do. Where a
 capability is partial, the entry says so.
 
-## 0.3.0 — unreleased
+## 0.3.0 — 2026-09-01
 
 The headline is that a journal no longer has to live inside the repository it
 records evidence about. Everything else in this release follows from making that
