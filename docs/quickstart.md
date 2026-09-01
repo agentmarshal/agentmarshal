@@ -3,7 +3,8 @@
 This walks through the whole AgentMarshal loop on a throwaway repository —
 from installing the package to a task that carries durable, SHA-bound
 evidence that its work was independently reviewed. Every command below was
-verified against the published `agentmarshal` 0.2.0 release.
+verified by running it against the published `agentmarshal` 0.2.0 release —
+except step 7, which needs **0.3.0** and says so there.
 
 New here? [overview.md](overview.md) explains the idea and the vocabulary
 (**host repo**, task, contract, scope, gate, …) in a page. This guide is the
@@ -353,6 +354,12 @@ git add .agentmarshal && git commit -m "complete CR-001"
 Now, not earlier: a task's cost is known when it ends. AgentMarshal accepts a
 session record after the task is closed for exactly this reason — a session
 changes no state, so recording one cannot revive or alter a finished task.
+
+**This step needs 0.3.0.** It is the one place this guide leaves the release it
+installs above: 0.2.0 refuses a session record for a task that is not open, with
+`task CR-001 is not open (state: done)`, and removing that refusal is a 0.3.0
+change. Until 0.3.0 reaches the index, either take the cost record on trust or
+install from the repository as [sidecar.md](sidecar.md) describes.
 
 ```sh
 agentmarshal record-session \

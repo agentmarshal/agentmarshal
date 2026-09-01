@@ -340,7 +340,10 @@ journal — the host has none to check.
 
 The invariant is absolute: **the host repository carries no reference to, and
 no marker of the existence of, any sidecar** — not a link, not a config key,
-not an ignore rule, which would disclose exactly what it hides.
+not a placeholder record, not an ignore rule, which would disclose exactly what
+it hides. The list is examples; the test is this: **a reader with full access to
+the host must be unable to tell whether a sidecar exists.** Apply it to anything
+the list does not name.
 
 The tool holds up its end: it **writes** nothing to the host. It reads it
 mostly through git, and directly from the filesystem where a check needs to —
