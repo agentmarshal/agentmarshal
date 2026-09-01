@@ -34,3 +34,16 @@ A CI transport contract is a larger commitment — it fixes an interface across
 providers we do not yet have enough adopters to generalise from, and a premature
 interface is harder to remove than to add. Deferred until we have integrations
 from more than one provider family to compare.
+
+### Re-read 2026-09-01 — remains deferred, and half the finding dissolved
+
+Measured while re-reading: the empty `integrations/{ci,git,provider}` and
+`plugins/` directories are **v1 leftovers**. The published v2 `init` — checked
+against an installed 0.1.0 and against current source — creates none of them.
+The guessing invitation was real, but the fix is deletion, not documentation of
+slots that no longer exist; the migration document now says so.
+
+The CI transport contract stays deferred for the original reason, unweakened:
+the provider families available to generalise from are still the two we operate
+ourselves, and no adopter integration beyond the original report has arrived. A
+premature interface is still harder to remove than to add.

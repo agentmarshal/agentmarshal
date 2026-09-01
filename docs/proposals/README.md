@@ -40,8 +40,8 @@ changed our roadmap we say that too.
 ## Current batch
 
 Landed 2026-08-30, from three adopters running 0.1.0 in production. Twenty-two
-source files digested into thirteen proposals — eight accepted, four deferred,
-one declined. The recurring themes are review protocol robustness, contract
+source files digested into thirteen proposals — nine accepted, three deferred,
+one declined. Dispositions dated later than the batch record re-reads. The recurring themes are review protocol robustness, contract
 repair, and session/token accounting; the last was raised independently by two
 adopters.
 
@@ -51,7 +51,7 @@ adopters.
 | [002](002-scope-ergonomics.md) | Scope is silently accepted when it matches nothing | A | accepted |
 | [003](003-roles-and-actors.md) | Scope is not bound to an actor | A | deferred |
 | [004](004-provider-ci-integration.md) | Provider CI integration has slots but no contract | A | deferred |
-| [005](005-research-findings-have-no-record-type.md) | Research findings have no record type | A | deferred |
+| [005](005-research-findings-have-no-record-type.md) | Research findings have no record type | A | accepted *(2026-09-01, was deferred)* |
 | [006](006-contract-repair-path.md) | A defective contract can only be abandoned | A, B | accepted |
 | [007](007-accepting-work-over-findings.md) | The operator cannot accept work over findings | A | accepted |
 | [008](008-session-and-token-accounting.md) | Session/token accounting is not in the core | B, C | accepted |

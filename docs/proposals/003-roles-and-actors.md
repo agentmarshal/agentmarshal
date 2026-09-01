@@ -29,3 +29,20 @@ Deferred rather than declined because the underlying question is real, and
 because the missing migration note about `scope_allow` is a genuine documentation
 defect we should fix regardless. Sequencing: record provenance first, then
 actors; a role model resting on unauthenticated identity would overclaim.
+
+### Re-read 2026-09-01 — remains deferred
+
+What changed since: the sequencing precondition is met — `recorded_by` and its
+source landed (ADR-0006), so records now say who created them. What did not
+change is the blocker itself, and it has since hardened: ADR-0007 rejected a
+distinct-party rule as a *default* for exactly the reason this deferral gave —
+a rule requiring a different name is satisfied by typing a different name. The
+opt-in record signing now planned covers review and acceptance records per
+invocation; that is a foundation to build toward, not yet a base broad enough
+to enforce roles against.
+
+So the decision stands: role enforcement waits for identity that is verified
+rather than declared. When it lands, ADR-0006's configurable policy layer is
+where this belongs. The `scope_allow` migration note this disposition called a
+documentation defect is now fixed in
+[migration-v1-to-v2.md](../migration-v1-to-v2.md).
