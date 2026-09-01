@@ -1,0 +1,24 @@
+{
+  "advisory_findings": [
+    "quickstart-step-8-output-also-requires-0-3-0",
+    "upgrading-version-probe-contradicts-sidecar-guidance",
+    "sidecar-size-debt-not-retired"
+  ],
+  "created_at": "2026-09-01T15:53:45.247546Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "31be16f7479f3361a0319cb7ade6cfeeb0229a60",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 3,
+  "source": "live",
+  "task": "CR-083",
+  "tool_version": "0.3.0",
+  "verdict": "approved"
+}
