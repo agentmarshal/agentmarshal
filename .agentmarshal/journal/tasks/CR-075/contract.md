@@ -5,7 +5,7 @@ title = "Release 0.2.0: date the changelog entry"
 scope = ["CHANGELOG.md"]
 acceptance = [
   "the 0.2.0 heading carries the UTC date the release is tagged, not `unreleased`",
-  "the date matches the convention the file states: the PyPI upload date",
+  "the date is the UTC date at tagging, and is reconciled against the index once the upload exists",
   "nothing else in the changelog changes",
 ]
 +++
@@ -32,8 +32,11 @@ unreleased.
 
 - The `## 0.2.0` heading carries the UTC date on which the release is tagged,
   in place of `unreleased`.
-- The date follows the convention the file already states — the PyPI upload
-  date, checkable against the index.
+- The date is the **UTC date at tagging**. It cannot be the upload date at the
+  moment it is written, because the upload has not happened — the entry is a
+  prediction until the tag is pushed, and is reconciled against the index
+  immediately afterwards. Where the two differ, the index wins and the entry is
+  corrected: the file's convention says dates are the index's.
 - Nothing else in the changelog changes.
 
 ## Threat model and boundaries
