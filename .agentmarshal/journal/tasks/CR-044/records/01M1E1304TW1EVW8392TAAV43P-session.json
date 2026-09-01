@@ -1,0 +1,23 @@
+{
+  "activity": "review",
+  "actor": "openai/codex-auto-review",
+  "created_at": "2026-09-01T08:24:06.042008Z",
+  "outcome": "success",
+  "record_type": "session",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "role": "code-reviewer",
+  "schema": 3,
+  "source": "live",
+  "task": "CR-044",
+  "tokens": {
+    "cache": 887040,
+    "input": 249691,
+    "output": 21183
+  },
+  "tool_version": "0.2.0",
+  "usage": {
+    "method": "measured",
+    "provider": "openai"
+  }
+}
