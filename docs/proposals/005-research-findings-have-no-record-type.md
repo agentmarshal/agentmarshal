@@ -1,6 +1,6 @@
 # 005 — Research findings have no record type
 
-- **Reporter:** Adopter A (Python web service on Linux) · **Observed on:** 0.1.0 · **Disposition:** deferred
+- **Reporter:** Adopter A (Python web service on Linux) · **Observed on:** 0.1.0 · **Disposition:** accepted *(2026-09-01; deferred at intake)*
 
 ## Finding
 
@@ -19,7 +19,7 @@ a step in the loop does not get executed.
 A record type for findings produced by a task, so that research output lands in
 the journal instead of chat.
 
-## Disposition — deferred
+## Disposition — accepted (2026-09-01; deferred at intake, reasoning below preserved)
 
 The gap is real and we have felt it too. Deferring on sequencing, not merit:
 this interacts with the record schema and with the in-toto projection that is
