@@ -1,0 +1,27 @@
+{
+  "advisory_findings": [
+    "upgrading-first-section-overstates-compatibility",
+    "readme-status-0.3.0-vs-install-0.2.0",
+    "upgrading-pin-0.3.0-not-on-index",
+    "changelog-omits-economics-item",
+    "sidecar-drops-disjoint-tasks-rule",
+    "sidecar-md-overlong-spliced-lines"
+  ],
+  "created_at": "2026-09-01T14:54:45.468125Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "ce5b7ac4fcd3dc07b484aafdfcaadd592620861b",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 3,
+  "source": "live",
+  "task": "CR-083",
+  "tool_version": "0.3.0",
+  "verdict": "approved"
+}
