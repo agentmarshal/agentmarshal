@@ -122,3 +122,54 @@ def test_a_sidecar_may_not_be_a_worktree_of_its_own_host(
     error = capsys.readouterr().err
     assert "worktree of host" in error
     assert not (sidecar / ".agentmarshal").exists()
+
+
+def test_abandon_in_a_sidecar_writes_to_the_sidecar_journal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Pinned against a review claim that it wrote to the host's journal.
+
+    In a sidecar the project root *is* the sidecar root, so deriving the
+    journal from it is correct — the claim misread which root the CLI passes.
+    Disproved by running it; kept as a test so the misreading cannot recur.
+    """
+
+    from agentmarshal.cli import main
+
+    host = tmp_path / "host"
+    _git_init(host)
+    sidecar = tmp_path / "sidecar"
+    _git_init(sidecar)
+    monkeypatch.chdir(sidecar)
+    assert main(["init", "--host", str(host)]) == 0
+    assert main(["open", "--title", "Probe", "--scope", "src/"]) == 0
+
+    assert main(["abandon", "--task", "CR-001", "--reason", "probe"]) == 0
+
+    records = sidecar / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "records"
+    assert [path.name for path in records.glob("*-abandoned.json")]
+    assert not (host / ".agentmarshal").exists()
+
+
+def test_a_sidecar_inside_the_hosts_git_directory_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Pinned against a review claim that this path was allowed.
+
+    `host/.git/x` is relative to the host worktree, so the existing check
+    already refuses it. Disproved by running it; pinned so the guard cannot be
+    narrowed later without noticing.
+    """
+
+    from agentmarshal.cli import main
+
+    host = tmp_path / "host"
+    _git_init(host)
+    inside = host / ".git" / "sneaky"
+    inside.mkdir(parents=True)
+    subprocess.run(["git", "init", "--quiet", "-b", "master"], cwd=inside, check=True)
+    monkeypatch.chdir(inside)
+
+    assert main(["init", "--host", str(host)]) == 1
+
+    assert "must live outside host worktree" in capsys.readouterr().err
