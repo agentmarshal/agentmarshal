@@ -2,7 +2,7 @@
 schema = 1
 id = "CR-079"
 title = "A journal can sit beside its repository: sidecar configuration and host resolution"
-scope = ["src/agentmarshal/project.py", "src/agentmarshal/journal/placement.py", "src/agentmarshal/journal/open_task.py", "src/agentmarshal/journal/review.py", "src/agentmarshal/cli.py", "tests/test_placement.py", "tests/test_journal.py"]
+scope = ["src/agentmarshal/project.py", "src/agentmarshal/journal/placement.py", "src/agentmarshal/journal/open_task.py", "src/agentmarshal/journal/review.py", "src/agentmarshal/cli.py", "src/agentmarshal/journal/prune.py", "tests/test_placement.py", "tests/test_journal.py", "tests/test_prune.py"]
 acceptance = [
   "`agentmarshal init --host <path>` initializes a sidecar journal: project.json carries the placement and the host path, and the host repository is verified to be a git worktree at init time",
   "a project.json without a placement key is an embedded journal, so every existing project keeps working unchanged",
@@ -10,7 +10,7 @@ acceptance = [
   "in a sidecar, `open`'s scope warnings check paths against the host worktree, and `review` snapshots the host repository",
   "journal commands work in a sidecar: open, brief, status, report, amend, reopen, abandon, submit-review, review, accept, record-session, validate, prune",
   "`gate` and `complete` refuse to run in a sidecar placement, naming the reason: the advisory mode is a following task, and until it exists refusing is the honest answer",
-  "no command ever writes anything into the host repository or its worktree, and a test demonstrates the host tree is byte-identical after a full sidecar session",
+  "no command ever writes anything into the host repository or its worktree — including its git metadata: host-side git invocations use --no-optional-locks, and the byte-identical test covers .git rather than excluding it",
   "a sidecar with a missing or non-git host path fails with the path and the reason, at the first command that needs the host, not with a traceback",
 ]
 +++
@@ -61,10 +61,14 @@ prove the host is never written.
 - `gate` and `complete` **refuse** in a sidecar placement with a message
   naming why: the advisory mode lands in a following task, and until then a
   gate that ran would misstate its authority.
-- **No command writes into the host.** A test runs a full sidecar session —
-  init, open, review, accept, record-session, status, report — against a host
-  fixture and asserts the host tree is byte-identical before and after
-  (`git status --porcelain` empty and untracked listing unchanged).
+- **No command writes into the host, including its git metadata.** Host-side
+  git invocations that can refresh the index run with `--no-optional-locks`,
+  and the byte-identical test covers `.git` instead of excluding it. Excluding
+  it tested the letter of ADR-0008 Decision 3 while leaving the spirit
+  unchecked.
+- `prune` in a sidecar reads **task state from the sidecar journal** and **git
+  facts from the host**; its report must classify sidecar tasks correctly
+  rather than calling every task unknown.
 - A missing or non-git host path fails at the first command that needs the
   host, with the path and the reason, never a traceback.
 
