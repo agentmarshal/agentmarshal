@@ -125,6 +125,12 @@ to block merges is covered in
 [docs/self-hosting-workflow.md](docs/self-hosting-workflow.md) and
 [docs/github-enforcement.md](docs/github-enforcement.md).
 
+**Cannot install into the repository you work in, or need the evidence to stay
+private?** A journal can live in a repository of its own and name the one it
+records evidence about — see
+[docs/sidecar.md](docs/sidecar.md). That placement is **experimental**, is not
+in 0.2.0, and its gate advises rather than decides.
+
 ## Development
 
 Requires Python >= 3.12 and [uv](https://docs.astral.sh/uv/) (development

@@ -80,6 +80,12 @@ task is already closed.
 - **Host repo** — the repository that *adopts* AgentMarshal to govern its own
   work (your project). Distinct from the AgentMarshal tool/package itself. You
   run `agentmarshal init` in the host repo; the journal lives there.
+- **Placement** — where a journal sits relative to the repository it records
+  evidence about: **embedded** (inside it, the default, everything below
+  assumes it) or **sidecar** (a repository of its own naming a host, which it
+  only ever reads). Sidecar is **experimental** and not in 0.2.0; its gate
+  advises and decides no merge. See [sidecar.md](sidecar.md) and
+  [ADR-0008](adr/ADR-0008-journal-placements.md).
 - **Journal** — everything under `.agentmarshal/journal/`: the per-task
   contracts and records. The single source of truth, committed to git.
 - **Task** — a unit of governed work (id like `CR-001`), living in
