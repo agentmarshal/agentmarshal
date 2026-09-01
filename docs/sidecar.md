@@ -1,10 +1,9 @@
 # Sidecar journals (experimental)
 
-> **Experimental.** This placement is **not in the published 0.2.0 release** —
-> it is planned for the next one, and this document describes the behaviour on
-> `master`. Its command surface, its output wording and its record content may
-> change. Do not build automation on it that you are not prepared to fix, and
-> do not rely on a sidecar journal as your only copy of anything.
+> **Experimental.** This placement is new in 0.3.0. Its command surface, its
+> output wording and its record content may change. Do not build automation on
+> it that you are not prepared to fix, and do not rely on a sidecar journal as
+> your only copy of anything.
 
 The [Quickstart](quickstart.md) assumes the journal lives inside the repository
 it governs — `.agentmarshal/` committed alongside the code. That is the
@@ -17,22 +16,15 @@ to.
 
 ## Who this is for
 
-Two situations the embedded placement cannot serve:
+Two situations the embedded placement cannot serve: **your working evidence is
+private and the project is not** (research notes, pre-registered findings,
+anything naming people or clients), and **you do not control the repository**
+(an employer's, where you cannot install a directory, a config file, or an
+ignore rule). Both otherwise end as loose files, where the material that most
+needs timestamps and immutability has neither.
 
-**Your working evidence is private and the project is not.** Research notes,
-pre-registered findings, incident context, anything naming people or clients.
-Embedded, it would have to be public or not exist. As loose files beside the
-repository, the material that most needs timestamps and immutability has
-neither.
-
-**You do not control the repository.** An engineer in an employer's repository
-cannot install a directory, a config file, or an ignore rule into it.
-Practitioners in this position build the journal by hand anyway — numbered
-task files in a personal directory, attempt logs, review rituals driven by
-prompt. A sidecar is that practice with records instead of filenames.
-
-The design reasoning is [ADR-0008](adr/ADR-0008-journal-placements.md). This
-document is how to run it.
+The reasoning is [ADR-0008](adr/ADR-0008-journal-placements.md). This document
+is how to run it.
 
 ## What a sidecar establishes, and what it does not
 
@@ -73,11 +65,10 @@ that sentence are true and neither should be dropped when quoting it.
 The tool is the same tool — one package, one command surface, one record
 schema. There is no "lite" build.
 
-Because this placement is not in the published release yet, `pip install
-agentmarshal` will **not** give you a build that has it. Until the next release
-ships, install from the repository — pinned to the commit this document was
-verified against, because `master` moves and an experimental surface moves with
-it:
+Until 0.3.0 reaches the package index, `pip install agentmarshal` will **not**
+give you a build that has this placement. Install from the repository — pinned
+to the commit this document was verified against, because `master` moves and an
+experimental surface moves with it:
 
 ```sh
 pip install "git+https://github.com/agentmarshal/agentmarshal@3dfeadda6ab10342bd288b6777681175b63d9582"
@@ -97,15 +88,16 @@ Requirements are unchanged: **Python ≥ 3.12** and **git** on your `PATH`. You
 install it for yourself, not into the host repository, so a user-level install
 (`pipx`, `uv tool install`, a virtualenv you own) is the normal choice.
 
-`agentmarshal --version` reports `0.2.0` for both builds, so it cannot tell you
-which one you have. This can:
+Check what you got by capability rather than by version:
 
 ```sh
 agentmarshal init --help | grep -- --host
 ```
 
 A build with the placement prints the `--host` option; the published 0.2.0
-prints nothing.
+prints nothing. `agentmarshal --version` is the wrong probe here: the pinned
+commit reports `0.2.0`, because the version was raised after it, and so does the
+last published release — two different builds behind one number.
 
 ## Set up the sidecar
 
@@ -131,8 +123,9 @@ linked worktree of the host (which sits elsewhere on disk but shares the host's
 object database).
 
 `init` also scaffolds `.agentmarshal/upstream/`, an outbox for findings about
-AgentMarshal itself, and says so on stderr; the commit you make later includes
-it. The configuration it writes is `.agentmarshal/project.json`:
+AgentMarshal itself, and names it on stdout alongside the project it
+initialized; the commit you make later includes it. The configuration it writes
+is `.agentmarshal/project.json`:
 
 ```json
 {
@@ -145,10 +138,11 @@ it. The configuration it writes is `.agentmarshal/project.json`:
 }
 ```
 
-`host` is written absolute. A relative value is supported for a hand-edited
-file and resolves against the project root — never against your shell's working
-directory, which would mean different repositories from different
-subdirectories.
+`framework.version` records the build that wrote the file, so yours says
+whichever version you installed. `host` is written absolute. A relative value
+is supported for a hand-edited file and resolves against the project root —
+never against your shell's working directory, which would mean different
+repositories from different subdirectories.
 
 Run every `agentmarshal` command **from the sidecar**, naming host commits by
 SHA. The host is only ever read.
@@ -168,7 +162,15 @@ git add -A && git commit -m "open CR-001"
 ```
 
 Scope is checked against the **host's** working tree, so its warnings are about
-host paths. Numbering is the sidecar's own: this journal's `CR-001` has no
+host paths — and this example earns one, because the host has no `src/` until a
+later step creates it:
+
+```
+warning: scope entry 'src/' matches no path in the working tree
+```
+
+The task opens anyway: a scope may legitimately name a path the work is about
+to create. Numbering is the sidecar's own: this journal's `CR-001` has no
 relationship to any `CR-001` in the host.
 
 ### Brief the implementer, work in the host
@@ -238,6 +240,12 @@ gate: advisory checks passed; decides no merge
 
 The SHAs in that transcript are from an actual run on a throwaway pair of
 repositories; yours will differ.
+
+The gate also runs the advisory leak scan over the candidate's added content.
+It appends nothing when there is no hit, which is why the transcript above has
+no such line; on a hit it adds `WARN: possible leak in candidate additions
+(advisory, not blocking)` with the markers it matched, and on a scan it could
+not perform, `WARN: leak-scan skipped`. Neither blocks.
 
 Two lines say "none examined" rather than `PASS` in the ordinary sense: the
 candidate is a host diff, and a host diff adds no records to this journal.
@@ -331,9 +339,11 @@ journal — the host has none to check.
 ## What the host never gets
 
 The invariant is absolute: **the host repository carries no reference to, and
-no marker of the existence of, any sidecar.** Not a link, not a config key, not
-a placeholder record, not an ignore rule — a reader with full access to the
-host must be unable to tell whether a sidecar exists.
+no marker of the existence of, any sidecar** — not a link, not a config key,
+not a placeholder record, not an ignore rule, which would disclose exactly what
+it hides. The list is examples; the test is this: **a reader with full access to
+the host must be unable to tell whether a sidecar exists.** Apply it to anything
+the list does not name.
 
 The tool holds up its end: it **writes** nothing to the host. It reads it
 mostly through git, and directly from the filesystem where a check needs to —
@@ -357,15 +367,19 @@ Your end is the part the tool cannot enforce:
   and task ids freely; nothing goes the other way by default.
 
 One deliberate exception exists: a hash-pinned artifact reference from a public
-record to private material discloses that the private material **exists**,
-though not what it says. Pinning a pre-registration this way is a legitimate
-act of disclosure — but it is an explicit opt-in and nothing writes one on your
-behalf.
+record to private material discloses that the material **exists**, though not
+what it says. It is an explicit opt-in, and nothing writes one for you.
 
 Publishing something from a sidecar later — a proposal, an incident write-up —
 is **declassification by hand**. The tool does not sanitize for you;
 `agentmarshal leak-scan` is an advisory scan of added content, not a
 declassification review.
+
+The two placements coexist over one project, and the rule that keeps them
+coherent is operational, not theoretical: an embedded journal for the public
+lifecycle and a sidecar for private work are **two journals with disjoint
+tasks**. No task's records are ever split across them, and state is never
+projected across them — a projection with two sources would be a guess.
 
 ## Command differences, in one place
 
@@ -405,20 +419,3 @@ and it follows from the previous point.
 
 **`doctor` does not know about placement.** It checks the sidecar repository
 and reports nothing about the configured host or whether it is reachable.
-
-## Choosing a placement
-
-Use **embedded** when you control the repository and the evidence can be
-public. It is the default, the gate is the merge authority, and the contract is
-pinned to the base. Everything else in this documentation assumes it.
-
-Use a **sidecar** when the evidence must stay private, or when you cannot
-install anything into the repository you work in. You keep the records,
-the SHA binding, the append-only history and the reporting; you give up the
-merge authority and the base-pinned contract, and you say so when you quote
-what the evidence shows.
-
-They coexist over one project. An embedded journal for the public lifecycle and
-a sidecar for private work is two journals with **disjoint tasks** — no task's
-records are ever split across journals, and state is never projected across
-them.

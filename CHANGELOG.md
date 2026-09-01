@@ -8,6 +8,93 @@ local timestamp that can read a day either side of it. The journal under
 This project describes what it does and not what it intends to do. Where a
 capability is partial, the entry says so.
 
+## 0.3.0 — unreleased
+
+The headline is that a journal no longer has to live inside the repository it
+records evidence about. Everything else in this release follows from making that
+honest: an arrangement that cannot enforce anything must not read as if it does.
+
+### A journal can live in a repository of its own
+
+`agentmarshal init --host PATH` creates a **sidecar** journal: the same journal
+structure, the same records, the same commands, in a repository of its own that
+names one host repository. The host is read and never written — not its working
+tree, not its Git metadata. `init` refuses the two arrangements that would break
+that: a journal inside the host's working tree, and a journal that is a linked
+worktree of the host, whose commits would land in the host's own object database.
+
+This exists for two situations the embedded placement cannot serve: evidence that
+must stay private while the project is public, and a repository you work in but
+cannot install anything into.
+
+**The placement is experimental**, and two limits are part of the design rather
+than gaps to be closed later:
+
+- **A sidecar gate decides no merge.** It computes every check it can — scope,
+  the latest review of the exact commit, reviewer independence, pipeline
+  attestation, its own append-only integrity — and says on every run that its
+  result is advisory. The merge belongs to the host's process, which a sidecar
+  operator does not control. An advisory pass never prints the wording an
+  embedded pass prints.
+- **A sidecar contract is not pinned to a base commit.** Embedded, the gate reads
+  the contract from the base side of the same history as the candidate, so a
+  change cannot widen its own scope. A sidecar's contract is not in the host's
+  history at all, so it is read from the sidecar working tree, and the gate's
+  transcript says so on the scope line. Scope discipline there rests on the
+  sidecar's own history.
+
+The surfaces that present evidence say which regime produced it: `status` and
+`report` print the placement on stderr, leaving their machine-readable stdout
+unchanged, and the gate and `complete` transcripts say it in words.
+
+`open`, `gate`, `complete`, `review`, `prune` and `leak-scan` resolve the host
+and the journal as two separate roots. `validate` is the exception, and not an
+oversight: it checks the journal it is run in, and a sidecar's host has no
+journal to check. `prune --delete` is refused in a sidecar, because deleting
+branches and worktrees would write to the host.
+
+The design and its boundaries are
+[ADR-0008](docs/adr/ADR-0008-journal-placements.md); the second
+install-and-operate path is [docs/sidecar.md](docs/sidecar.md).
+
+### A session record is accepted after a task closes
+
+`record-session` refused a task that was not open. A task's cost is known when it
+ends, so that guard made the one moment worth recording the one moment refused —
+and this repository ran forty-eight tasks with no live session record before the
+guard was found. The gate has always had a measurements-only lane for exactly
+this: a session record changes no state, so accepting one cannot revive or alter
+a finished task.
+
+Nothing in the record format changed. What changed is when the tool accepts one.
+
+### The package says where it comes from
+
+`pyproject.toml` declares `[project.urls]`, so the source repository is
+discoverable from the package and from the index rather than only from
+documentation. It was missing entirely through 0.2.0.
+
+It is metadata and nothing more: it changes no behaviour, it does not establish
+that a given build came from that repository, and it cannot be backfilled into
+0.2.0 — the metadata of a published release is immutable.
+
+### Compatibility
+
+**No record-format change.** The record schema is 3, as in 0.2.0, so every
+**record** either release writes is read by the other. That is a statement about
+records, not about the tool as a whole — the paragraph below is the part it does
+not cover.
+
+One arrangement does not travel backwards: a **sidecar journal requires 0.3.0 on
+every checkout that reads it**. A 0.2.0 install does not know the `placement` and
+`host` keys. It reads the records correctly — the format is the same — but it
+gates the journal repository against itself, classifies the candidate as a
+journal-only transaction because everything in that repository is under
+`.agentmarshal/`, waives the review requirement that follows from that, and
+prints `gate: passed`. Verified against the published 0.2.0. Embedded journals
+are unaffected; [UPGRADING.md](UPGRADING.md) has the procedure and the
+transcript.
+
 ## 0.2.0 — 2026-09-01
 
 The headline is that the operator, not the reviewer, now owns the acceptance

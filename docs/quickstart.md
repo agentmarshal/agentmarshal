@@ -3,7 +3,8 @@
 This walks through the whole AgentMarshal loop on a throwaway repository —
 from installing the package to a task that carries durable, SHA-bound
 evidence that its work was independently reviewed. Every command below was
-verified against the published `agentmarshal` 0.2.0 release.
+verified by running it against the published `agentmarshal` 0.2.0 release —
+except step 7, which needs **0.3.0** and says so there.
 
 New here? [overview.md](overview.md) explains the idea and the vocabulary
 (**host repo**, task, contract, scope, gate, …) in a page. This guide is the
@@ -156,8 +157,8 @@ second, explicit lie. See [ADR-0006](adr/ADR-0006-actors-and-identity.md).
 `agentmarshal init` writes a minimal `.agentmarshal/project.json`
 (`schema` + framework version); no hand-editing is needed for the loop. The
 supplementary-artifact `capture` policy is parsed but not acted on in
-0.2.0: there is no policy-driven artifact writer or private store yet. The
-`leak_scan.private_markers` list is active in 0.2.0 and adds project-specific
+0.3.0: there is no policy-driven artifact writer or private store yet. The
+`leak_scan.private_markers` list is active in 0.3.0 and adds project-specific
 strings to the built-in advisory scan used by `leak-scan` and the gate.
 
 ## The governed loop
@@ -291,7 +292,7 @@ separate check:
 agentmarshal leak-scan --commit "$IMPL" --base "$BASE"
 ```
 
-The gate runs this scan too and warns on matches; in 0.2.0 a match does not
+The gate runs this scan too and warns on matches; in 0.3.0 a match does not
 block. In an embedded journal, the gate is the merge authority. It passes only
 when every blocking check holds:
 
@@ -332,8 +333,10 @@ This guide describes the **embedded** placement throughout. A journal can
 instead live in a repository of its own and name the host it records evidence
 about — where the evidence must stay private, or where you cannot install
 anything into the repository you work in. There the gate **advises and decides
-no merge**, and several other commands differ. That placement is experimental
-and not in 0.2.0: [sidecar.md](sidecar.md) is its own install-and-operate path.
+no merge**, and several other commands differ. That placement is new in 0.3.0
+and experimental, so the 0.2.0 install above does not have it —
+[sidecar.md](sidecar.md) is its own install-and-operate path and carries the
+install that does.
 
 ### 6. Complete the task
 
@@ -351,6 +354,12 @@ git add .agentmarshal && git commit -m "complete CR-001"
 Now, not earlier: a task's cost is known when it ends. AgentMarshal accepts a
 session record after the task is closed for exactly this reason — a session
 changes no state, so recording one cannot revive or alter a finished task.
+
+**This step needs 0.3.0.** It is the one place this guide leaves the release it
+installs above: 0.2.0 refuses a session record for a task that is not open, with
+`task CR-001 is not open (state: done)`, and removing that refusal is a 0.3.0
+change. Until 0.3.0 reaches the index, either take the cost record on trust or
+install from the repository as [sidecar.md](sidecar.md) describes.
 
 ```sh
 agentmarshal record-session \
