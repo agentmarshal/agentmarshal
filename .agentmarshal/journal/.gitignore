@@ -1,22 +1,26 @@
-# Raw agent transcripts. Private by default at every capture preset
-# (ADR-0005 Decision 2); publishing one is a separate escalation needing two
-# independent opt-ins. Anchored so it matches this directory only — an
-# unanchored "runs/" matches at any depth and silently swept up stats/runs/.
+# Raw agent transcripts, and the v1 per-run stats beside them
+# (runs/stats = stats_raw_store in ../config/runtime.conf — the records CR-031
+# backfilled this journal's economics from). Transcripts are private by default
+# at every capture preset (ADR-0005 Decision 2); publishing one is a separate
+# escalation needing two independent opt-ins. Anchored so it matches this
+# directory only — an unanchored "runs/" matches at any depth and silently
+# swept up stats/runs/ as well.
 /runs/
 
-# Scratch space for in-flight journal work. Deliberately left unanchored: it
-# was, and changing that would alter what is publishable without a decision.
+# Left unanchored deliberately: it was, and changing that would alter what is
+# publishable without a decision. Nothing in src/agentmarshal writes here; the
+# directory holds a "runner" entry left by operator tooling. Scratch either way.
 tmp/
 
 # Any .log at any depth in the journal: tool output, not evidence. Nothing in
 # the record model produces one, so a .log here is a byproduct of running
-# something and belongs to the machine that ran it. (Logs beside transcripts
-# are already covered by /runs/ above; this rule is for everywhere else.)
+# something and belongs to the machine that ran it.
 *.log
 
-# v1-schema per-run statistics from the legacy stats tooling. Local working
-# data, not evidence: the journal's own session records are the supported
-# economics and are published with the rest of the journal. Scoped to runs/
-# alone — stats/evaluations/ is a configured store (../config/runtime.conf) whose
-# publication status is not this rule's to decide.
+# stats_store (../config/runtime.conf): where am-lead-stats --write emits
+# v1-schema per-run records so the lead channel shows up in the legacy summary.
+# Local working data, not evidence — the journal's own session records are the
+# supported economics and are published with the rest of the journal. Scoped to
+# this path alone: evaluation_store (stats/evaluations) was never ignored, and
+# its publication status is not this rule's to decide.
 /stats/runs/

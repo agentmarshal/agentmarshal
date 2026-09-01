@@ -2001,3 +2001,40 @@ def test_record_session_still_refuses_an_unknown_task(
     )
 
     assert "unknown task id: CR-999" in capsys.readouterr().err
+
+
+def test_record_session_still_refuses_an_invalid_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Dropping the state guard must not drop record validation either.
+
+    The criterion said validation is unchanged; that half was asserted and not
+    demonstrated until here.
+    """
+
+    repo = tmp_path / "repo"
+    init_git_repo(repo)
+    monkeypatch.chdir(repo)
+    assert main(["init"]) == 0
+    assert main(["open", "--title", "Task", "--scope", "src/"]) == 0
+
+    assert (
+        main(
+            [
+                "record-session",
+                "--task",
+                "CR-001",
+                "--role",
+                "lead",
+                "--actor",
+                "operator",
+                "--activity",
+                "bogus",
+                "--outcome",
+                "success",
+            ]
+        )
+        == 1
+    )
+
+    assert "activity" in capsys.readouterr().err
