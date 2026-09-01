@@ -20,7 +20,12 @@ from agentmarshal.journal.complete import (
     abandon_task,
     complete_task,
 )
-from agentmarshal.journal.gate import GateError, markers_from_tree, run_gate
+from agentmarshal.journal.gate import (
+    GateError,
+    markers_from_config,
+    markers_from_tree,
+    run_gate,
+)
 from agentmarshal.journal.gate_context import derive_gate_context
 from agentmarshal.journal.open_task import (
     TaskOpenError,
@@ -541,6 +546,18 @@ def _run_gate(args: argparse.Namespace, stderr: TextIO) -> int:
         print(placement.advisory_notice)
     project_root = placement.host_root
     pipeline_sha = args.pipeline_sha or os.environ.get("AGENTMARSHAL_PIPELINE_OK_SHA")
+    if placement.is_sidecar and not args.task:
+        # Deriving the task from a branch name is a convenience of the embedded
+        # placement, where the branch and the journal are the same repository.
+        # In a sidecar the branch belongs to the host, and a host branch named
+        # feat/CR-001-x would silently bind to this journal's unrelated CR-001
+        # — the cross-journal conflation ADR-0008 Decision 2 rules out.
+        print(
+            "gate: --task is required in a sidecar; the host's branch names a "
+            "task in the host's own numbering, not this journal's",
+            file=stderr,
+        )
+        return 1
     try:
         context = derive_gate_context(project_root, args.task, args.commit, args.base)
         report = run_gate(
@@ -914,14 +931,21 @@ def _run_leak_scan(args: argparse.Namespace, stderr: TextIO) -> int:
         )
         return 1
     project_root = find_project_root(Path.cwd(), stop_at=git_root)
+    sidecar_config: Path | None = None
     if project_root is None:
         scan_root = git_root
     else:
         try:
-            scan_root = resolve_placement(project_root, require_host=True).host_root
+            placement = resolve_placement(project_root, require_host=True)
         except PlacementError as error:
             print(error, file=stderr)
             return 1
+        scan_root = placement.host_root
+        # The content to scan comes from the host; the configured markers come
+        # from the trusted side, which in a sidecar is the operator's own
+        # repository. Reading them from the host disabled the operator's guard
+        # silently whenever the host had no project.json of its own.
+        sidecar_config = placement.project_root if placement.is_sidecar else None
     # Resolve the merge base explicitly: markers are read from that trusted
     # tree (as the gate does) so a candidate cannot weaken its own scan, and
     # only the candidate's own additions since the merge base are scanned.
@@ -937,7 +961,15 @@ def _run_leak_scan(args: argparse.Namespace, stderr: TextIO) -> int:
         )
         return 1
     try:
-        markers = markers_from_tree(scan_root, merge_base)
+        # Content comes from the host; the configured markers come from the
+        # trusted side, which in a sidecar is the operator's own repository.
+        # Reading them from the host silently disabled the operator's guard
+        # while the scan still reported success.
+        markers = (
+            markers_from_config(sidecar_config)
+            if sidecar_config is not None
+            else markers_from_tree(scan_root, merge_base)
+        )
     except (GateError, ValueError, CaptureError) as error:
         print(f"leak-scan: cannot read project config: {error}", file=stderr)
         return 1

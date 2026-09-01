@@ -331,7 +331,7 @@ def _host_and_sidecar(
 def test_sidecar_gate_reads_closed_state_from_its_own_journal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """The host carries no journal, so the base tree can say nothing about state.
+    """The host's tree can say nothing about a task in this journal.
 
     Deciding closed-ness from it asserted "not closed at base" about every task,
     including ones this journal projects as done — a false PASS in a transcript

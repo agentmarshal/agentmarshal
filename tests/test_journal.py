@@ -1741,10 +1741,11 @@ def test_sidecar_refuses_authoritative_commands_and_host_mutation(
     capsys.readouterr()
 
     # CR-081 replaced the refusal this once asserted: a sidecar gate now runs
-    # and advises. What must still hold is that an invocation it cannot
-    # evaluate says so without borrowing the authority's wording.
+    # and advises. What must still hold is that a bare invocation is refused —
+    # the host's branch names a task in the host's numbering, not this
+    # journal's — and that the refusal does not borrow the authority's wording.
     assert main(["gate"]) == 1
-    assert "could not evaluate this candidate" in capsys.readouterr().err
+    assert "--task is required in a sidecar" in capsys.readouterr().err
     assert (
         main(["complete", "--task", "CR-001", "--commit", "HEAD", "--base", "HEAD"])
         == 1

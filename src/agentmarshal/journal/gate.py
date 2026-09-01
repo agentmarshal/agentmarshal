@@ -31,6 +31,7 @@ from agentmarshal.journal.records import (
     validate_record_content,
 )
 from agentmarshal.journal.status import TaskStatusError, load_task_status
+from agentmarshal.project import project_file_path, read_project_file
 
 _JOURNAL_PREFIX = ".agentmarshal/journal/"
 _PROJECT_FILE = ".agentmarshal/project.json"
@@ -138,9 +139,13 @@ def _sidecar_history_tampering(project_root: Path, journal_path: str) -> list[st
     # A sidecar with no commits yet is an ordinary state — the first records are
     # written before the first commit — and git log refuses on an unborn HEAD.
     # No history is not a failure to read history; anything else still raises.
-    try:
-        _run_git(project_root, ["rev-parse", "--verify", "HEAD"])
-    except GateError:
+    # Whether history exists is asked positively, not read out of an error
+    # message: matching text would make a corrupt repository look like an empty
+    # one, and reporting append-only integrity we never examined is precisely
+    # what this check exists to prevent. rev-list on a repository with no
+    # commits succeeds and prints nothing; on a broken one it fails, and that
+    # failure propagates.
+    if not _run_git(project_root, ["rev-list", "-n", "1", "--all"]).strip():
         return []
     output = _run_git(
         project_root,
@@ -218,6 +223,22 @@ def _scope_covers(scope: tuple[str, ...], path: str) -> bool:
         elif path == entry:
             return True
     return False
+
+
+def markers_from_config(project_root: Path) -> tuple[str, ...]:
+    """Read ``leak_scan.private_markers`` from a project's working config.
+
+    Used where the trusted side is a working tree rather than a git tree: a
+    sidecar's own repository is the operator's private one, so its checked-out
+    configuration is the trusted source, while the content being scanned comes
+    from the host.
+    """
+
+    try:
+        data = read_project_file(project_file_path(project_root))
+    except (OSError, ValueError) as error:
+        raise GateError(f"cannot read project configuration: {error}") from error
+    return private_markers_from_project(data)
 
 
 def markers_from_tree(project_root: Path, tree_ref: str) -> tuple[str, ...]:
@@ -330,6 +351,17 @@ def run_gate(
         (status, path) for status, path in changes_with_status if _is_record_path(path)
     ]
     added_records = [path for status, path in record_changes if status == "A"]
+    if sidecar:
+        # One rule, applied once: in a sidecar no host path is ever a journal
+        # path. The evidence lives in the sidecar and the candidate is a host
+        # change, so a host that keeps an .agentmarshal/ of its own must not
+        # drive record validity, path collisions or duplicate-opened detection
+        # — those would decide this task from a different journal's records
+        # (ADR-0008 Decision 2). Carving out one check at a time left the rest
+        # reading host paths as evidence, which is how this was wrong twice.
+        record_changes = []
+        added_records = []
+        base_tree = {path for path in base_tree if not path.startswith(_JOURNAL_PREFIX)}
     journal_only = all(path.startswith(_JOURNAL_PREFIX) for path in changed)
     if sidecar:
         # The deterministic lane exists because a journal-only change carries no
@@ -573,7 +605,8 @@ def run_gate(
         # that reports a check nothing exercised.
         check(
             True,
-            "added records are valid (none: the host carries no journal)"
+            "added records are valid (none examined: a host journal is not "
+            "this journal's evidence)"
             if sidecar
             else "added records are valid",
         )
@@ -589,7 +622,8 @@ def run_gate(
     else:
         check(
             True,
-            "no record-path collisions (the host carries no journal to collide with)"
+            "no record-path collisions (none examined: the candidate adds no "
+            "record to this journal)"
             if sidecar
             else "no record-path collisions with the base tree",
         )
@@ -635,7 +669,15 @@ def run_gate(
     # scanned, so accepted historical residuals already in the tree are not
     # re-flagged.
     try:
-        markers = markers_from_tree(project_root, merge_base)
+        # Markers come from the trusted side. In a sidecar that is the
+        # operator's own journal repository, not the host: reading them from
+        # the host means a host without a project.json silently disables the
+        # operator's configured guard while the scan still reports success.
+        markers = (
+            markers_from_config(journal_root.parents[1])
+            if sidecar and journal_root is not None
+            else markers_from_tree(project_root, merge_base)
+        )
         # Pin raw text patch output: --text forces content even for files a
         # repo marks binary/non-diffable (otherwise git emits "Binary files
         # differ" and the added content is never scanned); --no-textconv /
