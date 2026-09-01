@@ -61,14 +61,16 @@ APIs, schemas, and CLI are subject to change without notice.
 
 ## Install
 
-The repository version is 0.2.0, which is not yet published to the package
-index. From a 0.2.0 source checkout:
+Install the published 0.2.0 release:
 
 ```sh
-pip install .
+pip install agentmarshal==0.2.0
+agentmarshal --version
 ```
 
-After publication, `pip install agentmarshal==0.2.0` installs this release.
+Plain `pip install agentmarshal` installs the latest published release, which
+may not be the version described here — pin it if you share a journal, and see
+[UPGRADING.md](UPGRADING.md) for why.
 
 Requirements: **Python >= 3.12** and **git** on `PATH` — the gate, review,
 and completion commands shell out to git. No Python dependencies.
