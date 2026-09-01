@@ -2,7 +2,7 @@
 schema = 1
 id = "CR-081"
 title = "The gate advises in a sidecar, and every surface says which it is"
-scope = ["src/agentmarshal/journal/gate.py", "src/agentmarshal/cli.py", "src/agentmarshal/journal/placement.py", "tests/test_gate.py", "tests/test_placement.py", "docs/quickstart.md"]
+scope = ["src/agentmarshal/journal/gate.py", "src/agentmarshal/cli.py", "src/agentmarshal/journal/placement.py", "tests/test_gate.py", "tests/test_placement.py", "tests/test_journal.py", "docs/quickstart.md"]
 acceptance = [
   "`gate` runs in a sidecar instead of refusing, performing every check it can compute against the host",
   "its transcript states in words that it is advisory and decides no merge, and never prints the authority's wording",
@@ -55,6 +55,8 @@ and finish the root split.
 - `leak-scan` resolves the host in a sidecar.
 - No command writes into the host, its git metadata included; the
   host-inviolability test covers a gate run and a complete run.
+- The CR-079 test that pins the sidecar **refusal** wording is updated: this
+  task removes the refusal it was written to hold.
 
 ## Threat model and boundaries
 
