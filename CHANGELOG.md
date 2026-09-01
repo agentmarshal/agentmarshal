@@ -44,9 +44,10 @@ than gaps to be closed later:
   sidecar's own history.
 
 Every surface that presents evidence carries the placement: `status` and `report`
-print it on stderr, leaving their machine-readable stdout unchanged. `validate`,
-`prune`, `leak-scan`, `review` and `complete` resolve the host and the journal as
-two separate roots. `prune --delete` is refused in a sidecar, because deleting
+print it on stderr, leaving their machine-readable stdout unchanged. `gate`,
+`complete`, `review`, `prune` and `leak-scan` resolve the host and the journal as
+two separate roots. `validate` does not: it checks the journal it is run in, and
+a sidecar's host has no journal to check. `prune --delete` is refused in a sidecar, because deleting
 branches and worktrees would write to the host.
 
 The design and its boundaries are
@@ -70,10 +71,16 @@ Nothing in the record format changed. What changed is when the tool accepts one.
 discoverable from the package and from the index rather than only from
 documentation. It was missing entirely through 0.2.0.
 
+It is metadata and nothing more: it changes no behaviour, it does not establish
+that a given build came from that repository, and it cannot be backfilled into
+0.2.0 — the metadata of a published release is immutable.
+
 ### Compatibility
 
-**No record-format change.** The record schema is 3, as in 0.2.0, and journals
-are readable in both directions between the two releases.
+**No record-format change.** The record schema is 3, as in 0.2.0, so every
+**record** either release writes is read by the other. That is a statement about
+records, not about the tool as a whole — the paragraph below is the part it does
+not cover.
 
 One arrangement does not travel backwards: a **sidecar journal requires 0.3.0 on
 every checkout that reads it**. A 0.2.0 install does not know the `placement` and

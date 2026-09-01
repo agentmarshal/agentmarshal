@@ -88,15 +88,16 @@ Requirements are unchanged: **Python ≥ 3.12** and **git** on your `PATH`. You
 install it for yourself, not into the host repository, so a user-level install
 (`pipx`, `uv tool install`, a virtualenv you own) is the normal choice.
 
-Both the pinned build and the last published release report `0.2.0`, so
-`agentmarshal --version` cannot tell you which one you have. This can:
+Check what you got by capability rather than by version:
 
 ```sh
 agentmarshal init --help | grep -- --host
 ```
 
 A build with the placement prints the `--host` option; the published 0.2.0
-prints nothing.
+prints nothing. `agentmarshal --version` is the wrong probe here: the pinned
+commit reports `0.2.0`, because the version was raised after it, and so does the
+last published release — two different builds behind one number.
 
 ## Set up the sidecar
 

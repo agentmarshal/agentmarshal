@@ -4,10 +4,14 @@
 
 ### What you must know first
 
-**The record format does not change.** The schema is 3 in both releases, a
-0.3.0 journal is readable by 0.2.0 and the other way round, and nothing needs
-migrating. For an embedded journal there is no coordination window and no order
-to respect: upgrade each place when it suits you.
+**The record format does not change.** The schema is 3 in both releases, so
+every **record** either version writes is read by the other, and nothing needs
+migrating. For an embedded journal that settles it: there is no coordination
+window and no order to respect, so upgrade each place when it suits you.
+
+Records are not the whole of a journal, though. The next section is about the
+part this sentence does not cover — a sidecar journal's configuration, which
+0.2.0 reads without understanding.
 
 One arrangement does break, and it breaks **silently** — which is why it gets
 the rest of this section.
