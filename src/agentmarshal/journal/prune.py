@@ -203,14 +203,17 @@ def report_branches(
     return report
 
 
-def report_worktrees(
-    project_root: Path, journal_root: Path
-) -> list[WorktreeDisposition]:
-    """Classify worktrees against journal state and working-tree cleanliness."""
+def report_worktrees(git_root: Path, journal_root: Path) -> list[WorktreeDisposition]:
+    """Classify worktrees against journal state and working-tree cleanliness.
+
+    Two roots for the same reason ``report_branches`` takes two: git facts come
+    from ``git_root``, task state from ``journal_root``. They coincide in an
+    embedded journal and differ in a sidecar.
+    """
 
     states: dict[str, str] = {}
     report: list[WorktreeDisposition] = []
-    worktrees = _worktrees(project_root)
+    worktrees = _worktrees(git_root)
     # git lists the main worktree first, always. Taking the *invoking* directory
     # for it would be wrong precisely where this command is most useful: run
     # from inside a linked worktree — the executor case proposal 010 describes —
@@ -221,7 +224,7 @@ def report_worktrees(
     # removes it without complaint — verified — leaving the caller standing in a
     # directory that no longer exists and the rest of the run failing on it.
     # This is the same rule CR-059 already applies to the current branch.
-    current = project_root.resolve()
+    current = git_root.resolve()
     for path, branch in worktrees:
         resolved = path.resolve()
         if main is not None and resolved == main:

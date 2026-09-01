@@ -36,7 +36,15 @@ def _sidecar_host(project_root: Path, value: object) -> Path:
         raise PlacementError(
             f"sidecar project {project_file_path(project_root)} has no valid host path"
         )
-    return Path(value).expanduser().resolve()
+    host = Path(value).expanduser()
+    # A relative host is resolved against the project, not the process working
+    # directory: init always writes an absolute path, but a hand-edited
+    # project.json is the supported operator surface for this setting, and a
+    # host that meant different repositories from different subdirectories
+    # would be a trap.
+    if not host.is_absolute():
+        host = project_root / host
+    return host.resolve()
 
 
 def resolve_placement(project_root: Path, *, require_host: bool = False) -> Placement:

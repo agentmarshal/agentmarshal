@@ -309,6 +309,38 @@ def _scaffold_outbox(project_directory: Path) -> tuple[Path, str | None]:
     return outbox, None
 
 
+def _git_common_dir(worktree: Path) -> Path | None:
+    """Return a worktree's shared git directory, or ``None`` if git cannot say.
+
+    Two worktrees of one repository report the same common directory even
+    though their paths are unrelated — which is how a sidecar that is secretly
+    a worktree of its own host is recognised.
+    """
+
+    try:
+        result = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(worktree),
+                "rev-parse",
+                "--path-format=absolute",
+                "--git-common-dir",
+            ],
+            capture_output=True,
+            check=False,
+        )
+    except OSError:
+        return None
+    if result.returncode != 0:
+        return None
+    try:
+        text = result.stdout.decode("utf-8").strip()
+    except UnicodeDecodeError:
+        return None
+    return Path(text).resolve() if text else None
+
+
 def initialize_project(
     start: Path | None = None, *, host: Path | None = None
 ) -> InitializedProject:
@@ -340,6 +372,16 @@ def initialize_project(
             raise AgentMarshalProjectError(
                 f"sidecar journal {git_root} must live outside host worktree "
                 f"{resolved_host}"
+            )
+        # Outside the host's tree is not enough: a linked worktree of the host
+        # sits elsewhere on disk and still writes into the host's object
+        # database, which is the thing the check above exists to prevent. The
+        # shared git directory is what actually distinguishes them.
+        if _git_common_dir(git_root) == _git_common_dir(resolved_host):
+            raise AgentMarshalProjectError(
+                f"sidecar journal {git_root} is a worktree of host "
+                f"{resolved_host}: its commits would land in the host's "
+                "repository"
             )
 
     existing_root = find_project_root(search_start, stop_at=git_root)

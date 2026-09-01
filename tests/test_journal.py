@@ -1593,6 +1593,14 @@ print("AGENTMARSHAL_VERDICT_END")
 
     assert main(["init", "--host", str(host)]) == 0
     assert main(["open", "--title", "Private task", "--scope", "app.txt"]) == 0
+    # app.txt exists in the host and not in the sidecar, so a scope check
+    # against the wrong root would warn. Warnings go to stderr and never
+    # change the exit code, so without this assertion the criterion could be
+    # broken with the suite still green.
+    assert "matches no path" not in capsys.readouterr().err
+    assert main(["open", "--title", "Absent", "--scope", "not-in-host.txt"]) == 0
+    assert "matches no path" in capsys.readouterr().err
+    assert main(["abandon", "--task", "CR-002", "--reason", "probe"]) == 0
     assert main(["brief", "--task", "CR-001"]) == 0
     assert main(["amend", "--task", "CR-001", "--reason", "Clarify scope"]) == 0
     assert (
@@ -1691,8 +1699,11 @@ print("AGENTMARSHAL_VERDICT_END")
         "(branch feat/CR-001-recorded; task CR-001 is done and clean)" in pruned
     )
     assert "unknown" not in pruned
+    # F-2: reopen is named in the sidecar command list and was the one command
+    # in it no test exercised there.
+    assert main(["reopen", "--task", "CR-001", "--reason", "More to do"]) == 0
     assert main(["open", "--title", "Abandoned", "--scope", "app.txt"]) == 0
-    assert main(["abandon", "--task", "CR-002", "--reason", "Superseded"]) == 0
+    assert main(["abandon", "--task", "CR-003", "--reason", "Superseded"]) == 0
     capsys.readouterr()
 
     after_files = _host_snapshot(host)

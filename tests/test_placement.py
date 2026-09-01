@@ -76,3 +76,49 @@ def test_sidecar_host_failure_names_path_and_reason(
     assert str(host) in str(raised.value)
     reason = "does not exist" if host_kind == "missing" else "not a git worktree"
     assert reason in str(raised.value)
+
+
+def test_a_sidecar_may_not_be_a_worktree_of_its_own_host(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Outside the host's tree is not enough to be outside the host's repository.
+
+    A linked worktree of the host sits elsewhere on disk, so a path check
+    passes — while its commits land in the host's object database, which is
+    exactly what ADR-0008 Decision 3 forbids.
+    """
+
+    from agentmarshal.cli import main
+
+    host = tmp_path / "host"
+    host.mkdir()
+    subprocess.run(["git", "init", "--quiet", "-b", "master"], cwd=host, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=T",
+            "-c",
+            "user.email=t@t.invalid",
+            "commit",
+            "--quiet",
+            "--allow-empty",
+            "-m",
+            "base",
+        ],
+        cwd=host,
+        check=True,
+    )
+    sidecar = tmp_path / "sidecar"
+    subprocess.run(
+        ["git", "worktree", "add", "--quiet", "-b", "journal", str(sidecar)],
+        cwd=host,
+        check=True,
+    )
+    monkeypatch.chdir(sidecar)
+
+    assert main(["init", "--host", str(host)]) == 1
+
+    error = capsys.readouterr().err
+    assert "worktree of host" in error
+    assert not (sidecar / ".agentmarshal").exists()
