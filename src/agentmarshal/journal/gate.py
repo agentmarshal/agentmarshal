@@ -125,8 +125,46 @@ def _is_record_path(path: str) -> bool:
     return path.startswith(_JOURNAL_PREFIX) and "/records/" in path
 
 
+def _sidecar_history_tampering(project_root: Path, journal_path: str) -> list[str]:
+    """Return records that a sidecar commit modified, deleted or renamed.
+
+    The working-tree check below only sees what is not yet committed — and a
+    committed journal is the only state in which its history proves anything
+    (ADR-0008 Decision 7: append-only *within the sidecar's own history*). A
+    substitution that landed in a commit would otherwise be invisible, and the
+    transcript would report append-only integrity it never examined.
+    """
+
+    # A sidecar with no commits yet is an ordinary state — the first records are
+    # written before the first commit — and git log refuses on an unborn HEAD.
+    # No history is not a failure to read history; anything else still raises.
+    try:
+        _run_git(project_root, ["rev-parse", "--verify", "HEAD"])
+    except GateError:
+        return []
+    output = _run_git(
+        project_root,
+        [
+            "log",
+            "--diff-filter=MDR",
+            "--name-only",
+            "--format=",
+            "--",
+            journal_path,
+        ],
+    )
+    return sorted(
+        {line for line in output.splitlines() if line and _is_record_path(line)}
+    )
+
+
 def _sidecar_tampered_records(journal_root: Path) -> list[str]:
-    """Return tracked sidecar records changed other than by addition."""
+    """Return sidecar records changed other than by addition.
+
+    Both the working tree and the committed history: a record rewritten before
+    a commit and one rewritten by a commit are the same violation, and only the
+    pair of checks sees both.
+    """
 
     project_root = journal_root.parents[1]
     output = _run_git(
@@ -157,6 +195,11 @@ def _sidecar_tampered_records(journal_root: Path) -> list[str]:
         if status != "??" and "A" not in status:
             tampered.update(path for path in paths if _is_record_path(path))
         index += 1
+    tampered.update(
+        _sidecar_history_tampering(
+            project_root, str(journal_root.relative_to(project_root))
+        )
+    )
     return sorted(tampered)
 
 
@@ -288,6 +331,13 @@ def run_gate(
     ]
     added_records = [path for status, path in record_changes if status == "A"]
     journal_only = all(path.startswith(_JOURNAL_PREFIX) for path in changed)
+    if sidecar:
+        # The deterministic lane exists because a journal-only change carries no
+        # work to review. In a sidecar the evidence lives elsewhere, so a host
+        # candidate is work whatever paths it touches — and a host that keeps a
+        # journal of its own would otherwise reach the lane and skip scope,
+        # review and independence on an unreviewed change.
+        journal_only = False
 
     # "Open" is decided from the base tree, never the candidate: opening,
     # implementation and completion candidates all merge onto a task that
@@ -310,6 +360,17 @@ def run_gate(
     closed_at_base = bool(lifecycle_at_base) and not lifecycle_at_base[-1].endswith(
         "-reopened.json"
     )
+    if sidecar:
+        # The host carries no journal, so lifecycle_at_base is empty there and
+        # this check would assert "not closed" about every task, including ones
+        # the sidecar journal projects as done — a false PASS in a transcript
+        # whose whole purpose is to not overstate. The journal is not versioned
+        # alongside the host, so its own projection is the only truthful
+        # source; if the host happens to be an AgentMarshal project of its own,
+        # its records belong to a different journal entirely (ADR-0008
+        # Decision 2) and must not decide anything here.
+        closed_at_base = task.state != "open"
+        lifecycle_at_base = []
     # A task closed at base still admits measurements, but only a strictly
     # additive candidate confined to this task's own journal subtree that
     # adds at least one session record and no non-session record: economics
@@ -504,22 +565,34 @@ def run_gate(
         expected_task = path.removeprefix(f"{_JOURNAL_PREFIX}tasks/").split("/", 1)[0]
         if record.get("task") != expected_task:
             invalid.append(f"{path}: record task does not match its directory")
-    check(
-        not invalid,
-        "added records are valid"
-        if not invalid
-        else f"invalid added records: {'; '.join(sorted(invalid))}",
-    )
+    if invalid:
+        check(False, f"invalid added records: {'; '.join(sorted(invalid))}")
+    else:
+        # In a sidecar there are no added records to validate: the candidate is
+        # a host change and the host carries no journal. Saying so beats a PASS
+        # that reports a check nothing exercised.
+        check(
+            True,
+            "added records are valid (none: the host carries no journal)"
+            if sidecar
+            else "added records are valid",
+        )
 
     # Collisions are checked against the merge target's tip: a record
     # path independently created on both sides would collide at merge.
     colliding = [path for path in added_records if path in base_tree]
-    check(
-        not colliding,
-        "no record-path collisions with the base tree"
-        if not colliding
-        else f"record paths already exist on the base: {', '.join(sorted(colliding))}",
-    )
+    if colliding:
+        check(
+            False,
+            f"record paths already exist on the base: {', '.join(sorted(colliding))}",
+        )
+    else:
+        check(
+            True,
+            "no record-path collisions (the host carries no journal to collide with)"
+            if sidecar
+            else "no record-path collisions with the base tree",
+        )
 
     # A single record is valid in isolation yet corrupts the lifecycle
     # projection in aggregate — a second 'opened' record makes the task

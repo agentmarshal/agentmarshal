@@ -1740,13 +1740,16 @@ def test_sidecar_refuses_authoritative_commands_and_host_mutation(
     assert main(["init", "--host", str(host)]) == 0
     capsys.readouterr()
 
+    # CR-081 replaced the refusal this once asserted: a sidecar gate now runs
+    # and advises. What must still hold is that an invocation it cannot
+    # evaluate says so without borrowing the authority's wording.
     assert main(["gate"]) == 1
-    assert "advisory mode lands in a following task" in capsys.readouterr().err
+    assert "could not evaluate this candidate" in capsys.readouterr().err
     assert (
         main(["complete", "--task", "CR-001", "--commit", "HEAD", "--base", "HEAD"])
         == 1
     )
-    assert "misstate its authority" in capsys.readouterr().err
+    assert "could not evaluate this candidate" in capsys.readouterr().err
     assert main(["prune", "--delete"]) == 1
     assert (
         "host worktree and repository must remain read-only" in capsys.readouterr().err

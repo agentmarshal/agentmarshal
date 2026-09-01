@@ -556,15 +556,23 @@ def _run_gate(args: argparse.Namespace, stderr: TextIO) -> int:
         print(error, file=stderr)
         if placement.is_sidecar:
             print(
-                "gate: this invalid invocation is not the former refusal where "
-                "advisory mode lands in a following task",
+                "gate: the sidecar could not evaluate this candidate — check "
+                "that the commit and base exist in the configured host",
                 file=stderr,
             )
         return 1
     for line in report.lines:
         print(line)
     if not report.passed:
-        print("gate: refused", file=stderr)
+        # The refusal is part of the transcript, so it carries the same
+        # statement the pass does. "gate: refused" is the authority's wording
+        # and a sidecar has none to exercise.
+        print(
+            "gate: advisory checks refused; decides no merge"
+            if placement.is_sidecar
+            else "gate: refused",
+            file=stderr,
+        )
         return 1
     if placement.is_sidecar:
         print("gate: advisory checks passed; decides no merge")
@@ -622,15 +630,20 @@ def _run_complete(args: argparse.Namespace, stderr: TextIO) -> int:
         print(error, file=stderr)
         if placement.is_sidecar:
             print(
-                "complete: the advisory statement remains explicit and does not "
-                "misstate its authority",
+                "complete: the sidecar could not evaluate this candidate — check "
+                "that the commit and base exist in the configured host",
                 file=stderr,
             )
         return 1
     for line in report.lines:
         print(line)
     if record_path is None:
-        print("complete: gate refused; task not completed", file=stderr)
+        print(
+            "complete: advisory checks refused; nothing recorded"
+            if placement.is_sidecar
+            else "complete: gate refused; task not completed",
+            file=stderr,
+        )
         return 1
     print(record_path)
     if placement.is_sidecar:
