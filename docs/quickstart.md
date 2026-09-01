@@ -3,38 +3,26 @@
 This walks through the whole AgentMarshal loop on a throwaway repository —
 from installing the package to a task that carries durable, SHA-bound
 evidence that its work was independently reviewed. Every command below was
-verified against a wheel built from the `agentmarshal` 0.2.0 source. Version
-0.2.0 was not yet published to the package index at verification time.
+verified against the published `agentmarshal` 0.2.0 release.
 
 New here? [overview.md](overview.md) explains the idea and the vocabulary
 (**host repo**, task, contract, scope, gate, …) in a page. This guide is the
 hands-on companion.
 
-Requirements: **Python ≥ 3.12** and **git** on your `PATH`. Until 0.2.0 is
-published you also need **[uv](https://docs.astral.sh/uv/)**, because the only
-way to get this version is to build it from source.
+Requirements: **Python ≥ 3.12** and **git** on your `PATH`.
 
 ## Install
 
-Version 0.2.0 is **not yet on the package index**, so it is installed from a
-source checkout. These are the exact commands this guide was verified with:
+These are the exact commands this guide was verified with:
 
 ```sh
-uv build
-uv venv .venv
-source .venv/bin/activate
-uv pip install dist/agentmarshal-0.2.0-py3-none-any.whl
+pip install agentmarshal==0.2.0
 agentmarshal --version
 ```
 
-Activate the environment before going on: every later command in this guide
-calls `agentmarshal` by name, and without activation you would get whatever
-other install happens to be on your `PATH` — or none.
-
-After 0.2.0 is published, `pip install agentmarshal==0.2.0` installs the same
-release and uv is no longer needed. Plain `pip install agentmarshal` installs
-the latest published release, which may not be the version described here — pin
-it if you share a journal, and see [UPGRADING.md](../UPGRADING.md) for why.
+Plain `pip install agentmarshal` installs the latest published release, which
+may not be the version described here — pin it if you share a journal, and see
+[UPGRADING.md](../UPGRADING.md) for why.
 
 AgentMarshal is a single, dependency-free CLI. It stores everything in git
 under `.agentmarshal/`, so there is no server and no database.
