@@ -48,6 +48,27 @@ enough to move the bootstrap forward but are not the substantive
 contracts the design assumes. They are kept as-is; they are not
 retro-fitted.
 
+## 4. `scope_allow` did not carry over, and nothing replaced it by that name
+
+v1 had a `scope_allow` mechanism for constraining what a task might touch. It
+did not survive into v2 and was never mentioned here — an omission an adopter
+found the hard way while looking for it (proposal 003).
+
+In v2 the contract's **`scope`** is the only scope mechanism: declared when the
+task is opened, committed to the base before work builds on it, enforced by the
+gate against the candidate's diff. There is no per-actor or per-role scope —
+that is a deliberate boundary (see ADR-0006 and proposal 003's disposition),
+not a lost feature: enforcement bound to a declared, unauthenticated identity
+would only look like a control.
+
+## 5. Empty v1 directories: `integrations/`, `plugins/`
+
+v1 scaffolding created `.agentmarshal/integrations/{ci,git,provider}` and
+`.agentmarshal/plugins/`. The published v2 `init` creates none of them —
+verified against an installed 0.1.0 and current source — and nothing in v2
+reads them. If your project carries them over from v1, they are empty slots
+with no consumer: delete them.
+
 ## What changes going forward (being introduced, not done)
 
 - **Substantive, machine-readable acceptance is required for new
