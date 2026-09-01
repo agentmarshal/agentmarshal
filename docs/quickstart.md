@@ -2,9 +2,11 @@
 
 This walks through the whole AgentMarshal loop on a throwaway repository —
 from installing the package to a task that carries durable, SHA-bound
-evidence that its work was independently reviewed. Every command below was
-verified by running the guide end to end against the published `agentmarshal`
-0.3.0 release.
+evidence that its work was independently reviewed. Every command below was run
+against the published `agentmarshal` 0.3.0 release: the main path end to end in
+one pass, and the two branches that pass cannot reach — `accept`, which needs a
+non-approving review, and `reopen`, which undoes the state the run arrives at —
+separately.
 
 New here? [overview.md](overview.md) explains the idea and the vocabulary
 (**host repo**, task, contract, scope, gate, …) in a page. This guide is the
@@ -353,10 +355,10 @@ Now, not earlier: a task's cost is known when it ends. AgentMarshal accepts a
 session record after the task is closed for exactly this reason — a session
 changes no state, so recording one cannot revive or alter a finished task.
 
-This is a 0.3.0 capability: 0.2.0 refuses a session record for a task that is
-not open, answering `task CR-001 is not open (state: done)`. The step needs a
-0.3.0 checkout to run it — the record it writes is readable by 0.2.0 like any
-other.
+This is a 0.3.0 capability. 0.2.0 refuses a session record for a task that is
+not open, answering `task CR-001 is not open (state: done)` — worth knowing if
+anything still reads the journal with it, though the record this step writes is
+readable there like any other.
 
 ```sh
 agentmarshal record-session \
