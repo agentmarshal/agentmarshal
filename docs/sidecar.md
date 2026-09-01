@@ -75,11 +75,16 @@ schema. There is no "lite" build.
 
 Because this placement is not in the published release yet, `pip install
 agentmarshal` will **not** give you a build that has it. Until the next release
-ships, install from the repository:
+ships, install from the repository — pinned to the commit this document was
+verified against, because `master` moves and an experimental surface moves with
+it:
 
 ```sh
-pip install "git+https://github.com/agentmarshal/agentmarshal@master"
+pip install "git+https://github.com/agentmarshal/agentmarshal@3dfeadda6ab10342bd288b6777681175b63d9582"
 ```
+
+Replace the pin with `@master` when you want the newest build and accept that
+what you read here may already have changed.
 
 Requirements are unchanged: **Python ≥ 3.12** and **git** on your `PATH`. You
 install it for yourself, not into the host repository, so a user-level install
@@ -154,10 +159,10 @@ relationship to any `CR-001` in the host.
 ### Brief the implementer, work in the host
 
 ```sh
-agentmarshal brief --task CR-001 | your-agent   # whichever agent you use
+agentmarshal brief --task CR-001
 ```
 
-The output is only the briefing, so it pipes into anything.
+The output is only the briefing, so pipe it into whichever agent you use.
 
 The work happens in the host repository, on a host branch, exactly as it would
 without AgentMarshal. Note the two commits you need:
@@ -257,8 +262,42 @@ agentmarshal record-session --task CR-001 --role implementer \
 git add -A && git commit -m "review, complete and cost CR-001"
 ```
 
-`status` and `report` print `Placement: sidecar` on **stderr**, leaving their
-machine-readable stdout formats unchanged for anything that parses them.
+### Inspect the evidence
+
+```sh
+agentmarshal status CR-001
+```
+
+```
+Placement: sidecar
+ID: CR-001
+Status: done
+Title: Add a greeting helper
+Scope:
+- src/
+Records:
+- 01M1EB6XRAPZCQSCBSASJ7ZFNC opened 2026-09-01T11:21:00.426680Z
+- 01M1EB6XWYBSZ54QKH71FFJ8KN review 2026-09-01T11:21:00.574048Z reviewed_commit=efab8ed verdict=approved findings=0 advisory=0
+- 01M1EB6Y4Z99FKM6K7JTWBJ9DX completed 2026-09-01T11:21:00.831134Z completed_commit=efab8ed
+- 01M1EB6YAK9S5TA7G61TDFRQZT session 2026-09-01T11:21:01.011350Z
+```
+
+```sh
+agentmarshal report --task CR-001
+agentmarshal validate
+```
+
+```
+Placement: sidecar
+CR-001	done	reviews=1	tokens=1500	usage=reported	decision=approved
+OK: CR-001 (done, 4 records)
+validate: passed
+```
+
+The `Placement: sidecar` line is on **stderr** in both commands, so the
+machine-readable stdout formats stay unchanged for anything that parses them.
+`validate` is the whole-journal integrity check, and in a sidecar it checks the
+sidecar's journal — the host has none to check.
 
 ## What the host never gets
 
@@ -316,9 +355,10 @@ Found by running our own research journal as a sidecar over this repository.
 They are real and unfixed; better to read them here than to meet them.
 
 **The vocabulary assumes the task changes the host.** `brief` opens with "You
-are implementing one governed AgentMarshal task", and an empty scope is
-explained as "no change can land until one is declared". For a task that
-produces a conclusion rather than a diff, both are the wrong sentence.
+are implementing one governed AgentMarshal task" and explains an empty scope as
+"the contract needs a scope before work can land"; `open` warns that "no change
+can land until one is declared". For a task that produces a conclusion rather
+than a diff, all three are the wrong sentence.
 
 **A research finding has no commit to bind to.** Every review record requires a
 40-character `reviewed_commit`. Analysis is not about a host commit and not
