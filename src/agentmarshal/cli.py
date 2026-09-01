@@ -27,6 +27,7 @@ from agentmarshal.journal.open_task import (
     open_task,
     scope_warnings,
 )
+from agentmarshal.journal.placement import Placement, PlacementError, resolve_placement
 from agentmarshal.journal.prune import (
     PruneError,
     delete_branches,
@@ -69,7 +70,14 @@ def _build_parser() -> argparse.ArgumentParser:
         version=__version__,
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
-    subparsers.add_parser("init", help="initialize AgentMarshal project metadata")
+    init_parser = subparsers.add_parser(
+        "init", help="initialize AgentMarshal project metadata"
+    )
+    init_parser.add_argument(
+        "--host",
+        type=Path,
+        help="initialize a sidecar journal over this git worktree",
+    )
     subparsers.add_parser("doctor", help="check AgentMarshal project health")
     subparsers.add_parser("validate", help="validate the whole journal for integrity")
     open_parser = subparsers.add_parser("open", help="open a journal task")
@@ -239,9 +247,9 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _run_init(stderr: TextIO) -> int:
+def _run_init(host: Path | None, stderr: TextIO) -> int:
     try:
-        initialized = initialize_project(Path.cwd())
+        initialized = initialize_project(Path.cwd(), host=host)
     except AlreadyInitializedError as error:
         print(error, file=stderr)
         return 1
@@ -266,6 +274,23 @@ def _run_init(stderr: TextIO) -> int:
     return 0
 
 
+def _placement(
+    command: str, stderr: TextIO, *, require_host: bool = False
+) -> Placement | None:
+    project_root = find_project_root(Path.cwd())
+    if project_root is None:
+        print(
+            f"agentmarshal {command} must be run inside an initialized project",
+            file=stderr,
+        )
+        return None
+    try:
+        return resolve_placement(project_root, require_host=require_host)
+    except PlacementError as error:
+        print(error, file=stderr)
+        return None
+
+
 def _run_doctor() -> int:
     results = run_doctor()
     for result in results:
@@ -280,18 +305,15 @@ def _run_doctor() -> int:
 
 
 def _run_open(title: str, scope: list[str], stderr: TextIO) -> int:
-    project_root = find_project_root(Path.cwd())
-    if project_root is None:
-        print(
-            "agentmarshal open must be run inside an initialized project", file=stderr
-        )
+    placement = _placement("open", stderr, require_host=True)
+    if placement is None:
         return 1
     try:
-        opened_task = open_task(project_root, title, scope)
+        opened_task = open_task(placement.project_root, title, scope)
     except TaskOpenError as error:
         print(error, file=stderr)
         return 1
-    for warning in scope_warnings(project_root, scope):
+    for warning in scope_warnings(placement.host_root, scope):
         print(f"warning: {warning}", file=stderr)
     print(opened_task.contract_path)
     print(opened_task.record_path)
@@ -299,15 +321,11 @@ def _run_open(title: str, scope: list[str], stderr: TextIO) -> int:
 
 
 def _run_brief(task_id: str, stderr: TextIO) -> int:
-    project_root = find_project_root(Path.cwd())
-    if project_root is None:
-        print(
-            "agentmarshal brief must be run inside an initialized project",
-            file=stderr,
-        )
+    placement = _placement("brief", stderr)
+    if placement is None:
         return 1
     try:
-        briefing = build_brief(project_root / ".agentmarshal" / "journal", task_id)
+        briefing = build_brief(placement.journal_root, task_id)
     except (OSError, TaskStatusError, ValueError) as error:
         print(error, file=stderr)
         return 1
@@ -427,16 +445,12 @@ def _print_task_detail(project_root: Path, task: TaskStatus) -> None:
 
 
 def _run_submit_review(args: argparse.Namespace, stderr: TextIO) -> int:
-    project_root = find_project_root(Path.cwd())
-    if project_root is None:
-        print(
-            "agentmarshal submit-review must be run inside an initialized project",
-            file=stderr,
-        )
+    placement = _placement("submit-review", stderr)
+    if placement is None:
         return 1
     try:
         submitted = submit_review(
-            project_root / ".agentmarshal" / "journal",
+            placement.journal_root,
             args.task,
             args.commit,
             args.verdict,
@@ -455,16 +469,12 @@ def _run_submit_review(args: argparse.Namespace, stderr: TextIO) -> int:
 
 
 def _run_accept(args: argparse.Namespace, stderr: TextIO) -> int:
-    project_root = find_project_root(Path.cwd())
-    if project_root is None:
-        print(
-            "agentmarshal accept must be run inside an initialized project",
-            file=stderr,
-        )
+    placement = _placement("accept", stderr)
+    if placement is None:
         return 1
     try:
         record_path = accept_findings(
-            project_root / ".agentmarshal" / "journal",
+            placement.journal_root,
             args.task,
             args.commit,
             args.by,
@@ -479,16 +489,12 @@ def _run_accept(args: argparse.Namespace, stderr: TextIO) -> int:
 
 
 def _run_review(args: argparse.Namespace, stderr: TextIO) -> int:
-    project_root = find_project_root(Path.cwd())
-    if project_root is None:
-        print(
-            "agentmarshal review must be run inside an initialized project",
-            file=stderr,
-        )
+    placement = _placement("review", stderr, require_host=True)
+    if placement is None:
         return 1
     try:
         submitted = launch_review(
-            project_root,
+            placement.host_root,
             args.task,
             args.commit,
             args.base,
@@ -496,6 +502,7 @@ def _run_review(args: argparse.Namespace, stderr: TextIO) -> int:
             args.vendor,
             args.model,
             args.email,
+            journal_root=placement.journal_root if placement.is_sidecar else None,
         )
     except ReviewLaunchError as error:
         print(error, file=stderr)
@@ -512,14 +519,10 @@ def _run_review(args: argparse.Namespace, stderr: TextIO) -> int:
 
 
 def _run_validate(stderr: TextIO) -> int:
-    project_root = find_project_root(Path.cwd())
-    if project_root is None:
-        print(
-            "agentmarshal validate must be run inside an initialized project",
-            file=stderr,
-        )
+    placement = _placement("validate", stderr)
+    if placement is None:
         return 1
-    report = validate_journal(project_root)
+    report = validate_journal(placement.project_root)
     for line in report.lines:
         print(line)
     if not report.passed:
@@ -530,12 +533,17 @@ def _run_validate(stderr: TextIO) -> int:
 
 
 def _run_gate(args: argparse.Namespace, stderr: TextIO) -> int:
-    project_root = find_project_root(Path.cwd())
-    if project_root is None:
+    placement = _placement("gate", stderr)
+    if placement is None:
+        return 1
+    if placement.is_sidecar:
         print(
-            "agentmarshal gate must be run inside an initialized project", file=stderr
+            "gate: sidecar placement is refused because advisory mode lands in "
+            "a following task; running now would misstate its authority",
+            file=stderr,
         )
         return 1
+    project_root = placement.project_root
     pipeline_sha = args.pipeline_sha or os.environ.get("AGENTMARSHAL_PIPELINE_OK_SHA")
     try:
         context = derive_gate_context(project_root, args.task, args.commit, args.base)
@@ -560,13 +568,17 @@ def _run_gate(args: argparse.Namespace, stderr: TextIO) -> int:
 
 
 def _run_complete(args: argparse.Namespace, stderr: TextIO) -> int:
-    project_root = find_project_root(Path.cwd())
-    if project_root is None:
+    placement = _placement("complete", stderr)
+    if placement is None:
+        return 1
+    if placement.is_sidecar:
         print(
-            "agentmarshal complete must be run inside an initialized project",
+            "complete: sidecar placement is refused because advisory mode lands "
+            "in a following task; running now would misstate its authority",
             file=stderr,
         )
         return 1
+    project_root = placement.project_root
     pipeline_sha = args.pipeline_sha or os.environ.get("AGENTMARSHAL_PIPELINE_OK_SHA")
     try:
         result = complete_task(
@@ -586,15 +598,11 @@ def _run_complete(args: argparse.Namespace, stderr: TextIO) -> int:
 
 
 def _run_abandon(args: argparse.Namespace, stderr: TextIO) -> int:
-    project_root = find_project_root(Path.cwd())
-    if project_root is None:
-        print(
-            "agentmarshal abandon must be run inside an initialized project",
-            file=stderr,
-        )
+    placement = _placement("abandon", stderr)
+    if placement is None:
         return 1
     try:
-        record_path = abandon_task(project_root, args.task, args.reason)
+        record_path = abandon_task(placement.project_root, args.task, args.reason)
     except LifecycleError as error:
         print(error, file=stderr)
         return 1
@@ -604,17 +612,13 @@ def _run_abandon(args: argparse.Namespace, stderr: TextIO) -> int:
 
 
 def _run_reopen(args: argparse.Namespace, stderr: TextIO) -> int:
-    project_root = find_project_root(Path.cwd())
-    if project_root is None:
-        print(
-            "agentmarshal reopen must be run inside an initialized project",
-            file=stderr,
-        )
+    placement = _placement("reopen", stderr)
+    if placement is None:
         return 1
     if not args.reason.strip():
         print("reopen reason must not be empty", file=stderr)
         return 1
-    journal_root = project_root / ".agentmarshal" / "journal"
+    journal_root = placement.journal_root
     try:
         task = load_task_status(journal_root, args.task)
         if task.state != "done":
@@ -632,17 +636,13 @@ def _run_reopen(args: argparse.Namespace, stderr: TextIO) -> int:
 
 
 def _run_amend(args: argparse.Namespace, stderr: TextIO) -> int:
-    project_root = find_project_root(Path.cwd())
-    if project_root is None:
-        print(
-            "agentmarshal amend must be run inside an initialized project",
-            file=stderr,
-        )
+    placement = _placement("amend", stderr)
+    if placement is None:
         return 1
     if not args.reason.strip():
         print("amend reason must not be empty", file=stderr)
         return 1
-    journal_root = project_root / ".agentmarshal" / "journal"
+    journal_root = placement.journal_root
     try:
         task = load_task_status(journal_root, args.task)
         if task.state != "open":
@@ -667,16 +667,12 @@ def _run_record_session(args: argparse.Namespace, stderr: TextIO) -> int:
             "--usage-method is required when --usage-provider is supplied", file=stderr
         )
         return 1
-    project_root = find_project_root(Path.cwd())
-    if project_root is None:
-        print(
-            "agentmarshal record-session must be run inside an initialized project",
-            file=stderr,
-        )
+    placement = _placement("record-session", stderr)
+    if placement is None:
         return 1
     try:
         record_path = record_session(
-            project_root / ".agentmarshal" / "journal",
+            placement.journal_root,
             args.task,
             args.role,
             args.actor,
@@ -696,15 +692,11 @@ def _run_record_session(args: argparse.Namespace, stderr: TextIO) -> int:
 
 
 def _run_report(task_id: str | None, stderr: TextIO) -> int:
-    project_root = find_project_root(Path.cwd())
-    if project_root is None:
-        print(
-            "agentmarshal report must be run inside an initialized project",
-            file=stderr,
-        )
+    placement = _placement("report", stderr)
+    if placement is None:
         return 1
     try:
-        report = build_report(project_root / ".agentmarshal" / "journal", task_id)
+        report = build_report(placement.journal_root, task_id)
     except ReportError as error:
         print(error, file=stderr)
         return 1
@@ -714,13 +706,10 @@ def _run_report(task_id: str | None, stderr: TextIO) -> int:
 
 
 def _run_status(task_id: str | None, stderr: TextIO) -> int:
-    project_root = find_project_root(Path.cwd())
-    if project_root is None:
-        print(
-            "agentmarshal status must be run inside an initialized project", file=stderr
-        )
+    placement = _placement("status", stderr)
+    if placement is None:
         return 1
-    journal = project_root / ".agentmarshal" / "journal"
+    journal = placement.journal_root
     try:
         if task_id is None:
             tasks = list_task_statuses(journal)
@@ -730,7 +719,15 @@ def _run_status(task_id: str | None, stderr: TextIO) -> int:
             for task in tasks:
                 print(f"{task.task_id}\t{task.state}\t{task.contract.title}")
         else:
-            _print_task_detail(project_root, load_task_status(journal, task_id))
+            task = load_task_status(journal, task_id)
+            if placement.is_sidecar and any(
+                record["record_type"] == "acceptance" for record in task.records
+            ):
+                checked_placement = _placement("status", stderr, require_host=True)
+                if checked_placement is None:
+                    return 1
+                placement = checked_placement
+            _print_task_detail(placement.host_root, task)
     except (OSError, TaskStatusError, ValueError) as error:
         print(error, file=stderr)
         return 1
@@ -738,13 +735,17 @@ def _run_status(task_id: str | None, stderr: TextIO) -> int:
 
 
 def _run_prune(args: argparse.Namespace, stderr: TextIO) -> int:
-    project_root = find_project_root(Path.cwd())
-    if project_root is None:
+    placement = _placement("prune", stderr, require_host=True)
+    if placement is None:
+        return 1
+    if placement.is_sidecar and args.delete:
         print(
-            "agentmarshal prune must be run inside an initialized project",
+            "prune: --delete is refused in a sidecar because the host worktree "
+            "and repository must remain read-only",
             file=stderr,
         )
         return 1
+    project_root = placement.host_root
     try:
         report = report_branches(project_root, args.base)
         worktrees = report_worktrees(project_root)
@@ -915,7 +916,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "init":
-        return _run_init(sys.stderr)
+        return _run_init(args.host, sys.stderr)
     if args.command == "doctor":
         return _run_doctor()
     if args.command == "validate":

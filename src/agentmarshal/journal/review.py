@@ -291,10 +291,13 @@ def launch_review(
     reviewer_vendor: str,
     reviewer_model: str,
     reviewer_email: str,
+    *,
+    journal_root: Path | None = None,
 ) -> SubmittedReview:
     """Review an exact commit in a temporary metadata-free snapshot and record it."""
 
-    journal_root = project_root / ".agentmarshal" / "journal"
+    sidecar_journal = journal_root
+    journal_root = journal_root or project_root / ".agentmarshal" / "journal"
     try:
         task = load_task_status(journal_root, task_id)
     except (OSError, TaskStatusError, ValueError) as error:
@@ -312,18 +315,24 @@ def launch_review(
         snapshot = temporary_root / "snapshot"
         prompt_file = temporary_root / "review-prompt.txt"
         _extract_snapshot(project_root, resolved_commit, snapshot)
+        contract_path = (
+            journal_root / "tasks" / task.task_id / "contract.md"
+            if sidecar_journal is not None
+            else snapshot
+            / ".agentmarshal"
+            / "journal"
+            / "tasks"
+            / task.task_id
+            / "contract.md"
+        )
         try:
-            contract = (
-                snapshot
-                / ".agentmarshal"
-                / "journal"
-                / "tasks"
-                / task.task_id
-                / "contract.md"
-            ).read_text(encoding="utf-8")
+            contract = contract_path.read_text(encoding="utf-8")
         except OSError as error:
+            source = (
+                "for review" if sidecar_journal is not None else "from reviewed commit"
+            )
             raise ReviewLaunchError(
-                f"cannot read task contract from reviewed commit: {error}"
+                f"cannot read task contract {source}: {error}"
             ) from error
         prompt = _review_prompt(contract, diff, resolved_commit)
         prompt_file.write_text(prompt, encoding="utf-8")

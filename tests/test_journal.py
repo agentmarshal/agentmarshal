@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -39,6 +41,33 @@ def init_git_repo(repo: Path) -> None:
     subprocess.run(
         ["git", "init", "--quiet"], cwd=repo, check=True, capture_output=True
     )
+
+
+def _commit_file(repo: Path, name: str, content: str) -> str:
+    (repo / name).write_text(content, encoding="utf-8")
+    subprocess.run(["git", "add", name], cwd=repo, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.invalid",
+            "commit",
+            "--quiet",
+            "-m",
+            name,
+        ],
+        cwd=repo,
+        check=True,
+    )
+    return subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
 
 
 def _without_recorder(record: dict[str, object]) -> dict[str, object]:
@@ -1477,6 +1506,219 @@ def test_init_scaffolds_the_upstream_outbox(
     assert readme.is_file()
     assert "Sanitize at source" in readme.read_text(encoding="utf-8")
     assert "upstream" in capsys.readouterr().out
+
+
+def test_full_sidecar_session_never_changes_host(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    host = tmp_path / "host"
+    sidecar = tmp_path / "sidecar"
+    init_git_repo(host)
+    init_git_repo(sidecar)
+    base = _commit_file(host, "app.txt", "one\n")
+    head = _commit_file(host, "app.txt", "two\n")
+    reviewer = tmp_path / "reviewer.py"
+    reviewer.write_text(
+        """import json
+import re
+import sys
+from pathlib import Path
+
+prompt = sys.stdin.read()
+assert Path("app.txt").read_text(encoding="utf-8") == "two\\n"
+assert not Path(".git").exists()
+commit = re.search(r"reviewed commit is ([0-9a-f]{40})", prompt).group(1)
+print("AGENTMARSHAL_VERDICT_BEGIN")
+verdict = {
+    "reviewed_commit": commit,
+    "verdict": "changes_required",
+    "findings": ["F-1"],
+}
+print(json.dumps(verdict))
+print("AGENTMARSHAL_VERDICT_END")
+""",
+        encoding="utf-8",
+    )
+    before_files = {
+        path.relative_to(host): path.read_bytes()
+        for path in host.rglob("*")
+        if path.is_file() and ".git" not in path.relative_to(host).parts
+    }
+    before_untracked = subprocess.run(
+        ["git", "ls-files", "--others", "--exclude-standard"],
+        cwd=host,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    monkeypatch.chdir(sidecar)
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", f"{sys.executable} {reviewer}")
+
+    assert main(["init", "--host", str(host)]) == 0
+    assert main(["open", "--title", "Private task", "--scope", "app.txt"]) == 0
+    assert main(["brief", "--task", "CR-001"]) == 0
+    assert main(["amend", "--task", "CR-001", "--reason", "Clarify scope"]) == 0
+    assert (
+        main(
+            [
+                "submit-review",
+                "--task",
+                "CR-001",
+                "--commit",
+                head,
+                "--verdict",
+                "approved",
+                "--role",
+                "reviewer",
+                "--vendor",
+                "test",
+                "--model",
+                "test",
+                "--email",
+                "reviewer@example.invalid",
+            ]
+        )
+        == 0
+    )
+    assert (
+        main(
+            [
+                "review",
+                "--task",
+                "CR-001",
+                "--commit",
+                head,
+                "--base",
+                base,
+                "--role",
+                "reviewer",
+                "--vendor",
+                "test",
+                "--model",
+                "test",
+                "--email",
+                "reviewer@example.invalid",
+            ]
+        )
+        == 0
+    )
+    assert (
+        main(
+            [
+                "accept",
+                "--task",
+                "CR-001",
+                "--commit",
+                head,
+                "--by",
+                "operator@example.invalid",
+                "--reason",
+                "Accepted for this private workflow",
+            ]
+        )
+        == 0
+    )
+    assert (
+        main(
+            [
+                "record-session",
+                "--task",
+                "CR-001",
+                "--role",
+                "implementer",
+                "--actor",
+                "operator",
+                "--activity",
+                "implementation",
+                "--outcome",
+                "done",
+            ]
+        )
+        == 0
+    )
+    assert main(["status", "CR-001"]) == 0
+    assert main(["report", "--task", "CR-001"]) == 0
+    assert main(["validate"]) == 0
+    assert main(["prune"]) == 0
+    assert main(["open", "--title", "Abandoned", "--scope", "app.txt"]) == 0
+    assert main(["abandon", "--task", "CR-002", "--reason", "Superseded"]) == 0
+    capsys.readouterr()
+
+    after_files = {
+        path.relative_to(host): path.read_bytes()
+        for path in host.rglob("*")
+        if path.is_file() and ".git" not in path.relative_to(host).parts
+    }
+    status = subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=host,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    after_untracked = subprocess.run(
+        ["git", "ls-files", "--others", "--exclude-standard"],
+        cwd=host,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert status == ""
+    assert after_untracked == before_untracked
+    assert after_files == before_files
+
+
+def test_sidecar_refuses_authoritative_commands_and_host_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    host = tmp_path / "host"
+    sidecar = tmp_path / "sidecar"
+    init_git_repo(host)
+    init_git_repo(sidecar)
+    _commit_file(host, "app.txt", "one\n")
+    monkeypatch.chdir(sidecar)
+    assert main(["init", "--host", str(host)]) == 0
+    capsys.readouterr()
+
+    assert main(["gate"]) == 1
+    assert "advisory mode lands in a following task" in capsys.readouterr().err
+    assert (
+        main(["complete", "--task", "CR-001", "--commit", "HEAD", "--base", "HEAD"])
+        == 1
+    )
+    assert "misstate its authority" in capsys.readouterr().err
+    assert main(["prune", "--delete"]) == 1
+    assert (
+        "host worktree and repository must remain read-only" in capsys.readouterr().err
+    )
+
+
+def test_missing_sidecar_host_fails_only_when_command_needs_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    host = tmp_path / "host"
+    sidecar = tmp_path / "sidecar"
+    init_git_repo(host)
+    init_git_repo(sidecar)
+    monkeypatch.chdir(sidecar)
+    assert main(["init", "--host", str(host)]) == 0
+    assert main(["open", "--title", "Task"]) == 0
+    os.rename(host, tmp_path / "moved-host")
+    capsys.readouterr()
+
+    assert main(["status"]) == 0
+    assert main(["status", "CR-001"]) == 0
+    assert main(["open", "--title", "Another task"]) == 1
+    error = capsys.readouterr().err
+    assert str(host) in error
+    assert "does not exist" in error
+    assert "Traceback" not in error
 
 
 def test_init_does_not_overwrite_an_outbox_readme(tmp_path: Path) -> None:
