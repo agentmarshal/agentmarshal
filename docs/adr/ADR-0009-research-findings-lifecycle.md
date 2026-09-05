@@ -1,6 +1,6 @@
 # ADR-0009: A research task lands through findings, not diffs
 
-Status: Accepted
+Status: Proposed
 Date: 2026-09-05
 
 This ADR records a decision. The record type, the review binding and the
@@ -12,9 +12,9 @@ a claim about shipped behaviour.
 
 The records that carry evidence of work bind to a commit. A review names
 `reviewed_commit`; completion names `completed_commit`; the gate diffs
-`merge-base..candidate` and reads the contract from the base side. That is the right shape for the
-work this project was built around: a change to a repository, proven against
-the exact commit that carries it.
+`merge-base..candidate` and reads the contract from the base side. That is the
+right shape for the work this project was built around: a change to a
+repository, proven against the exact commit that carries it.
 
 It is the wrong shape for a task whose output is a conclusion. An audit, an
 investigation, a measurement, a re-read of prior art — these produce a
@@ -30,11 +30,13 @@ the configured host. The tool is telling the truth: it has no way to say that
 a conclusion was checked.
 
 The pieces are already in the schema. Every record since schema 2 may carry
-`artifacts: [{ref, hash}]` — hash-pinned references, defined in ADR-0005
-Decision 4 and validated in `records.py` — and nothing writes them. Proposal
-005 set the constraint that still holds: the tool records **that** findings
-exist and **where** they are pinned; it does not become a store for research
-content.
+`artifacts: [{ref, hash}]` — the "supplementary artifact: reference + hash" row
+of ADR-0005 Decision 5's compatibility matrix, validated in `records.py` as a
+reference plus 64 lowercase hex characters. Its only writer today is the import
+path in `backfill.py`, which no CLI command reaches; nothing a user runs writes
+one. Proposal 005 set the constraint that still holds: the tool records
+**that** findings exist and **where** they are pinned; it does not become a
+store for research content.
 
 ## Decision
 
@@ -43,9 +45,13 @@ content.
 A `finding` record carries a non-empty `artifacts` list — each entry a
 reference and a hash of the content it points at — and a one-line
 `summary`. It is written by the party that produced the output, and like
-every record since schema 2 it carries `recorded_by` (ADR-0006). The hash is
-the sha256 ADR-0005 Decision 4 already specifies and `records.py` already
-validates. It projects to no state: a
+every record since schema 2 it carries the provenance fields `source`,
+`recorded_by` and `recorded_by_source` (ADR-0005 D4, ADR-0006) — a finding
+recorded live and one imported later must stay distinguishable. **The hash is
+sha256 over the artifact's bytes, lowercase hex.** No accepted document named
+the algorithm before — `records.py` admits any 64 hex characters, and
+`backfill.py` happens to write sha256 — so this ADR, which pins content by
+hash, is the one that decides it. It projects to no state: a
 task with findings is still open until it completes.
 
 The artifacts are the evidence; the record pins them. A document that is
@@ -53,13 +59,22 @@ later edited no longer matches its recorded hash, and that mismatch is
 detectable by anyone holding the journal — the same property a commit SHA
 gives a diff.
 
-### 2. A review may bind to a finding instead of a commit
+### 2. A review — and an acceptance — may bind to a finding instead of a commit
 
 A `review` record names **exactly one** of `reviewed_commit` or
 `reviewed_finding`. The second is the identifier of a `finding` record in the
 same task. A reviewer of a finding reviewed the artifacts at the hashes that
 record names — not the file as it happens to be on disk when the review is
 read.
+
+An `acceptance` record likewise names exactly one of `accepted_commit` or
+`accepted_finding`. ADR-0007 binds acceptance to "the exact commit" and
+`records.py` requires `accepted_commit`; a findings-lane task has no commit,
+so ADR-0007 cannot apply *unchanged*. Its rules carry over intact — the latest
+review of that exact finding must be non-approving, the acceptance names every
+blocking finding, and it never reads as an approval — with the binding field
+substituted. This is the same extension ADR-0007 itself made to the gate: a
+new binding, the same discipline.
 
 The claim boundary is ADR-0006's, unchanged: the reviewer is a declared
 identity, the verdict is a declared verdict, and nothing establishes that the
@@ -81,15 +96,28 @@ which it did not:
 
 - the task is not closed at base — as today;
 - the **latest review binds to the latest finding**, and is approving or
-  accepted over its findings (ADR-0007 applies unchanged);
-- the reviewer's declared identity differs from the finding's `recorded_by`;
-- every artifact whose reference resolves to a path under the journal's
-  project root still hashes to what the finding recorded — **artifact drift
-  refuses the lane**, the way a new commit invalidates a verdict; references
-  that do not resolve locally are recorded, not verified, and the transcript
-  names each;
-- evidence records are append-only; added records are valid; lifecycle
-  records are consistent — as today.
+  accepted over its findings through `accepted_finding` (Decision 2);
+- the reviewer is independent of the finding's recorder — **compared on git
+  identities.** Both sides can be brought to that representation, and the
+  resolution runs from the recorder toward emails rather than from the reviewer
+  toward an actor id, because an email absent from the actors table still names
+  an identity while an actor id absent from it names nothing. A review carries
+  an email; a finding's `recorded_by` is, per ADR-0006, one of three things,
+  and `recorded_by_source` says which: a git email (compared directly), an
+  actor id from the project's `actors` table (compared against that actor's
+  `git_identities`), or an `AGENTMARSHAL_ACTOR` override (compared against the
+  override string and, when an actor of that id exists in the table, its
+  identities too). A recorder that resolves to no git identity — an override
+  with no table entry, or a finding with no `recorded_by` — leaves independence
+  **unestablished, and the lane refuses**, naming that as the reason. Failing
+  closed here is the same choice the diff lane makes when git cannot answer a
+  question about the candidate — the run ends in a refusal, not a pass;
+- every artifact whose reference resolves to a path under the journal's project
+  root still hashes to what the finding recorded — **artifact drift refuses the
+  lane**, the way a new commit invalidates a verdict; references that do not
+  resolve locally are recorded, not verified, and the transcript names each;
+- evidence records are append-only; added records are valid; lifecycle records
+  are consistent — as today.
 
 It does **not** diff anything, check any scope, or ask for a pipeline
 attestation — there is no candidate, no changed path, and no pipeline. Each
@@ -97,40 +125,79 @@ of those lines prints as *not examined, with the reason*, in the manner the
 sidecar gate already uses, so a findings-lane pass is not printed with the
 diff lane's wording.
 
+**The findings lane decides evidence, not a merge.** It is invoked without a
+candidate commit, and **refuses one if offered**: a `--commit` on a task with
+an empty scope is an error naming the lane, not a diff to examine. What merges
+into a repository after a findings-lane completion is the commit that adds the
+`finding`, `review` and `completed` records. In the embedded placement that
+commit goes through the existing **journal-only lane**, which admits a
+transaction whose changed paths all lie under `.agentmarshal/journal/`; a
+change outside that prefix takes the diff lane instead, where an empty scope
+refuses every path. A branch that carries host changes under an empty-scope
+task is therefore refused on both lanes: the findings lane will not look at it,
+and the diff lane will not pass it. That closes the bypass an empty scope would
+otherwise open, and it needs no new check — only the rule that the findings
+lane takes no candidate. In a sidecar the records commit is not gated by this
+tool at all; its integrity rests on the sidecar's own history, exactly as
+ADR-0008 Decision 7 already states.
+
 `complete` on a findings-lane task runs this lane and writes `completed` with
 `completed_finding` in place of `completed_commit`.
 
-### 4. Placement does not change the lane
+### 4. Placement does not change the lane — a bounded exception to ADR-0008 D5
 
-The findings lane exists in both placements. In a sidecar — where research
-journals will mostly live — it is the first lane that decides something the
-placement can actually decide: the sidecar owns its findings and their
-hashes, so this pass is not advisory in the way the diff lane's is. The
-transcript still states the placement, and ADR-0008 Decision 7's boundary
-still holds for everything the sidecar says about its host.
+The findings lane exists in both placements. ADR-0008 Decision 5 makes a
+sidecar's gate advisory because **the merge belongs to the host's process**,
+which the sidecar's operator does not control. The findings lane has no merge
+and changes nothing in the host: there is nothing for the host's process to
+decide. So for this lane, and only this lane, a sidecar's pass is the
+sidecar's own decision over its own records — the journal owns its findings and
+their hashes. This is an exception to ADR-0008 Decision 5 **scoped to the
+findings lane**, stated here rather than left to inference; the diff lane in a
+sidecar stays advisory exactly as ADR-0008 decided. The transcript still
+states the placement, and ADR-0008 Decision 7's boundary still holds for
+everything the sidecar says about its host.
 
 ### 5. What this establishes, and what it does not
 
 A finding plus an approving review of it establishes: a declared party
 recorded that these artifacts, at these hashes, are the task's output; a
-declared, independent party recorded a verdict on exactly that content; the
-content has not changed since. It does not establish that the finding is
+declared, independent party recorded a verdict on exactly that content; and,
+**for each artifact the gate could resolve and re-hash**, the content has not
+changed since. For an artifact it could not resolve it establishes only that a
+hash was recorded — the transcript names which artifacts fall on which side,
+so a pass over unverified references is not printed as a pass over verified
+ones. It does not establish that the finding is
 correct, that the reviewer read it, or that the artifacts are complete. Those
 are the same limits every record in this journal carries, and the
 documentation will state them next to this lane as it does next to the others.
 
 ## Consequences
 
-**Schema 4, appearing only when used.** A new record type and a new review
-field are format extensions. By the release rule that has held since 0.3.0,
-neither appears in a journal until a task uses the lane; a journal that never
-does stays readable by 0.3.0. One that does is refused by 0.3.0 with `record
-has an unknown or missing schema version` — fail-closed, which is the right
-failure and the opposite of what 0.2.0 did with a sidecar configuration.
+**Schema 4, appearing only when used — which requires a rule about stamping.**
+One new record type and three new binding fields — `reviewed_finding`,
+`accepted_finding`, `completed_finding`, each exactly-one-of with its commit
+counterpart — are the format extensions. The release
+rule that has held since 0.3.0 says neither appears in a journal until a task
+uses the lane, and that promise holds only if **each record is stamped with the
+lowest schema its content needs**: a record carrying neither the new type nor
+any of the new fields is written at schema 3; a `finding`, or a review,
+acceptance or completion bound to one, at schema 4. Then a journal that never
+uses the lane is byte-identical in what 0.4.0 writes to what 0.3.0 wrote, and
+stays readable by 0.3.0. The precedent
+runs the other way — CR-069 stamped every record 3, and that is the source of
+the one-directional 0.1.0→0.2.0 break UPGRADING documents. This ADR decides
+against repeating it. A journal that does use the lane is refused by 0.3.0
+with `record has an unknown or missing schema version` — fail-closed, which is
+the right failure and the opposite of what 0.2.0 did with a sidecar
+configuration.
 
-**Five registration points.** A record type is known in five places —
-`_RECORD_FIELDS`, `_validate_record`, `PREDICATE_TYPES`, `_RECORD_TYPE_STATES`,
-and the factory with its CLI command. The predicate URI is
+**Five registration points, and three field validators.** A record type is
+known in five places — `_RECORD_FIELDS`, `_validate_record`, `PREDICATE_TYPES`,
+`_RECORD_TYPE_STATES`, and the factory with its CLI command. Each of the three
+records that gains a finding binding also needs its exactly-one-of rule in
+`_validate_record`, and `acceptance.py` needs to resolve the latest review by
+finding as it does by commit. The predicate URI is
 `https://agentmarshal.dev/attestations/finding/v1`. A review of a finding
 projects (when the projection exists, ADR-0005) to a Statement whose subjects
 are the finding's artifact digests — in-toto's subject model already takes a
