@@ -44,10 +44,13 @@ store for research content.
 
 A `finding` record carries a non-empty `artifacts` list — each entry a
 reference and a hash of the content it points at — and a one-line
-`summary`. It is written by the party that produced the output, and like
-every record since schema 2 it carries the provenance fields `source`,
-`recorded_by` and `recorded_by_source` (ADR-0005 D4, ADR-0006) — a finding
-recorded live and one imported later must stay distinguishable. **The hash is
+`summary`. It is written by the party that produced the output. It carries
+`source` like every record since schema 2 (ADR-0005 D4), so a finding recorded
+live and one imported later stay distinguishable; and, unlike other records,
+where they are optional, `recorded_by` and `recorded_by_source` (ADR-0006) are
+**required** on a finding — the independence check in Decision 3 has nothing to
+compare without them, and a finding that cannot name its recorder is refused
+at write time rather than at gate time. **The hash is
 sha256 over the artifact's bytes, lowercase hex.** No accepted document named
 the algorithm before — `records.py` admits any 64 hex characters, and
 `backfill.py` happens to write sha256 — so this ADR, which pins content by
@@ -84,8 +87,9 @@ said *what* about, at *what time*.
 ### 3. The gate has a findings lane, admitted by the contract
 
 A task enters the findings lane when **its contract declares no scope** and it
-carries at least one `finding` record. The gate is invoked for it without a
-candidate commit. This turns the existing empty-scope rule into a meaning
+carries at least one `finding` record. The gate is invoked for it with
+`--findings`, offering no candidate (the flag, and why it is a flag, are below).
+This turns the existing empty-scope rule into a meaning
 rather than a warning: an empty scope no longer says "nothing may land", it
 says "this task lands through findings". A task with a scope keeps the diff
 lane; a task with an empty scope and no finding is, as today, a task that
@@ -109,12 +113,13 @@ which it did not:
   and `recorded_by_source` says which: a git email (compared directly), an
   actor id from the project's `actors` table (compared against that actor's
   `git_identities`), or an `AGENTMARSHAL_ACTOR` override (compared against the
-  override string and, when an actor of that id exists in the table, its
-  identities too). A recorder that resolves to no git identity — an override
-  with no table entry, or a finding with no `recorded_by` — leaves independence
-  **unestablished, and the lane refuses**, naming that as the reason. Failing
-  closed here is the same choice the diff lane makes when git cannot answer a
-  question about the candidate — the run ends in a refusal, not a pass;
+  `git_identities` of the actor of that id in the table, when one exists; the
+  override string itself is a label, not an identity, and is never compared). A
+  recorder that resolves to no git identity — an override with no table entry,
+  or a finding with no `recorded_by` — leaves independence **unestablished, and
+  the lane refuses**, naming that as the reason. Failing closed here is the
+  same choice the diff lane makes when git cannot answer a question about the
+  candidate — the run ends in a refusal, not a pass;
 - every artifact whose reference resolves to a path under the journal's project
   root still hashes to what the finding recorded — **artifact drift refuses the
   lane**, the way a new commit invalidates a verdict; references that do not
@@ -125,11 +130,17 @@ which it did not:
   way the sidecar gate already does through `_sidecar_tampered_records` — in
   both placements.
 
-It does **not** diff anything, check any scope, or ask for a pipeline
-attestation — there is no candidate, no changed path, and no pipeline. Each
-of those lines prints as *not examined, with the reason*, in the manner the
-sidecar gate already uses, so a findings-lane pass is not printed with the
-diff lane's wording.
+It does **not** diff the candidate against a scope — there is no candidate and
+no changed path — ask for a pipeline attestation, since there is no pipeline,
+check record-path collisions against a base tree, since no candidate adds
+records to one, or run the advisory leak scan, which reads
+`merge-base..candidate` and has no range to read. Those four, with six of the
+seven computed above — artifact drift is new to this lane and has no diff-lane
+counterpart — account for every check the diff lane runs today. Each of the
+four prints as *not examined, with the reason*, in the manner the sidecar gate
+already uses — so a findings-lane pass is not printed with the diff lane's
+wording, and no check is left to print a diff-lane `PASS` over something nobody
+looked at.
 
 **The findings lane decides evidence, not a merge — and the lane is chosen by
 what is offered, bounded by the contract.** The gate enters the findings lane
@@ -153,8 +164,10 @@ sidecar the records commit is not gated by this tool at all; its integrity
 rests on the sidecar's own history, exactly as ADR-0008 Decision 7 already
 states.
 
-`complete` on a findings-lane task runs this lane and writes `completed` with
-`completed_finding` in place of `completed_commit`.
+`complete --task X --findings` runs this lane and, on a pass, writes
+`completed` with `completed_finding` in place of `completed_commit`. Like the
+gate, it takes the flag rather than a candidate; `complete` with `--commit` and
+`--base` keeps today's meaning on any task.
 
 ### 4. Placement does not change the lane — an exception to ADR-0008 D5 and D6
 
@@ -180,8 +193,10 @@ recorded that these artifacts, at these hashes, are the task's output; a party
 whose **declared** identity differs from the recorder's recorded a verdict on
 exactly that content — a difference of declarations, which is all the
 independence check ever establishes (ADR-0006); and,
-**for each artifact the gate could resolve and re-hash**, the content has not
-changed since. For an artifact it could not resolve it establishes only that a
+**for each artifact the gate could resolve and re-hash**, the bytes at gate
+time are the bytes the finding recorded — a statement about the present
+content, not about what happened to the file in between. For an artifact it
+could not resolve it establishes only that a
 hash was recorded — the transcript names which artifacts fall on which side,
 so a pass over unverified references is not printed as a pass over verified
 ones. It does not establish that the finding is
