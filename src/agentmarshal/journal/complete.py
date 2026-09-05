@@ -12,7 +12,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from agentmarshal import __version__
-from agentmarshal.journal.gate import GateError, GateReport, run_gate
+from agentmarshal.journal.gate import (
+    GateError,
+    GateReport,
+    run_findings_gate,
+    run_gate,
+)
 from agentmarshal.journal.records import (
     JournalRecordError,
     create_abandoned_record,
@@ -58,6 +63,32 @@ def complete_task(
         return CompletionResult(report, None)
     try:
         record = create_completed_record(task_id, __version__, report.resolved_commit)
+        record_path = write_record(journal_root, task_id, record)
+    except (JournalRecordError, OSError, ValueError) as error:
+        raise LifecycleError(str(error)) from error
+    return CompletionResult(report, record_path)
+
+
+def complete_findings_task(journal_root: Path, task_id: str) -> CompletionResult:
+    """Gate the latest finding and bind completion to it on success."""
+
+    try:
+        task = load_task_status(journal_root, task_id)
+    except (OSError, TaskStatusError, ValueError) as error:
+        raise LifecycleError(str(error)) from error
+    if task.state != "open":
+        raise LifecycleError(f"task {task_id} is not open (state: {task.state})")
+    try:
+        report = run_findings_gate(journal_root, task_id)
+    except GateError as error:
+        raise LifecycleError(str(error)) from error
+    if not report.passed:
+        return CompletionResult(report, None)
+    assert report.resolved_finding is not None
+    try:
+        record = create_completed_record(
+            task_id, __version__, None, completed_finding=report.resolved_finding
+        )
         record_path = write_record(journal_root, task_id, record)
     except (JournalRecordError, OSError, ValueError) as error:
         raise LifecycleError(str(error)) from error

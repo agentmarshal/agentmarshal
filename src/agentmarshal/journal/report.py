@@ -78,12 +78,16 @@ def _task_report(status: TaskStatus) -> TaskReport:
             None,
         )
         if completed is not None:
-            commit = completed["completed_commit"]
+            binding = (
+                ("reviewed_finding", completed["completed_finding"])
+                if "completed_finding" in completed
+                else ("reviewed_commit", completed["completed_commit"])
+            )
             reviews = [
                 record
                 for record in records
                 if record["record_type"] == "review"
-                and record["reviewed_commit"] == commit
+                and record.get(binding[0]) == binding[1]
             ]
             if reviews and reviews[-1]["verdict"] == "approved":
                 decision = "approved"

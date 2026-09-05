@@ -18,12 +18,14 @@ from agentmarshal.journal.capture import CaptureError, scan_diff_for_leaks
 from agentmarshal.journal.complete import (
     LifecycleError,
     abandon_task,
+    complete_findings_task,
     complete_task,
 )
 from agentmarshal.journal.gate import (
     GateError,
     markers_from_config,
     markers_from_tree,
+    run_findings_gate,
     run_gate,
 )
 from agentmarshal.journal.gate_context import derive_gate_context
@@ -44,6 +46,7 @@ from agentmarshal.journal.records import (
     JournalRecordError,
     create_amendment_record,
     create_completed_record,
+    create_finding_record,
     create_reopened_record,
     write_record,
 )
@@ -104,10 +107,19 @@ def _build_parser() -> argparse.ArgumentParser:
         "submit-review", help="record a task review verdict"
     )
     review_parser.add_argument("--task", required=True, help="task identifier")
-    review_parser.add_argument("--commit", required=True, help="reviewed commit SHA")
+    review_parser.add_argument("--commit", help="reviewed commit SHA")
+    review_parser.add_argument(
+        "--finding",
+        action="append",
+        default=[],
+        help="reviewed finding id, or a legacy blocking id with --commit",
+    )
     review_parser.add_argument("--verdict", required=True, help="review verdict")
     review_parser.add_argument(
-        "--finding", action="append", default=[], help="finding id (repeatable)"
+        "--blocking-finding",
+        action="append",
+        default=[],
+        help="blocking finding id (repeatable)",
     )
     review_parser.add_argument(
         "--advisory-finding",
@@ -123,11 +135,17 @@ def _build_parser() -> argparse.ArgumentParser:
         "accept", help="record acceptance over a review's blocking findings"
     )
     accept_parser.add_argument("--task", required=True, help="task identifier")
-    accept_parser.add_argument("--commit", required=True, help="reviewed commit SHA")
+    accept_parser.add_argument("--commit", help="reviewed commit SHA")
+    accept_parser.add_argument(
+        "--finding",
+        action="append",
+        default=[],
+        help="reviewed finding id, or a legacy asserted blocking id with --commit",
+    )
     accept_parser.add_argument("--by", required=True, help="accepting party")
     accept_parser.add_argument("--reason", required=True, help="acceptance reason")
     accept_parser.add_argument(
-        "--finding",
+        "--blocking-finding",
         action="append",
         help="assert a blocking finding id (repeatable; normally omitted)",
     )
@@ -135,8 +153,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "review", help="run and record a read-only task review"
     )
     launch_parser.add_argument("--task", required=True, help="task identifier")
-    launch_parser.add_argument("--commit", required=True, help="reviewed commit SHA")
-    launch_parser.add_argument("--base", required=True, help="comparison base ref")
+    launch_binding = launch_parser.add_mutually_exclusive_group(required=True)
+    launch_binding.add_argument("--commit", help="reviewed commit SHA")
+    launch_binding.add_argument("--finding", help="reviewed finding record id")
+    launch_parser.add_argument("--base", help="comparison base ref")
     launch_parser.add_argument("--role", required=True, help="reviewer role")
     launch_parser.add_argument("--vendor", required=True, help="reviewer vendor")
     launch_parser.add_argument("--model", required=True, help="reviewer model")
@@ -148,6 +168,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--task",
         default=None,
         help="task identifier (default: derived from the current branch name)",
+    )
+    gate_parser.add_argument(
+        "--findings",
+        action="store_true",
+        help="gate the latest finding without a merge candidate",
     )
     gate_parser.add_argument(
         "--commit",
@@ -178,8 +203,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "complete", help="gate a candidate and record completion on success"
     )
     complete_parser.add_argument("--task", required=True, help="task identifier")
-    complete_parser.add_argument("--commit", required=True, help="candidate head SHA")
-    complete_parser.add_argument("--base", required=True, help="merge target ref")
+    complete_parser.add_argument("--commit", help="candidate head SHA")
+    complete_parser.add_argument("--base", help="merge target ref")
+    complete_parser.add_argument(
+        "--findings",
+        action="store_true",
+        help="complete against the latest finding without a candidate",
+    )
     complete_parser.add_argument(
         "--pipeline-sha",
         default=None,
@@ -213,6 +243,17 @@ def _build_parser() -> argparse.ArgumentParser:
     session_parser.add_argument("--cache-tokens", type=int, default=0)
     session_parser.add_argument("--usage-provider")
     session_parser.add_argument("--usage-method", choices=("reported", "measured"))
+    finding_parser = subparsers.add_parser(
+        "finding", help="record a hash-pinned research finding"
+    )
+    finding_parser.add_argument("--task", required=True, help="task identifier")
+    finding_parser.add_argument("--summary", required=True, help="finding summary")
+    finding_parser.add_argument(
+        "--artifact",
+        action="append",
+        required=True,
+        help="artifact as REF=SHA256 (repeatable)",
+    )
     report_parser = subparsers.add_parser(
         "report", help="summarize task delegation economics"
     )
@@ -370,6 +411,8 @@ def _is_self_accepted(project_root: Path, record: dict[str, object]) -> bool | N
     would quietly lose exactly that — so unknown is carried through and said.
     """
 
+    if "accepted_commit" not in record:
+        return None
     writers = _declared_commit_writers(project_root, str(record["accepted_commit"]))
     if writers is None:
         return None
@@ -385,7 +428,9 @@ def _print_task_detail(project_root: Path, task: TaskStatus) -> None:
     ):
         summary = f"Acceptance: accepted over findings by {acceptance['accepted_by']}"
         self_accepted = _is_self_accepted(project_root, acceptance)
-        if self_accepted is None:
+        if "accepted_finding" in acceptance:
+            summary += f" (finding {acceptance['accepted_finding']})"
+        elif self_accepted is None:
             summary += (
                 " (self-acceptance not checked: git cannot read "
                 f"{str(acceptance['accepted_commit'])[:7]} here)"
@@ -406,30 +451,52 @@ def _print_task_detail(project_root: Path, task: TaskStatus) -> None:
         if record["record_type"] == "review":
             findings = cast(list[object], record["findings"])
             advisory = cast(list[object], record.get("advisory_findings", []))
+            binding = (
+                f"reviewed_finding={record['reviewed_finding']}"
+                if "reviewed_finding" in record
+                else f"reviewed_commit={str(record['reviewed_commit'])[:7]}"
+            )
             print(
                 f"- {record['id']} review {record['created_at']} "
-                f"reviewed_commit={str(record['reviewed_commit'])[:7]} "
+                f"{binding} "
                 f"verdict={record['verdict']} findings={len(findings)} "
                 f"advisory={len(advisory)}"
             )
         elif record["record_type"] == "acceptance":
             findings = cast(list[object], record["findings"])
             checked = _is_self_accepted(project_root, record)
-            marker = {
-                None: " self-acceptance-unchecked",
-                True: " self-accepted",
-            }.get(checked, "")
+            marker = (
+                ""
+                if "accepted_finding" in record
+                else {
+                    None: " self-acceptance-unchecked",
+                    True: " self-accepted",
+                }.get(checked, "")
+            )
+            binding = (
+                f"accepted_finding={record['accepted_finding']}"
+                if "accepted_finding" in record
+                else f"accepted_commit={str(record['accepted_commit'])[:7]}"
+            )
             print(
                 f"- {record['id']} acceptance {record['created_at']} "
-                f"accepted_commit={str(record['accepted_commit'])[:7]} "
+                f"{binding} "
                 f"accepted_by={record['accepted_by']} "
                 f"findings={','.join(str(finding) for finding in findings)} "
                 f"reason={record['reason']}{marker}"
             )
         elif record["record_type"] == "completed":
+            binding = (
+                f"completed_finding={record['completed_finding']}"
+                if "completed_finding" in record
+                else f"completed_commit={str(record['completed_commit'])[:7]}"
+            )
+            print(f"- {record['id']} completed {record['created_at']} {binding}")
+        elif record["record_type"] == "finding":
+            artifacts = cast(list[object], record["artifacts"])
             print(
-                f"- {record['id']} completed {record['created_at']} "
-                f"completed_commit={str(record['completed_commit'])[:7]}"
+                f"- {record['id']} finding {record['created_at']} "
+                f"summary={record['summary']} artifacts={len(artifacts)}"
             )
         elif record["record_type"] == "abandoned":
             print(
@@ -454,6 +521,23 @@ def _run_submit_review(args: argparse.Namespace, stderr: TextIO) -> int:
     placement = _placement("submit-review", stderr)
     if placement is None:
         return 1
+    finding_bindings = [value for value in args.finding if len(value) == 26]
+    if args.commit is not None and finding_bindings:
+        print(
+            "review must name exactly one of reviewed_commit or reviewed_finding",
+            file=stderr,
+        )
+        return 1
+    if args.commit is None and len(args.finding) != 1:
+        print(
+            "review must name exactly one of reviewed_commit or reviewed_finding",
+            file=stderr,
+        )
+        return 1
+    reviewed_finding = args.finding[0] if args.commit is None else None
+    blocking_findings = (
+        args.blocking_finding if reviewed_finding is not None else args.finding
+    )
     try:
         submitted = submit_review(
             placement.journal_root,
@@ -464,8 +548,9 @@ def _run_submit_review(args: argparse.Namespace, stderr: TextIO) -> int:
             args.vendor,
             args.model,
             args.email,
-            args.finding,
+            blocking_findings,
             args.advisory_finding,
+            reviewed_finding=reviewed_finding,
         )
     except ReviewSubmitError as error:
         print(error, file=stderr)
@@ -478,6 +563,23 @@ def _run_accept(args: argparse.Namespace, stderr: TextIO) -> int:
     placement = _placement("accept", stderr)
     if placement is None:
         return 1
+    finding_bindings = [value for value in args.finding if len(value) == 26]
+    if args.commit is not None and finding_bindings:
+        print(
+            "acceptance must name exactly one of accepted_commit or accepted_finding",
+            file=stderr,
+        )
+        return 1
+    if args.commit is None and len(args.finding) != 1:
+        print(
+            "acceptance must name exactly one of accepted_commit or accepted_finding",
+            file=stderr,
+        )
+        return 1
+    accepted_finding = args.finding[0] if args.commit is None else None
+    asserted_findings = (
+        args.blocking_finding if accepted_finding is not None else args.finding or None
+    )
     try:
         record_path = accept_findings(
             placement.journal_root,
@@ -485,7 +587,8 @@ def _run_accept(args: argparse.Namespace, stderr: TextIO) -> int:
             args.commit,
             args.by,
             args.reason,
-            args.finding,
+            asserted_findings,
+            accepted_finding=accepted_finding,
         )
     except AcceptanceError as error:
         print(error, file=stderr)
@@ -495,6 +598,16 @@ def _run_accept(args: argparse.Namespace, stderr: TextIO) -> int:
 
 
 def _run_review(args: argparse.Namespace, stderr: TextIO) -> int:
+    if args.finding is not None:
+        print(
+            "review --finding is not supported in this release; use the human "
+            "path: submit-review --finding",
+            file=stderr,
+        )
+        return 1
+    if args.base is None:
+        print("review --base is required with --commit", file=stderr)
+        return 1
     placement = _placement("review", stderr, require_host=True)
     if placement is None:
         return 1
@@ -539,12 +652,34 @@ def _run_validate(stderr: TextIO) -> int:
 
 
 def _run_gate(args: argparse.Namespace, stderr: TextIO) -> int:
-    placement = _placement("gate", stderr, require_host=True)
+    if args.findings and (args.commit is not None or args.base is not None):
+        print(
+            "gate: --findings is mutually exclusive with --commit and --base",
+            file=stderr,
+        )
+        return 1
+    if args.findings and not args.task:
+        print("gate: --task is required with --findings", file=stderr)
+        return 1
+    placement = _placement("gate", stderr, require_host=not args.findings)
     if placement is None:
         return 1
-    if placement.advisory_notice is not None:
+    if not args.findings and placement.advisory_notice is not None:
         print(placement.advisory_notice)
     project_root = placement.host_root
+    if args.findings:
+        try:
+            report = run_findings_gate(placement.journal_root, args.task)
+        except GateError as error:
+            print(error, file=stderr)
+            return 1
+        for line in report.lines:
+            print(line)
+        if not report.passed:
+            print("gate: findings refused", file=stderr)
+            return 1
+        print("gate: findings passed")
+        return 0
     pipeline_sha = args.pipeline_sha or os.environ.get("AGENTMARSHAL_PIPELINE_OK_SHA")
     if placement.is_sidecar and not args.task:
         # Deriving the task from a branch name is a convenience of the embedded
@@ -571,7 +706,7 @@ def _run_gate(args: argparse.Namespace, stderr: TextIO) -> int:
         )
     except GateError as error:
         print(error, file=stderr)
-        if placement.is_sidecar:
+        if placement.is_sidecar and not args.findings:
             print(
                 "gate: the sidecar could not evaluate this candidate — check "
                 "that the commit and base exist in the configured host",
@@ -599,14 +734,29 @@ def _run_gate(args: argparse.Namespace, stderr: TextIO) -> int:
 
 
 def _run_complete(args: argparse.Namespace, stderr: TextIO) -> int:
-    placement = _placement("complete", stderr, require_host=True)
+    if args.findings and (args.commit is not None or args.base is not None):
+        print(
+            "complete: --findings is mutually exclusive with --commit and --base",
+            file=stderr,
+        )
+        return 1
+    if not args.findings and (args.commit is None or args.base is None):
+        print(
+            "complete: --commit and --base are required without --findings", file=stderr
+        )
+        return 1
+    placement = _placement("complete", stderr, require_host=not args.findings)
     if placement is None:
         return 1
-    if placement.advisory_notice is not None:
+    if not args.findings and placement.advisory_notice is not None:
         print(placement.advisory_notice)
     pipeline_sha = args.pipeline_sha or os.environ.get("AGENTMARSHAL_PIPELINE_OK_SHA")
     try:
-        if placement.is_sidecar:
+        if args.findings:
+            result = complete_findings_task(placement.journal_root, args.task)
+            report = result.report
+            record_path = result.record_path
+        elif placement.is_sidecar:
             task = load_task_status(placement.journal_root, args.task)
             if task.state != "open":
                 raise LifecycleError(
@@ -645,7 +795,7 @@ def _run_complete(args: argparse.Namespace, stderr: TextIO) -> int:
         ValueError,
     ) as error:
         print(error, file=stderr)
-        if placement.is_sidecar:
+        if placement.is_sidecar and not args.findings:
             print(
                 "complete: the sidecar could not evaluate this candidate — check "
                 "that the commit and base exist in the configured host",
@@ -655,18 +805,47 @@ def _run_complete(args: argparse.Namespace, stderr: TextIO) -> int:
     for line in report.lines:
         print(line)
     if record_path is None:
-        print(
-            "complete: advisory checks refused; nothing recorded"
-            if placement.is_sidecar
-            else "complete: gate refused; task not completed",
-            file=stderr,
-        )
+        if args.findings:
+            message = "complete: findings gate refused; task not completed"
+        elif placement.is_sidecar:
+            message = "complete: advisory checks refused; nothing recorded"
+        else:
+            message = "complete: gate refused; task not completed"
+        print(message, file=stderr)
         return 1
     print(record_path)
-    if placement.is_sidecar:
+    if args.findings:
+        print("completed through findings")
+    elif placement.is_sidecar:
         print("completed after advisory checks; decides no merge")
     else:
         print("completed")
+    return 0
+
+
+def _run_finding(args: argparse.Namespace, stderr: TextIO) -> int:
+    placement = _placement("finding", stderr)
+    if placement is None:
+        return 1
+    artifacts: list[dict[str, str]] = []
+    for value in args.artifact:
+        reference, separator, digest = value.rpartition("=")
+        if not separator or not reference or not digest:
+            print("artifact must be REF=SHA256", file=stderr)
+            return 1
+        artifacts.append({"ref": reference, "hash": digest})
+    try:
+        task = load_task_status(placement.journal_root, args.task)
+        if task.state != "open":
+            raise TaskStatusError(
+                f"task {args.task} has a terminal record (state: {task.state})"
+            )
+        record = create_finding_record(args.task, __version__, args.summary, artifacts)
+        record_path = write_record(placement.journal_root, args.task, record)
+    except (JournalRecordError, OSError, TaskStatusError, ValueError) as error:
+        print(error, file=stderr)
+        return 1
+    print(record_path)
     return 0
 
 
@@ -1042,6 +1221,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_amend(args, sys.stderr)
     if args.command == "record-session":
         return _run_record_session(args, sys.stderr)
+    if args.command == "finding":
+        return _run_finding(args, sys.stderr)
     if args.command == "report":
         return _run_report(args.task, sys.stderr)
     if args.command == "prune":

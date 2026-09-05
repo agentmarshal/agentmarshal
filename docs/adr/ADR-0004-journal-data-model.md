@@ -145,7 +145,9 @@ is a model that avoids cross-branch mutation, not a database.
   schema-2 provenance rules plus creator attribution (`recorded_by` and
   `recorded_by_source`). The bump makes a reader/writer version mismatch
   legible as an unsupported schema instead of misreporting those fields as
-  invalid. Loaders continue to accept schemas 1 and 2 unchanged, so existing
-  journals require no migration.
+  invalid. Schema 4 adds findings and finding-bound review, acceptance and
+  completion records; writers stamp 4 only when those fields are used and keep
+  3 as the floor for all other new records. Loaders continue to accept schemas
+  1 and 2 unchanged, so existing journals require no migration.
 - This repository's own v1-format journal becomes the first test case
   for the migration tooling the model implies.

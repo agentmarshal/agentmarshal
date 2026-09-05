@@ -13,6 +13,7 @@ responsibility in this slice.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 from dataclasses import dataclass
@@ -48,6 +49,196 @@ class GateReport:
     passed: bool
     lines: list[str]
     resolved_commit: str
+    resolved_finding: str | None = None
+
+
+def _actor_git_identities(project_root: Path, record: dict[str, object]) -> set[str]:
+    """Resolve a finding recorder to git identities (ADR-0009 Decision 3)."""
+
+    recorded_by = record.get("recorded_by")
+    source = record.get("recorded_by_source")
+    if not isinstance(recorded_by, str) or not isinstance(source, str):
+        return set()
+    if source == "git-identity":
+        return {recorded_by.strip().casefold()} if recorded_by.strip() else set()
+    if source not in {"project-actor", "override"}:
+        return set()
+    try:
+        project = read_project_file(project_file_path(project_root))
+    except (OSError, ValueError):
+        return set()
+    actors = project.get("actors")
+    if not isinstance(actors, dict):
+        return set()
+    actor = actors.get(recorded_by)
+    if not isinstance(actor, dict):
+        return set()
+    identities = actor.get("git_identities")
+    if not isinstance(identities, list):
+        return set()
+    return {
+        identity.strip().casefold()
+        for identity in identities
+        if isinstance(identity, str) and identity.strip()
+    }
+
+
+def _artifact_path(project_root: Path, reference: str) -> Path | None:
+    """Resolve a local artifact only when it is a file below the project root."""
+
+    candidate = Path(reference)
+    if not candidate.is_absolute():
+        candidate = project_root / candidate
+    try:
+        resolved = candidate.resolve(strict=True)
+        resolved.relative_to(project_root.resolve())
+    except (OSError, ValueError):
+        return None
+    return resolved if resolved.is_file() else None
+
+
+def run_findings_gate(journal_root: Path, task_id: str) -> GateReport:
+    """Evaluate a task's latest finding without offering a merge candidate."""
+
+    try:
+        task = load_task_status(journal_root, task_id)
+    except (OSError, TaskStatusError, ValueError) as error:
+        raise GateError(str(error)) from error
+
+    lines: list[str] = []
+    violations = 0
+
+    def check(passed: bool, message: str) -> None:
+        nonlocal violations
+        lines.append(f"{'PASS' if passed else 'FAIL'}: {message}")
+        if not passed:
+            violations += 1
+
+    check(task.state == "open", f"task {task_id} is not closed")
+    if task.contract.scope:
+        check(
+            False,
+            "findings lane requires an empty scope; declared scope: "
+            + ", ".join(task.contract.scope),
+        )
+    else:
+        lines.append("NOT EXAMINED: scope diff (findings lane has no candidate)")
+
+    findings = [record for record in task.records if record["record_type"] == "finding"]
+    latest_finding = findings[-1] if findings else None
+    if latest_finding is None:
+        check(False, "findings lane requires at least one finding record")
+        finding_id = ""
+    else:
+        finding_id = cast(str, latest_finding["id"])
+
+    reviews = [record for record in task.records if record["record_type"] == "review"]
+    latest_review = reviews[-1] if reviews else None
+    review_matches = (
+        latest_review is not None
+        and latest_review.get("reviewed_finding") == finding_id
+    )
+    if latest_review is None:
+        check(False, f"no review record for latest finding {finding_id or '(none)'}")
+    elif not review_matches:
+        check(
+            False,
+            f"latest review binds to finding "
+            f"{latest_review.get('reviewed_finding', '(commit)')}, not latest finding "
+            f"{finding_id or '(none)'}",
+        )
+    elif latest_review.get("verdict") == "approved":
+        check(True, f"latest review of finding {finding_id} is approved")
+    else:
+        acceptances = [
+            record
+            for record in task.records
+            if record["record_type"] == "acceptance"
+            and record.get("accepted_finding") == finding_id
+        ]
+        acceptance = acceptances[-1] if acceptances else None
+        reviewed = cast(list[str], latest_review["findings"])
+        accepted = (
+            cast(list[str], acceptance["findings"]) if acceptance is not None else []
+        )
+        if acceptance is not None and set(accepted) == set(reviewed):
+            lines.append(
+                f"PASS: accepted over findings {', '.join(accepted)} by "
+                f"{acceptance['accepted_by']}; not an approving review"
+            )
+        else:
+            check(
+                False,
+                f"latest review of finding {finding_id} is "
+                f"{latest_review.get('verdict')}; blocking findings: "
+                + ", ".join(reviewed),
+            )
+
+    if latest_finding is not None and latest_review is not None:
+        reviewer = latest_review.get("reviewer")
+        email = reviewer.get("email") if isinstance(reviewer, dict) else None
+        recorder_identities = _actor_git_identities(
+            journal_root.parents[1], latest_finding
+        )
+        if not recorder_identities:
+            check(False, "finding recorder resolves to no git identities")
+        else:
+            normalized = email.strip().casefold() if isinstance(email, str) else ""
+            check(
+                bool(normalized) and normalized not in recorder_identities,
+                "declared reviewer identity differs from the finding recorder's "
+                "declared git identities",
+            )
+
+    verified = 0
+    if latest_finding is not None:
+        for artifact in cast(list[dict[str, str]], latest_finding["artifacts"]):
+            reference = artifact["ref"]
+            path = _artifact_path(journal_root.parents[1], reference)
+            if path is None:
+                lines.append(
+                    f"NOT VERIFIED: artifact {reference} does not resolve locally"
+                )
+                continue
+            verified += 1
+            try:
+                digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            except OSError as error:
+                check(False, f"artifact {reference} could not be read: {error}")
+                continue
+            check(
+                digest == artifact["hash"],
+                f"artifact {reference} matches its recorded sha256"
+                if digest == artifact["hash"]
+                else f"artifact {reference} does not match its recorded sha256",
+            )
+        check(
+            verified > 0,
+            "at least one finding artifact resolves under the journal project root",
+        )
+
+    lines.append("NOT EXAMINED: pipeline attestation (findings lane has no pipeline)")
+    lines.append("NOT EXAMINED: candidate diff (findings lane has no candidate)")
+    try:
+        tampered = _sidecar_tampered_records(journal_root)
+    except GateError as error:
+        raise GateError(f"cannot examine journal history: {error}") from error
+    check(
+        not tampered,
+        "evidence records are append-only"
+        if not tampered
+        else "append-only violation, records modified, deleted or renamed: "
+        + ", ".join(tampered),
+    )
+    # load_task_status above reads every record from the journal working tree,
+    # validates its shape, and projects the complete lifecycle.
+    check(True, "added records are valid (journal working tree examined)")
+    lines.append(
+        "NOT EXAMINED: record-path collisions (findings lane has no candidate or base)"
+    )
+    check(True, "task lifecycle records are consistent (journal working tree examined)")
+    lines.append("NOT EXAMINED: advisory leak scan (findings lane has no diff)")
+    return GateReport(violations == 0, lines, "", finding_id or None)
 
 
 def _run_git(project_root: Path, arguments: list[str]) -> str:

@@ -1913,7 +1913,8 @@ def test_every_record_factory_writes_the_current_schema() -> None:
             if parameter.default is not inspect.Parameter.empty:
                 continue
             arguments.append(_placeholder_for(name))
-        assert factory(*arguments)["schema"] == 3, factory.__name__
+        expected = 4 if factory.__name__ == "create_finding_record" else 3
+        assert factory(*arguments)["schema"] == expected, factory.__name__
 
 
 def _placeholder_for(name: str) -> object:
@@ -1921,6 +1922,8 @@ def _placeholder_for(name: str) -> object:
         return "a" * 40
     if "findings" in name:
         return ["F-1"]
+    if name == "artifacts":
+        return [{"ref": "result.md", "hash": "a" * 64}]
     if "tokens" in name:
         return 0
     return {

@@ -26,8 +26,9 @@ project's whole governance history is committed files under `.agentmarshal/`.
 
 Two properties make that trustworthy:
 
-- **Records are append-only and SHA-bound.** A review names the exact commit it
-  assessed, and an operator acceptance names the exact commit and blocking
+- **Records are append-only and content-bound.** A review names the exact
+  commit it assessed or the exact finding whose artifacts are sha256-pinned,
+  and an operator acceptance keeps that binding while naming the blocking
   findings accepted over. You cannot retroactively edit either; you can only
   append.
 - **State is a projection, never a stored field.** A task's status (`open`,
@@ -94,16 +95,17 @@ task is already closed.
   **acceptance** criteria) plus a markdown body. Committed before the work.
 - **Scope** — the paths a task is allowed to change. The gate refuses a diff
   that touches anything outside it.
-- **Record** — one append-only JSON evidence file: `opened`, `review`,
-  `acceptance`, `amendment`, `completed`, `reopened`, `abandoned`, or a
-  `session` (measurement). Written once, never edited.
+- **Record** — one append-only JSON evidence file: `opened`, `finding`,
+  `review`, `acceptance`, `amendment`, `completed`, `reopened`, `abandoned`,
+  or a `session` (measurement). Written once, never edited.
 - **Projection / state** — a task's status computed from its records, never
   stored.
 - **Review** — a recorded verdict (`approved`, `changes_required`, …) for an
-  exact commit, carrying the reviewer's identity.
-- **Acceptance** — an operator's recorded decision to ship an exact commit over
-  all blocking findings in its latest non-approving review. It is not an
-  approval and does not bypass reviewer independence or any other gate check.
+  exact commit or finding, carrying the reviewer's identity.
+- **Acceptance** — an operator's recorded decision over all blocking findings
+  in the latest non-approving review of an exact commit or finding. It is not
+  an approval and does not bypass reviewer independence or any other gate
+  check.
 - **Reviewer independence** — the gate requires the recorded reviewer's email to
   differ from the commit's authors/committers, and refuses the merge otherwise.
   It is a comparison of *declared* identities: nothing establishes that the
@@ -117,10 +119,12 @@ task is already closed.
   `--attestation` modes in the [Quickstart](quickstart.md)).
 - **Gate** — `agentmarshal gate`: the provider-agnostic merge authority. Passes
   fail-closed only when every check holds.
-- **Lane** — the gate recognizes two kinds of change: a **journal-only** (a.k.a.
+- **Lane** — the gate recognizes three kinds of work: a **journal-only** (a.k.a.
   deterministic) transaction — one that touches nothing outside `.agentmarshal/`,
   such as an opening, a completion, a contract amendment or a reopening — needs
-  no review; an **implementation** candidate takes the full review-bound lane.
+  no review; an **implementation** candidate takes the full review-bound diff
+  lane; and an empty-scope research task offered with `--findings` takes the
+  no-candidate findings lane, bound to its latest hash-pinned finding.
 - **Merge authority** — the gate *decides*; the provider *merges*. A host
   wrapper (e.g. `am-merge` / a GitHub Action) runs the gate and, on a pass,
   performs the merge.

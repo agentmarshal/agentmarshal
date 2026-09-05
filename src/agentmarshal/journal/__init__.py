@@ -7,6 +7,7 @@ from agentmarshal.journal.contracts import (
 )
 from agentmarshal.journal.records import (
     JournalRecordError,
+    create_finding_record,
     create_opened_record,
     create_review_record,
     create_session_record,
@@ -50,6 +51,7 @@ __all__ = [
     "TaskStatus",
     "TaskStatusError",
     "build_report",
+    "create_finding_record",
     "create_opened_record",
     "create_review_record",
     "create_session_record",
