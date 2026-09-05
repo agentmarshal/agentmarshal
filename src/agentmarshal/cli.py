@@ -107,16 +107,12 @@ def _build_parser() -> argparse.ArgumentParser:
         "submit-review", help="record a task review verdict"
     )
     review_parser.add_argument("--task", required=True, help="task identifier")
-    review_parser.add_argument("--commit", help="reviewed commit SHA")
-    review_parser.add_argument(
-        "--finding",
-        action="append",
-        default=[],
-        help="reviewed finding id, or a legacy blocking id with --commit",
-    )
+    review_binding = review_parser.add_mutually_exclusive_group(required=True)
+    review_binding.add_argument("--commit", help="reviewed commit SHA")
+    review_binding.add_argument("--reviewed-finding", help="reviewed finding record id")
     review_parser.add_argument("--verdict", required=True, help="review verdict")
     review_parser.add_argument(
-        "--blocking-finding",
+        "--finding",
         action="append",
         default=[],
         help="blocking finding id (repeatable)",
@@ -135,18 +131,15 @@ def _build_parser() -> argparse.ArgumentParser:
         "accept", help="record acceptance over a review's blocking findings"
     )
     accept_parser.add_argument("--task", required=True, help="task identifier")
-    accept_parser.add_argument("--commit", help="reviewed commit SHA")
+    accept_binding = accept_parser.add_mutually_exclusive_group(required=True)
+    accept_binding.add_argument("--commit", help="reviewed commit SHA")
+    accept_binding.add_argument("--accepted-finding", help="accepted finding record id")
+    accept_parser.add_argument("--by", required=True, help="accepting party")
+    accept_parser.add_argument("--reason", required=True, help="acceptance reason")
     accept_parser.add_argument(
         "--finding",
         action="append",
         default=[],
-        help="reviewed finding id, or a legacy asserted blocking id with --commit",
-    )
-    accept_parser.add_argument("--by", required=True, help="accepting party")
-    accept_parser.add_argument("--reason", required=True, help="acceptance reason")
-    accept_parser.add_argument(
-        "--blocking-finding",
-        action="append",
         help="assert a blocking finding id (repeatable; normally omitted)",
     )
     launch_parser = subparsers.add_parser(
@@ -155,7 +148,7 @@ def _build_parser() -> argparse.ArgumentParser:
     launch_parser.add_argument("--task", required=True, help="task identifier")
     launch_binding = launch_parser.add_mutually_exclusive_group(required=True)
     launch_binding.add_argument("--commit", help="reviewed commit SHA")
-    launch_binding.add_argument("--finding", help="reviewed finding record id")
+    launch_binding.add_argument("--reviewed-finding", help="reviewed finding record id")
     launch_parser.add_argument("--base", help="comparison base ref")
     launch_parser.add_argument("--role", required=True, help="reviewer role")
     launch_parser.add_argument("--vendor", required=True, help="reviewer vendor")
@@ -521,23 +514,8 @@ def _run_submit_review(args: argparse.Namespace, stderr: TextIO) -> int:
     placement = _placement("submit-review", stderr)
     if placement is None:
         return 1
-    finding_bindings = [value for value in args.finding if len(value) == 26]
-    if args.commit is not None and finding_bindings:
-        print(
-            "review must name exactly one of reviewed_commit or reviewed_finding",
-            file=stderr,
-        )
-        return 1
-    if args.commit is None and len(args.finding) != 1:
-        print(
-            "review must name exactly one of reviewed_commit or reviewed_finding",
-            file=stderr,
-        )
-        return 1
-    reviewed_finding = args.finding[0] if args.commit is None else None
-    blocking_findings = (
-        args.blocking_finding if reviewed_finding is not None else args.finding
-    )
+    # argparse enforces exactly one of --commit / --reviewed-finding; --finding
+    # keeps its one meaning, a blocking finding id, under either binding.
     try:
         submitted = submit_review(
             placement.journal_root,
@@ -548,9 +526,9 @@ def _run_submit_review(args: argparse.Namespace, stderr: TextIO) -> int:
             args.vendor,
             args.model,
             args.email,
-            blocking_findings,
+            args.finding,
             args.advisory_finding,
-            reviewed_finding=reviewed_finding,
+            reviewed_finding=args.reviewed_finding,
         )
     except ReviewSubmitError as error:
         print(error, file=stderr)
@@ -563,23 +541,8 @@ def _run_accept(args: argparse.Namespace, stderr: TextIO) -> int:
     placement = _placement("accept", stderr)
     if placement is None:
         return 1
-    finding_bindings = [value for value in args.finding if len(value) == 26]
-    if args.commit is not None and finding_bindings:
-        print(
-            "acceptance must name exactly one of accepted_commit or accepted_finding",
-            file=stderr,
-        )
-        return 1
-    if args.commit is None and len(args.finding) != 1:
-        print(
-            "acceptance must name exactly one of accepted_commit or accepted_finding",
-            file=stderr,
-        )
-        return 1
-    accepted_finding = args.finding[0] if args.commit is None else None
-    asserted_findings = (
-        args.blocking_finding if accepted_finding is not None else args.finding or None
-    )
+    # argparse enforces exactly one of --commit / --accepted-finding; --finding
+    # keeps its one meaning, an asserted blocking finding id.
     try:
         record_path = accept_findings(
             placement.journal_root,
@@ -587,8 +550,8 @@ def _run_accept(args: argparse.Namespace, stderr: TextIO) -> int:
             args.commit,
             args.by,
             args.reason,
-            asserted_findings,
-            accepted_finding=accepted_finding,
+            args.finding or None,
+            accepted_finding=args.accepted_finding,
         )
     except AcceptanceError as error:
         print(error, file=stderr)
@@ -598,10 +561,10 @@ def _run_accept(args: argparse.Namespace, stderr: TextIO) -> int:
 
 
 def _run_review(args: argparse.Namespace, stderr: TextIO) -> int:
-    if args.finding is not None:
+    if args.reviewed_finding is not None:
         print(
-            "review --finding is not supported in this release; use the human "
-            "path: submit-review --finding",
+            "review --reviewed-finding is not supported in this release; use the "
+            "human path: submit-review --reviewed-finding",
             file=stderr,
         )
         return 1

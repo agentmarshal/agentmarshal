@@ -398,7 +398,7 @@ sha256sum evidence/CR-001-conclusion.md
 agentmarshal finding --task CR-001 --summary "Conclusion; source saved in evidence/" \
   --artifact evidence/CR-001-conclusion.md=<sha256> \
   --artifact evidence/CR-001-source-copy.html=<sha256>
-agentmarshal submit-review --task CR-001 --finding <finding-record-id> \
+agentmarshal submit-review --task CR-001 --reviewed-finding <finding-record-id> \
   --verdict approved --role reviewer --vendor human --model none \
   --email reviewer@example.invalid
 agentmarshal gate --task CR-001 --findings

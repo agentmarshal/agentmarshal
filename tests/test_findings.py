@@ -82,7 +82,7 @@ def _review(finding: str, verdict: str = "approved", *blocking: str) -> None:
         "submit-review",
         "--task",
         "CR-001",
-        "--finding",
+        "--reviewed-finding",
         finding,
         "--verdict",
         verdict,
@@ -96,7 +96,7 @@ def _review(finding: str, verdict: str = "approved", *blocking: str) -> None:
         "reviewer@test.invalid",
     ]
     for item in blocking:
-        arguments.extend(["--blocking-finding", item])
+        arguments.extend(["--finding", item])
     assert main(arguments) == 0
 
 
@@ -195,7 +195,7 @@ def test_acceptance_over_a_finding_names_every_blocking_item(
                 "accept",
                 "--task",
                 "CR-001",
-                "--finding",
+                "--accepted-finding",
                 finding,
                 "--by",
                 "operator@test.invalid",
@@ -360,7 +360,7 @@ def test_findings_lane_refuses_reviewer_who_is_the_recorder(
                 "submit-review",
                 "--task",
                 "CR-001",
-                "--finding",
+                "--reviewed-finding",
                 finding,
                 "--verdict",
                 "approved",
