@@ -386,16 +386,18 @@ projected across them — a projection with two sources would be a guess.
 ## Research findings loop
 
 Open a task with no scope, keep at least one local artifact inside the journal
-repository, and record its sha256. An external URL may be an additional
-reference, but it cannot be the only verifiable artifact: save a local copy and
-pin both the copy and, if useful, the URL.
+repository, and record its sha256. An external source cannot be the only
+artifact, because a reference the gate cannot resolve is recorded, not
+verified: save a local copy inside the journal and pin the copy. If the source
+URL matters, name it in the summary or in the copy itself — do not give the URL
+a hash of some other file, which would read as a pin on content nobody checked.
 
 ```sh
 agentmarshal open --title "Investigate the question"
 sha256sum evidence/CR-001-conclusion.md
-agentmarshal finding --task CR-001 --summary "Conclusion recorded" \
+agentmarshal finding --task CR-001 --summary "Conclusion; source saved in evidence/" \
   --artifact evidence/CR-001-conclusion.md=<sha256> \
-  --artifact https://example.invalid/source=<sha256-of-local-copy>
+  --artifact evidence/CR-001-source-copy.html=<sha256>
 agentmarshal submit-review --task CR-001 --finding <finding-record-id> \
   --verdict approved --role reviewer --vendor human --model none \
   --email reviewer@example.invalid

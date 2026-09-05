@@ -26,9 +26,9 @@ project's whole governance history is committed files under `.agentmarshal/`.
 
 Two properties make that trustworthy:
 
-- **Records are append-only and content-bound.** A review names the exact
-  commit it assessed or the exact finding whose artifacts are sha256-pinned,
-  and an operator acceptance keeps that binding while naming the blocking
+- **Records are append-only and SHA-bound.** A review names the exact commit
+  it assessed — or the exact finding whose artifacts are sha256-pinned — and an
+  operator acceptance keeps that binding while naming the blocking
   findings accepted over. You cannot retroactively edit either; you can only
   append.
 - **State is a projection, never a stored field.** A task's status (`open`,
