@@ -29,6 +29,7 @@ PREDICATE_TYPES: dict[str, str] = {
     "reopened": "https://agentmarshal.dev/attestations/reopening/v1",
     "amendment": "https://agentmarshal.dev/attestations/amendment/v1",
     "session": "https://agentmarshal.dev/attestations/session/v1",
+    "finding": "https://agentmarshal.dev/attestations/finding/v1",
 }
 
 # Provenance of a record's evidence (ADR-0005 Decision 4): "live" is

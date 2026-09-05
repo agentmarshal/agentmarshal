@@ -20,6 +20,7 @@ _RECORD_TYPE_STATES: Mapping[str, str | None] = {
     "acceptance": None,
     "session": None,
     "amendment": None,
+    "finding": None,
     "completed": "done",
     "abandoned": "abandoned",
     "reopened": "open",

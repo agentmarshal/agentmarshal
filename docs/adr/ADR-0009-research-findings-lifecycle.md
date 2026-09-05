@@ -261,8 +261,8 @@ are the finding's artifact digests — in-toto's subject model already takes a
 content digest of anything. The projection as ADR-0005 Decision 5 specifies it
 does change by one row: its matrix maps `subject[].digest` only from
 `reviewed_commit` and `completed_commit`, and a finding-bound record supplies
-its subjects from the finding's `artifacts` instead. That row is wave S's to
-add; this ADR names it so the work is counted.
+its subjects from the finding's `artifacts` instead. That row belongs to the
+in-toto projection and signing work; this ADR names it so the work is counted.
 
 **Other documents this reaches.** ADR-0004 describes schema 3 as "the schema-2
 provenance rules plus creator attribution"; after schema 4 exists that sentence

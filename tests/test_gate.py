@@ -1,6 +1,7 @@
 """Tests for the merge gate."""
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -178,6 +179,81 @@ def test_gate_passes_a_clean_candidate(
     transcript = capsys.readouterr()
     assert transcript.out.endswith("gate: passed\n")
     assert "advisory" not in transcript.out
+
+
+def test_embedded_diff_lane_transcript_matches_published_030_byte_for_byte(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    published = Path("/home/atropichev/.local/bin/agentmarshal")
+    if not published.is_file():
+        pytest.skip(f"published 0.3.0 is absent at {published}")
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    head = _implement(repo, "src/module.py")
+    _approve(repo, head)
+    arguments = [
+        "gate",
+        "--task",
+        "CR-001",
+        "--commit",
+        head,
+        "--base",
+        base,
+        "--pipeline-sha",
+        head,
+    ]
+    capsys.readouterr()
+
+    current_code = main(arguments)
+    current = capsys.readouterr()
+    released = subprocess.run(
+        [str(published), *arguments],
+        cwd=repo,
+        capture_output=True,
+        env=os.environ.copy(),
+    )
+
+    assert current_code == released.returncode == 0
+    assert current.out.encode() == released.stdout
+    assert current.err.encode() == released.stderr
+    assert current.out.endswith("gate: passed\n")
+
+
+def test_empty_scope_candidate_stays_on_030_diff_lane(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    published = Path("/home/atropichev/.local/bin/agentmarshal")
+    if not published.is_file():
+        pytest.skip(f"published 0.3.0 is absent at {published}")
+    repo, base = _gate_repo(tmp_path, monkeypatch, [])
+    head = _implement(repo, "host-change.py")
+    _approve(repo, head)
+    arguments = [
+        "gate",
+        "--task",
+        "CR-001",
+        "--commit",
+        head,
+        "--base",
+        base,
+        "--pipeline-sha",
+        head,
+    ]
+    capsys.readouterr()
+
+    assert main(arguments) == 1
+    current = capsys.readouterr()
+    released = subprocess.run(
+        [str(published), *arguments], cwd=repo, capture_output=True
+    )
+
+    assert released.returncode == 1
+    assert current.out.encode() == released.stdout
+    assert current.err.encode() == released.stderr
+    assert b"paths outside contract scope: host-change.py" in released.stdout
 
 
 def test_gate_refuses_path_outside_scope(
