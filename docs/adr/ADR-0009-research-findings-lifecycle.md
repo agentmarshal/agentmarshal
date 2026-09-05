@@ -95,8 +95,11 @@ The findings lane computes the checks that have something to check and says
 which it did not:
 
 - the task is not closed at base — as today;
-- the **latest review binds to the latest finding**, and is approving or
-  accepted over its findings through `accepted_finding` (Decision 2);
+- the **latest review binds to the latest finding** and is approving — or, when
+  it is not, an `acceptance` record bound to that same latest finding through
+  `accepted_finding` exists and satisfies ADR-0007's rules (Decision 2).
+  Acceptance is a separate record; a review is never "accepted", it is
+  overridden by one;
 - the reviewer is independent of the finding's recorder — **compared on git
   identities.** Both sides can be brought to that representation, and the
   resolution runs from the recorder toward emails rather than from the reviewer
@@ -117,7 +120,10 @@ which it did not:
   lane**, the way a new commit invalidates a verdict; references that do not
   resolve locally are recorded, not verified, and the transcript names each;
 - evidence records are append-only; added records are valid; lifecycle records
-  are consistent — as today.
+  are consistent. Today these read the candidate's diff; with no candidate they
+  read the journal itself — its working tree and its own commit history, the
+  way the sidecar gate already does through `_sidecar_tampered_records` — in
+  both placements.
 
 It does **not** diff anything, check any scope, or ask for a pipeline
 attestation — there is no candidate, no changed path, and no pipeline. Each
@@ -126,10 +132,14 @@ sidecar gate already uses, so a findings-lane pass is not printed with the
 diff lane's wording.
 
 **The findings lane decides evidence, not a merge — and the lane is chosen by
-what is offered, bounded by the contract.** Invoked **without** a candidate,
-the gate enters the findings lane, and only for a task whose scope is empty and
-that carries a finding. Invoked **with** a candidate, the gate runs exactly the
-lanes it runs today, on any task: a candidate whose changed paths all lie under
+what is offered, bounded by the contract.** The gate enters the findings lane
+when told so explicitly — `gate --task X --findings` — and only for a task
+whose scope is empty and that carries a finding. The flag is required rather
+than inferred from a missing `--commit`, because today the absence of
+`--commit` already means something: the candidate defaults to the current HEAD,
+`--task` to the branch name, `--base` to the default branch, and those defaults
+stay exactly as they are. Given a candidate, the gate runs the lanes it runs
+today, on any task: a candidate whose changed paths all lie under
 `.agentmarshal/journal/` takes the journal-only lane; any other candidate takes
 the diff lane, where an empty scope refuses every path. Nothing about a
 candidate's treatment changes for an empty-scope task — it is refused today and
@@ -138,14 +148,15 @@ completion is the commit adding the `finding`, `review` and `completed`
 records, and it is gated as a candidate through the journal-only lane like any
 other journal transaction. A branch carrying host changes under an empty-scope
 task is therefore refused where it is refused today, on the diff lane; the
-findings lane, having no candidate, cannot be the way past it. In a sidecar the
-records commit is not gated by this tool at all; its integrity rests on the
-sidecar's own history, exactly as ADR-0008 Decision 7 already states.
+findings lane, which examines no candidate, cannot be the way past it. In a
+sidecar the records commit is not gated by this tool at all; its integrity
+rests on the sidecar's own history, exactly as ADR-0008 Decision 7 already
+states.
 
 `complete` on a findings-lane task runs this lane and writes `completed` with
 `completed_finding` in place of `completed_commit`.
 
-### 4. Placement does not change the lane — a bounded exception to ADR-0008 D5
+### 4. Placement does not change the lane — an exception to ADR-0008 D5 and D6
 
 The findings lane exists in both placements. ADR-0008 Decision 5 makes a
 sidecar's gate advisory because **the merge belongs to the host's process**,
@@ -155,15 +166,20 @@ decide. So for this lane, and only this lane, a sidecar's pass is the
 sidecar's own decision over its own records — the journal owns its findings and
 their hashes. This is an exception to ADR-0008 Decision 5 **scoped to the
 findings lane**, stated here rather than left to inference; the diff lane in a
-sidecar stays advisory exactly as ADR-0008 decided. The transcript still
-states the placement, and ADR-0008 Decision 7's boundary still holds for
-everything the sidecar says about its host.
+sidecar stays advisory exactly as ADR-0008 decided. The same exception reaches
+ADR-0008 Decision 6, which says a completion recorded in a sidecar states that
+its checks passed advisorily: a findings-lane completion states instead that
+they passed on the sidecar's own evidence, and its transcript says which lane
+produced it. ADR-0008 Decision 7's boundary still holds for everything the
+sidecar says about its host.
 
 ### 5. What this establishes, and what it does not
 
 A finding plus an approving review of it establishes: a declared party
-recorded that these artifacts, at these hashes, are the task's output; a
-declared, independent party recorded a verdict on exactly that content; and,
+recorded that these artifacts, at these hashes, are the task's output; a party
+whose **declared** identity differs from the recorder's recorded a verdict on
+exactly that content — a difference of declarations, which is all the
+independence check ever establishes (ADR-0006); and,
 **for each artifact the gate could resolve and re-hash**, the content has not
 changed since. For an artifact it could not resolve it establishes only that a
 hash was recorded — the transcript names which artifacts fall on which side,
@@ -202,13 +218,16 @@ finding as it does by commit. The predicate URI is
 `https://agentmarshal.dev/attestations/finding/v1`. A review of a finding
 projects (when the projection exists, ADR-0005) to a Statement whose subjects
 are the finding's artifact digests — in-toto's subject model already takes a
-content digest of anything, so the projection as ADR-0005 specifies it needs
-no change for this.
+content digest of anything. The projection as ADR-0005 Decision 5 specifies it
+does change by one row: its matrix maps `subject[].digest` only from
+`reviewed_commit` and `completed_commit`, and a finding-bound record supplies
+its subjects from the finding's `artifacts` instead. That row is wave S's to
+add; this ADR names it so the work is counted.
 
-**ADR-0008 gains a pointer.** Decision 4 carves a bounded exception into
-ADR-0008 Decision 5. That document must not keep reading as an unqualified
-rule, so the implementation task adds a one-line reference from ADR-0008 D5 to
-this ADR; the decision itself is made here.
+**ADR-0008 gains pointers.** Decision 4 carves a bounded exception into
+ADR-0008 Decisions 5 and 6. That document must not keep reading as an
+unqualified rule, so the implementation task adds a one-line reference from
+each of D5 and D6 to this ADR; the decision itself is made here.
 
 **`brief` follows the lane.** For a task with an empty scope the briefing
 stops saying "you are implementing" and "no change can land", and says that
@@ -237,10 +256,12 @@ on `review`. Rejected: one more type to register in five places, one more
 predicate URI, and a reviewer vocabulary split in two for what is the same
 act. Exactly-one-of two fields is a validation rule, not a new concept.
 
-**Infer the lane from the command** (`complete --findings`) rather than from
-the contract. Rejected: it would let a task that declared a scope — and so
-promised a diff — land without one. The contract chooses the lane; the
-command only supplies the evidence.
+**Let the command choose the lane on its own** (`complete --findings` admitting
+any task). Rejected: it would let a task that declared a scope — and so
+promised a diff — land without one. The flag survives in a narrower role: it
+names which evidence is being offered, because the absence of `--commit`
+already means "the current HEAD" and cannot double as "no candidate". Whether
+that evidence is admitted is still the contract's decision, never the flag's.
 
 **Leave research tasks unclosable.** The status quo. Rejected by the
 evidence: two tasks in our own sidecar are open with their work done, and the
