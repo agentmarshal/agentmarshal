@@ -98,7 +98,9 @@ cannot land yet.
 The findings lane computes the checks that have something to check and says
 which it did not:
 
-- the task is not closed at base — as today;
+- the task is not closed — read from its projected state in the journal, as the
+  sidecar gate already reads it (`task.state`), since there is no base tree to
+  read it from;
 - the **latest review binds to the latest finding** and is approving — or, when
   it is not, an `acceptance` record bound to that same latest finding through
   `accepted_finding` exists and satisfies ADR-0007's rules (Decision 2).
@@ -116,10 +118,12 @@ which it did not:
   `git_identities` of the actor of that id in the table, when one exists; the
   override string itself is a label, not an identity, and is never compared). A
   recorder that resolves to no git identity — an override with no table entry,
-  or a finding with no `recorded_by` — leaves independence **unestablished, and
-  the lane refuses**, naming that as the reason. Failing closed here is the
-  same choice the diff lane makes when git cannot answer a question about the
-  candidate — the run ends in a refusal, not a pass;
+  or a finding that somehow carries no `recorded_by` (this tool refuses to
+  write one, per Decision 1; the gate still checks, for records another tool
+  wrote) — leaves independence **unestablished, and the lane refuses**, naming
+  that as the reason. Failing closed here is the same choice the diff lane
+  makes when git cannot answer a question about the candidate — the run ends in
+  a refusal, not a pass;
 - every artifact whose reference resolves to a path under the journal's project
   root still hashes to what the finding recorded — **artifact drift refuses the
   lane**, the way a new commit invalidates a verdict; references that do not
@@ -163,6 +167,17 @@ findings lane, which examines no candidate, cannot be the way past it. In a
 sidecar the records commit is not gated by this tool at all; its integrity
 rests on the sidecar's own history, exactly as ADR-0008 Decision 7 already
 states.
+
+**The journal-only lane trusts the writer of a completion record, in both lanes
+alike.** Merging a commit that adds `completed_finding` re-runs neither the
+findings lane nor its review check — exactly as merging a commit that adds
+`completed_commit` today re-runs neither the diff lane nor its review check.
+The journal-only lane verifies shape, append-only integrity and lifecycle
+consistency; it does not verify that a gate pass preceded a completion
+record, for either binding. This ADR holds that boundary at parity and adds no
+guard for one record type that the other lacks. Whether completion records
+should be re-verified at merge is a question for both lanes together, and it is
+not decided here.
 
 `complete --task X --findings` runs this lane and, on a pass, writes
 `completed` with `completed_finding` in place of `completed_commit`. Like the
@@ -209,20 +224,23 @@ documentation will state them next to this lane as it does next to the others.
 **Schema 4, appearing only when used — which requires a rule about stamping.**
 One new record type and three new binding fields — `reviewed_finding`,
 `accepted_finding`, `completed_finding`, each exactly-one-of with its commit
-counterpart — are the format extensions. The release
-rule that has held since 0.3.0 says neither appears in a journal until a task
-uses the lane, and that promise holds only if **each record is stamped with the
-lowest schema its content needs**: a record carrying neither the new type nor
-any of the new fields is written at schema 3; a `finding`, or a review,
-acceptance or completion bound to one, at schema 4. Then a journal that never
-uses the lane is byte-identical in what 0.4.0 writes to what 0.3.0 wrote, and
-stays readable by 0.3.0. The precedent
-runs the other way — CR-069 stamped every record 3, and that is the source of
-the one-directional 0.1.0→0.2.0 break UPGRADING documents. This ADR decides
-against repeating it. A journal that does use the lane is refused by 0.3.0
-with `record has an unknown or missing schema version` — fail-closed, which is
-the right failure and the opposite of what 0.2.0 did with a sidecar
-configuration.
+counterpart — are the format extensions. The release rule that has held since
+0.3.0 says neither appears in a journal until a task uses the lane, and that
+promise holds only if **each record is stamped with the schema its content
+requires, with 3 as the floor**: a record carrying neither the new type nor any
+of the new fields is written at schema 3 exactly as today; a `finding`, or a
+review, acceptance or completion bound to one, at schema 4. No record is ever
+stamped below 3 — CR-069's floor stands. Then a journal that never uses the
+lane is byte-identical in what 0.4.0 writes to what 0.3.0 wrote, and stays
+readable by 0.3.0. The precedent runs the other way, and for a reason that does
+not apply here: the 0.1.0→0.2.0 break came from the schema-2 provenance fields
+themselves — 0.1.0 refused `recorded_by` as an unsupported field — and CR-069
+stamped every record 3 so that refusal read as a schema mismatch instead. Every
+record carried the new fields then; most records will not carry the new fields
+now, so the floor stays where it is. A journal that does use the lane is
+refused by 0.3.0 with `record has an unknown or missing schema version` —
+fail-closed, which is the right failure and the opposite of what 0.2.0 did with
+a sidecar configuration.
 
 **Five registration points, and three field validators.** A record type is
 known in five places — `_RECORD_FIELDS`, `_validate_record`, `PREDICATE_TYPES`,
@@ -239,6 +257,12 @@ does change by one row: its matrix maps `subject[].digest` only from
 its subjects from the finding's `artifacts` instead. That row is wave S's to
 add; this ADR names it so the work is counted.
 
+**Other documents this reaches.** ADR-0004 describes schema 3 as "the schema-2
+provenance rules plus creator attribution"; after schema 4 exists that sentence
+must not read as a complete history, so the implementation task extends it.
+UPGRADING gains a 0.3.0 → 0.4.0 section at release, stating the floor-3 rule
+and what a 0.3.0 reader does with a schema-4 record.
+
 **ADR-0008 gains pointers.** Decision 4 carves a bounded exception into
 ADR-0008 Decisions 5 and 6. That document must not keep reading as an
 unqualified rule, so the implementation task adds a one-line reference from
@@ -249,9 +273,15 @@ stops saying "you are implementing" and "no change can land", and says that
 the task lands through findings. The three vocabulary frictions the sidecar
 dogfood recorded are one friction, and this is its fix.
 
-**The first users are our own two open research tasks.** They become the
-first `finding` records and the first findings-lane completions — a test on
-live data, not a fixture.
+**The first users are our own two open research tasks — once a prerequisite is
+met.** They become the first `finding` records and the first findings-lane
+completions, a test on live data rather than a fixture. But every record in
+that sidecar carries `recorded_by` as an `AGENTMARSHAL_ACTOR` override, and
+neither of this project's `project.json` files declared an `actors` table when
+this was written; by Decision 3 the lane refuses an unmapped override. The
+operator's first step is therefore to map the recording agent to a git identity
+in the sidecar's `actors` table. Without it the lane is correct and unusable,
+which is the intended order.
 
 **Cost attribution is separate and already handled** by declared-window
 attribution in the operator's driver; nothing here touches it.
@@ -274,8 +304,10 @@ act. Exactly-one-of two fields is a validation rule, not a new concept.
 **Let the command choose the lane on its own** (`complete --findings` admitting
 any task). Rejected: it would let a task that declared a scope — and so
 promised a diff — land without one. The flag survives in a narrower role: it
-names which evidence is being offered, because the absence of `--commit`
-already means "the current HEAD" and cannot double as "no candidate". Whether
+names which evidence is being offered, because for `gate` the absence of
+`--commit` already means "the current HEAD" and cannot double as "no
+candidate" (`complete` requires `--commit` today and simply gains the
+alternative). Whether
 that evidence is admitted is still the contract's decision, never the flag's.
 
 **Leave research tasks unclosable.** The status quo. Rejected by the
