@@ -1,0 +1,19 @@
+{
+  "created_at": "2026-09-05T14:47:42.762114Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "379f52a292f7be71e859d512e857b92b50309b5c",
+  "reviewer": {
+    "email": "auto-review@agent.example.invalid",
+    "model": "codex-auto-review",
+    "role": "code-reviewer",
+    "vendor": "openai"
+  },
+  "schema": 3,
+  "source": "live",
+  "task": "CR-085",
+  "tool_version": "0.3.0",
+  "verdict": "approved"
+}

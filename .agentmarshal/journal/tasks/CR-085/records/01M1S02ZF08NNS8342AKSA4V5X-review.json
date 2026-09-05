@@ -1,0 +1,22 @@
+{
+  "advisory_findings": [
+    "wave-s-undefined-roadmap-label"
+  ],
+  "created_at": "2026-09-05T14:38:15.520666Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "379f52a292f7be71e859d512e857b92b50309b5c",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 3,
+  "source": "live",
+  "task": "CR-085",
+  "tool_version": "0.3.0",
+  "verdict": "approved"
+}
