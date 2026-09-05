@@ -2,6 +2,9 @@
 
 - **Reporter:** Adopter A (Python web service on Linux) · **Observed on:** 0.1.0 · **Disposition:** accepted *(2026-09-01; deferred at intake)*
 
+**Implemented 2026-09-06:** [ADR-0009](../adr/ADR-0009-research-findings-lifecycle.md)
+defines the findings lifecycle, implemented by CR-086.
+
 ## Finding
 
 Some tasks produce knowledge rather than a diff: an audit, an investigation, a

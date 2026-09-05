@@ -40,16 +40,21 @@ def build_brief(journal_root: Path, task_id: str) -> str:
         )
     else:
         scope_section = (
-            "Declared scope: empty. This task declares no paths, so no file may\n"
-            "change at all — the gate refuses every path. Do not treat this as an\n"
-            "absence of limits; the contract needs a scope before work can land.\n"
+            "Declared scope: empty. This task lands through findings, not a diff.\n"
+            "Because its scope is empty, no file may land through the diff lane.\n"
+            "A finding must carry a non-empty summary and at least one artifact\n"
+            "pinned by reference and sha256 hash.\n"
         )
     acceptance = (
         "".join(f"- {criterion}\n" for criterion in task.contract.acceptance)
         or "- (none)\n"
     )
-    return (
+    opening = (
         "You are implementing one governed AgentMarshal task.\n\n"
+        if task.contract.scope
+        else "You are working on one governed AgentMarshal research task.\n\n"
+    )
+    return opening + (
         f"Task id: {task.task_id}\n\n"
         f"{scope_section}\n"
         "Acceptance criteria (the definition of done):\n"
