@@ -32,7 +32,7 @@ scope = [
 ]
 acceptance = [
   "a `finding` record type exists with a non-empty `artifacts` list and a `summary`, registered in the five places a record type is known, and projects to no state",
-  "a review record names exactly one of `reviewed_commit` or `reviewed_finding`, an acceptance exactly one of `accepted_commit` or `accepted_finding`, a completion exactly one of `completed_commit` or `completed_finding`; a record naming both, or neither, is refused with a message that says so",
+  "a review record names exactly one of `reviewed_commit` or `reviewed_finding`, an acceptance exactly one of `accepted_commit` or `accepted_finding`, a completion exactly one of `completed_commit` or `completed_finding`; a record naming both, or neither, is refused with a message that says so; on the command line the binding is `--reviewed-finding` (`submit-review`, `review`) and `--accepted-finding` (`accept`), and `--finding` keeps its pre-existing meaning of a blocking finding id",
   "a task with an empty scope and at least one finding record can be gated and completed without a commit, through a lane whose transcript prints every line the diff lane prints today — scope, pipeline attestation, record-path collisions, the advisory leak scan — as not examined with its reason, so no diff-lane PASS wording appears over a check that did not run",
   "in that lane the latest review must bind to the latest finding; an approving review of an earlier finding is refused with a message naming both",
   "an artifact whose ref resolves under the journal project root and no longer hashes to its recorded value refuses the lane, naming the artifact; a ref that does not resolve is reported as not verified; a finding none of whose refs resolve is refused, because a pass over nothing verifiable is a pass over nothing examined — all three demonstrated in tests",
@@ -98,10 +98,12 @@ diff lane changes.
   `reviewed_finding` (a record id present in the same task); an acceptance
   exactly one of `accepted_commit` or `accepted_finding`; a completion exactly
   one of `completed_commit` or `completed_finding`. Both or neither → refused,
-  and the message says "exactly one". `submit-review` and `accept` take
-  `--commit` or `--finding ID` as a mutually exclusive pair, one required —
-  today `--commit` alone is `required=True`, and that changes only by adding
-  the alternative. `review` (the model-reviewer path) may reject `--finding`
+  and the message says "exactly one". `submit-review` takes `--commit` or
+  `--reviewed-finding ID`, `accept` takes `--commit` or `--accepted-finding ID`,
+  each a mutually exclusive pair with one required — today `--commit` alone is
+  `required=True`, and that changes only by adding the alternative. `--finding`
+  already means "blocking finding id (repeatable)" on both commands and keeps
+  that single meaning under either binding. `review` (the model-reviewer path) may reject `--finding`
   for this release with a clear message; if it does, the message says the human
   path is `submit-review`.
 - **The lane.** `gate --task X --findings` enters the findings lane when the
@@ -211,3 +213,14 @@ the sidecar dogfood tasks are still open when this merges.
 - A `research` value for session `activity`; sessions record cost, not lane.
 - `doctor` awareness of placement or of findings.
 - Migrating or reinterpreting any existing record.
+
+## Amendment 1 (2026-09-06)
+
+The contract said `submit-review` "accepts `--finding ID` as the alternative
+to `--commit`", and `accept` "likewise". That name was already taken: on both
+commands `--finding` meant a blocking finding id, repeatable, since 0.1.0. The
+implementer resolved the collision by overloading the flag and telling the two
+meanings apart by value length — a faithful reading of a contract that had not
+checked its own CLI. The binding gets its own flags, named after the fields
+they set: `--reviewed-finding` and `--accepted-finding`. `--finding` keeps its
+one meaning. Nothing an adopter runs today changes.
