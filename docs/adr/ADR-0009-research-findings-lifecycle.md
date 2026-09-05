@@ -126,8 +126,11 @@ which it did not:
   a refusal, not a pass;
 - every artifact whose reference resolves to a path under the journal's project
   root still hashes to what the finding recorded — **artifact drift refuses the
-  lane**, the way a new commit invalidates a verdict; references that do not
-  resolve locally are recorded, not verified, and the transcript names each;
+  lane**, the way a new commit invalidates a verdict. References that do not
+  resolve locally are recorded, not verified, and the transcript names each.
+  **A finding none of whose references resolve is refused**: `ref` is the
+  author's to choose, and a lane that passed over nothing verifiable would be a
+  pass over nothing examined;
 - evidence records are append-only; added records are valid; lifecycle records
   are consistent. Today these read the candidate's diff; with no candidate they
   read the journal itself — its working tree and its own commit history, the
@@ -190,16 +193,19 @@ The findings lane exists in both placements. ADR-0008 Decision 5 makes a
 sidecar's gate advisory because **the merge belongs to the host's process**,
 which the sidecar's operator does not control. The findings lane has no merge
 and changes nothing in the host: there is nothing for the host's process to
-decide. So for this lane, and only this lane, a sidecar's pass is the
-sidecar's own decision over its own records — the journal owns its findings and
-their hashes. This is an exception to ADR-0008 Decision 5 **scoped to the
-findings lane**, stated here rather than left to inference; the diff lane in a
-sidecar stays advisory exactly as ADR-0008 decided. The same exception reaches
-ADR-0008 Decision 6, which says a completion recorded in a sidecar states that
-its checks passed advisorily: a findings-lane completion states instead that
-they passed on the sidecar's own evidence, and its transcript says which lane
-produced it. ADR-0008 Decision 7's boundary still holds for everything the
-sidecar says about its host.
+decide. So for this lane, and only this lane, a sidecar's pass is the sidecar's
+own decision over its own records — the journal owns its findings and their
+hashes. This is an exception to ADR-0008 Decision 5 **scoped to the findings
+lane**, stated here rather than left to inference; the diff lane in a sidecar
+stays advisory exactly as ADR-0008 decided. The same exception reaches ADR-0008
+Decision 6, which says a completion recorded in a sidecar states that its
+checks passed advisorily: a findings-lane completion states instead that they
+passed on the sidecar's own evidence, and its transcript says which lane
+produced it. ADR-0008 Decision 7's boundary still holds in both of its halves:
+nothing about the host is attested beyond what its SHAs pin, and the
+append-only property of the sidecar's own records is protected only by the
+sidecar's own governance — this lane decides over those records, it does not
+make them tamper-proof.
 
 ### 5. What this establishes, and what it does not
 
@@ -231,16 +237,17 @@ requires, with 3 as the floor**: a record carrying neither the new type nor any
 of the new fields is written at schema 3 exactly as today; a `finding`, or a
 review, acceptance or completion bound to one, at schema 4. No record is ever
 stamped below 3 — CR-069's floor stands. Then a journal that never uses the
-lane is byte-identical in what 0.4.0 writes to what 0.3.0 wrote, and stays
-readable by 0.3.0. The precedent runs the other way, and for a reason that does
-not apply here: the 0.1.0→0.2.0 break came from the schema-2 provenance fields
-themselves — 0.1.0 refused `recorded_by` as an unsupported field — and CR-069
-stamped every record 3 so that refusal read as a schema mismatch instead. Every
-record carried the new fields then; most records will not carry the new fields
-now, so the floor stays where it is. A journal that does use the lane is
-refused by 0.3.0 with `record has an unknown or missing schema version` —
-fail-closed, which is the right failure and the opposite of what 0.2.0 did with
-a sidecar configuration.
+lane is written with the same field set and the same schema stamp as 0.3.0
+wrote it — `tool_version` is the one field whose value changes by release — and
+stays readable by 0.3.0. The precedent runs the other way, and for a reason
+that does not apply here: the 0.1.0→0.2.0 break came from the schema-2
+provenance fields themselves — 0.1.0 refused `recorded_by` as an unsupported
+field — and CR-069 stamped every record 3 so that refusal read as a schema
+mismatch instead. Every record carried the new fields then; most records will
+not carry the new fields now, so the floor stays where it is. A journal that
+does use the lane is refused by 0.3.0 with `record has an unknown or missing
+schema version` — fail-closed, which is the right failure and the opposite of
+what 0.2.0 did with a sidecar configuration.
 
 **Five registration points, and three field validators.** A record type is
 known in five places — `_RECORD_FIELDS`, `_validate_record`, `PREDICATE_TYPES`,
