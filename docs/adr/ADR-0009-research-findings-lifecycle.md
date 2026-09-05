@@ -1,6 +1,6 @@
 # ADR-0009: A research task lands through findings, not diffs
 
-Status: Proposed
+Status: Accepted
 Date: 2026-09-05
 
 This ADR records a decision. The record type, the review binding and the
@@ -125,21 +125,22 @@ of those lines prints as *not examined, with the reason*, in the manner the
 sidecar gate already uses, so a findings-lane pass is not printed with the
 diff lane's wording.
 
-**The findings lane decides evidence, not a merge.** It is invoked without a
-candidate commit, and **refuses one if offered**: a `--commit` on a task with
-an empty scope is an error naming the lane, not a diff to examine. What merges
-into a repository after a findings-lane completion is the commit that adds the
-`finding`, `review` and `completed` records. In the embedded placement that
-commit goes through the existing **journal-only lane**, which admits a
-transaction whose changed paths all lie under `.agentmarshal/journal/`; a
-change outside that prefix takes the diff lane instead, where an empty scope
-refuses every path. A branch that carries host changes under an empty-scope
-task is therefore refused on both lanes: the findings lane will not look at it,
-and the diff lane will not pass it. That closes the bypass an empty scope would
-otherwise open, and it needs no new check — only the rule that the findings
-lane takes no candidate. In a sidecar the records commit is not gated by this
-tool at all; its integrity rests on the sidecar's own history, exactly as
-ADR-0008 Decision 7 already states.
+**The findings lane decides evidence, not a merge — and the lane is chosen by
+what is offered, bounded by the contract.** Invoked **without** a candidate,
+the gate enters the findings lane, and only for a task whose scope is empty and
+that carries a finding. Invoked **with** a candidate, the gate runs exactly the
+lanes it runs today, on any task: a candidate whose changed paths all lie under
+`.agentmarshal/journal/` takes the journal-only lane; any other candidate takes
+the diff lane, where an empty scope refuses every path. Nothing about a
+candidate's treatment changes for an empty-scope task — it is refused today and
+stays refused — and nothing new is checked. What merges after a findings-lane
+completion is the commit adding the `finding`, `review` and `completed`
+records, and it is gated as a candidate through the journal-only lane like any
+other journal transaction. A branch carrying host changes under an empty-scope
+task is therefore refused where it is refused today, on the diff lane; the
+findings lane, having no candidate, cannot be the way past it. In a sidecar the
+records commit is not gated by this tool at all; its integrity rests on the
+sidecar's own history, exactly as ADR-0008 Decision 7 already states.
 
 `complete` on a findings-lane task runs this lane and writes `completed` with
 `completed_finding` in place of `completed_commit`.
@@ -203,6 +204,11 @@ projects (when the projection exists, ADR-0005) to a Statement whose subjects
 are the finding's artifact digests — in-toto's subject model already takes a
 content digest of anything, so the projection as ADR-0005 specifies it needs
 no change for this.
+
+**ADR-0008 gains a pointer.** Decision 4 carves a bounded exception into
+ADR-0008 Decision 5. That document must not keep reading as an unqualified
+rule, so the implementation task adds a one-line reference from ADR-0008 D5 to
+this ADR; the decision itself is made here.
 
 **`brief` follows the lane.** For a task with an empty scope the briefing
 stops saying "you are implementing" and "no change can land", and says that
