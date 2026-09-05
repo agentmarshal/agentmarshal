@@ -567,3 +567,94 @@ def test_sidecar_append_only_sees_a_record_substituted_in_a_merge(
     assert main(["gate", "--task", "CR-001", "--commit", head, "--base", base]) == 1
 
     assert "append-only violation" in capsys.readouterr().out
+
+
+def test_findings_lane_decides_in_a_sidecar_and_leaves_the_host_untouched(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """ADR-0009 Decision 4: the findings lane exists in a sidecar and decides.
+
+    A research task in a sidecar has no host candidate. Its findings-lane pass
+    is the sidecar's own decision over its own records — not the advisory
+    notice the diff lane prints there — and nothing about it reaches the host,
+    Git metadata included. The `actors` table maps the recording agent to a git
+    identity, which Decision 3 requires before independence can be compared.
+    """
+
+    import hashlib
+
+    host, sidecar, _base, _head = _host_and_sidecar(tmp_path, monkeypatch)
+    project_path = sidecar / ".agentmarshal" / "project.json"
+    project = json.loads(project_path.read_text(encoding="utf-8"))
+    project["actors"] = {"researcher": {"git_identities": ["recorder@test.invalid"]}}
+    project_path.write_text(json.dumps(project), encoding="utf-8")
+    monkeypatch.setenv("AGENTMARSHAL_ACTOR", "researcher")
+    host_before = _tree_snapshot(host)
+
+    assert main(["open", "--title", "Research in a sidecar"]) == 0
+    artifact = sidecar / "notes" / "conclusion.md"
+    artifact.parent.mkdir()
+    artifact.write_text("conclusion\n", encoding="utf-8")
+    digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
+    assert (
+        main(
+            [
+                "finding",
+                "--task",
+                "CR-001",
+                "--summary",
+                "A sidecar conclusion",
+                "--artifact",
+                f"notes/conclusion.md={digest}",
+            ]
+        )
+        == 0
+    )
+    records_dir = sidecar / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "records"
+    finding_id = next(records_dir.glob("*-finding.json")).name.split("-", 1)[0]
+    assert (
+        main(
+            [
+                "submit-review",
+                "--task",
+                "CR-001",
+                "--reviewed-finding",
+                finding_id,
+                "--verdict",
+                "approved",
+                "--role",
+                "reviewer",
+                "--vendor",
+                "human",
+                "--model",
+                "none",
+                "--email",
+                "reviewer@test.invalid",
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+
+    assert main(["gate", "--task", "CR-001", "--findings"]) == 0
+    transcript = capsys.readouterr()
+    assert transcript.out.startswith("Placement: sidecar\n")
+    assert transcript.out.endswith("gate: findings passed\n")
+    assert "Sidecar checks are advisory" not in transcript.out
+    assert "gate: passed" not in transcript.out
+
+    assert main(["complete", "--task", "CR-001", "--findings"]) == 0
+    completed = json.loads(next(records_dir.glob("*-completed.json")).read_text())
+    assert completed["completed_finding"] == finding_id
+    assert completed["schema"] == 4
+    completion = capsys.readouterr()
+    assert completion.out.startswith("Placement: sidecar\n")
+    assert "Sidecar checks are advisory" not in completion.out
+
+    assert main(["report", "--task", "CR-001"]) == 0
+    report = capsys.readouterr()
+    assert report.err.strip() == "Placement: sidecar"
+
+    assert _tree_snapshot(host) == host_before

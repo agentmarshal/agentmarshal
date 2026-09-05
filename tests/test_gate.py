@@ -2,7 +2,9 @@
 
 import json
 import os
+import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -18,6 +20,39 @@ from agentmarshal.journal.records import (
 
 _WRITER = ["-c", "user.name=Worker", "-c", "user.email=worker@test.invalid"]
 _REVIEWER_EMAIL = "reviewer@test.invalid"
+
+
+def _released_030() -> Path | None:
+    """Locate the released 0.3.0 without naming anyone's home directory.
+
+    Looked up in order: ``AGENTMARSHAL_RELEASED_030``, ``agentmarshal`` on
+    PATH, the default user-tool location. A candidate counts only if it reports
+    0.3.0 and lives outside this interpreter's environment — the build under
+    test carries the same version string until the release bumps it.
+    """
+
+    own_environment = Path(sys.prefix).resolve()
+    candidates = [
+        os.environ.get("AGENTMARSHAL_RELEASED_030"),
+        shutil.which("agentmarshal"),
+        str(Path.home() / ".local" / "bin" / "agentmarshal"),
+    ]
+    for candidate in candidates:
+        if not candidate or not Path(candidate).is_file():
+            continue
+        if Path(candidate).resolve().is_relative_to(own_environment):
+            continue
+        probe = subprocess.run(
+            [candidate, "--version"], capture_output=True, text=True, check=False
+        )
+        if probe.returncode == 0 and probe.stdout.strip() == "0.3.0":
+            return Path(candidate)
+    return None
+
+
+_SKIP_030 = (
+    "released 0.3.0 not found: set AGENTMARSHAL_RELEASED_030 or install it on PATH"
+)
 
 
 def _git(repo: Path, *arguments: str) -> str:
@@ -186,9 +221,9 @@ def test_embedded_diff_lane_transcript_matches_published_030_byte_for_byte(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    published = Path("/home/atropichev/.local/bin/agentmarshal")
-    if not published.is_file():
-        pytest.skip(f"published 0.3.0 is absent at {published}")
+    published = _released_030()
+    if published is None:
+        pytest.skip(_SKIP_030)
     repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
     head = _implement(repo, "src/module.py")
     _approve(repo, head)
@@ -225,9 +260,9 @@ def test_empty_scope_candidate_stays_on_030_diff_lane(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    published = Path("/home/atropichev/.local/bin/agentmarshal")
-    if not published.is_file():
-        pytest.skip(f"published 0.3.0 is absent at {published}")
+    published = _released_030()
+    if published is None:
+        pytest.skip(_SKIP_030)
     repo, base = _gate_repo(tmp_path, monkeypatch, [])
     head = _implement(repo, "host-change.py")
     _approve(repo, head)

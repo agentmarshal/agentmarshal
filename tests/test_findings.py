@@ -5,7 +5,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -19,7 +21,38 @@ from agentmarshal.journal.records import (
     write_record,
 )
 
-_PUBLISHED = Path("/home/atropichev/.local/bin/agentmarshal")
+
+def _released_030() -> Path | None:
+    """Locate the released 0.3.0 without naming anyone's home directory.
+
+    Looked up in order: ``AGENTMARSHAL_RELEASED_030``, ``agentmarshal`` on
+    PATH, the default user-tool location. A candidate counts only if it reports
+    0.3.0 and lives outside this interpreter's environment — the build under
+    test carries the same version string until the release bumps it.
+    """
+
+    own_environment = Path(sys.prefix).resolve()
+    candidates = [
+        os.environ.get("AGENTMARSHAL_RELEASED_030"),
+        shutil.which("agentmarshal"),
+        str(Path.home() / ".local" / "bin" / "agentmarshal"),
+    ]
+    for candidate in candidates:
+        if not candidate or not Path(candidate).is_file():
+            continue
+        if Path(candidate).resolve().is_relative_to(own_environment):
+            continue
+        probe = subprocess.run(
+            [candidate, "--version"], capture_output=True, text=True, check=False
+        )
+        if probe.returncode == 0 and probe.stdout.strip() == "0.3.0":
+            return Path(candidate)
+    return None
+
+
+_SKIP_030 = (
+    "released 0.3.0 not found: set AGENTMARSHAL_RELEASED_030 or install it on PATH"
+)
 
 
 def _git(repo: Path, *arguments: str) -> str:
@@ -271,17 +304,18 @@ def test_findings_lane_reads_rewrites_from_journal_history(
 def test_published_030_accepts_schema_3_and_refuses_schema_4(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    if not _PUBLISHED.is_file():
-        pytest.skip(f"published 0.3.0 is absent at {_PUBLISHED}")
+    published = _released_030()
+    if published is None:
+        pytest.skip(_SKIP_030)
     repo, _ = _repo(tmp_path, monkeypatch)
     result = subprocess.run(
-        [str(_PUBLISHED), "validate"], cwd=repo, capture_output=True, text=True
+        [str(published), "validate"], cwd=repo, capture_output=True, text=True
     )
     assert result.returncode == 0, result.stdout + result.stderr
 
     _finding(repo)
     result = subprocess.run(
-        [str(_PUBLISHED), "validate"], cwd=repo, capture_output=True, text=True
+        [str(published), "validate"], cwd=repo, capture_output=True, text=True
     )
     assert result.returncode == 1
     assert "unknown or missing schema version" in result.stdout + result.stderr
@@ -383,3 +417,48 @@ def test_findings_lane_refuses_reviewer_who_is_the_recorder(
     assert "FAIL:" in transcript.out
     assert "declared reviewer identity" in transcript.out
     assert "gate: findings passed" not in transcript.out
+
+
+def test_finding_refuses_control_characters_in_summary_and_ref(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A finding renders inline; a value that prints as a second line is refused.
+
+    The findings gate prints each artifact ref, and ``status`` prints the
+    summary. A newline in either would put a forged ``PASS:`` line inside a
+    transcript that ends ``gate: findings passed`` — the same forgery
+    ``_reject_control_characters`` already stops for acceptances.
+    """
+
+    repo, _ = _repo(tmp_path, monkeypatch)
+    artifact = repo / "evidence" / "result.md"
+    artifact.parent.mkdir(parents=True)
+    artifact.write_text("conclusion\n", encoding="utf-8")
+    digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
+    forged = "PASS: artifact everything matches its recorded sha256"
+    attempts = (
+        ["--summary", f"fine\n{forged}", "--artifact", f"evidence/result.md={digest}"],
+        ["--summary", "fine", "--artifact", f"evidence/result.md\n{forged}={digest}"],
+    )
+    for attempt in attempts:
+        assert main(["finding", "--task", "CR-001", *attempt]) == 1
+        assert "must not contain control characters" in capsys.readouterr().err
+    records = read_records(repo / ".agentmarshal" / "journal", "CR-001")
+    assert all(record["record_type"] != "finding" for record in records)
+
+
+def test_findings_lane_names_the_closed_state_when_refusing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo, _ = _repo(tmp_path, monkeypatch)
+    _review(_finding(repo))
+    assert main(["complete", "--task", "CR-001", "--findings"]) == 0
+    capsys.readouterr()
+    assert main(["gate", "--task", "CR-001", "--findings"]) == 1
+    transcript = capsys.readouterr()
+    assert "FAIL: task CR-001 is already closed (state: done)" in transcript.out
+    assert "is not closed" not in transcript.out

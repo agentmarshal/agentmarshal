@@ -449,11 +449,18 @@ def _validate_finding_record(data: Mapping[str, object]) -> None:
         raise JournalRecordError(
             "finding record field 'summary' must be a non-empty string"
         )
+    _reject_control_characters(summary, "finding record field 'summary'")
     artifacts = data.get("artifacts")
     if not isinstance(artifacts, list) or not artifacts:
         raise JournalRecordError(
             "finding record field 'artifacts' must be a non-empty array"
         )
+    # The findings gate renders each artifact ref as its own transcript line;
+    # ``_validate_provenance`` checks the shape, this refuses a ref that could
+    # print as a second line.
+    for artifact in artifacts:
+        if isinstance(artifact, dict) and isinstance(artifact.get("ref"), str):
+            _reject_control_characters(artifact["ref"], "finding record artifact 'ref'")
     if "recorded_by" not in data or "recorded_by_source" not in data:
         raise JournalRecordError(
             "finding record requires a resolvable recorder in 'recorded_by' and "
@@ -465,7 +472,8 @@ def _reject_control_characters(value: str, what: str) -> None:
     """Refuse a value that could add lines to a rendered transcript.
 
     The gate, ``status`` and ``report`` all render an acceptance's party, its
-    finding ids and its reason inline. A newline in any of them would put extra
+    finding ids and its reason inline — and, since ADR-0009, a finding's summary
+    and its artifact refs. A newline in any of them would put extra
     lines into that output — including one that reads as an approval, which is
     the thing ADR-0007 forbids above all. In a single-operator project that is
     self-deception; where two operators share a journal it is one party forging

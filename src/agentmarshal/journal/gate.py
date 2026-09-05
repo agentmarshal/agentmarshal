@@ -114,7 +114,10 @@ def run_findings_gate(journal_root: Path, task_id: str) -> GateReport:
         if not passed:
             violations += 1
 
-    check(task.state == "open", f"task {task_id} is not closed")
+    if task.state == "open":
+        lines.append(f"PASS: task {task_id} is not closed")
+    else:
+        check(False, f"task {task_id} is already closed (state: {task.state})")
     if task.contract.scope:
         check(
             False,

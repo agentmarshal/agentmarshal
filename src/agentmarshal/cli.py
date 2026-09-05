@@ -149,7 +149,7 @@ def _build_parser() -> argparse.ArgumentParser:
     launch_binding = launch_parser.add_mutually_exclusive_group(required=True)
     launch_binding.add_argument("--commit", help="reviewed commit SHA")
     launch_binding.add_argument("--reviewed-finding", help="reviewed finding record id")
-    launch_parser.add_argument("--base", help="comparison base ref")
+    launch_parser.add_argument("--base", required=True, help="comparison base ref")
     launch_parser.add_argument("--role", required=True, help="reviewer role")
     launch_parser.add_argument("--vendor", required=True, help="reviewer vendor")
     launch_parser.add_argument("--model", required=True, help="reviewer model")
@@ -568,9 +568,6 @@ def _run_review(args: argparse.Namespace, stderr: TextIO) -> int:
             file=stderr,
         )
         return 1
-    if args.base is None:
-        print("review --base is required with --commit", file=stderr)
-        return 1
     placement = _placement("review", stderr, require_host=True)
     if placement is None:
         return 1
@@ -631,6 +628,10 @@ def _run_gate(args: argparse.Namespace, stderr: TextIO) -> int:
         print(placement.advisory_notice)
     project_root = placement.host_root
     if args.findings:
+        # ADR-0009 Decision 4: in a sidecar this lane decides rather than
+        # advises, and its transcript states the placement it decided under.
+        if placement.is_sidecar:
+            print(placement.evidence_line)
         try:
             report = run_findings_gate(placement.journal_root, args.task)
         except GateError as error:
@@ -713,6 +714,8 @@ def _run_complete(args: argparse.Namespace, stderr: TextIO) -> int:
         return 1
     if not args.findings and placement.advisory_notice is not None:
         print(placement.advisory_notice)
+    if args.findings and placement.is_sidecar:
+        print(placement.evidence_line)
     pipeline_sha = args.pipeline_sha or os.environ.get("AGENTMARSHAL_PIPELINE_OK_SHA")
     try:
         if args.findings:
