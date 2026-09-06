@@ -1,0 +1,22 @@
+{
+  "advisory_findings": [
+    "undeclared-gitkeep-placeholders"
+  ],
+  "created_at": "2026-09-06T10:11:44.769018Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "5c2db2663e8a36e450ff354ff93ddc34e8247f96",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 3,
+  "source": "live",
+  "task": "CR-090",
+  "tool_version": "0.3.0",
+  "verdict": "approved"
+}
