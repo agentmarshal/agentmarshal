@@ -442,11 +442,14 @@ def test_brief_does_not_inline_a_decision_file_linked_outside_the_tree(
     assert "Outside sentinel." not in briefing
 
 
-def test_brief_treats_a_trailing_slash_entry_naming_a_file_as_missing(
+def test_brief_inlines_the_file_a_trailing_slash_entry_covers(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    """The matcher says ``docs/guide.md/`` covers ``docs/guide.md``; the gate counts
+    a change to it as touching the entry, so the brief inlines it."""
+
     repo = _repo(tmp_path, monkeypatch)
     _schema2_contract(repo, 'documents = ["docs/guide.md/"]\n')
     (repo / "docs").mkdir()
@@ -456,8 +459,9 @@ def test_brief_treats_a_trailing_slash_entry_naming_a_file_as_missing(
     assert main(["brief", "--task", "CR-001"]) == 0
 
     briefing = capsys.readouterr().out
-    assert "MISSING: docs/guide.md/" in briefing
-    assert "Guide sentinel." not in briefing
+    assert "## Named document: docs/guide.md" in briefing
+    assert "Guide sentinel." in briefing
+    assert "MISSING" not in briefing
 
 
 def test_brief_reports_a_malformed_manifest_and_continues(
@@ -638,7 +642,7 @@ def test_brief_reports_a_linked_directory_named_as_the_entry_itself(
     assert "Common sentinel." not in briefing
 
 
-def test_brief_treats_a_trailing_slash_entry_that_links_to_a_file_as_missing(
+def test_brief_inlines_a_file_a_trailing_slash_entry_links_to(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -652,8 +656,10 @@ def test_brief_treats_a_trailing_slash_entry_that_links_to_a_file_as_missing(
     assert main(["brief", "--task", "CR-001"]) == 0
 
     briefing = capsys.readouterr().out
-    assert "MISSING: specs/" in briefing
-    assert "Guide sentinel." not in briefing
+    # The matcher covers the path itself, and a link to a file inside the tree
+    # is that file.
+    assert "## Named document: specs" in briefing
+    assert "Guide sentinel." in briefing
 
 
 def test_brief_reports_a_document_beneath_a_looping_ancestor_as_unresolvable(

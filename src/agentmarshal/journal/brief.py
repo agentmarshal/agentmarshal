@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from agentmarshal.journal.contracts import ContractHeader
+from agentmarshal.journal.contracts import ContractHeader, scope_covers
 from agentmarshal.journal.extensions import (
     ExtensionManifestError,
     ExtensionManifestMissing,
@@ -81,10 +81,12 @@ def _link_kind(project_root: Path, link: Path) -> str:
 def _document_files(project_root: Path, entry: str) -> list[_Listed]:
     """What lies under a documents entry, by lexical path.
 
-    A trailing slash names a directory, as in scope; an entry with one that
-    resolves to a file is missing, not a file. A linked directory — as the
-    entry or below it — is not followed, so brief and gate agree on what is
-    under the entry. Whatever cannot be read is returned with its kind so the
+    The rule is the gate's scope matcher and nothing else: an entry ending in
+    a slash covers the path itself and everything lexically below it, an
+    entry without one covers exactly that path. So an entry naming a file
+    with a trailing slash inlines that file — the gate counts a change to it
+    as touching the entry, and brief and gate must agree. A linked directory
+    is not followed. Whatever cannot be read is returned with its kind so the
     caller reports it rather than skipping it.
     """
 
@@ -94,36 +96,31 @@ def _document_files(project_root: Path, entry: str) -> list[_Listed]:
         # ``exists()`` swallows a symlink loop in an ancestor and would report
         # the entry missing; it is unresolvable, and the brief says so.
         return [_Listed("unresolvable", lexical_target, target)]
-    if entry.endswith("/"):
-        if target.is_symlink():
-            kind = _link_kind(project_root, target)
-            if kind == "file":
-                # A trailing slash names a directory; a file there — linked or
-                # not — is missing, not a file.
-                return []
-            return [_Listed(kind, lexical_target, target)]
-        if not target.is_dir():
-            return []
-        return _files_below(project_root, target)
+    if target.is_dir() and not target.is_symlink():
+        if entry.endswith("/"):
+            return _files_below(project_root, target, entry)
+        return [_Listed("directory", lexical_target, target)]
+    if not scope_covers((entry,), lexical_target):
+        return []
     if not target.exists() and not target.is_symlink():
         return []
     if target.is_symlink():
         kind = _link_kind(project_root, target)
         if kind != "file":
             return [_Listed(kind, lexical_target, target)]
-    if target.is_dir():
-        return [_Listed("directory", lexical_target, target)]
     relative = _relative_file(project_root, target)
     kind = "file" if relative is not None else "unresolvable"
     return [_Listed(kind, lexical_target, target)]
 
 
-def _files_below(project_root: Path, directory: Path) -> list[_Listed]:
-    """Walk lexical paths below a directory without following linked directories."""
+def _files_below(project_root: Path, directory: Path, entry: str) -> list[_Listed]:
+    """Walk lexical paths the entry covers, without following linked directories."""
 
     files: list[_Listed] = []
     for candidate in sorted(directory.rglob("*")):
         lexical = candidate.relative_to(project_root).as_posix()
+        if not scope_covers((entry,), lexical):
+            continue
         if candidate.is_symlink():
             kind = _link_kind(project_root, candidate)
             if kind != "file":

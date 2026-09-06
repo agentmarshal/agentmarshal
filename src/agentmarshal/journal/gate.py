@@ -768,7 +768,7 @@ def run_gate(
 
         effective_scope = list(contract.scope)
         contributors: list[str] = []
-        for name in contract.extensions:
+        for name in dict.fromkeys(contract.extensions):
             named_manifest = manifests.get(name)
             if named_manifest is not None:
                 effective_scope.extend(named_manifest.footprint)
