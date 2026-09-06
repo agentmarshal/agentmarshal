@@ -117,6 +117,8 @@ host's own process, which this operator does not control. The transcript says
 so in words, on every run; an advisory pass never prints as the authority's
 pass.
 
+ADR-0009 Decision 4 defines the findings-lane exception to this rule.
+
 ### 6. Advisory evidence is always distinguishable from gated evidence
 
 The principle is the one ADR-0007 set: a thing that happened without an
@@ -128,6 +130,8 @@ attestation projection when it exists — carries the placement with it. A
 completion recorded in a sidecar states that its checks passed **advisorily**;
 nothing in it claims a merge authority was satisfied, because none was
 consulted.
+
+ADR-0009 Decision 4 defines the findings-lane exception to this rule.
 
 ### 7. What sidecar evidence establishes, and what it does not
 

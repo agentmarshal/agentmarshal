@@ -35,7 +35,7 @@ class SubmittedReview:
 def submit_review(
     journal_root: Path,
     task_id: str,
-    reviewed_commit: str,
+    reviewed_commit: str | None,
     verdict: str,
     reviewer_role: str,
     reviewer_vendor: str,
@@ -43,6 +43,8 @@ def submit_review(
     reviewer_email: str,
     findings: list[str],
     advisory_findings: list[str] | None = None,
+    *,
+    reviewed_finding: str | None = None,
 ) -> SubmittedReview:
     """Validate and record a review against an opened task."""
 
@@ -58,6 +60,7 @@ def submit_review(
             reviewer_model,
             reviewer_email,
             findings,
+            reviewed_finding=reviewed_finding,
             advisory_findings=advisory_findings,
         )
         return SubmittedReview(write_record(journal_root, task_id, record))

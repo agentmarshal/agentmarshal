@@ -43,6 +43,10 @@ It does **not** establish that any of this was enforced:
   words on every run — `Sidecar checks are advisory and decide no merge.` The
   merge belongs to the host's own process, which a sidecar operator generally
   does not control. An advisory pass never prints as the authority's pass.
+  The one exception has no merge in it: the [findings lane](#research-findings-loop)
+  (`--findings`) offers no host candidate and decides over evidence held in
+  the sidecar itself, printing `Placement: sidecar` where the advisory notice
+  would otherwise be (ADR-0009, Decision 4).
 - **The contract is not pinned to a base commit.** Embedded, the gate reads a
   task's contract from the base side of the same history the candidate belongs
   to, so a change cannot widen its own scope. A sidecar's contract is not in
@@ -375,35 +379,56 @@ projected across them — a projection with two sources would be a guess.
 |---|---|
 | `init --host PATH` | Creates the sidecar project; refuses a host that is missing, not a git worktree, contains the journal, or shares its object database |
 | `open` | Numbering is the sidecar's own; scope warnings are checked against the host tree |
-| `gate` | **Advisory.** Requires `--task`; reads the contract from the sidecar working tree, not from a pinned base |
-| `complete` | Same advisory checks; writes `completed` only to the sidecar |
+| `gate` | **Advisory** on a merge candidate. Requires `--task`; reads the contract from the sidecar working tree, not from a pinned base. `gate --findings` is the exception (ADR-0009): no host candidate, so it decides over sidecar evidence, prints `Placement: sidecar` first and never the advisory notice |
+| `complete` | Same advisory checks on a candidate; writes `completed` only to the sidecar. `complete --findings` decides the same way and binds the completion to the finding |
 | `prune` | Reports; `--delete` is refused, because the host stays read-only |
 | `status`, `report` | Print `Placement: sidecar` on stderr; stdout unchanged |
 | `leak-scan` | Scans the **host's** added content, with the private markers read from the sidecar's own `project.json` |
-| `submit-review`, `review`, `accept`, `amend`, `reopen`, `abandon`, `record-session`, `validate` | Unchanged, writing to the sidecar and reading host git facts where needed |
+| `finding` | Journal-owned: writes to the sidecar, and its artifacts must resolve under the sidecar repository, not the host |
+| `submit-review`, `accept`, `review`, `amend`, `reopen`, `abandon`, `record-session`, `validate` | Unchanged, writing to the sidecar and reading host git facts where needed |
+
+## Research findings loop
+
+Open a task with no scope, keep at least one local artifact inside the journal
+repository, and record its sha256. An external source cannot be the only
+artifact, because a reference the gate cannot resolve is recorded, not
+verified: save a local copy inside the journal and pin the copy. If the source
+URL matters, name it in the summary or in the copy itself — do not give the URL
+a hash of some other file, which would read as a pin on content nobody checked.
+
+```sh
+agentmarshal open --title "Investigate the question"
+sha256sum evidence/CR-001-conclusion.md
+agentmarshal finding --task CR-001 --summary "Conclusion; source saved in evidence/" \
+  --artifact evidence/CR-001-conclusion.md=<sha256> \
+  --artifact evidence/CR-001-source-copy.html=<sha256>
+agentmarshal submit-review --task CR-001 --reviewed-finding <finding-record-id> \
+  --verdict approved --role reviewer --vendor human --model none \
+  --email reviewer@example.invalid
+agentmarshal gate --task CR-001 --findings
+agentmarshal complete --task CR-001 --findings
+```
+
+The reviewer email and recorder are declared identities. A recorder that is a
+git identity stands for its own email; a recorder named as a project actor, or
+set through the actor override, must resolve through the project `actors` table
+to one or more git identities. The reviewer's declared email must differ from
+all of them. The lane re-hashes
+every locally resolvable artifact, reports unresolved references as unverified,
+and refuses when none resolve.
 
 ## Known rough edges
 
 Found by running our own research journal as a sidecar over this repository.
-They are real and unfixed; better to read them here than to meet them.
+The findings lane resolves the vocabulary/binding and empty-scope frictions;
+the remaining `doctor` limitation is still worth meeting here rather than in a
+failure.
 
-**The vocabulary assumes the task changes the host.** `brief` opens with "You
-are implementing one governed AgentMarshal task" and explains an empty scope as
-"the contract needs a scope before work can land"; `open` warns that "no change
-can land until one is declared". For a task that produces a conclusion rather
-than a diff, all three are the wrong sentence.
-
-**A research finding has no commit to bind to.** Every review record requires a
-40-character `reviewed_commit`. Analysis is not about a host commit and not
-about the sidecar's own HEAD, so there is currently **no way to record that a
-research conclusion was checked**. A record type for this is
-[proposal 005](proposals/005-research-findings-have-no-record-type.md) and it
-is accepted, not built.
-
-**Scope is host-relative, so research tasks have none.** A task touching no
-host path declares an empty scope and cannot be gated — the gate reports every
-host path as out of scope. That is the correct answer to the wrong question,
-and it follows from the previous point.
+**Research vocabulary and empty scope are resolved.** A `finding` pins the
+conclusion's artifacts, reviews and acceptances can bind to that record, and an
+empty scope now briefs and gates as findings work. `open` still emits its
+conservative empty-scope warning; the findings command and briefing give that
+scope its governed landing path.
 
 **`doctor` does not know about placement.** It checks the sidecar repository
 and reports nothing about the configured host or whether it is reachable.

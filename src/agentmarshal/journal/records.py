@@ -42,6 +42,7 @@ _RECORD_FIELDS = {
             "created_at",
             "tool_version",
             "reviewed_commit",
+            "reviewed_finding",
             "verdict",
             "reviewer",
             "findings",
@@ -56,6 +57,7 @@ _RECORD_FIELDS = {
             "created_at",
             "tool_version",
             "accepted_commit",
+            "accepted_finding",
             "accepted_by",
             "findings",
             "reason",
@@ -69,6 +71,7 @@ _RECORD_FIELDS = {
             "created_at",
             "tool_version",
             "completed_commit",
+            "completed_finding",
         }
     ),
     "abandoned": frozenset(
@@ -115,6 +118,16 @@ _RECORD_FIELDS = {
             "tokens",
         }
     ),
+    "finding": frozenset(
+        {
+            "schema",
+            "record_type",
+            "task",
+            "created_at",
+            "tool_version",
+            "summary",
+        }
+    ),
 }
 # Schema 2 adds provenance (ADR-0005): a required ``source`` and optional
 # ``artifacts`` references. They are permitted on schema 2 and above — a
@@ -128,7 +141,10 @@ _SCHEMA_2_FIELDS = frozenset(
 )
 _SCHEMA_2_SESSION_FIELDS = frozenset({"usage"})
 _RECORDED_BY_SOURCES = frozenset({"project-actor", "git-identity", "override"})
-_SUPPORTED_SCHEMAS = frozenset({1, 2, 3})
+_SUPPORTED_SCHEMAS = frozenset({1, 2, 3, 4})
+_SCHEMA_4_FIELDS = frozenset(
+    {"reviewed_finding", "accepted_finding", "completed_finding"}
+)
 _ARTIFACT_HASH_PATTERN = re.compile(r"[0-9a-f]{64}$")
 _REVIEWED_COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}$")
 _REVIEW_VERDICTS = frozenset({"approved", "changes_required", "blocked", "rejected"})
@@ -236,15 +252,9 @@ def _validate_record(record: Mapping[str, object]) -> dict[str, object]:
     elif record_type == "acceptance":
         _validate_acceptance_record(data)
     elif record_type == "completed":
-        completed_commit = data.get("completed_commit")
-        if (
-            not isinstance(completed_commit, str)
-            or _REVIEWED_COMMIT_PATTERN.fullmatch(completed_commit) is None
-        ):
-            raise JournalRecordError(
-                "completed record field 'completed_commit' must be exactly 40 "
-                "lowercase hex characters"
-            )
+        _validate_binding(data, "completed", "completed_commit", "completed_finding")
+    elif record_type == "finding":
+        _validate_finding_record(data)
     elif record_type == "abandoned":
         reason = data.get("reason")
         if not isinstance(reason, str) or not reason:
@@ -268,6 +278,12 @@ def _validate_record(record: Mapping[str, object]) -> dict[str, object]:
     if schema >= 2:
         _validate_provenance(data)
     _validate_recorded_by(data)
+
+    needs_schema_4 = record_type == "finding" or bool(data.keys() & _SCHEMA_4_FIELDS)
+    if needs_schema_4 and schema < 4:
+        raise JournalRecordError(
+            "finding records and finding bindings require schema 4"
+        )
 
     return data
 
@@ -307,15 +323,7 @@ def _validate_provenance(data: Mapping[str, object]) -> None:
 
 
 def _validate_review_record(data: Mapping[str, object]) -> None:
-    reviewed_commit = data.get("reviewed_commit")
-    if (
-        not isinstance(reviewed_commit, str)
-        or _REVIEWED_COMMIT_PATTERN.fullmatch(reviewed_commit) is None
-    ):
-        raise JournalRecordError(
-            "review record field 'reviewed_commit' must be exactly 40 "
-            "lowercase hex characters"
-        )
+    _validate_binding(data, "review", "reviewed_commit", "reviewed_finding")
     verdict = data.get("verdict")
     if not isinstance(verdict, str) or verdict not in _REVIEW_VERDICTS:
         raise JournalRecordError(
@@ -348,6 +356,8 @@ def _validate_review_record(data: Mapping[str, object]) -> None:
         raise JournalRecordError(
             "review record field 'findings' must be an array of non-empty finding ids"
         )
+    for finding in findings:
+        _reject_control_characters(finding, "review record finding id")
     if len(set(findings)) != len(findings):
         raise JournalRecordError("review record findings must have unique finding ids")
     if verdict == "approved" and findings:
@@ -365,6 +375,8 @@ def _validate_review_record(data: Mapping[str, object]) -> None:
                 "review record field 'advisory_findings' must be an array of "
                 "non-empty finding ids"
             )
+        for finding in advisory:
+            _reject_control_characters(finding, "review record advisory finding id")
         if len(set(advisory)) != len(advisory):
             raise JournalRecordError(
                 "review record advisory_findings must have unique finding ids"
@@ -378,15 +390,7 @@ def _validate_review_record(data: Mapping[str, object]) -> None:
 
 
 def _validate_acceptance_record(data: Mapping[str, object]) -> None:
-    accepted_commit = data.get("accepted_commit")
-    if (
-        not isinstance(accepted_commit, str)
-        or _REVIEWED_COMMIT_PATTERN.fullmatch(accepted_commit) is None
-    ):
-        raise JournalRecordError(
-            "acceptance record field 'accepted_commit' must be exactly 40 "
-            "lowercase hex characters"
-        )
+    _validate_binding(data, "acceptance", "accepted_commit", "accepted_finding")
     for field in ("accepted_by", "reason"):
         value = data.get(field)
         if not isinstance(value, str) or not value.strip():
@@ -412,11 +416,69 @@ def _validate_acceptance_record(data: Mapping[str, object]) -> None:
         )
 
 
+def _validate_binding(
+    data: Mapping[str, object], record_type: str, commit_field: str, finding_field: str
+) -> None:
+    """Require exactly one well-formed commit or finding binding."""
+
+    has_commit = commit_field in data
+    has_finding = finding_field in data
+    if has_commit == has_finding:
+        raise JournalRecordError(
+            f"{record_type} record must name exactly one of {commit_field!r} "
+            f"or {finding_field!r}"
+        )
+    if has_commit:
+        commit = data[commit_field]
+        if (
+            not isinstance(commit, str)
+            or _REVIEWED_COMMIT_PATTERN.fullmatch(commit) is None
+        ):
+            raise JournalRecordError(
+                f"{record_type} record field {commit_field!r} must be exactly 40 "
+                "lowercase hex characters"
+            )
+        return
+    finding = data[finding_field]
+    if not isinstance(finding, str) or not _is_ulid(finding):
+        raise JournalRecordError(
+            f"{record_type} record field {finding_field!r} must be a "
+            "26-character Crockford base32 ULID"
+        )
+
+
+def _validate_finding_record(data: Mapping[str, object]) -> None:
+    summary = data.get("summary")
+    if not isinstance(summary, str) or not summary.strip():
+        raise JournalRecordError(
+            "finding record field 'summary' must be a non-empty string"
+        )
+    _reject_control_characters(summary, "finding record field 'summary'")
+    artifacts = data.get("artifacts")
+    if not isinstance(artifacts, list) or not artifacts:
+        raise JournalRecordError(
+            "finding record field 'artifacts' must be a non-empty array"
+        )
+    # The findings gate renders each artifact ref as its own transcript line;
+    # ``_validate_provenance`` checks the shape, this refuses a ref that could
+    # print as a second line.
+    for artifact in artifacts:
+        if isinstance(artifact, dict) and isinstance(artifact.get("ref"), str):
+            _reject_control_characters(artifact["ref"], "finding record artifact 'ref'")
+    if "recorded_by" not in data or "recorded_by_source" not in data:
+        raise JournalRecordError(
+            "finding record requires a resolvable recorder in 'recorded_by' and "
+            "'recorded_by_source'"
+        )
+
+
 def _reject_control_characters(value: str, what: str) -> None:
     """Refuse a value that could add lines to a rendered transcript.
 
     The gate, ``status`` and ``report`` all render an acceptance's party, its
-    finding ids and its reason inline. A newline in any of them would put extra
+    finding ids and its reason inline, a review's finding ids — and, since
+    ADR-0009, a finding's summary and its artifact refs. A newline in any of
+    them would put extra
     lines into that output — including one that reads as an approval, which is
     the thing ADR-0007 forbids above all. In a single-operator project that is
     self-deception; where two operators share a journal it is one party forging
@@ -603,19 +665,31 @@ def write_record(
     identity can be determined carries neither field.
     """
 
-    data = _validate_record(record)
-    if data["task"] != task_id:
-        raise JournalRecordError("record task does not match its destination")
     if "recorded_by" in record or "recorded_by_source" in record:
         # The field is derived, never supplied: a caller-provided value would be
         # just another label, and would silently outrank the override.
         raise JournalRecordError(
             "recorded_by is derived from the environment and must not be supplied"
         )
-    if cast(int, data["schema"]) >= 2:
+    data = dict(record)
+    if type(data.get("schema")) is int and cast(int, data["schema"]) >= 2:
         resolved = resolve_recorded_by(_project_root_for(journal_root))
         if resolved is not None:
             data["recorded_by"], data["recorded_by_source"] = resolved
+    data = _validate_record(data)
+    if data["task"] != task_id:
+        raise JournalRecordError("record task does not match its destination")
+    finding_bindings = data.keys() & _SCHEMA_4_FIELDS
+    if finding_bindings:
+        records = read_records(journal_root, task_id)
+        finding_ids = {
+            item["id"] for item in records if item["record_type"] == "finding"
+        }
+        binding = next(iter(finding_bindings))
+        if data[binding] not in finding_ids:
+            raise JournalRecordError(
+                f"record field {binding!r} must name a finding in the same task"
+            )
     record_type = cast(str, data["record_type"])
     identifier = generate_ulid() if record_id is None else record_id
     if not _is_ulid(identifier):
@@ -650,17 +724,53 @@ def create_opened_record(
 
 
 def create_completed_record(
-    task_id: str, tool_version: str, completed_commit: str, *, source: str = SOURCE_LIVE
+    task_id: str,
+    tool_version: str,
+    completed_commit: str | None,
+    *,
+    completed_finding: str | None = None,
+    source: str = SOURCE_LIVE,
 ) -> dict[str, object]:
     """Build the terminal record emitted when a task is completed."""
 
-    return {
-        "schema": 3,
+    if (completed_commit is None) == (completed_finding is None):
+        raise JournalRecordError(
+            "completed record must name exactly one of 'completed_commit' or "
+            "'completed_finding'"
+        )
+    record: dict[str, object] = {
+        "schema": 4 if completed_finding is not None else 3,
         "record_type": "completed",
         "task": task_id,
         "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "tool_version": tool_version,
-        "completed_commit": completed_commit,
+        "source": source,
+    }
+    if completed_finding is not None:
+        record["completed_finding"] = completed_finding
+    else:
+        record["completed_commit"] = completed_commit
+    return record
+
+
+def create_finding_record(
+    task_id: str,
+    tool_version: str,
+    summary: str,
+    artifacts: list[dict[str, str]],
+    *,
+    source: str = SOURCE_LIVE,
+) -> dict[str, object]:
+    """Build a hash-pinned research finding record."""
+
+    return {
+        "schema": 4,
+        "record_type": "finding",
+        "task": task_id,
+        "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "tool_version": tool_version,
+        "summary": summary,
+        "artifacts": artifacts,
         "source": source,
     }
 
@@ -760,7 +870,7 @@ def create_session_record(
 def create_review_record(
     task_id: str,
     tool_version: str,
-    reviewed_commit: str,
+    reviewed_commit: str | None,
     verdict: str,
     reviewer_role: str,
     reviewer_vendor: str,
@@ -768,6 +878,7 @@ def create_review_record(
     reviewer_email: str,
     findings: list[str],
     *,
+    reviewed_finding: str | None = None,
     advisory_findings: list[str] | None = None,
     source: str = SOURCE_LIVE,
 ) -> dict[str, object]:
@@ -779,13 +890,17 @@ def create_review_record(
     stay identical to before.
     """
 
+    if (reviewed_commit is None) == (reviewed_finding is None):
+        raise JournalRecordError(
+            "review record must name exactly one of 'reviewed_commit' or "
+            "'reviewed_finding'"
+        )
     record: dict[str, object] = {
-        "schema": 3,
+        "schema": 4 if reviewed_finding is not None else 3,
         "record_type": "review",
         "task": task_id,
         "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "tool_version": tool_version,
-        "reviewed_commit": reviewed_commit,
         "verdict": verdict,
         "reviewer": {
             "role": reviewer_role,
@@ -796,6 +911,10 @@ def create_review_record(
         "findings": findings,
         "source": source,
     }
+    if reviewed_finding is not None:
+        record["reviewed_finding"] = reviewed_finding
+    else:
+        record["reviewed_commit"] = reviewed_commit
     if advisory_findings:
         record["advisory_findings"] = advisory_findings
     return record
@@ -804,27 +923,37 @@ def create_review_record(
 def create_acceptance_record(
     task_id: str,
     tool_version: str,
-    accepted_commit: str,
+    accepted_commit: str | None,
     accepted_by: str,
     findings: list[str],
     reason: str,
     *,
+    accepted_finding: str | None = None,
     source: str = SOURCE_LIVE,
 ) -> dict[str, object]:
     """Build an operator acceptance over a review's blocking findings."""
 
-    return {
-        "schema": 3,
+    if (accepted_commit is None) == (accepted_finding is None):
+        raise JournalRecordError(
+            "acceptance record must name exactly one of 'accepted_commit' or "
+            "'accepted_finding'"
+        )
+    record: dict[str, object] = {
+        "schema": 4 if accepted_finding is not None else 3,
         "record_type": "acceptance",
         "task": task_id,
         "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "tool_version": tool_version,
-        "accepted_commit": accepted_commit,
         "accepted_by": accepted_by,
         "findings": findings,
         "reason": reason,
         "source": source,
     }
+    if accepted_finding is not None:
+        record["accepted_finding"] = accepted_finding
+    else:
+        record["accepted_commit"] = accepted_commit
+    return record
 
 
 def validate_record_content(filename: str, content: str) -> dict[str, object]:
