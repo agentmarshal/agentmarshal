@@ -804,3 +804,41 @@ def test_the_review_is_recorded_even_when_the_output_cannot_be_kept(
     captured = capsys.readouterr()
     assert captured.out.strip().endswith(".json")
     assert "kept at" not in captured.err
+
+
+def test_prompt_without_named_material_is_the_prompt_written_before_schema_2() -> None:
+    """The 0.3.0 prompt, pinned literally: the split into a prefix and a suffix
+    must reproduce it, and this is the test that would notice a seam."""
+
+    from agentmarshal.journal.review import _VERDICT_BEGIN, _VERDICT_END
+
+    verdicts = ", ".join(sorted(review.REVIEW_VERDICTS))
+    commit = "b" * 40
+    expected = f"""You are a read-only code reviewer. Review the supplied task contract
+and diff.
+Do not modify files. Your reviewed commit is {commit}.
+
+For each blocking or advisory finding id you report, print one line of prose
+before the verdict block, naming what is wrong and where. The ids are labels
+for the machine; the prose is what a human will read.
+
+At the end, print exactly one JSON object between lines containing exactly
+{_VERDICT_BEGIN} and {_VERDICT_END}. The object must contain:
+- reviewed_commit: the exact reviewed commit SHA
+- verdict: exactly one of: {verdicts}
+- findings: an array of unique finding-id strings; empty only for "approved",
+  and non-empty for every other verdict
+and may additionally contain:
+- advisory_findings: an array of unique non-blocking finding-id strings,
+  disjoint from findings; allowed with any verdict, including "approved"
+
+No other key is accepted.
+
+Task contract:
+CONTRACT
+
+Diff:
+DIFF
+"""
+
+    assert review._review_prompt("CONTRACT", "DIFF", commit) == expected

@@ -404,3 +404,104 @@ def test_brief_reports_an_undecodable_decision_file(
     assert (
         "UNREADABLE (not UTF-8): docs/adr/ADR-0042-binary.md" in capsys.readouterr().out
     )
+
+
+def _schema2_contract(repo: Path, header_fields: str) -> None:
+    _contract(repo).write_text(
+        "+++\n"
+        "schema = 2\n"
+        'id = "CR-001"\n'
+        'title = "Brief task"\n'
+        "scope = []\n"
+        "acceptance = []\n"
+        f"{header_fields}"
+        "+++\n\nBody.\n",
+        encoding="utf-8",
+    )
+
+
+def test_brief_does_not_inline_a_decision_file_linked_outside_the_tree(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path, monkeypatch)
+    _schema2_contract(repo, 'decisions = ["ADR-0042"]\n')
+    outside = tmp_path / "outside.md"
+    outside.write_text("Outside sentinel.\n", encoding="utf-8")
+    adr = repo / "docs" / "adr" / "ADR-0042-linked.md"
+    adr.parent.mkdir(parents=True)
+    adr.symlink_to(outside)
+    capsys.readouterr()
+
+    assert main(["brief", "--task", "CR-001"]) == 0
+
+    briefing = capsys.readouterr().out
+    assert "UNRESOLVABLE" in briefing
+    assert "docs/adr/ADR-0042-linked.md" in briefing
+    assert "Outside sentinel." not in briefing
+
+
+def test_brief_treats_a_trailing_slash_entry_naming_a_file_as_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path, monkeypatch)
+    _schema2_contract(repo, 'documents = ["docs/guide.md/"]\n')
+    (repo / "docs").mkdir()
+    (repo / "docs" / "guide.md").write_text("Guide sentinel.\n", encoding="utf-8")
+    capsys.readouterr()
+
+    assert main(["brief", "--task", "CR-001"]) == 0
+
+    briefing = capsys.readouterr().out
+    assert "MISSING: docs/guide.md/" in briefing
+    assert "Guide sentinel." not in briefing
+
+
+def test_brief_reports_a_malformed_manifest_and_continues(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path, monkeypatch)
+    _schema2_contract(
+        repo, 'documents = ["docs/guide.md"]\nextensions = ["openspec"]\n'
+    )
+    (repo / "docs").mkdir()
+    (repo / "docs" / "guide.md").write_text("Guide sentinel.\n", encoding="utf-8")
+    manifest = repo / ".agentmarshal" / "extensions" / "openspec.toml"
+    manifest.parent.mkdir()
+    manifest.write_text("schema = 1\nname = [\n", encoding="utf-8")
+    capsys.readouterr()
+
+    assert main(["brief", "--task", "CR-001"]) == 0
+
+    briefing = capsys.readouterr().out
+    assert "## Named extension: openspec" in briefing
+    assert "MALFORMED:" in briefing
+    assert "Guide sentinel." in briefing
+
+
+def test_brief_reports_a_document_it_cannot_resolve_inside_a_named_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path, monkeypatch)
+    _schema2_contract(repo, 'documents = ["specs/"]\n')
+    specs = repo / "specs"
+    specs.mkdir()
+    (specs / "feature.md").write_text("Spec sentinel.\n", encoding="utf-8")
+    (specs / "dangling.md").symlink_to(tmp_path / "nowhere.md")
+    capsys.readouterr()
+
+    assert main(["brief", "--task", "CR-001"]) == 0
+
+    briefing = capsys.readouterr().out
+    assert "Spec sentinel." in briefing
+    assert (
+        "UNRESOLVABLE (outside the tree or a broken link): specs/dangling.md"
+        in briefing
+    )

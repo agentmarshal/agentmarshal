@@ -6,6 +6,7 @@ from pathlib import Path
 
 from agentmarshal.journal.contracts import ContractHeader
 from agentmarshal.journal.extensions import (
+    ExtensionManifestError,
     ExtensionManifestMissing,
     read_extension_manifest,
 )
@@ -35,14 +36,24 @@ def _relative_file(project_root: Path, path: Path) -> str | None:
     return relative.as_posix() if resolved.is_file() else None
 
 
-def _document_files(project_root: Path, entry: str) -> list[tuple[str, Path]]:
+def _document_files(project_root: Path, entry: str) -> list[tuple[str | None, Path]]:
+    """Files under a documents entry, with ``None`` for one that cannot be read.
+
+    A trailing slash names a directory, as in scope; an entry with one that
+    resolves to a file is missing, not a file. Inside a directory, an entry
+    that does not resolve to a file under the project (a broken link, a link
+    outside the tree) is returned with ``None`` so the caller reports it.
+    """
+
     target = project_root / entry.rstrip("/")
-    if entry.endswith("/") and target.is_dir():
-        files: list[tuple[str, Path]] = []
+    if entry.endswith("/"):
+        if not target.is_dir():
+            return []
+        files: list[tuple[str | None, Path]] = []
         for candidate in sorted(target.rglob("*")):
-            relative = _relative_file(project_root, candidate)
-            if relative is not None:
-                files.append((relative, candidate.resolve()))
+            if candidate.is_dir() and not candidate.is_symlink():
+                continue
+            files.append((_relative_file(project_root, candidate), candidate))
         return files
     relative = _relative_file(project_root, target)
     return [(relative, target.resolve())] if relative is not None else []
@@ -79,7 +90,16 @@ def _append_named_material(
             continue
         content = [f"## Named decision: {decision}\n"]
         for path in matches:
-            relative = path.relative_to(material_root).as_posix()
+            lexical = path.relative_to(material_root).as_posix()
+            relative = _relative_file(material_root, path)
+            if relative is None:
+                # A decision file is inlined as the implementer's authority;
+                # one that resolves outside the governed tree is not read.
+                content.append(
+                    f"\n### {lexical}\n\n"
+                    f"UNRESOLVABLE (outside the tree or a broken link): {lexical}\n"
+                )
+                continue
             try:
                 text = path.read_text(encoding="utf-8")
             except UnicodeDecodeError:
@@ -101,6 +121,10 @@ def _append_named_material(
                 f"## Named extension: {name}\n\n"
                 f"MISSING: .agentmarshal/extensions/{name}.toml\n"
             )
+        except ExtensionManifestError as error:
+            # Context, not authority: a manifest the brief cannot read is
+            # reported here; the gate, which decides, refuses it loudly.
+            sections.append(f"## Named extension: {name}\n\nMALFORMED: {error}\n")
     seen_files: set[str] = set()
     for entry in entries:
         files = _document_files(material_root, entry)
@@ -108,6 +132,13 @@ def _append_named_material(
             sections.append(f"## Named document: {entry}\n\nMISSING: {entry}\n")
             continue
         for relative, path in files:
+            if relative is None:
+                lexical = path.relative_to(material_root).as_posix()
+                sections.append(
+                    f"## Named document: {lexical}\n\n"
+                    f"UNRESOLVABLE (outside the tree or a broken link): {lexical}\n"
+                )
+                continue
             if relative in seen_files:
                 continue
             seen_files.add(relative)
