@@ -5,7 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from agentmarshal.journal.contracts import ContractHeader
-from agentmarshal.journal.extensions import extension_document_entries
+from agentmarshal.journal.extensions import (
+    ExtensionManifestMissing,
+    read_extension_manifest,
+)
 from agentmarshal.journal.status import TaskStatusError, load_task_status
 
 
@@ -46,12 +49,17 @@ def _document_files(project_root: Path, entry: str) -> list[tuple[str, Path]]:
 
 
 def _append_named_material(
-    brief: str, project_root: Path, contract: ContractHeader
+    brief: str, material_root: Path, manifest_root: Path, contract: ContractHeader
 ) -> str:
-    """Append all decision and document text requested by the contract."""
+    """Append all decision and document text requested by the contract.
+
+    ``material_root`` is the governed tree — the host, in a sidecar — where
+    decisions and documents live; ``manifest_root`` is the project holding
+    the journal, where extension manifests live (ADR-0010).
+    """
 
     sections: list[str] = []
-    adr_root = project_root / "docs" / "adr"
+    adr_root = material_root / "docs" / "adr"
     for decision in contract.decisions:
         matches = (
             sorted(
@@ -71,19 +79,31 @@ def _append_named_material(
             continue
         content = [f"## Named decision: {decision}\n"]
         for path in matches:
-            relative = path.relative_to(project_root).as_posix()
-            text = path.read_text(encoding="utf-8")
+            relative = path.relative_to(material_root).as_posix()
+            try:
+                text = path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                content.append(
+                    f"\n### {relative}\n\nUNREADABLE (not UTF-8): {relative}\n"
+                )
+                continue
             content.append(f"\n### {relative}\n\n{text}")
             if not text.endswith("\n"):
                 content.append("\n")
         sections.append("".join(content))
 
-    entries = contract.documents + extension_document_entries(
-        project_root, contract.extensions
-    )
+    entries: list[str] = list(contract.documents)
+    for name in contract.extensions:
+        try:
+            entries.extend(read_extension_manifest(manifest_root, name).documents)
+        except ExtensionManifestMissing:
+            sections.append(
+                f"## Named extension: {name}\n\n"
+                f"MISSING: .agentmarshal/extensions/{name}.toml\n"
+            )
     seen_files: set[str] = set()
     for entry in entries:
-        files = _document_files(project_root, entry)
+        files = _document_files(material_root, entry)
         if not files:
             sections.append(f"## Named document: {entry}\n\nMISSING: {entry}\n")
             continue
@@ -111,8 +131,14 @@ def _append_named_material(
     return brief + separator + "\n".join(sections)
 
 
-def build_brief(journal_root: Path, task_id: str) -> str:
-    """Build an uncapped implementer briefing for an open task."""
+def build_brief(journal_root: Path, task_id: str, host_root: Path | None = None) -> str:
+    """Build an uncapped implementer briefing for an open task.
+
+    ``host_root`` is the governed tree whose decisions and documents the brief
+    inlines; it defaults to the project holding the journal, which is right
+    for the embedded placement and wrong for a sidecar, whose caller passes
+    the host.
+    """
 
     task = load_task_status(journal_root, task_id)
     if task.state != "open":
@@ -159,4 +185,7 @@ def build_brief(journal_root: Path, task_id: str) -> str:
         "Contract body (verbatim):\n"
         f"{body}"
     )
-    return _append_named_material(brief, journal_root.parents[1], task.contract)
+    project_root = journal_root.parents[1]
+    return _append_named_material(
+        brief, host_root or project_root, project_root, task.contract
+    )

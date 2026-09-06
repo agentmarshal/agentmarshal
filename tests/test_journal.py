@@ -281,6 +281,7 @@ def test_released_030_refuses_a_schema_2_contract(
         ("docs/*.md", "glob metacharacter"),
         ("docs/file?.md", "glob metacharacter"),
         ("docs/[ab].md", "glob metacharacter"),
+        ("docs/../secrets/", "'..' component"),
     ],
 )
 def test_contract_documents_use_scope_syntax(

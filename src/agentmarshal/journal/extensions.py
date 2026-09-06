@@ -19,6 +19,15 @@ class ExtensionManifestError(ValueError):
     """Raised when an extension manifest is missing or malformed."""
 
 
+class ExtensionManifestMissing(ExtensionManifestError):
+    """Raised when the named manifest file does not exist.
+
+    Kept apart from a malformed manifest so a context-building reader such as
+    ``brief`` can report the absence and continue, while an authority path
+    keeps failing loudly.
+    """
+
+
 @dataclass(frozen=True)
 class ExtensionManifest:
     """The fields declared by one process-extension manifest."""
@@ -72,9 +81,16 @@ def read_extension_manifest(project_root: Path, name: str) -> ExtensionManifest:
         raise ExtensionManifestError(
             f"extension name {name!r} must be one non-empty path component"
         )
-    path = project_root / ".agentmarshal" / "extensions" / f"{name}.toml"
-    if path.resolve() != path.absolute():
+    # Resolve the root first: a symlink in an ancestor of the project (a
+    # temporary directory on some hosts) is not the hazard; a symlinked
+    # extensions directory or manifest file is.
+    path = project_root.resolve() / ".agentmarshal" / "extensions" / f"{name}.toml"
+    if path.resolve() != path:
         raise ExtensionManifestError(f"refusing to read through a symlink: {path}")
+    if not path.exists():
+        raise ExtensionManifestMissing(
+            f"extension manifest {name!r} is missing: {path}"
+        )
     try:
         with path.open("rb") as manifest_file:
             parsed = tomllib.load(manifest_file)

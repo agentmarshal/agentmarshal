@@ -278,3 +278,129 @@ def test_brief_reports_a_document_it_cannot_decode_instead_of_failing(
     briefing = capsys.readouterr().out
     assert "Spec sentinel." in briefing
     assert "UNREADABLE (not UTF-8): specs/diagram.png" in briefing
+
+
+def _git_repo(path: Path) -> None:
+    path.mkdir()
+    subprocess.run(["git", "init", "--quiet", "-b", "master"], cwd=path, check=True)
+
+
+def test_sidecar_brief_reads_decisions_and_documents_from_the_host(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Decisions and documents live in the governed tree, manifests in the journal."""
+
+    host = tmp_path / "host"
+    _git_repo(host)
+    adr = host / "docs" / "adr" / "ADR-0042-answer.md"
+    adr.parent.mkdir(parents=True)
+    adr.write_text("Host decision sentinel.\n", encoding="utf-8")
+    (host / "docs" / "guide.md").write_text("Host guide sentinel.\n", encoding="utf-8")
+    spec = host / "openspec" / "specs" / "feature.md"
+    spec.parent.mkdir(parents=True)
+    spec.write_text("Host spec sentinel.\n", encoding="utf-8")
+    sidecar = tmp_path / "sidecar"
+    _git_repo(sidecar)
+    # A same-named file in the sidecar must not be mistaken for the host's.
+    decoy = sidecar / "docs" / "guide.md"
+    decoy.parent.mkdir(parents=True)
+    decoy.write_text("Sidecar decoy.\n", encoding="utf-8")
+    monkeypatch.chdir(sidecar)
+    assert main(["init", "--host", str(host)]) == 0
+    assert main(["open", "--title", "Sidecar task", "--scope", "docs/guide.md"]) == 0
+    contract = (
+        sidecar / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "contract.md"
+    )
+    contract.write_text(
+        contract.read_text(encoding="utf-8").replace(
+            "schema = 1\n",
+            "schema = 2\n"
+            'decisions = ["ADR-0042"]\n'
+            'documents = ["docs/guide.md"]\n'
+            'extensions = ["openspec"]\n',
+        ),
+        encoding="utf-8",
+    )
+    manifest = sidecar / ".agentmarshal" / "extensions" / "openspec.toml"
+    manifest.parent.mkdir()
+    manifest.write_text(
+        "schema = 1\n"
+        'name = "openspec"\n'
+        'version = "1"\n'
+        'footprint = ["openspec/"]\n'
+        'documents = ["openspec/specs/"]\n'
+        "artifacts = []\n"
+        'install = "install"\n'
+        'remove = "remove"\n',
+        encoding="utf-8",
+    )
+    capsys.readouterr()
+
+    assert main(["brief", "--task", "CR-001"]) == 0
+
+    briefing = capsys.readouterr().out
+    assert "Host decision sentinel." in briefing
+    assert "Host guide sentinel." in briefing
+    assert "Host spec sentinel." in briefing
+    assert "Sidecar decoy." not in briefing
+    assert "MISSING" not in briefing
+
+
+def test_brief_reports_a_missing_extension_manifest_and_continues(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path, monkeypatch)
+    _contract(repo).write_text(
+        "+++\n"
+        "schema = 2\n"
+        'id = "CR-001"\n'
+        'title = "Brief task"\n'
+        "scope = []\n"
+        "acceptance = []\n"
+        'documents = ["docs/guide.md"]\n'
+        'extensions = ["openspec"]\n'
+        "+++\n\nBody.\n",
+        encoding="utf-8",
+    )
+    (repo / "docs").mkdir()
+    (repo / "docs" / "guide.md").write_text("Guide sentinel.\n", encoding="utf-8")
+    capsys.readouterr()
+
+    assert main(["brief", "--task", "CR-001"]) == 0
+
+    briefing = capsys.readouterr().out
+    assert "MISSING: .agentmarshal/extensions/openspec.toml" in briefing
+    assert "Guide sentinel." in briefing
+
+
+def test_brief_reports_an_undecodable_decision_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path, monkeypatch)
+    _contract(repo).write_text(
+        "+++\n"
+        "schema = 2\n"
+        'id = "CR-001"\n'
+        'title = "Brief task"\n'
+        "scope = []\n"
+        "acceptance = []\n"
+        'decisions = ["ADR-0042"]\n'
+        "+++\n\nBody.\n",
+        encoding="utf-8",
+    )
+    adr = repo / "docs" / "adr" / "ADR-0042-binary.md"
+    adr.parent.mkdir(parents=True)
+    adr.write_bytes(b"\xff\xfe not text")
+    capsys.readouterr()
+
+    assert main(["brief", "--task", "CR-001"]) == 0
+
+    assert (
+        "UNREADABLE (not UTF-8): docs/adr/ADR-0042-binary.md" in capsys.readouterr().out
+    )

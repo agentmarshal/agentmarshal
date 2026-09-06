@@ -74,6 +74,12 @@ def validate_scope_entry(entry: str, what: str) -> None:
                 f"{what} entry {entry!r} contains unsupported glob "
                 f"metacharacter {metacharacter!r}"
             )
+    if any(part in {".", ".."} for part in entry.split("/")):
+        # A prefix matcher compares text; "openspec/../x" would read as under
+        # "openspec/" while naming something else entirely.
+        raise JournalContractError(
+            f"{what} entry {entry!r} contains a '.' or '..' component"
+        )
     reject_control_characters(entry, f"{what} entry {entry!r}")
 
 

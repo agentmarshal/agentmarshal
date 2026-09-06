@@ -8,6 +8,7 @@ import pytest
 
 from agentmarshal.journal.extensions import (
     ExtensionManifestError,
+    ExtensionManifestMissing,
     read_extension_manifest,
 )
 
@@ -58,6 +59,7 @@ def test_read_extension_manifest_returns_every_declared_field(tmp_path: Path) ->
         ("tree/*", "glob metacharacter"),
         ("tree/file?", "glob metacharacter"),
         ("tree/[ab]", "glob metacharacter"),
+        ("tree/../elsewhere/", "'..' component"),
     ],
 )
 def test_manifest_path_fields_use_scope_syntax(
@@ -118,3 +120,30 @@ def test_manifest_accepts_exact_and_directory_footprint_coverage(
 def test_manifest_name_cannot_escape_the_extensions_directory(tmp_path: Path) -> None:
     with pytest.raises(ExtensionManifestError, match="extension name"):
         read_extension_manifest(tmp_path, "../outside")
+
+
+def test_manifest_is_read_through_a_symlinked_project_root(tmp_path: Path) -> None:
+    """A symlink above the project (a temp dir on some hosts) is not the hazard."""
+
+    real = tmp_path / "real"
+    real.mkdir()
+    _write_manifest(real)
+    link = tmp_path / "link"
+    link.symlink_to(real, target_is_directory=True)
+
+    assert read_extension_manifest(link, "openspec").name == "openspec"
+
+
+def test_symlinked_manifest_file_is_refused(tmp_path: Path) -> None:
+    _write_manifest(tmp_path)
+    real = tmp_path / ".agentmarshal" / "extensions" / "openspec.toml"
+    real.rename(tmp_path / "elsewhere.toml")
+    real.symlink_to(tmp_path / "elsewhere.toml")
+
+    with pytest.raises(ExtensionManifestError, match="symlink"):
+        read_extension_manifest(tmp_path, "openspec")
+
+
+def test_missing_manifest_is_its_own_error(tmp_path: Path) -> None:
+    with pytest.raises(ExtensionManifestMissing, match="missing"):
+        read_extension_manifest(tmp_path, "openspec")
