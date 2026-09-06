@@ -405,9 +405,11 @@ agentmarshal gate --task CR-001 --findings
 agentmarshal complete --task CR-001 --findings
 ```
 
-The reviewer email and recorder are declared identities. The recorder must
-resolve through the project `actors` table to one or more git identities, and
-the reviewer's declared email must differ from all of them. The lane re-hashes
+The reviewer email and recorder are declared identities. A recorder that is a
+git identity stands for its own email; a recorder named as a project actor, or
+set through the actor override, must resolve through the project `actors` table
+to one or more git identities. The reviewer's declared email must differ from
+all of them. The lane re-hashes
 every locally resolvable artifact, reports unresolved references as unverified,
 and refuses when none resolve.
 

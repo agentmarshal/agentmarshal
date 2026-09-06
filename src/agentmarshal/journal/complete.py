@@ -84,7 +84,10 @@ def complete_findings_task(journal_root: Path, task_id: str) -> CompletionResult
         raise LifecycleError(str(error)) from error
     if not report.passed:
         return CompletionResult(report, None)
-    assert report.resolved_finding is not None
+    if report.resolved_finding is None:
+        raise LifecycleError(
+            f"findings gate passed for {task_id} without resolving a finding"
+        )
     try:
         record = create_completed_record(
             task_id, __version__, None, completed_finding=report.resolved_finding

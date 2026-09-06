@@ -4,7 +4,6 @@ import json
 import os
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -22,16 +21,16 @@ _WRITER = ["-c", "user.name=Worker", "-c", "user.email=worker@test.invalid"]
 _REVIEWER_EMAIL = "reviewer@test.invalid"
 
 
-def _released_030() -> Path | None:
+def released_030() -> Path | None:
     """Locate the released 0.3.0 without naming anyone's home directory.
 
     Looked up in order: ``AGENTMARSHAL_RELEASED_030``, ``agentmarshal`` on
-    PATH, the default user-tool location. A candidate counts only if it reports
-    0.3.0 and lives outside this interpreter's environment — the build under
-    test carries the same version string until the release bumps it.
+    PATH, the default user-tool location. The version string cannot tell the
+    release from this build, which prints the same one until the release bumps
+    it; the ``finding`` command can — 0.3.0 predates it. A candidate counts only
+    if it reports 0.3.0 and does not know that command.
     """
 
-    own_environment = Path(sys.prefix).resolve()
     candidates = [
         os.environ.get("AGENTMARSHAL_RELEASED_030"),
         shutil.which("agentmarshal"),
@@ -40,17 +39,21 @@ def _released_030() -> Path | None:
     for candidate in candidates:
         if not candidate or not Path(candidate).is_file():
             continue
-        if Path(candidate).resolve().is_relative_to(own_environment):
-            continue
-        probe = subprocess.run(
+        version = subprocess.run(
             [candidate, "--version"], capture_output=True, text=True, check=False
         )
-        if probe.returncode == 0 and probe.stdout.strip() == "0.3.0":
-            return Path(candidate)
+        if version.returncode != 0 or version.stdout.strip() != "0.3.0":
+            continue
+        knows_finding = subprocess.run(
+            [candidate, "finding", "--help"], capture_output=True, check=False
+        )
+        if knows_finding.returncode == 0:
+            continue
+        return Path(candidate)
     return None
 
 
-_SKIP_030 = (
+SKIP_030 = (
     "released 0.3.0 not found: set AGENTMARSHAL_RELEASED_030 or install it on PATH"
 )
 
@@ -221,9 +224,9 @@ def test_embedded_diff_lane_transcript_matches_published_030_byte_for_byte(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    published = _released_030()
+    published = released_030()
     if published is None:
-        pytest.skip(_SKIP_030)
+        pytest.skip(SKIP_030)
     repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
     head = _implement(repo, "src/module.py")
     _approve(repo, head)
@@ -255,14 +258,11 @@ def test_embedded_diff_lane_transcript_matches_published_030_byte_for_byte(
     assert current.out.endswith("gate: passed\n")
 
 
-def test_empty_scope_candidate_stays_on_030_diff_lane(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    published = _released_030()
-    if published is None:
-        pytest.skip(_SKIP_030)
+def _empty_scope_candidate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[Path, list[str]]:
+    """A host change offered under an empty-scope task, with its gate call."""
+
     repo, base = _gate_repo(tmp_path, monkeypatch, [])
     head = _implement(repo, "host-change.py")
     _approve(repo, head)
@@ -277,6 +277,39 @@ def test_empty_scope_candidate_stays_on_030_diff_lane(
         "--pipeline-sha",
         head,
     ]
+    return repo, arguments
+
+
+def test_empty_scope_candidate_takes_the_diff_lane_and_is_refused(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The guard against host changes riding under an empty-scope task.
+
+    This runs everywhere; the comparison with the released 0.3.0 is the next
+    test and needs the release installed.
+    """
+
+    _, arguments = _empty_scope_candidate(tmp_path, monkeypatch)
+    capsys.readouterr()
+
+    assert main(arguments) == 1
+    transcript = capsys.readouterr()
+    assert "paths outside contract scope: host-change.py" in transcript.out
+    assert "findings lane" not in transcript.out
+    assert "gate: passed" not in transcript.out
+
+
+def test_empty_scope_candidate_stays_on_030_diff_lane(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    published = released_030()
+    if published is None:
+        pytest.skip(SKIP_030)
+    repo, arguments = _empty_scope_candidate(tmp_path, monkeypatch)
     capsys.readouterr()
 
     assert main(arguments) == 1

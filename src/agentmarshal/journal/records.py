@@ -356,6 +356,8 @@ def _validate_review_record(data: Mapping[str, object]) -> None:
         raise JournalRecordError(
             "review record field 'findings' must be an array of non-empty finding ids"
         )
+    for finding in findings:
+        _reject_control_characters(finding, "review record finding id")
     if len(set(findings)) != len(findings):
         raise JournalRecordError("review record findings must have unique finding ids")
     if verdict == "approved" and findings:
@@ -373,6 +375,8 @@ def _validate_review_record(data: Mapping[str, object]) -> None:
                 "review record field 'advisory_findings' must be an array of "
                 "non-empty finding ids"
             )
+        for finding in advisory:
+            _reject_control_characters(finding, "review record advisory finding id")
         if len(set(advisory)) != len(advisory):
             raise JournalRecordError(
                 "review record advisory_findings must have unique finding ids"
@@ -472,8 +476,9 @@ def _reject_control_characters(value: str, what: str) -> None:
     """Refuse a value that could add lines to a rendered transcript.
 
     The gate, ``status`` and ``report`` all render an acceptance's party, its
-    finding ids and its reason inline — and, since ADR-0009, a finding's summary
-    and its artifact refs. A newline in any of them would put extra
+    finding ids and its reason inline, a review's finding ids — and, since
+    ADR-0009, a finding's summary and its artifact refs. A newline in any of
+    them would put extra
     lines into that output — including one that reads as an approval, which is
     the thing ADR-0007 forbids above all. In a single-operator project that is
     self-deception; where two operators share a journal it is one party forging
