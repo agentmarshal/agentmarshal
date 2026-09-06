@@ -111,7 +111,8 @@ for `extensions = [...]` to resolve. A removal task may name the extension —
 the base still holds its manifest — and add only the manifest path. The diff
 is reviewed and gated like any change, and the completion is evidence that the
 process tooling changed — when, by whom, under which review. There is no
-journal-only path for it, because the footprint lies outside `.agentmarshal/`.
+journal-only path for it: both the footprint and the manifest lie outside
+`.agentmarshal/journal/`.
 
 ### 3. Named documents and decisions reach implementer and reviewer, and the gate checks them
 
@@ -125,14 +126,17 @@ includes the named documents' content and the named ADRs in the implementer's
 context, and the review prompt names both; how the reviewer is asked to use
 them is the implementation task's to word. When a contract names documents,
 the gate adds one line: `PASS: named documents touched (<paths>)` when the
-candidate's diff changes at least one path under them, or `FAIL: named
-documents untouched: <paths>` — a refusal, by the operator's decision of
+candidate's diff adds, modifies or deletes at least one path under them — a
+removal that deletes them counts — or `FAIL: named documents untouched:
+<paths>` — a refusal, by the operator's decision of
 2026-09-06, because a warning here would be the request OpenSpec already
 makes.
 
-The line belongs to the diff lane, where there is a candidate diff to examine.
-A journal-only transaction and the findings lane (ADR-0009) have none; there
-the line reads `NOT EXAMINED: named documents (no candidate diff)`, in the
+The line belongs to the diff lane, where there is a candidate diff and a
+contract to read. A journal-only transaction never reaches it: that lane reads
+no contract and prints its single PASS line as today. The findings lane
+(ADR-0009) reads the contract but has no candidate diff; there the line reads
+`NOT EXAMINED: named documents (findings lane has no candidate)`, in the
 manner ADR-0009 D3 uses for the checks its lane cannot run.
 
 This is the OpenSpec discipline — change the spec with the code — made a
@@ -145,11 +149,15 @@ stays as it is today. The check exists only where it was asked for.
 
 ### 4. Nothing extension-defined runs inside the gate
 
-Four commands read manifests, and only read them: `open` reads them to compute
-a task's effective scope from `extensions`; `brief` reads them for the
-documents it feeds the implementer; `complete` reads them for the removal
-check (D5); `gate` reads them for scope (D2) and for the documents line (D3).
-Nothing pins `artifacts` automatically: they are what an archival finding pins
+Two places read manifests, and only read them. `brief` reads them for the
+documents it feeds the implementer. The gate reads them for the effective
+scope (D2), for the documents line (D3) and for the removal check (D5);
+`complete` reads none itself and refuses only because it runs the gate, and a
+standalone `agentmarshal gate` on the same candidate prints the same lines.
+`open` does not read them: effective scope is computed once, at the gate, from
+the base side, so a manifest that changes between a task's opening and its
+gate changes what the gate enforces — and no earlier computation exists to
+disagree with it. Nothing pins `artifacts` automatically: they are what an archival finding pins
 when the operator records one (D5). None executes an extension's `install`,
 `remove`, hooks or scripts, and no extension can add, remove or alter a gate
 check. What extensions change is inputs — scope, context, artifacts — under
@@ -165,12 +173,12 @@ completion is refused while a `footprint` path of the base-side manifest still
 exists in the candidate's tree — the manifest is the checklist, read from the
 side the candidate cannot edit, and the check is a gate line. A task that
 edits footprint paths and leaves the manifest in place is not a removal and
-is not held to this check. If the operator wants to
-keep what the tool produced, the removal
-task records a `finding` (ADR-0009) whose artifacts are hash-pinned copies of
-the manifest's `artifacts` paths placed under the journal: archived by
-content, provable later, and no longer in the working tree. This is the only
-pinning this ADR decides; `complete` pins nothing on its own.
+is not held to this check. If the operator wants to keep what the tool
+produced, the removal task records a `finding` (ADR-0009) whose artifacts are
+hash-pinned copies of the manifest's `artifacts` paths placed under the
+journal: archived by content, provable later, and no longer in the working
+tree. This is the only pinning this ADR decides; `complete` pins nothing on
+its own.
 
 ### 6. What this establishes, and what it does not
 
@@ -198,12 +206,14 @@ a second real user exists, not before.
   header `schema` moves to 2, and the parser accepts 1 and 2: a schema-1
   contract, or a schema-2 contract without the fields, reads and behaves
   exactly as today. The record schema is untouched. UPGRADING names the header
-  change in one line, because `open` and `brief` start reading fields that did
-  not exist.
+  change in one line, because `brief` and the gate start reading fields that
+  did not exist.
 - `brief` gains a section for named documents and decisions. The review prompt
   names them.
-- One new gate line, only when `documents` is named; one new refusal in
-  `complete`, only for a candidate that deletes a base-side manifest (D5).
+- Two new gate lines, each only when its condition holds: the documents line
+  when `documents` is named (D3); the removal check for a candidate that
+  deletes a base-side manifest (D5). `complete` gains no check of its own; it
+  refuses through the gate it runs.
 - No new record type, no new CLI in the first cycle: manifests are written by
   hand, install/remove run by hand as tasks (D2). `extension add/remove`
   commands are decided after the dogfood, by its numbers (rounds, findings
@@ -213,9 +223,10 @@ a second real user exists, not before.
   `.agentmarshal/journal/`, so a manifest-only change already takes the diff
   lane and needs a review (D2).
 - Downstream: docs/overview (contract header), quickstart (one paragraph),
-  sidecar.md (the footprint is a host path; a sidecar contract may name it —
-  the gate's scope check there is advisory, as every sidecar check is —
-  ADR-0008 D5).
+  sidecar.md: in a sidecar the manifest lives in the sidecar's own
+  `.agentmarshal/extensions/` and is read from the sidecar working tree as the
+  contract is (ADR-0008); its footprint names host paths; the gate's scope
+  check there is advisory, as every sidecar check is (ADR-0008 D5).
 
 ## Alternatives considered
 
