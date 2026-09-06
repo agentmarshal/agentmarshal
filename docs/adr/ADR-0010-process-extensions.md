@@ -52,20 +52,21 @@ footprint = ["openspec/", ".claude/commands/opsx/",
              # ... one entry per skill directory the tool installs
             ]
 documents = ["openspec/specs/"]                 # what brief feeds the implementer
-artifacts = ["openspec/changes/archive/"]       # what completion may pin
+artifacts = ["openspec/changes/archive/"]       # what an archival finding pins (D5)
 install = "npx @fission-ai/openspec@<version> init"  # recorded; run by the operator
 remove  = "rm -rf openspec .claude/commands/opsx .claude/skills/openspec-* .agents/skills/openspec-*"
 ```
 
 `footprint`, `documents` and `artifacts` entries use the syntax the gate's
-scope matcher accepts (ADR-0003 names the rule `diff ⊆ scope`; the matcher,
-in the gate since its first release, accepts an exact path or a directory
-prefix ending in `/`) and nothing more. There are no globs, because the scope check has none, and one
-matcher serving two purposes is the point of D2. Where a tool's files share a directory
-with others (as OpenSpec's skills share `.claude/skills/`), the footprint lists
-the tool's own entries one by one; a footprint never claims a directory it
-shares. The `install` and `remove` strings are opaque to AgentMarshal and may
-use whatever the operator's shell understands.
+scope matcher accepts (ADR-0003 names the rule `diff ⊆ scope`; the matcher, in
+the gate since its first release, accepts an exact path or a directory prefix
+ending in `/`) and nothing more. There are no globs, because the scope check
+has none, and one matcher serving two purposes is the point of D2. Where a
+tool's files share a directory with others (as OpenSpec's skills share
+`.claude/skills/`), the footprint lists the tool's own entries one by one; a
+footprint never claims a directory it shares. The `install` and `remove`
+strings are opaque to AgentMarshal and may use whatever the operator's shell
+understands.
 
 The manifest declares; AgentMarshal executes none of its strings. `install`
 and `remove` are the operator's declaration of what was run, recorded so a
@@ -107,24 +108,27 @@ contract names the manifest's own path `.agentmarshal/extensions/<name>.toml`
 explicitly, because a footprint does not contain it. An install task lists the
 footprint paths explicitly as well: no manifest exists on the base side yet
 for `extensions = [...]` to resolve. A removal task may name the extension —
-the base still holds its manifest — and add only the manifest path. The diff is
-reviewed and gated like any change, and the completion is evidence that the
+the base still holds its manifest — and add only the manifest path. The diff
+is reviewed and gated like any change, and the completion is evidence that the
 process tooling changed — when, by whom, under which review. There is no
 journal-only path for it, because the footprint lies outside `.agentmarshal/`.
 
 ### 3. Named documents and decisions reach implementer and reviewer, and the gate checks them
 
-A contract may name `documents = [...]` in scope syntax (an extension's
-`documents` join them when the contract names the extension) and
-`decisions = ["ADR-0003", ...]`, the decisions the task serves or is bounded
-by. `brief` includes the named documents' content and the named ADRs in the
-implementer's context, and the review prompt names both; how the reviewer is
-asked to use them is the implementation task's to word. When a contract
-names documents, the gate adds one line: `PASS: named documents touched
-(<paths>)` when the candidate's diff changes at least one path under them, or
-`FAIL: named documents untouched: <paths>` — a refusal, by the operator's
-decision of 2026-09-06, because a warning here would be the request OpenSpec
-already makes.
+A contract may name `documents = [...]` in scope syntax, and naming an
+extension joins that extension's `documents` to them — which also brings the
+check below. A task that needs an extension's footprint in scope without the
+obligation to touch its documents lists the footprint paths in `scope` and
+does not name the extension. The contract may also name `decisions =
+["ADR-0003", ...]`, the decisions the task serves or is bounded by. `brief`
+includes the named documents' content and the named ADRs in the implementer's
+context, and the review prompt names both; how the reviewer is asked to use
+them is the implementation task's to word. When a contract names documents,
+the gate adds one line: `PASS: named documents touched (<paths>)` when the
+candidate's diff changes at least one path under them, or `FAIL: named
+documents untouched: <paths>` — a refusal, by the operator's decision of
+2026-09-06, because a warning here would be the request OpenSpec already
+makes.
 
 The line belongs to the diff lane, where there is a candidate diff to examine.
 A journal-only transaction and the findings lane (ADR-0009) have none; there
@@ -141,42 +145,48 @@ stays as it is today. The check exists only where it was asked for.
 
 ### 4. Nothing extension-defined runs inside the gate
 
-Four commands read manifests, and only read them: `open` reads them to
-compute a task's effective scope from `extensions`; `brief` reads them for the
-documents it feeds the implementer; `complete` reads them for the artifacts it
-may pin and for the removal check (D5); `gate` reads them for scope (D2) and
-for the documents line (D3). None executes an extension's `install`, `remove`,
-hooks or scripts, and no extension can add, remove or alter a gate check. What
-extensions change is inputs — scope, context, artifacts — under the operator's
-command, never the decision procedure. This keeps the
-trust boundary proposal 009 was deferred to protect: the gate's decision
-depends on the journal and the diff, not on third-party code.
+Four commands read manifests, and only read them: `open` reads them to compute
+a task's effective scope from `extensions`; `brief` reads them for the
+documents it feeds the implementer; `complete` reads them for the removal
+check (D5); `gate` reads them for scope (D2) and for the documents line (D3).
+Nothing pins `artifacts` automatically: they are what an archival finding pins
+when the operator records one (D5). None executes an extension's `install`,
+`remove`, hooks or scripts, and no extension can add, remove or alter a gate
+check. What extensions change is inputs — scope, context, artifacts — under
+the operator's command, never the decision procedure. This keeps the trust
+boundary proposal 009 was deferred to protect: the gate's decision depends on
+the journal and the diff, not on third-party code.
 
 ### 5. Removal is verified, archival is a finding
 
-`remove` is a task (D2). Its completion is refused while a `footprint` path of
-the base-side manifest still exists in the candidate's tree — the manifest is
-the checklist, read from the side the candidate cannot edit, and the check is
-a gate line. The candidate deletes the manifest itself along with the
-footprint; the base still holds it for the check. If the operator wants to
+A removal is a candidate that deletes a manifest present on the base side:
+that deletion is the trigger, and nothing else is. For such a candidate,
+completion is refused while a `footprint` path of the base-side manifest still
+exists in the candidate's tree — the manifest is the checklist, read from the
+side the candidate cannot edit, and the check is a gate line. A task that
+edits footprint paths and leaves the manifest in place is not a removal and
+is not held to this check. If the operator wants to
 keep what the tool produced, the removal
-task records a `finding` (ADR-0009) whose artifacts are hash-pinned copies
-under the journal: archived by content, provable later, and no longer in the
-working tree.
+task records a `finding` (ADR-0009) whose artifacts are hash-pinned copies of
+the manifest's `artifacts` paths placed under the journal: archived by
+content, provable later, and no longer in the working tree. This is the only
+pinning this ADR decides; `complete` pins nothing on its own.
 
 ### 6. What this establishes, and what it does not
 
-It establishes that a declared footprint is bounded by the gate, that named
-documents reach the implementer and are checked for change, and that a
-removal is verified against the base-side manifest. A manifest's presence
-records a declaration — that a tool was said to be installed with those
-strings — not that the command ran, succeeded, or produced those files. It does **not**
-establish that the tool is safe (nothing is vetted; `install` runs whatever the
-operator runs), that its output is true (see D3), that it is isolated (a
-process tool writes into the repository — that is its purpose; the footprint
-bounds where, the gate refuses elsewhere), or that any tool works without an
-adapter (an interactive tool's commands become text in `brief`; someone writes
-that text). "Plug and play" is not a phrase this ADR licenses.
+It establishes that a declared footprint is bounded by the gate where the gate
+decides — the embedded placement — and reported where it only advises, as
+every check is in a sidecar (ADR-0008 D5); that named documents reach the
+implementer and are checked for change; and that a removal is verified against
+the base-side manifest. A manifest's presence records a declaration — that a
+tool was said to be installed with those strings — not that the command ran,
+succeeded, or produced those files. It does **not** establish that the tool is
+safe (nothing is vetted; `install` runs whatever the operator runs), that its
+output is true (see D3), that it is isolated (a process tool writes into the
+repository — that is its purpose; the footprint bounds where, the gate refuses
+elsewhere), or that any tool works without an adapter (an interactive tool's
+commands become text in `brief`; someone writes that text). "Plug and play" is
+not a phrase this ADR licenses.
 
 Templates for a first extension (OpenSpec) ship only after this project has
 run three to five of its own tasks with it. A second extension is written when
@@ -193,8 +203,7 @@ a second real user exists, not before.
 - `brief` gains a section for named documents and decisions. The review prompt
   names them.
 - One new gate line, only when `documents` is named; one new refusal in
-  `complete` for removal tasks, only when the contract names an extension being
-  removed.
+  `complete`, only for a candidate that deletes a base-side manifest (D5).
 - No new record type, no new CLI in the first cycle: manifests are written by
   hand, install/remove run by hand as tasks (D2). `extension add/remove`
   commands are decided after the dogfood, by its numbers (rounds, findings
