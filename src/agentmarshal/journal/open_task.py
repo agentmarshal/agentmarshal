@@ -111,6 +111,11 @@ def scope_warnings(project_root: Path, scope: list[str]) -> list[str]:
         if not entry:
             warnings.append("scope entry is empty and matches nothing")
             continue
+        if entry == "docs/adr" or entry.startswith("docs/adr/"):
+            warnings.append(
+                f"scope entry {entry!r} lies under docs/adr/; once written, the "
+                "contract should name in decisions the decisions the task serves"
+            )
         target = project_root / entry.rstrip("/")
         if not entry.endswith("/") and target.is_dir():
             warnings.append(

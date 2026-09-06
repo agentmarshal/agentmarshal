@@ -159,3 +159,122 @@ def test_an_empty_scope_is_briefed_as_the_strictest_limit_not_as_none(
     scope_section = briefing.split("Acceptance criteria")[0]
     assert "(none)" not in scope_section
     assert (repo / ".agentmarshal").is_dir()
+
+
+def test_brief_appends_named_decisions_and_contract_and_extension_documents(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path, monkeypatch)
+    body = "\n# Body\n\nBody sentinel.\n"
+    _contract(repo).write_text(
+        "+++\n"
+        "schema = 2\n"
+        'id = "CR-001"\n'
+        'title = "Brief task"\n'
+        'scope = ["src/app.py"]\n'
+        "acceptance = []\n"
+        'decisions = ["ADR-0042"]\n'
+        'documents = ["docs/guide.md"]\n'
+        'extensions = ["openspec"]\n'
+        "+++\n"
+        f"{body}",
+        encoding="utf-8",
+    )
+    adr = repo / "docs" / "adr" / "ADR-0042-answer.md"
+    adr.parent.mkdir(parents=True)
+    adr.write_text("Decision sentinel.\n", encoding="utf-8")
+    guide = repo / "docs" / "guide.md"
+    guide.write_text("Guide sentinel.\n", encoding="utf-8")
+    extension_document = repo / "openspec" / "specs" / "feature.md"
+    extension_document.parent.mkdir(parents=True)
+    extension_document.write_text("Extension sentinel.\n", encoding="utf-8")
+    manifest = repo / ".agentmarshal" / "extensions" / "openspec.toml"
+    manifest.parent.mkdir()
+    manifest.write_text(
+        "schema = 1\n"
+        'name = "openspec"\n'
+        'version = "1"\n'
+        'footprint = ["openspec/"]\n'
+        'documents = ["openspec/specs/"]\n'
+        "artifacts = []\n"
+        'install = "install"\n'
+        'remove = "remove"\n',
+        encoding="utf-8",
+    )
+    capsys.readouterr()
+
+    assert main(["brief", "--task", "CR-001"]) == 0
+
+    briefing = capsys.readouterr().out
+    assert "## Named decision: ADR-0042" in briefing
+    assert "### docs/adr/ADR-0042-answer.md" in briefing
+    assert "Decision sentinel." in briefing
+    assert "## Named document: docs/guide.md" in briefing
+    assert "Guide sentinel." in briefing
+    assert "## Named document: openspec/specs/feature.md" in briefing
+    assert "Extension sentinel." in briefing
+    assert briefing.index("Body sentinel.") < briefing.index("## Named decision")
+    assert briefing.index("## Named decision") < briefing.index("docs/guide.md")
+    assert briefing.index("docs/guide.md") < briefing.index("openspec/specs/feature.md")
+
+
+def test_brief_reports_missing_named_decisions_and_documents(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path, monkeypatch)
+    _contract(repo).write_text(
+        "+++\n"
+        "schema = 2\n"
+        'id = "CR-001"\n'
+        'title = "Brief task"\n'
+        "scope = []\n"
+        "acceptance = []\n"
+        'decisions = ["ADR-9999"]\n'
+        'documents = ["docs/missing.md", "missing-tree/"]\n'
+        "+++\n\nBody.\n",
+        encoding="utf-8",
+    )
+    capsys.readouterr()
+
+    assert main(["brief", "--task", "CR-001"]) == 0
+
+    briefing = capsys.readouterr().out
+    assert "MISSING: docs/adr/ADR-9999-*.md" in briefing
+    assert "MISSING: docs/missing.md" in briefing
+    assert "MISSING: missing-tree/" in briefing
+
+
+def test_brief_reports_a_document_it_cannot_decode_instead_of_failing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A documents directory can hold anything; a binary file is reported."""
+
+    repo = _repo(tmp_path, monkeypatch)
+    _contract(repo).write_text(
+        "+++\n"
+        "schema = 2\n"
+        'id = "CR-001"\n'
+        'title = "Brief task"\n'
+        "scope = []\n"
+        "acceptance = []\n"
+        'documents = ["specs/"]\n'
+        "+++\n\nBody.\n",
+        encoding="utf-8",
+    )
+    specs = repo / "specs"
+    specs.mkdir()
+    (specs / "feature.md").write_text("Spec sentinel.\n", encoding="utf-8")
+    (specs / "diagram.png").write_bytes(b"\x89PNG\r\n\x1a\n\xff\xfe")
+    capsys.readouterr()
+
+    assert main(["brief", "--task", "CR-001"]) == 0
+
+    briefing = capsys.readouterr().out
+    assert "Spec sentinel." in briefing
+    assert "UNREADABLE (not UTF-8): specs/diagram.png" in briefing

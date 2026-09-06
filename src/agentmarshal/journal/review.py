@@ -13,6 +13,9 @@ from dataclasses import replace
 from pathlib import Path
 from typing import cast
 
+from agentmarshal.journal.contracts import parse_contract_text
+from agentmarshal.journal.extensions import extension_document_entries
+
 # The allowed verdicts have one definition, in records.py, which validation
 # uses. The prompt renders that same set so it cannot drift from what the
 # record layer will accept. (Module-private today; worth making public the
@@ -65,15 +68,36 @@ def _resolve_commit(project_root: Path, commit: str) -> str:
     return resolved
 
 
-def _review_prompt(contract: str, diff: str, commit: str) -> str:
+def _review_prompt(
+    contract: str,
+    diff: str,
+    commit: str,
+    *,
+    decisions: tuple[str, ...] = (),
+    documents: tuple[str, ...] = (),
+) -> str:
     """Build the reviewer prompt with its required machine-verdict protocol."""
 
     verdicts = ", ".join(sorted(REVIEW_VERDICTS))
-    return f"""You are a read-only code reviewer. Review the supplied task contract
+    named_material = ""
+    if decisions or documents:
+        lines = ["Named contract material:"]
+        if decisions:
+            lines.append("Decisions:")
+            lines.extend(f"- {decision}" for decision in decisions)
+            lines.append("A finding may cite a contradiction with a named decision.")
+        if documents:
+            lines.append("Documents:")
+            lines.extend(f"- {document}" for document in documents)
+        named_material = "\n".join(lines) + "\n\n"
+    prefix = f"""You are a read-only code reviewer. Review the supplied task contract
 and diff.
 Do not modify files. Your reviewed commit is {commit}.
 
-For each blocking or advisory finding id you report, print one line of prose
+"""
+    suffix = (
+        "For each blocking or advisory finding id you report, print one line "
+        f"""of prose
 before the verdict block, naming what is wrong and where. The ids are labels
 for the machine; the prose is what a human will read.
 
@@ -95,6 +119,8 @@ Task contract:
 Diff:
 {diff}
 """
+    )
+    return prefix + named_material + suffix
 
 
 def _reviewer_command(model: str, prompt_file: Path) -> list[str]:
@@ -334,7 +360,23 @@ def launch_review(
             raise ReviewLaunchError(
                 f"cannot read task contract {source}: {error}"
             ) from error
-        prompt = _review_prompt(contract, diff, resolved_commit)
+        try:
+            header = parse_contract_text(contract, str(contract_path))
+            extension_root = (
+                journal_root.parents[1] if sidecar_journal is not None else snapshot
+            )
+            documents = header.documents + extension_document_entries(
+                extension_root, header.extensions
+            )
+        except ValueError as error:
+            raise ReviewLaunchError(str(error)) from error
+        prompt = _review_prompt(
+            contract,
+            diff,
+            resolved_commit,
+            decisions=header.decisions,
+            documents=tuple(dict.fromkeys(documents)),
+        )
         prompt_file.write_text(prompt, encoding="utf-8")
         output = _run_reviewer(
             _reviewer_command(reviewer_model, prompt_file),

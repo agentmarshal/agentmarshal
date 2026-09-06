@@ -146,7 +146,7 @@ def test_generate_ulids_are_unique_and_lexicographically_ordered() -> None:
     ("content", "error"),
     [
         (
-            "+++\nschema = 2\nid = 'CR-001'\ntitle = 'Task'\nscope = []\n"
+            "+++\nschema = 3\nid = 'CR-001'\ntitle = 'Task'\nscope = []\n"
             "acceptance = []\n+++\n",
             "schema",
         ),
@@ -175,6 +175,139 @@ def test_parse_contract_accepts_bom_prefixed_header(tmp_path: Path) -> None:
     )
 
     assert parse_contract(contract).title == "Задача"
+
+
+def _contract_text(schema: int, extra: str = "") -> str:
+    return (
+        "+++\n"
+        f"schema = {schema}\n"
+        "id = 'CR-001'\n"
+        "title = 'Task'\n"
+        "scope = ['src/']\n"
+        "acceptance = ['works']\n"
+        f"{extra}"
+        "+++\n"
+    )
+
+
+def test_schema_2_contract_reads_decisions_documents_and_extensions(
+    tmp_path: Path,
+) -> None:
+    contract = tmp_path / "contract.md"
+    contract.write_text(
+        _contract_text(
+            2,
+            "decisions = ['ADR-0010']\n"
+            "documents = ['docs/design.md', 'specs/']\n"
+            "extensions = ['openspec']\n",
+        ),
+        encoding="utf-8",
+    )
+
+    header = parse_contract(contract)
+
+    assert header.decisions == ("ADR-0010",)
+    assert header.documents == ("docs/design.md", "specs/")
+    assert header.extensions == ("openspec",)
+
+
+@pytest.mark.parametrize("field", ["decisions", "documents", "extensions"])
+def test_schema_1_contract_names_the_field_that_requires_schema_2(
+    tmp_path: Path, field: str
+) -> None:
+    contract = tmp_path / "contract.md"
+    contract.write_text(_contract_text(1, f"{field} = []\n"), encoding="utf-8")
+
+    with pytest.raises(
+        JournalContractError, match=rf"field '{field}' requires schema 2"
+    ):
+        parse_contract(contract)
+
+
+def test_contract_without_new_fields_has_empty_values_in_both_schemas(
+    tmp_path: Path,
+) -> None:
+    headers = []
+    for schema in (1, 2):
+        contract = tmp_path / f"contract-{schema}.md"
+        contract.write_text(_contract_text(schema), encoding="utf-8")
+        headers.append(parse_contract(contract))
+
+    assert headers[0].id == headers[1].id == "CR-001"
+    assert headers[0].title == headers[1].title == "Task"
+    assert headers[0].scope == headers[1].scope == ("src/",)
+    assert headers[0].acceptance == headers[1].acceptance == ("works",)
+    assert headers[0].decisions == headers[1].decisions == ()
+    assert headers[0].documents == headers[1].documents == ()
+    assert headers[0].extensions == headers[1].extensions == ()
+
+
+def test_released_030_refuses_a_schema_2_contract(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from test_gate import SKIP_030, released_030
+
+    published = released_030()
+    if published is None:
+        pytest.skip(SKIP_030)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "--quiet"], cwd=repo, check=True)
+    monkeypatch.chdir(repo)
+    assert main(["init"]) == 0
+    assert main(["open", "--title", "Schema two"]) == 0
+    contract = journal_root(repo) / "tasks" / "CR-001" / "contract.md"
+    contract.write_text(
+        contract.read_text(encoding="utf-8").replace("schema = 1", "schema = 2"),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [str(published), "brief", "--task", "CR-001"],
+        cwd=repo,
+        capture_output=True,
+        encoding="utf-8",
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "unknown or missing schema version" in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("entry", "reason"),
+    [
+        ("/absolute.md", "starts with"),
+        ("docs/*.md", "glob metacharacter"),
+        ("docs/file?.md", "glob metacharacter"),
+        ("docs/[ab].md", "glob metacharacter"),
+    ],
+)
+def test_contract_documents_use_scope_syntax(
+    tmp_path: Path, entry: str, reason: str
+) -> None:
+    contract = tmp_path / "contract.md"
+    contract.write_text(
+        _contract_text(2, f"documents = [{entry!r}]\n"), encoding="utf-8"
+    )
+
+    with pytest.raises(JournalContractError, match=reason) as raised:
+        parse_contract(contract)
+
+    assert entry in str(raised.value)
+
+
+@pytest.mark.parametrize("field", ["decisions", "extensions"])
+def test_contract_fields_rendered_in_prompts_refuse_control_characters(
+    tmp_path: Path, field: str
+) -> None:
+    contract = tmp_path / "contract.md"
+    contract.write_text(
+        _contract_text(2, f'{field} = ["first\\nforged"]\n'), encoding="utf-8"
+    )
+
+    with pytest.raises(JournalContractError, match="control characters"):
+        parse_contract(contract)
 
 
 def test_write_record_is_exclusive_and_preserves_original_content(
@@ -733,6 +866,7 @@ def test_open_creates_parseable_contract_and_record(
 
     root = journal_root(repo)
     contract = parse_contract(root / "tasks" / "CR-001" / "contract.md")
+    assert contract.schema == 1
     assert contract.title == "Задача"
     assert contract.scope == ("src/",)
     assert read_records(root, "CR-001")[0]["record_type"] == "opened"
@@ -1112,6 +1246,30 @@ def test_scope_warning_stays_silent_when_entries_match(tmp_path: Path) -> None:
     (tmp_path / "README.md").write_text("x", encoding="utf-8")
 
     assert scope_warnings(tmp_path, ["src/", "README.md"]) == []
+
+
+def test_scope_warning_names_decisions_for_an_adr_path(tmp_path: Path) -> None:
+    from agentmarshal.journal.open_task import scope_warnings
+
+    adr = tmp_path / "docs" / "adr" / "ADR-0011-next.md"
+    adr.parent.mkdir(parents=True)
+    adr.write_text("decision", encoding="utf-8")
+
+    warnings = scope_warnings(tmp_path, ["docs/adr/ADR-0011-next.md"])
+
+    assert len(warnings) == 1
+    assert "contract should name in decisions" in warnings[0]
+    assert "decisions the task serves" in warnings[0]
+
+
+def test_scope_warning_does_not_name_decisions_for_other_paths(tmp_path: Path) -> None:
+    from agentmarshal.journal.open_task import scope_warnings
+
+    path = tmp_path / "docs" / "guide.md"
+    path.parent.mkdir(parents=True)
+    path.write_text("guide", encoding="utf-8")
+
+    assert scope_warnings(tmp_path, ["docs/guide.md"]) == []
 
 
 def test_scope_warning_for_no_declared_scope(tmp_path: Path) -> None:

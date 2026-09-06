@@ -1,5 +1,15 @@
 # Upgrading
 
+## 0.3.0 → 0.4.0
+
+### Contract headers gain schema 2
+
+Contract headers that carry `decisions`, `documents` or `extensions` use
+`schema = 2`; AgentMarshal 0.4.0 reads both schema 1 and schema 2 headers, while
+0.3.0 refuses a schema-2 contract. Upgrade every checkout that reads a shared
+journal before committing the first schema-2 contract. Existing schema-1
+contracts and the record schema do not change.
+
 ## 0.2.0 → 0.3.0
 
 ### What you must know first

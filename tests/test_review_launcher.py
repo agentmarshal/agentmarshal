@@ -434,6 +434,76 @@ def test_prompt_requests_human_readable_claims_and_lists_the_allowed_verdicts(
     assert "advisory_findings" in prompt
 
 
+def test_prompt_lists_named_decisions_and_documents() -> None:
+    prompt = review._review_prompt(
+        "contract",
+        "diff",
+        "a" * 40,
+        decisions=("ADR-0010",),
+        documents=("docs/guide.md", "openspec/specs/"),
+    )
+
+    assert "Decisions:\n- ADR-0010" in prompt
+    assert "Documents:\n- docs/guide.md\n- openspec/specs/" in prompt
+    assert "A finding may cite a contradiction with a named decision." in prompt
+
+
+def test_review_prompt_resolves_extension_documents_from_reviewed_tree(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, _ = _review_repo(tmp_path, monkeypatch)
+    contract = repo / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "contract.md"
+    contract.write_text(
+        contract.read_text(encoding="utf-8").replace(
+            "schema = 1\n",
+            "schema = 2\ndecisions = ['ADR-0010']\n"
+            "documents = ['docs/guide.md']\n"
+            "extensions = ['openspec']\n",
+        ),
+        encoding="utf-8",
+    )
+    manifest = repo / ".agentmarshal" / "extensions" / "openspec.toml"
+    manifest.parent.mkdir()
+    manifest.write_text(
+        "schema = 1\n"
+        'name = "openspec"\n'
+        'version = "1"\n'
+        'footprint = ["openspec/"]\n'
+        'documents = ["openspec/specs/"]\n'
+        "artifacts = []\n"
+        'install = "install"\n'
+        'remove = "remove"\n',
+        encoding="utf-8",
+    )
+    _git(repo, "add", str(contract.relative_to(repo)), str(manifest.relative_to(repo)))
+    _git(
+        repo,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.com",
+        "commit",
+        "--quiet",
+        "-m",
+        "name review material",
+    )
+    commit = _git(repo, "rev-parse", "HEAD")
+    prompt_output = tmp_path / "review-prompt.txt"
+    stub = _reviewer_stub(
+        tmp_path,
+        _verdict(commit, "approved", []),
+        prompt_output=prompt_output,
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert main(_review_args(commit)) == 0
+
+    prompt = prompt_output.read_text(encoding="utf-8")
+    assert "Decisions:\n- ADR-0010" in prompt
+    assert "Documents:\n- docs/guide.md\n- openspec/specs/" in prompt
+
+
 def test_advisory_findings_reach_the_record(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
