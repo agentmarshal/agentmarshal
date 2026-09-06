@@ -53,22 +53,25 @@ footprint = ["openspec/", ".claude/commands/opsx/",
             ]
 documents = ["openspec/specs/"]                 # what brief feeds the implementer
 artifacts = ["openspec/changes/archive/"]       # what completion may pin
-install = "npx @fission-ai/openspec@latest init"  # recorded; run by the operator
+install = "npx @fission-ai/openspec@<version> init"  # recorded; run by the operator
 remove  = "rm -rf openspec .claude/commands/opsx .claude/skills/openspec-* .agents/skills/openspec-*"
 ```
 
-`footprint`, `documents` and `artifacts` entries use the scope syntax of
-ADR-0003 and nothing more: an exact path, or a directory prefix ending in `/`.
-There are no globs, because the gate's scope check has none, and one matcher
-serving two purposes is the point of D2. Where a tool's files share a directory
+`footprint`, `documents` and `artifacts` entries use the syntax the gate's
+scope matcher accepts (ADR-0003 names the rule `diff ⊆ scope`; the matcher, in
+the gate since 0.2.0, accepts an exact path or a directory prefix ending in `/`)
+and nothing more. There are no globs, because the scope check has none, and one
+matcher serving two purposes is the point of D2. Where a tool's files share a directory
 with others (as OpenSpec's skills share `.claude/skills/`), the footprint lists
 the tool's own entries one by one; a footprint never claims a directory it
 shares. The `install` and `remove` strings are opaque to AgentMarshal and may
 use whatever the operator's shell understands.
 
 The manifest declares; AgentMarshal executes none of its strings. `install`
-and `remove` are recorded so the operator's action is reproducible and so a
-removal can be verified against `footprint`. Declarative over imperative: this
+and `remove` are recorded so that what the operator ran is known and a removal
+can be checked against `footprint`. The record says what was invoked, not what
+it resolved to: nothing pins the tool's version, and a manifest that records
+`@latest` records exactly that much. Declarative over imperative: this
 is the pre-commit shape (id, entry, files), not an SDK.
 
 ### 2. The footprint is scope, and the gate already enforces scope
@@ -82,10 +85,19 @@ scope when the contract names the extension, and stays outside it when it does
 not.
 
 The gate reads a manifest where it reads the contract: from the base side of
-the history the candidate belongs to (ADR-0003), and in a sidecar from the
-sidecar working tree (ADR-0008). A candidate that edits a manifest changes
-what the *next* task's gate reads, not its own; it cannot widen its own scope
-or silence a documents check by rewriting the manifest it ships with.
+the history the candidate belongs to — the trusted-input rule ADR-0006,
+ADR-0008 and ADR-0009 each restate — and in a sidecar from the sidecar working
+tree (ADR-0008). A candidate that edits a manifest changes what the *next*
+task's gate reads, not its own; it cannot widen its own scope or silence a
+documents check by rewriting the manifest it ships with.
+
+A change that touches only a manifest is **not** a journal-only transaction,
+although the path lies under `.agentmarshal/`. The deterministic lane exists
+for records — evidence that changes no behaviour of the tool. A manifest
+decides what the gate reads next: it is configuration, and configuration is
+reviewed. The journal-only lane therefore excludes `.agentmarshal/extensions/`;
+a manifest amendment takes the review-bound diff lane under a contract whose
+scope names the manifest path.
 
 Installing or removing an extension is therefore an ordinary task, and its
 contract lists its paths explicitly: the footprint and the manifest's own path
@@ -110,6 +122,11 @@ names documents, the gate adds one line: `PASS: named documents touched
 decision of 2026-09-06, because a warning here would be the request OpenSpec
 already makes.
 
+The line belongs to the diff lane, where there is a candidate diff to examine.
+A journal-only transaction and the findings lane (ADR-0009) have none; there
+the line reads `NOT EXAMINED: named documents (no candidate diff)`, in the
+manner ADR-0009 D3 uses for the checks its lane cannot run.
+
 This is the OpenSpec discipline — change the spec with the code — made a
 refusal instead of a request. It checks presence of a change, **not its
 truth**: whether the spec now describes the system is the reviewer's job and
@@ -120,11 +137,14 @@ stays as it is today. The check exists only where it was asked for.
 
 ### 4. Nothing extension-defined runs inside the gate
 
-The gate reads manifests and diffs. It never executes an extension's
-`install`, `remove`, hooks or scripts, and no extension can add, remove or
-alter a gate check. Extensions act at `open` (footprint into scope), `brief`
-(documents into context) and `complete` (artifacts pinned) — all three are
-either reads or journal writes under the operator's command. This keeps the
+Four commands read manifests, and only read them: `open` reads them to
+compute a task's effective scope from `extensions`; `brief` reads them for the
+documents it feeds the implementer; `complete` reads them for the artifacts it
+may pin and for the removal check (D5); `gate` reads them for scope (D2) and
+for the documents line (D3). None executes an extension's `install`, `remove`,
+hooks or scripts, and no extension can add, remove or alter a gate check. What
+extensions change is inputs — scope, context, artifacts — under the operator's
+command, never the decision procedure. This keeps the
 trust boundary proposal 009 was deferred to protect: the gate's decision
 depends on the journal and the diff, not on third-party code.
 
@@ -171,8 +191,10 @@ a second real user exists, not before.
 - No new record type, no new CLI in the first cycle: manifests are written by
   hand, install/remove run by hand as tasks (D2). `extension add/remove`
   commands are decided after the dogfood, by its numbers (rounds, findings
-  about spec–code mismatch, cost) — the sidecar task CR-003 pre-registers
-  them.
+  about spec–code mismatch, cost), which a research task in the operator's
+  own journal pre-registers before the first data point.
+- The journal-only lane excludes `.agentmarshal/extensions/`: a manifest-only
+  change takes the diff lane and needs a review (D2).
 - Downstream: docs/overview (contract header), quickstart (one paragraph),
   sidecar.md (the footprint is a host path; a sidecar contract may name it —
   the gate's scope check there is advisory, as every sidecar check is —
@@ -185,7 +207,9 @@ a second real user exists, not before.
 - **Bundle OpenSpec.** Rejected: the adopter wanted one tool; a bundle is two
   and a second toolchain, and we would own a moving third-party format.
 - **Plugin SDK and registry.** Rejected: one consumer, five products, and a
-  maintenance promise (track N young tools) we already fail at N=5 tripwires.
+  maintenance promise — track N young tools, re-scanned before each release —
+  of a kind this project has already failed to keep for a shorter list of
+  neighbours.
 - **Harness-native plugins only** (skills and commands, no journal, no gate).
   Rejected as the whole answer: it installs and removes, but enforces nothing
   and records nothing — it is what the adopter already has. Kept as the
