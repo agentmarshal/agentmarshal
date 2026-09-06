@@ -80,7 +80,10 @@ def _document_files(project_root: Path, entry: str) -> list[_Listed]:
     if entry.endswith("/"):
         if target.is_symlink():
             kind = _link_kind(project_root, target)
-            kind = "linked_directory" if kind == "linked_directory" else "unresolvable"
+            if kind == "file":
+                # A trailing slash names a directory; a file there — linked or
+                # not — is missing, not a file.
+                return []
             return [_Listed(kind, lexical_target, target)]
         if not target.is_dir():
             return []

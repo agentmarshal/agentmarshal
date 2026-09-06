@@ -450,12 +450,18 @@ def _manifest_from_tree(
     path = extension_manifest_path(name)
     source = f"{tree_ref}:{path}"
     try:
-        listing = _run_git(
-            project_root, ["ls-tree", "--name-only", tree_ref, "--", path]
-        )
-        if not listing.strip():
+        try:
+            kind = _run_git(project_root, ["cat-file", "-t", source]).strip()
+        except GateError as error:
+            # ``<tree>:<path>`` is an object name, not a pathspec: a bracket
+            # or a star in an extension's name is a character, not a glob, and
+            # an entry that is not there fails to resolve.
             raise ExtensionManifestMissing(
                 f"extension manifest {name!r} is missing: {source}"
+            ) from error
+        if kind != "blob":
+            raise ExtensionManifestError(
+                f"extension manifest {name!r} at {source} is a {kind}, not a file"
             )
         text = _run_git(project_root, ["show", source])
     except GateError as error:

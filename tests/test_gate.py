@@ -1644,3 +1644,33 @@ def test_named_manifest_that_git_cannot_show_as_text_is_a_refusal_line(
 
     assert not passed
     assert "FAIL: named extension 'openspec' manifest unreadable" in output
+
+
+def test_named_manifest_with_a_bracket_in_its_name_is_read_as_an_object(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`<tree>:<path>` is an object name: a bracket is a character, not a glob."""
+
+    repo, _ = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    _write_schema2_contract(repo, ["src/"], extensions=["open[spec]"])
+    manifest = repo / ".agentmarshal" / "extensions" / "open[spec].toml"
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text(
+        "schema = 1\n"
+        'name = "open[spec]"\n'
+        'version = "1"\n'
+        'footprint = ["openspec/"]\n'
+        "documents = []\n"
+        "artifacts = []\n"
+        'install = "install"\n'
+        'remove = "remove"\n',
+        encoding="utf-8",
+    )
+    base = _commit_all(repo, "name a bracketed extension")
+    head = _implement(repo, "openspec/change.md")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    assert passed
+    assert "extensions: open[spec]" in output

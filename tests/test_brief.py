@@ -636,3 +636,21 @@ def test_brief_reports_a_linked_directory_named_as_the_entry_itself(
     briefing = capsys.readouterr().out
     assert "LINKED DIRECTORY (not followed; name its target): specs" in briefing
     assert "Common sentinel." not in briefing
+
+
+def test_brief_treats_a_trailing_slash_entry_that_links_to_a_file_as_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path, monkeypatch)
+    _schema2_contract(repo, 'documents = ["specs/"]\n')
+    (repo / "guide.md").write_text("Guide sentinel.\n", encoding="utf-8")
+    (repo / "specs").symlink_to(repo / "guide.md")
+    capsys.readouterr()
+
+    assert main(["brief", "--task", "CR-001"]) == 0
+
+    briefing = capsys.readouterr().out
+    assert "MISSING: specs/" in briefing
+    assert "Guide sentinel." not in briefing

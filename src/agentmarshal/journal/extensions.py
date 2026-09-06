@@ -155,20 +155,23 @@ def read_extension_manifest(project_root: Path, name: str) -> ExtensionManifest:
     # Resolve the root first: a symlink in an ancestor of the project (a
     # temporary directory on some hosts) is not the hazard; a symlinked
     # extensions directory or manifest file is.
+    # Strict resolution reports a symlink loop the same way on every Python
+    # this project supports (RuntimeError on one release, ELOOP on the next);
+    # an absent file is the one resolution failure that means "missing".
     try:
-        root = project_root.resolve()
+        root = project_root.resolve(strict=True)
         path = root / relative_path
-        resolved = path.resolve()
+        resolved = path.resolve(strict=True)
+    except FileNotFoundError:
+        raise ExtensionManifestMissing(
+            f"extension manifest {name!r} is missing: {project_root / relative_path}"
+        ) from None
     except (OSError, RuntimeError) as error:
         raise ExtensionManifestError(
             f"cannot resolve extension manifest {name!r}: {error}"
         ) from error
     if resolved != path:
         raise ExtensionManifestError(f"refusing to read through a symlink: {path}")
-    if not path.exists():
-        raise ExtensionManifestMissing(
-            f"extension manifest {name!r} is missing: {path}"
-        )
     try:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeError) as error:
