@@ -108,6 +108,9 @@ task is already closed.
   check.
 - **Reviewer independence** — the gate requires the recorded reviewer's email to
   differ from the commit's authors/committers, and refuses the merge otherwise.
+  On the findings lane there is no commit: the reviewer's email must differ from
+  every git identity the finding's recorder resolves to, and the lane refuses
+  when the recorder resolves to none (ADR-0009).
   It is a comparison of *declared* identities: nothing establishes that the
   declared reviewer is a real party, or that anyone read the change. Signed
   review records are roadmap (ADR-0006).

@@ -43,6 +43,10 @@ It does **not** establish that any of this was enforced:
   words on every run — `Sidecar checks are advisory and decide no merge.` The
   merge belongs to the host's own process, which a sidecar operator generally
   does not control. An advisory pass never prints as the authority's pass.
+  The one exception has no merge in it: the [findings lane](#research-findings-loop)
+  (`--findings`) offers no host candidate and decides over evidence held in
+  the sidecar itself, printing `Placement: sidecar` where the advisory notice
+  would otherwise be (ADR-0009, Decision 4).
 - **The contract is not pinned to a base commit.** Embedded, the gate reads a
   task's contract from the base side of the same history the candidate belongs
   to, so a change cannot widen its own scope. A sidecar's contract is not in
@@ -375,13 +379,13 @@ projected across them — a projection with two sources would be a guess.
 |---|---|
 | `init --host PATH` | Creates the sidecar project; refuses a host that is missing, not a git worktree, contains the journal, or shares its object database |
 | `open` | Numbering is the sidecar's own; scope warnings are checked against the host tree |
-| `gate` | **Advisory.** Requires `--task`; reads the contract from the sidecar working tree, not from a pinned base |
-| `complete` | Same advisory checks; writes `completed` only to the sidecar |
+| `gate` | **Advisory** on a merge candidate. Requires `--task`; reads the contract from the sidecar working tree, not from a pinned base. `gate --findings` is the exception (ADR-0009): no host candidate, so it decides over sidecar evidence, prints `Placement: sidecar` first and never the advisory notice |
+| `complete` | Same advisory checks on a candidate; writes `completed` only to the sidecar. `complete --findings` decides the same way and binds the completion to the finding |
 | `prune` | Reports; `--delete` is refused, because the host stays read-only |
 | `status`, `report` | Print `Placement: sidecar` on stderr; stdout unchanged |
 | `leak-scan` | Scans the **host's** added content, with the private markers read from the sidecar's own `project.json` |
-| `finding`, `submit-review`, `accept` | Findings are journal-owned; `gate --findings` and `complete --findings` decide over sidecar evidence rather than advising about a host merge |
-| `review`, `amend`, `reopen`, `abandon`, `record-session`, `validate` | Unchanged, writing to the sidecar and reading host git facts where needed |
+| `finding` | Journal-owned: writes to the sidecar, and its artifacts must resolve under the sidecar repository, not the host |
+| `submit-review`, `accept`, `review`, `amend`, `reopen`, `abandon`, `record-session`, `validate` | Unchanged, writing to the sidecar and reading host git facts where needed |
 
 ## Research findings loop
 
