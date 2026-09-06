@@ -287,6 +287,111 @@ def test_sidecar_gate_complete_and_leak_scan_read_only_the_host(
     assert _tree_snapshot(host) == before
 
 
+def test_sidecar_gate_reads_manifest_from_sidecar_for_host_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    host = tmp_path / "host"
+    sidecar = tmp_path / "sidecar"
+    _git_init(host)
+    _git_init(sidecar)
+    host_manifest = host / ".agentmarshal" / "extensions" / "openspec.toml"
+    host_manifest.parent.mkdir(parents=True)
+    host_manifest.write_text("host copy is not trusted\n", encoding="utf-8")
+    host_document = host / "openspec" / "specs" / "feature.md"
+    host_document.parent.mkdir(parents=True)
+    host_document.write_text("feature\n", encoding="utf-8")
+    base = _commit(host, "installed host files")
+    host_manifest.unlink()
+    host_document.unlink()
+    head = _commit(host, "remove host extension")
+
+    monkeypatch.chdir(sidecar)
+    assert main(["init", "--host", str(host)]) == 0
+    assert (
+        main(
+            [
+                "open",
+                "--title",
+                "Remove host extension",
+                "--scope",
+                ".agentmarshal/extensions/openspec.toml",
+            ]
+        )
+        == 0
+    )
+    contract = (
+        sidecar / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "contract.md"
+    )
+    contract.write_text(
+        contract.read_text(encoding="utf-8").replace(
+            "schema = 1\n", 'schema = 2\nextensions = ["openspec"]\n'
+        ),
+        encoding="utf-8",
+    )
+    manifest = sidecar / ".agentmarshal" / "extensions" / "openspec.toml"
+    manifest.parent.mkdir()
+    manifest.write_text(
+        "schema = 1\n"
+        'name = "openspec"\n'
+        'version = "1"\n'
+        'footprint = ["openspec/"]\n'
+        'documents = ["openspec/specs/"]\n'
+        "artifacts = []\n"
+        'install = "install"\n'
+        'remove = "remove"\n',
+        encoding="utf-8",
+    )
+    assert (
+        main(
+            [
+                "submit-review",
+                "--task",
+                "CR-001",
+                "--commit",
+                head,
+                "--verdict",
+                "approved",
+                "--role",
+                "qa",
+                "--vendor",
+                "test",
+                "--model",
+                "test",
+                "--email",
+                "reviewer@test.invalid",
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+
+    assert (
+        main(
+            [
+                "gate",
+                "--task",
+                "CR-001",
+                "--commit",
+                head,
+                "--base",
+                base,
+                "--pipeline-sha",
+                head,
+            ]
+        )
+        == 0
+    )
+
+    output = capsys.readouterr().out
+    assert output.startswith("Sidecar checks are advisory and decide no merge.\n")
+    assert "extensions: openspec" in output
+    assert "PASS: named documents touched (openspec/specs/feature.md)" in output
+    assert "PASS: extension 'openspec' removal complete" in output
+    assert output.endswith("gate: advisory checks passed; decides no merge\n")
+
+
 def _host_and_sidecar(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> tuple[Path, Path, str, str]:

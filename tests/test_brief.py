@@ -507,7 +507,7 @@ def test_brief_reports_a_document_it_cannot_resolve_inside_a_named_directory(
     )
 
 
-def test_brief_walks_a_linked_subdirectory_inside_the_tree(
+def test_brief_does_not_walk_a_linked_subdirectory_inside_the_tree(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -525,8 +525,8 @@ def test_brief_walks_a_linked_subdirectory_inside_the_tree(
     assert main(["brief", "--task", "CR-001"]) == 0
 
     briefing = capsys.readouterr().out
-    assert "Common sentinel." in briefing
-    assert "UNRESOLVABLE" not in briefing
+    assert "Common sentinel." not in briefing
+    assert "LINKED DIRECTORY (not followed; name its target): specs/link" in briefing
 
 
 def test_brief_distinguishes_an_empty_directory_and_an_outside_link_from_missing(
@@ -574,7 +574,30 @@ def test_brief_reports_a_symlink_cycle_instead_of_recursing(
 
     briefing = capsys.readouterr().out
     assert briefing.count("Leaf sentinel.") == 1
-    assert "or a cycle): specs/nested/up" in briefing
+    # A link to an ancestor is a linked directory like any other: not followed,
+    # so it cannot recurse, and it is reported under that name.
+    assert "LINKED DIRECTORY (not followed; name its target): specs/nested/up" in (
+        briefing
+    )
+
+
+def test_brief_reports_a_symlink_loop_at_a_document_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path, monkeypatch)
+    _schema2_contract(repo, 'documents = ["docs/loop.md"]\n')
+    loop = repo / "docs" / "loop.md"
+    loop.parent.mkdir()
+    loop.symlink_to(loop)
+    capsys.readouterr()
+
+    assert main(["brief", "--task", "CR-001"]) == 0
+
+    briefing = capsys.readouterr().out
+    assert "UNRESOLVABLE" in briefing
+    assert "docs/loop.md" in briefing
 
 
 def test_brief_names_a_directory_given_without_a_trailing_slash(

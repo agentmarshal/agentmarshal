@@ -182,6 +182,28 @@ def test_findings_lane_refuses_declared_scope(
     assert any("declared scope: src/" in line for line in report.lines)
 
 
+def test_findings_lane_marks_named_documents_not_examined(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, journal = _repo(tmp_path, monkeypatch)
+    contract = journal / "tasks" / "CR-001" / "contract.md"
+    contract.write_text(
+        contract.read_text(encoding="utf-8").replace(
+            "schema = 1\n", 'schema = 2\ndocuments = ["docs/guide.md"]\n'
+        ),
+        encoding="utf-8",
+    )
+    finding = _finding(repo)
+    _review(finding)
+
+    report = run_findings_gate(journal, "CR-001")
+
+    assert report.passed
+    assert (
+        "NOT EXAMINED: named documents (findings lane has no candidate)" in report.lines
+    )
+
+
 def test_acceptance_over_a_finding_names_every_blocking_item(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

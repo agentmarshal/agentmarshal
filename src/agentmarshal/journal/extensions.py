@@ -10,9 +10,9 @@ from typing import cast
 from agentmarshal.journal.contracts import (
     JournalContractError,
     reject_control_characters,
+    scope_covers,
     validate_scope_entry,
 )
-from agentmarshal.journal.gate import _scope_covers
 
 
 class ExtensionManifestError(ValueError):
@@ -42,7 +42,7 @@ class ExtensionManifest:
     remove: str
 
 
-def _require_string(data: dict[str, object], field: str, source: Path) -> str:
+def _require_string(data: dict[str, object], field: str, source: str | Path) -> str:
     value = data.get(field)
     if not isinstance(value, str) or not value:
         raise ExtensionManifestError(
@@ -52,7 +52,7 @@ def _require_string(data: dict[str, object], field: str, source: Path) -> str:
 
 
 def _require_string_array(
-    data: dict[str, object], field: str, source: Path
+    data: dict[str, object], field: str, source: str | Path
 ) -> tuple[str, ...]:
     value = data.get(field)
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
@@ -62,7 +62,7 @@ def _require_string_array(
     return tuple(cast(list[str], value))
 
 
-def _validate_entries(entries: tuple[str, ...], field: str, source: Path) -> None:
+def _validate_entries(entries: tuple[str, ...], field: str, source: str | Path) -> None:
     for entry in entries:
         try:
             validate_scope_entry(entry, f"extension manifest field {field!r}")
@@ -70,9 +70,7 @@ def _validate_entries(entries: tuple[str, ...], field: str, source: Path) -> Non
             raise ExtensionManifestError(f"{error}: {source}") from error
 
 
-def read_extension_manifest(project_root: Path, name: str) -> ExtensionManifest:
-    """Read and validate ``.agentmarshal/extensions/<name>.toml``."""
-
+def _validate_name(name: str) -> None:
     try:
         reject_control_characters(name, "extension name")
     except JournalContractError as error:
@@ -81,63 +79,100 @@ def read_extension_manifest(project_root: Path, name: str) -> ExtensionManifest:
         raise ExtensionManifestError(
             f"extension name {name!r} must be one non-empty path component"
         )
+
+
+def extension_manifest_path(name: str) -> str:
+    """Return a validated manifest's repository-relative path."""
+
+    _validate_name(name)
+    return f".agentmarshal/extensions/{name}.toml"
+
+
+def parse_extension_manifest_text(
+    text: str, name: str, source: str | Path
+) -> ExtensionManifest:
+    """Parse and validate one manifest already read from a trusted source."""
+
+    extension_manifest_path(name)
+    try:
+        parsed = tomllib.loads(text)
+    except tomllib.TOMLDecodeError as error:
+        raise ExtensionManifestError(
+            f"invalid TOML extension manifest: {source}"
+        ) from error
+    data = cast(dict[str, object], parsed)
+    schema = data.get("schema")
+    if type(schema) is not int or schema != 1:
+        raise ExtensionManifestError(
+            f"extension manifest has an unknown or missing schema version: {source}"
+        )
+
+    declared_name = _require_string(data, "name", source)
+    if declared_name != name:
+        raise ExtensionManifestError(
+            f"extension manifest name {declared_name!r} does not match {name!r}: "
+            f"{source}"
+        )
+    footprint = _require_string_array(data, "footprint", source)
+    documents = _require_string_array(data, "documents", source)
+    artifacts = _require_string_array(data, "artifacts", source)
+    for field, entries in (
+        ("footprint", footprint),
+        ("documents", documents),
+        ("artifacts", artifacts),
+    ):
+        _validate_entries(entries, field, source)
+    for field, entries in (("documents", documents), ("artifacts", artifacts)):
+        for entry in entries:
+            if not scope_covers(footprint, entry):
+                raise ExtensionManifestError(
+                    f"extension manifest {field} entry {entry!r} is not under its "
+                    f"footprint: {source}"
+                )
+
+    return ExtensionManifest(
+        schema=schema,
+        name=declared_name,
+        version=_require_string(data, "version", source),
+        footprint=footprint,
+        documents=documents,
+        artifacts=artifacts,
+        install=_require_string(data, "install", source),
+        remove=_require_string(data, "remove", source),
+    )
+
+
+def read_extension_manifest(project_root: Path, name: str) -> ExtensionManifest:
+    """Read and validate ``.agentmarshal/extensions/<name>.toml``.
+
+    Brief and review call this filesystem reader against their contextual working
+    tree or reviewed snapshot. A sidecar gate calls it against the trusted sidecar
+    working tree; an embedded gate obtains the blob with ``git show`` from its
+    merge-base and passes that text to :func:`parse_extension_manifest_text`.
+    """
+
+    relative_path = extension_manifest_path(name)
     # Resolve the root first: a symlink in an ancestor of the project (a
     # temporary directory on some hosts) is not the hazard; a symlinked
     # extensions directory or manifest file is.
-    path = project_root.resolve() / ".agentmarshal" / "extensions" / f"{name}.toml"
-    if path.resolve() != path:
+    try:
+        root = project_root.resolve()
+        path = root / relative_path
+        resolved = path.resolve()
+    except (OSError, RuntimeError) as error:
+        raise ExtensionManifestError(
+            f"cannot resolve extension manifest {name!r}: {error}"
+        ) from error
+    if resolved != path:
         raise ExtensionManifestError(f"refusing to read through a symlink: {path}")
     if not path.exists():
         raise ExtensionManifestMissing(
             f"extension manifest {name!r} is missing: {path}"
         )
     try:
-        with path.open("rb") as manifest_file:
-            parsed = tomllib.load(manifest_file)
-    except tomllib.TOMLDecodeError as error:
-        raise ExtensionManifestError(
-            f"invalid TOML extension manifest: {path}"
-        ) from error
-    except OSError as error:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as error:
         raise ExtensionManifestError(
             f"cannot read extension manifest {name!r}: {error}"
         ) from error
-    data = cast(dict[str, object], parsed)
-    schema = data.get("schema")
-    if type(schema) is not int or schema != 1:
-        raise ExtensionManifestError(
-            f"extension manifest has an unknown or missing schema version: {path}"
-        )
-
-    declared_name = _require_string(data, "name", path)
-    if declared_name != name:
-        raise ExtensionManifestError(
-            f"extension manifest name {declared_name!r} does not match {name!r}: {path}"
-        )
-    footprint = _require_string_array(data, "footprint", path)
-    documents = _require_string_array(data, "documents", path)
-    artifacts = _require_string_array(data, "artifacts", path)
-    for field, entries in (
-        ("footprint", footprint),
-        ("documents", documents),
-        ("artifacts", artifacts),
-    ):
-        _validate_entries(entries, field, path)
-    for field, entries in (("documents", documents), ("artifacts", artifacts)):
-        for entry in entries:
-            if not _scope_covers(footprint, entry):
-                raise ExtensionManifestError(
-                    f"extension manifest {field} entry {entry!r} is not under its "
-                    f"footprint: {path}"
-                )
-
-    return ExtensionManifest(
-        schema=schema,
-        name=declared_name,
-        version=_require_string(data, "version", path),
-        footprint=footprint,
-        documents=documents,
-        artifacts=artifacts,
-        install=_require_string(data, "install", path),
-        remove=_require_string(data, "remove", path),
-    )
+    return parse_extension_manifest_text(text, name, path)

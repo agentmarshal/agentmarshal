@@ -37,6 +37,33 @@ _VERDICT_REQUIRED = {"reviewed_commit", "verdict", "findings"}
 # advisory_findings is in the record schema and create_review_record accepts it;
 # accepting it here is what makes it reachable through the protocol at all.
 _VERDICT_OPTIONAL = {"advisory_findings"}
+_REVIEW_PROMPT = """You are a read-only code reviewer. Review the supplied task contract
+and diff.
+Do not modify files. Your reviewed commit is {commit}.
+
+{named_material}For each blocking or advisory finding id you report, print one line of \
+prose
+before the verdict block, naming what is wrong and where. The ids are labels
+for the machine; the prose is what a human will read.
+
+At the end, print exactly one JSON object between lines containing exactly
+{verdict_begin} and {verdict_end}. The object must contain:
+- reviewed_commit: the exact reviewed commit SHA
+- verdict: exactly one of: {verdicts}
+- findings: an array of unique finding-id strings; empty only for "approved",
+  and non-empty for every other verdict
+and may additionally contain:
+- advisory_findings: an array of unique non-blocking finding-id strings,
+  disjoint from findings; allowed with any verdict, including "approved"
+
+No other key is accepted.
+
+Task contract:
+{contract}
+
+Diff:
+{diff}
+"""
 
 
 class ReviewLaunchError(Exception):
@@ -99,37 +126,15 @@ def _review_prompt(
             lines.append("Extensions whose manifest is absent in the reviewed tree:")
             lines.extend(f"- {name}" for name in absent_extensions)
         named_material = "\n".join(lines) + "\n\n"
-    prefix = f"""You are a read-only code reviewer. Review the supplied task contract
-and diff.
-Do not modify files. Your reviewed commit is {commit}.
-
-"""
-    suffix = (
-        "For each blocking or advisory finding id you report, print one line "
-        f"""of prose
-before the verdict block, naming what is wrong and where. The ids are labels
-for the machine; the prose is what a human will read.
-
-At the end, print exactly one JSON object between lines containing exactly
-{_VERDICT_BEGIN} and {_VERDICT_END}. The object must contain:
-- reviewed_commit: the exact reviewed commit SHA
-- verdict: exactly one of: {verdicts}
-- findings: an array of unique finding-id strings; empty only for "approved",
-  and non-empty for every other verdict
-and may additionally contain:
-- advisory_findings: an array of unique non-blocking finding-id strings,
-  disjoint from findings; allowed with any verdict, including "approved"
-
-No other key is accepted.
-
-Task contract:
-{contract}
-
-Diff:
-{diff}
-"""
+    return _REVIEW_PROMPT.format(
+        commit=commit,
+        named_material=named_material,
+        verdict_begin=_VERDICT_BEGIN,
+        verdict_end=_VERDICT_END,
+        verdicts=verdicts,
+        contract=contract,
+        diff=diff,
     )
-    return prefix + named_material + suffix
 
 
 def _reviewer_command(model: str, prompt_file: Path) -> list[str]:

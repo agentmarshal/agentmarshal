@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from agentmarshal.journal.contracts import ContractHeader
+from agentmarshal.journal.contracts import ContractHeader, scope_covers
 from agentmarshal.journal.extensions import (
     ExtensionManifestError,
     ExtensionManifestMissing,
@@ -30,8 +30,9 @@ def _relative_file(project_root: Path, path: Path) -> str | None:
 
     try:
         resolved = path.resolve(strict=True)
-        relative = resolved.relative_to(project_root.resolve())
-    except (OSError, ValueError):
+        resolved.relative_to(project_root.resolve())
+        relative = path.absolute().relative_to(project_root.absolute())
+    except (OSError, RuntimeError, ValueError):
         return None
     return relative.as_posix() if resolved.is_file() else None
 
@@ -47,9 +48,11 @@ def _document_files(project_root: Path, entry: str) -> list[tuple[str | None, Pa
 
     target = project_root / entry.rstrip("/")
     if entry.endswith("/"):
+        if target.is_symlink():
+            return [(None, target)]
         if not target.is_dir():
             return []
-        return _files_below(project_root, target)
+        return _files_below(project_root, target, entry)
     if not target.exists() and not target.is_symlink():
         return []
     relative = _relative_file(project_root, target)
@@ -57,32 +60,28 @@ def _document_files(project_root: Path, entry: str) -> list[tuple[str | None, Pa
 
 
 def _files_below(
-    project_root: Path, directory: Path, seen: set[Path] | None = None
+    project_root: Path, directory: Path, entry: str
 ) -> list[tuple[str | None, Path]]:
-    """Walk a directory; linked subdirectories inside the tree are walked once.
+    """Walk lexical paths below ``entry`` without following linked directories."""
 
-    ``seen`` holds the resolved directories already walked, so a link to an
-    ancestor (a cycle) is reported as unresolvable instead of recursed into.
-    """
-
-    seen = seen if seen is not None else {directory.resolve()}
     files: list[tuple[str | None, Path]] = []
     for candidate in sorted(directory.rglob("*")):
-        if candidate.is_symlink() and candidate.is_dir():
+        lexical = candidate.relative_to(project_root).as_posix()
+        if not scope_covers((entry,), lexical):
+            continue
+        if candidate.is_symlink():
             try:
                 resolved = candidate.resolve(strict=True)
                 resolved.relative_to(project_root.resolve())
-            except (OSError, ValueError):
+            except (OSError, RuntimeError, ValueError):
                 files.append((None, candidate))
                 continue
-            if resolved in seen or any(
-                walked == resolved or walked.is_relative_to(resolved) for walked in seen
-            ):
-                files.append((None, candidate))
+            if resolved.is_dir():
+                # A linked directory has a lexical child set different from its
+                # target's. Following it would make brief and gate disagree about
+                # what is under the named documents entry.
+                files.append(("", candidate))
                 continue
-            seen.add(resolved)
-            files.extend(_files_below(project_root, resolved, seen))
-            continue
         if candidate.is_dir():
             continue
         files.append((_relative_file(project_root, candidate), candidate))
@@ -164,6 +163,13 @@ def _append_named_material(
             sections.append(f"## Named document: {entry}\n\n{state}: {entry}\n")
             continue
         for relative, path in files:
+            if relative == "":
+                lexical = path.relative_to(material_root).as_posix()
+                sections.append(
+                    f"## Named document: {lexical}\n\n"
+                    f"LINKED DIRECTORY (not followed; name its target): {lexical}\n"
+                )
+                continue
             if relative is None:
                 lexical = path.relative_to(material_root).as_posix()
                 if path.is_dir() and not path.is_symlink():

@@ -81,6 +81,18 @@ def validate_scope_entry(entry: str, what: str) -> None:
     reject_control_characters(entry, f"{what} entry {entry!r}")
 
 
+def scope_covers(scope: tuple[str, ...], path: str) -> bool:
+    """Return whether an exact entry or trailing-slash prefix covers ``path``."""
+
+    for entry in scope:
+        if entry.endswith("/"):
+            if path == entry.rstrip("/") or path.startswith(entry):
+                return True
+        elif path == entry:
+            return True
+    return False
+
+
 def _ensure_contract_path_is_real(path: Path) -> None:
     """Reject a contract path reachable through a symlink.
 

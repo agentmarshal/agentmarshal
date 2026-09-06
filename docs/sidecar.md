@@ -233,6 +233,12 @@ gate: advisory checks passed; decides no merge
 The SHAs in that transcript are from an actual run on a throwaway pair of
 repositories; yours will differ.
 
+For a task that names extensions or documents, the advisory transcript also
+names the extensions contributing host paths to effective scope, reports named
+documents touched in the host diff, and checks a deleted manifest's footprint
+against the host candidate tree. Manifests are read from the sidecar working
+tree, alongside its contract; every resulting line remains advisory.
+
 The gate also runs the advisory leak scan over the candidate's added content.
 It appends nothing when there is no hit, which is why the transcript above has
 no such line; on a hit it adds `WARN: possible leak in candidate additions

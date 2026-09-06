@@ -98,7 +98,10 @@ task is already closed.
   **extensions** field names process-extension manifests whose documents also
   join that brief. Committed before the work.
 - **Scope** — the paths a task is allowed to change. The gate refuses a diff
-  that touches anything outside it.
+  that touches anything outside it; a named extension adds its base-side
+  manifest footprint to the effective scope. The diff lane also reports whether
+  named documents were touched and whether a deleted manifest's footprint was
+  completely removed.
 - **Record** — one append-only JSON evidence file: `opened`, `finding`,
   `review`, `acceptance`, `amendment`, `completed`, `reopened`, `abandoned`,
   or a `session` (measurement). Written once, never edited.

@@ -144,6 +144,15 @@ def test_symlinked_manifest_file_is_refused(tmp_path: Path) -> None:
         read_extension_manifest(tmp_path, "openspec")
 
 
+def test_manifest_symlink_loop_is_a_reader_error(tmp_path: Path) -> None:
+    path = tmp_path / ".agentmarshal" / "extensions" / "openspec.toml"
+    path.parent.mkdir(parents=True)
+    path.symlink_to(path)
+
+    with pytest.raises(ExtensionManifestError, match="cannot resolve"):
+        read_extension_manifest(tmp_path, "openspec")
+
+
 def test_missing_manifest_is_its_own_error(tmp_path: Path) -> None:
     with pytest.raises(ExtensionManifestMissing, match="missing"):
         read_extension_manifest(tmp_path, "openspec")

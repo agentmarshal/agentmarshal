@@ -93,6 +93,51 @@ def _gate_repo(
     return repo, base
 
 
+def _write_schema2_contract(
+    repo: Path,
+    scope: list[str],
+    *,
+    documents: list[str] | None = None,
+    extensions: list[str] | None = None,
+) -> None:
+    path = repo / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "contract.md"
+    fields = [
+        "+++",
+        "schema = 2",
+        'id = "CR-001"',
+        'title = "Gate task"',
+        f"scope = {json.dumps(scope)}",
+        "acceptance = []",
+    ]
+    if documents is not None:
+        fields.append(f"documents = {json.dumps(documents)}")
+    if extensions is not None:
+        fields.append(f"extensions = {json.dumps(extensions)}")
+    path.write_text("\n".join((*fields, "+++", "", "Body.\n")), encoding="utf-8")
+
+
+def _write_extension_manifest(
+    repo: Path,
+    *,
+    footprint: list[str] | None = None,
+    documents: list[str] | None = None,
+) -> Path:
+    path = repo / ".agentmarshal" / "extensions" / "openspec.toml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "schema = 1\n"
+        'name = "openspec"\n'
+        'version = "1"\n'
+        f"footprint = {json.dumps(footprint or ['openspec/'])}\n"
+        f"documents = {json.dumps(documents or [])}\n"
+        "artifacts = []\n"
+        'install = "install"\n'
+        'remove = "remove"\n',
+        encoding="utf-8",
+    )
+    return path
+
+
 def _implement(repo: Path, path: str, content: str = "code\n") -> str:
     target = repo / path
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -335,6 +380,248 @@ def test_gate_refuses_path_outside_scope(
 
     assert not passed
     assert "outside contract scope" in output
+
+
+def test_named_extension_footprint_joins_effective_scope_from_base(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, _ = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    _write_schema2_contract(repo, ["src/"], extensions=["openspec"])
+    _write_extension_manifest(repo)
+    base = _commit_all(repo, "name extension")
+    head = _implement(repo, "openspec/change.md")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    assert passed
+    assert "diff within contract scope (extensions: openspec)" in output
+
+
+def test_candidate_manifest_edit_cannot_widen_its_own_scope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manifest_path = ".agentmarshal/extensions/openspec.toml"
+    repo, _ = _gate_repo(tmp_path, monkeypatch, [manifest_path])
+    _write_schema2_contract(repo, [manifest_path], extensions=["openspec"])
+    manifest = _write_extension_manifest(repo)
+    base = _commit_all(repo, "name extension")
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            'footprint = ["openspec/"]', 'footprint = ["candidate-only/"]'
+        ),
+        encoding="utf-8",
+    )
+    candidate_path = repo / "candidate-only" / "change.md"
+    candidate_path.parent.mkdir()
+    candidate_path.write_text("change\n", encoding="utf-8")
+    head = _commit_all(repo, "try to widen manifest")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    assert not passed
+    assert "paths outside contract scope: candidate-only/change.md" in output
+    assert "extensions: openspec" in output
+
+
+def test_candidate_manifest_edit_cannot_silence_base_side_documents(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manifest_path = ".agentmarshal/extensions/openspec.toml"
+    repo, _ = _gate_repo(tmp_path, monkeypatch, [manifest_path])
+    _write_schema2_contract(repo, [manifest_path], extensions=["openspec"])
+    manifest = _write_extension_manifest(repo, documents=["openspec/specs/"])
+    base = _commit_all(repo, "name extension documents")
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            'documents = ["openspec/specs/"]', "documents = []"
+        ),
+        encoding="utf-8",
+    )
+    code = repo / "openspec" / "code.py"
+    code.parent.mkdir()
+    code.write_text("change\n", encoding="utf-8")
+    head = _commit_all(repo, "try to silence documents")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    assert not passed
+    assert "FAIL: named documents untouched: openspec/specs/" in output
+
+
+@pytest.mark.parametrize("manifest_state", ["missing", "malformed"])
+def test_gate_refuses_an_unreadable_base_side_named_manifest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    manifest_state: str,
+) -> None:
+    repo, _ = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    _write_schema2_contract(repo, ["src/"], extensions=["openspec"])
+    if manifest_state == "malformed":
+        manifest = _write_extension_manifest(repo)
+        manifest.write_text("schema = [\n", encoding="utf-8")
+    base = _commit_all(repo, f"{manifest_state} manifest at base")
+    head = _implement(repo, "src/change.py")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    assert not passed
+    assert "named extension 'openspec' manifest unreadable" in output
+    assert manifest_state in output or "invalid TOML" in output
+
+
+def test_unnamed_extension_footprint_does_not_join_scope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, _ = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    _write_extension_manifest(repo)
+    base = _commit_all(repo, "install unrequested extension")
+    head = _implement(repo, "openspec/change.md")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    assert not passed
+    assert "paths outside contract scope: openspec/change.md" in output
+
+
+@pytest.mark.parametrize("touch_document", [False, True])
+def test_gate_reports_whether_named_documents_are_touched(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    touch_document: bool,
+) -> None:
+    repo, _ = _gate_repo(tmp_path, monkeypatch, ["src/", "docs/"])
+    _write_schema2_contract(repo, ["src/", "docs/"], documents=["docs/guide.md"])
+    base = _commit_all(repo, "name document")
+    path = "docs/guide.md" if touch_document else "src/change.py"
+    head = _implement(repo, path)
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    assert passed is touch_document
+    expected = (
+        "PASS: named documents touched (docs/guide.md)"
+        if touch_document
+        else "FAIL: named documents untouched: docs/guide.md"
+    )
+    assert expected in output
+
+
+def test_deleting_a_named_document_counts_as_touched(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, _ = _gate_repo(tmp_path, monkeypatch, ["docs/"])
+    _write_schema2_contract(repo, ["docs/"], documents=["docs/guide.md"])
+    guide = repo / "docs" / "guide.md"
+    guide.parent.mkdir()
+    guide.write_text("guide\n", encoding="utf-8")
+    base = _commit_all(repo, "name document")
+    guide.unlink()
+    head = _commit_all(repo, "delete document")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    assert passed
+    assert "PASS: named documents touched (docs/guide.md)" in output
+
+
+def test_journal_only_lane_prints_nothing_about_named_documents(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, _ = _gate_repo(tmp_path, monkeypatch, ["docs/"])
+    _write_schema2_contract(repo, ["docs/"], documents=["docs/guide.md"])
+    base = _commit_all(repo, "name document")
+    contract = repo / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "contract.md"
+    contract.write_text(
+        contract.read_text(encoding="utf-8") + "Journal-only clarification.\n",
+        encoding="utf-8",
+    )
+    head = _commit_all(repo, "clarify contract")
+
+    passed, output = _run(repo, head, base, head)
+
+    assert passed
+    assert "named documents" not in output
+
+
+@pytest.mark.parametrize("leave_footprint", [False, True])
+def test_manifest_deletion_checks_candidate_tree_for_remaining_footprint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    leave_footprint: bool,
+) -> None:
+    manifest_path = ".agentmarshal/extensions/openspec.toml"
+    repo, _ = _gate_repo(tmp_path, monkeypatch, [manifest_path])
+    _write_schema2_contract(repo, [manifest_path], extensions=["openspec"])
+    manifest = _write_extension_manifest(repo)
+    first = repo / "openspec" / "first.md"
+    second = repo / "openspec" / "second.md"
+    first.parent.mkdir()
+    first.write_text("first\n", encoding="utf-8")
+    second.write_text("second\n", encoding="utf-8")
+    base = _commit_all(repo, "installed extension")
+    manifest.unlink()
+    first.unlink()
+    if not leave_footprint:
+        second.unlink()
+    head = _commit_all(repo, "remove extension")
+    if not leave_footprint:
+        # An uncommitted recreation must not affect the candidate-tree check.
+        second.parent.mkdir(exist_ok=True)
+        second.write_text("working tree only\n", encoding="utf-8")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    assert passed is not leave_footprint
+    if leave_footprint:
+        assert "FAIL: extension 'openspec' removal incomplete" in output
+        assert "openspec/second.md" in output
+    else:
+        assert "PASS: extension 'openspec' removal complete" in output
+
+
+def test_editing_footprint_without_deleting_manifest_has_no_removal_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, _ = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    _write_schema2_contract(repo, ["src/"], extensions=["openspec"])
+    _write_extension_manifest(repo)
+    base = _commit_all(repo, "installed extension")
+    head = _implement(repo, "openspec/change.md")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    assert passed
+    assert "removal" not in output
+
+
+def test_deleting_an_unnamed_base_manifest_still_checks_its_footprint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manifest_path = ".agentmarshal/extensions/openspec.toml"
+    repo, _ = _gate_repo(tmp_path, monkeypatch, [manifest_path, "openspec/"])
+    manifest = _write_extension_manifest(repo)
+    footprint_file = repo / "openspec" / "remaining.md"
+    footprint_file.parent.mkdir()
+    footprint_file.write_text("still here\n", encoding="utf-8")
+    base = _commit_all(repo, "installed extension")
+    manifest.unlink()
+    head = _commit_all(repo, "delete only manifest")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    assert not passed
+    assert "FAIL: extension 'openspec' removal incomplete" in output
+    assert "openspec/remaining.md" in output
 
 
 def test_gate_refuses_undeclared_journal_change_in_mixed_candidate(
