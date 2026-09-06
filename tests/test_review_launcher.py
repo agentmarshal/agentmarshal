@@ -843,3 +843,47 @@ DIFF
 """
 
     assert review._review_prompt("CONTRACT", "DIFF", commit) == expected
+
+
+def test_review_launches_when_a_named_manifest_is_absent_from_the_reviewed_tree(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A removal candidate deletes its manifest; the review must still launch."""
+
+    repo, _ = _review_repo(tmp_path, monkeypatch)
+    contract = repo / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "contract.md"
+    contract.write_text(
+        contract.read_text(encoding="utf-8").replace(
+            "schema = 1\n", "schema = 2\nextensions = ['openspec']\n"
+        ),
+        encoding="utf-8",
+    )
+    _git(repo, "add", str(contract.relative_to(repo)))
+    _git(
+        repo,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.com",
+        "commit",
+        "--quiet",
+        "-m",
+        "name an extension whose manifest is gone",
+    )
+    commit = _git(repo, "rev-parse", "HEAD")
+    prompt_output = tmp_path / "review-prompt.txt"
+    stub = _reviewer_stub(
+        tmp_path,
+        _verdict(commit, "approved", []),
+        prompt_output=prompt_output,
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert main(_review_args(commit)) == 0
+
+    prompt = prompt_output.read_text(encoding="utf-8")
+    assert (
+        "Extensions whose manifest is absent in the reviewed tree:\n- openspec"
+        in prompt
+    )

@@ -14,7 +14,10 @@ from pathlib import Path
 from typing import cast
 
 from agentmarshal.journal.contracts import parse_contract_text
-from agentmarshal.journal.extensions import extension_document_entries
+from agentmarshal.journal.extensions import (
+    ExtensionManifestMissing,
+    read_extension_manifest,
+)
 
 # The allowed verdicts have one definition, in records.py, which validation
 # uses. The prompt renders that same set so it cannot drift from what the
@@ -75,12 +78,13 @@ def _review_prompt(
     *,
     decisions: tuple[str, ...] = (),
     documents: tuple[str, ...] = (),
+    absent_extensions: tuple[str, ...] = (),
 ) -> str:
     """Build the reviewer prompt with its required machine-verdict protocol."""
 
     verdicts = ", ".join(sorted(REVIEW_VERDICTS))
     named_material = ""
-    if decisions or documents:
+    if decisions or documents or absent_extensions:
         lines = ["Named contract material:"]
         if decisions:
             lines.append("Decisions:")
@@ -89,6 +93,11 @@ def _review_prompt(
         if documents:
             lines.append("Documents:")
             lines.extend(f"- {document}" for document in documents)
+        if absent_extensions:
+            # A removal candidate deletes its manifest (ADR-0010 D5); the
+            # review still launches, and the reviewer is told what is absent.
+            lines.append("Extensions whose manifest is absent in the reviewed tree:")
+            lines.extend(f"- {name}" for name in absent_extensions)
         named_material = "\n".join(lines) + "\n\n"
     prefix = f"""You are a read-only code reviewer. Review the supplied task contract
 and diff.
@@ -365,9 +374,15 @@ def launch_review(
             extension_root = (
                 journal_root.parents[1] if sidecar_journal is not None else snapshot
             )
-            documents = header.documents + extension_document_entries(
-                extension_root, header.extensions
-            )
+            documents = list(header.documents)
+            absent: list[str] = []
+            for name in header.extensions:
+                try:
+                    documents.extend(
+                        read_extension_manifest(extension_root, name).documents
+                    )
+                except ExtensionManifestMissing:
+                    absent.append(name)
         except ValueError as error:
             raise ReviewLaunchError(str(error)) from error
         prompt = _review_prompt(
@@ -376,6 +391,7 @@ def launch_review(
             resolved_commit,
             decisions=header.decisions,
             documents=tuple(dict.fromkeys(documents)),
+            absent_extensions=tuple(absent),
         )
         prompt_file.write_text(prompt, encoding="utf-8")
         output = _run_reviewer(

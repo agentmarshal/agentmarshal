@@ -49,14 +49,31 @@ def _document_files(project_root: Path, entry: str) -> list[tuple[str | None, Pa
     if entry.endswith("/"):
         if not target.is_dir():
             return []
-        files: list[tuple[str | None, Path]] = []
-        for candidate in sorted(target.rglob("*")):
-            if candidate.is_dir() and not candidate.is_symlink():
-                continue
-            files.append((_relative_file(project_root, candidate), candidate))
-        return files
+        return _files_below(project_root, target)
+    if not target.exists() and not target.is_symlink():
+        return []
     relative = _relative_file(project_root, target)
-    return [(relative, target.resolve())] if relative is not None else []
+    return [(relative, target.resolve() if relative is not None else target)]
+
+
+def _files_below(project_root: Path, directory: Path) -> list[tuple[str | None, Path]]:
+    files: list[tuple[str | None, Path]] = []
+    for candidate in sorted(directory.rglob("*")):
+        if candidate.is_symlink() and candidate.is_dir():
+            # A linked subdirectory inside the tree is walked; one pointing
+            # outside is reported, not followed.
+            try:
+                resolved = candidate.resolve(strict=True)
+                resolved.relative_to(project_root.resolve())
+            except (OSError, ValueError):
+                files.append((None, candidate))
+                continue
+            files.extend(_files_below(project_root, resolved))
+            continue
+        if candidate.is_dir():
+            continue
+        files.append((_relative_file(project_root, candidate), candidate))
+    return files
 
 
 def _append_named_material(
@@ -129,7 +146,9 @@ def _append_named_material(
     for entry in entries:
         files = _document_files(material_root, entry)
         if not files:
-            sections.append(f"## Named document: {entry}\n\nMISSING: {entry}\n")
+            target = material_root / entry.rstrip("/")
+            state = "EMPTY" if entry.endswith("/") and target.is_dir() else "MISSING"
+            sections.append(f"## Named document: {entry}\n\n{state}: {entry}\n")
             continue
         for relative, path in files:
             if relative is None:

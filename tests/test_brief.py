@@ -505,3 +505,52 @@ def test_brief_reports_a_document_it_cannot_resolve_inside_a_named_directory(
         "UNRESOLVABLE (outside the tree or a broken link): specs/dangling.md"
         in briefing
     )
+
+
+def test_brief_walks_a_linked_subdirectory_inside_the_tree(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path, monkeypatch)
+    _schema2_contract(repo, 'documents = ["specs/"]\n')
+    shared = repo / "shared"
+    shared.mkdir()
+    (shared / "common.md").write_text("Common sentinel.\n", encoding="utf-8")
+    specs = repo / "specs"
+    specs.mkdir()
+    (specs / "link").symlink_to(shared, target_is_directory=True)
+    capsys.readouterr()
+
+    assert main(["brief", "--task", "CR-001"]) == 0
+
+    briefing = capsys.readouterr().out
+    assert "Common sentinel." in briefing
+    assert "UNRESOLVABLE" not in briefing
+
+
+def test_brief_distinguishes_an_empty_directory_and_an_outside_link_from_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path, monkeypatch)
+    _schema2_contract(
+        repo, 'documents = ["empty/", "docs/linked.md", "docs/absent.md"]\n'
+    )
+    (repo / "empty").mkdir()
+    outside = tmp_path / "outside.md"
+    outside.write_text("Outside sentinel.\n", encoding="utf-8")
+    (repo / "docs").mkdir()
+    (repo / "docs" / "linked.md").symlink_to(outside)
+    capsys.readouterr()
+
+    assert main(["brief", "--task", "CR-001"]) == 0
+
+    briefing = capsys.readouterr().out
+    assert "EMPTY: empty/" in briefing
+    assert (
+        "UNRESOLVABLE (outside the tree or a broken link): docs/linked.md" in briefing
+    )
+    assert "MISSING: docs/absent.md" in briefing
+    assert "Outside sentinel." not in briefing
