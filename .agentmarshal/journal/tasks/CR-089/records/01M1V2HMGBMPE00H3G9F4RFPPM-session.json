@@ -1,0 +1,23 @@
+{
+  "activity": "implementation",
+  "actor": "anthropic/claude-fable-5-1",
+  "created_at": "2026-09-06T09:59:41.835810Z",
+  "outcome": "success",
+  "record_type": "session",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "role": "lead",
+  "schema": 3,
+  "source": "live",
+  "task": "CR-089",
+  "tokens": {
+    "cache": 82673282,
+    "input": 3004,
+    "output": 218874
+  },
+  "tool_version": "0.3.0",
+  "usage": {
+    "method": "measured",
+    "provider": "anthropic"
+  }
+}
