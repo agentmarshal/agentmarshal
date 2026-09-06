@@ -810,9 +810,10 @@ def test_prompt_without_named_material_is_the_prompt_written_before_schema_2() -
     """The 0.3.0 prompt, pinned literally: the split into a prefix and a suffix
     must reproduce it, and this is the test that would notice a seam."""
 
+    from agentmarshal.journal.records import _REVIEW_VERDICTS
     from agentmarshal.journal.review import _VERDICT_BEGIN, _VERDICT_END
 
-    verdicts = ", ".join(sorted(review.REVIEW_VERDICTS))
+    verdicts = ", ".join(sorted(_REVIEW_VERDICTS))
     commit = "b" * 40
     expected = f"""You are a read-only code reviewer. Review the supplied task contract
 and diff.
