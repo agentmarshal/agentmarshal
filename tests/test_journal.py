@@ -1231,6 +1231,18 @@ def test_scope_warning_names_a_directory_missing_its_slash(tmp_path: Path) -> No
     assert "'src/'" in warnings[0]
 
 
+def test_scope_matcher_has_exact_and_directory_prefix_semantics() -> None:
+    from agentmarshal.journal.contracts import scope_covers
+
+    scope = ("README.md", "src/")
+
+    assert scope_covers(scope, "README.md")
+    assert scope_covers(scope, "src")
+    assert scope_covers(scope, "src/module.py")
+    assert not scope_covers(scope, "README.md.bak")
+    assert not scope_covers(scope, "src-other/module.py")
+
+
 def test_scope_warning_for_a_path_that_is_not_there(tmp_path: Path) -> None:
     from agentmarshal.journal.open_task import scope_warnings
 

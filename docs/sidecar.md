@@ -233,6 +233,15 @@ gate: advisory checks passed; decides no merge
 The SHAs in that transcript are from an actual run on a throwaway pair of
 repositories; yours will differ.
 
+For a task that names extensions or documents, the advisory transcript also
+names the extensions contributing host paths to effective scope and reports
+whether named documents were touched in the host diff. Manifests are read from
+the sidecar working tree, alongside its contract; every resulting line remains
+advisory. No removal line prints in a sidecar: a removal is a candidate that
+deletes a base-side manifest (ADR-0010), and a sidecar's manifest is not in
+the host's history — how a sidecar removal is recognised is an open question
+for ADR-0010, not a check this transcript can make.
+
 The gate also runs the advisory leak scan over the candidate's added content.
 It appends nothing when there is no hit, which is why the transcript above has
 no such line; on a hit it adds `WARN: possible leak in candidate additions

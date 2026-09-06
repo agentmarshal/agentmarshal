@@ -25,7 +25,19 @@ from agentmarshal.journal.capture import (
     private_markers_from_project,
     scan_diff_for_leaks,
 )
-from agentmarshal.journal.contracts import JournalContractError, parse_contract_text
+from agentmarshal.journal.contracts import (
+    JournalContractError,
+    parse_contract_text,
+    scope_covers,
+)
+from agentmarshal.journal.extensions import (
+    ExtensionManifest,
+    ExtensionManifestError,
+    ExtensionManifestMissing,
+    extension_manifest_path,
+    parse_extension_manifest_text,
+    read_extension_manifest,
+)
 from agentmarshal.journal.records import (
     JournalRecordError,
     read_records,
@@ -35,6 +47,7 @@ from agentmarshal.journal.status import TaskStatusError, load_task_status
 from agentmarshal.project import project_file_path, read_project_file
 
 _JOURNAL_PREFIX = ".agentmarshal/journal/"
+_EXTENSIONS_PREFIX = ".agentmarshal/extensions/"
 _PROJECT_FILE = ".agentmarshal/project.json"
 
 
@@ -126,6 +139,11 @@ def run_findings_gate(journal_root: Path, task_id: str) -> GateReport:
         )
     else:
         lines.append("NOT EXAMINED: scope diff (findings lane has no candidate)")
+
+    if task.contract.documents or task.contract.extensions:
+        # This lane has no candidate to examine, so the contract's naming is
+        # all it needs to say so; it reads no manifest and refuses nothing.
+        lines.append("NOT EXAMINED: named documents (findings lane has no candidate)")
 
     findings = [record for record in task.records if record["record_type"] == "finding"]
     latest_finding = findings[-1] if findings else None
@@ -415,14 +433,52 @@ def _range_emails(project_root: Path, merge_base: str, commit: str) -> set[str]:
     return {line.strip() for line in output.splitlines() if line.strip()}
 
 
-def _scope_covers(scope: tuple[str, ...], path: str) -> bool:
-    for entry in scope:
-        if entry.endswith("/"):
-            if path == entry.rstrip("/") or path.startswith(entry):
-                return True
-        elif path == entry:
-            return True
-    return False
+def _extension_name(path: str) -> str | None:
+    """Return the name for a manifest at its one allowed lexical location."""
+
+    if not path.startswith(_EXTENSIONS_PREFIX) or not path.endswith(".toml"):
+        return None
+    name = path.removeprefix(_EXTENSIONS_PREFIX).removesuffix(".toml")
+    return name if name and "/" not in name else None
+
+
+def _manifest_from_tree(
+    project_root: Path, tree_ref: str, name: str
+) -> ExtensionManifest:
+    """Read one manifest blob from ``tree_ref`` and use the shared validator."""
+
+    path = extension_manifest_path(name)
+    source = f"{tree_ref}:{path}"
+    try:
+        # A literal pathspec: a bracket or a star in an extension's name is a
+        # character, not a glob. The entry's mode is part of the answer — a
+        # symlink is refused here as the filesystem reader refuses one.
+        entry = _run_git(
+            project_root, ["ls-tree", "-z", tree_ref, "--", f":(literal){path}"]
+        )
+        if not entry.strip("\0"):
+            raise ExtensionManifestMissing(
+                f"extension manifest {name!r} is missing: {source}"
+            )
+        mode, kind = entry.split("\0", 1)[0].split(" ")[:2]
+        if mode == "120000":
+            raise ExtensionManifestError(
+                f"refusing to read extension manifest {name!r} through a symlink: "
+                f"{source}"
+            )
+        if kind != "blob":
+            raise ExtensionManifestError(
+                f"extension manifest {name!r} at {source} is a {kind}, not a file"
+            )
+        text = _run_git(project_root, ["show", source])
+    except GateError as error:
+        # A blob git cannot show as UTF-8 text, or a tree entry that is not a
+        # blob, is a manifest the gate cannot read — a refusal line, not an
+        # aborted run.
+        raise ExtensionManifestError(
+            f"cannot read extension manifest {name!r} at {source}: {error}"
+        ) from error
+    return parse_extension_manifest_text(text, name, source)
 
 
 def markers_from_config(project_root: Path) -> tuple[str, ...]:
@@ -547,6 +603,22 @@ def run_gate(
     changes_with_status = _changed_with_status(
         project_root, merge_base, resolved_commit
     )
+    # A removal is a candidate that deletes a base-side manifest (ADR-0010
+    # D5). In a sidecar the manifest lives in the sidecar, not in the host's
+    # history, so a host path deletion says nothing about this journal's
+    # extensions; how a sidecar removal is recognised awaits an amendment to
+    # ADR-0010, and until then no removal line prints there.
+    deleted_extensions = (
+        []
+        if sidecar
+        else sorted(
+            {
+                name
+                for status, path in changes_with_status
+                if status == "D" and (name := _extension_name(path)) is not None
+            }
+        )
+    )
     record_changes = [
         (status, path) for status, path in changes_with_status if _is_record_path(path)
     ]
@@ -666,24 +738,129 @@ def run_gate(
                 raise GateError(
                     f"contract in the base tree is invalid: {error}"
                 ) from error
-        outside = [path for path in changed if not _scope_covers(contract.scope, path)]
+        manifests: dict[str, ExtensionManifest] = {}
+        for name in dict.fromkeys((*contract.extensions, *deleted_extensions)):
+            try:
+                # The trusted side, as for the contract: the sidecar working
+                # tree, or the merge-base tree the candidate cannot edit.
+                loaded_manifest = (
+                    read_extension_manifest(journal_root.parents[1], name)
+                    if sidecar and journal_root is not None
+                    else _manifest_from_tree(project_root, merge_base, name)
+                )
+            except ExtensionManifestError as error:
+                if name in contract.extensions:
+                    check(
+                        False,
+                        f"named extension {name!r} manifest unreadable: {error}",
+                    )
+                else:
+                    # The candidate deleted a file at a manifest's path, but the
+                    # base holds no valid manifest there: nothing declares a
+                    # footprint, so there is no removal to verify — and no
+                    # refusal the candidate could repair from its side.
+                    lines.append(
+                        f"NOT EXAMINED: removal of extension {name!r} (base-side "
+                        f"file is not a valid manifest: {error})"
+                    )
+                continue
+            manifests[name] = loaded_manifest
+
+        effective_scope = list(contract.scope)
+        contributors: list[str] = []
+        for name in dict.fromkeys(contract.extensions):
+            named_manifest = manifests.get(name)
+            if named_manifest is not None:
+                effective_scope.extend(named_manifest.footprint)
+                if named_manifest.footprint:
+                    contributors.append(name)
+        effective = tuple(effective_scope)
+        outside = [path for path in changed if not scope_covers(effective, path)]
         # The embedded gate reads the contract from the base tree, so a
         # candidate cannot widen its own scope. A sidecar's contract is not in
         # the host's history at all — the candidate cannot reach it, but nor is
         # it pinned to a commit, so what is compared is the working copy. That
         # is a weaker provenance than embedded and the transcript says so
         # rather than letting the two lines read alike.
-        check(
-            not outside,
-            (
-                "diff within contract scope (contract read from the sidecar "
-                "working tree, not pinned to a commit)"
-                if sidecar
-                else "diff within contract scope"
+        if outside:
+            scope_message = (
+                f"paths outside contract scope: {', '.join(sorted(outside))}"
             )
-            if not outside
-            else f"paths outside contract scope: {', '.join(sorted(outside))}",
-        )
+            if contributors:
+                scope_message += (
+                    " (effective scope includes extensions: "
+                    + ", ".join(contributors)
+                    + ")"
+                )
+        else:
+            scope_details: list[str] = []
+            if sidecar:
+                scope_details.append(
+                    "contract read from the sidecar working tree, not pinned to a "
+                    "commit"
+                )
+            if contributors:
+                scope_details.append("extensions: " + ", ".join(contributors))
+            scope_message = "diff within contract scope"
+            if scope_details:
+                scope_message += f" ({'; '.join(scope_details)})"
+        check(not outside, scope_message)
+
+        named_documents = list(contract.documents)
+        for name in contract.extensions:
+            named_manifest = manifests.get(name)
+            if named_manifest is not None:
+                named_documents.extend(named_manifest.documents)
+        named_documents = list(dict.fromkeys(named_documents))
+        if named_documents:
+            named = tuple(named_documents)
+            # From the status pairs, not the name-only list: a rename decomposes
+            # into a deletion and an addition there, and a deleted document
+            # counts as touched.
+            touched_documents = sorted(
+                {
+                    path
+                    for _status, path in changes_with_status
+                    if scope_covers(named, path)
+                }
+            )
+            check(
+                bool(touched_documents),
+                "named documents touched (" + ", ".join(touched_documents) + ")"
+                if touched_documents
+                else "named documents untouched: " + ", ".join(named_documents),
+            )
+
+        if deleted_extensions:
+            # NUL-separated, as the diff listings are: git C-quotes a path
+            # with a non-ASCII or control character otherwise, and a quoted
+            # path is one the matcher cannot see — a false "removal complete".
+            candidate_tree = {
+                path
+                for path in _run_git(
+                    project_root,
+                    ["ls-tree", "-r", "--name-only", "-z", resolved_commit],
+                ).split("\0")
+                if path
+            }
+            for name in deleted_extensions:
+                removed_manifest = manifests.get(name)
+                if removed_manifest is None:
+                    # Its read failure is already a refusal above; without the
+                    # trusted footprint there is no removal claim to make.
+                    continue
+                remaining = sorted(
+                    path
+                    for path in candidate_tree
+                    if scope_covers(removed_manifest.footprint, path)
+                )
+                check(
+                    not remaining,
+                    f"extension {name!r} removal complete (no footprint paths remain)"
+                    if not remaining
+                    else f"extension {name!r} removal incomplete; footprint paths "
+                    f"remain: {', '.join(remaining)}",
+                )
 
         records = read_records(journal_root, task_id)
         reviews = [

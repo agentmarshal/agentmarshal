@@ -109,7 +109,9 @@ without them may remain at schema 1.
 under that directory; without it the entry must equal a path exactly. So
 `--scope src` matches only a file literally named `src`, and gates everything
 under `src/` as out-of-scope. `agentmarshal open` warns about this case by name,
-about an entry that names nothing on disk, and when no scope is declared at all.
+about an entry that names nothing on disk, when no scope is declared at all,
+and when a `docs/adr/` scope path should also be named in the contract's
+`decisions` field.
 An empty scope means no change can land until one is declared. The command still
 opens the task, because a scope may legitimately declare a path the work is about
 to create, or an operator may amend the scope later. The warning is a check on
@@ -167,6 +169,12 @@ supplementary-artifact `capture` policy is parsed but not acted on in
 0.3.0: there is no policy-driven artifact writer or private store yet. The
 `leak_scan.private_markers` list is active in 0.3.0 and adds project-specific
 strings to the built-in advisory scan used by `leak-scan` and the gate.
+
+When a schema-2 contract names an extension, the gate reads that extension's
+manifest from the same trusted side as the contract and adds its footprint to
+effective scope. In the diff lane it also reports whether named documents were
+touched and, when a manifest is deleted, whether its base-side footprint is gone
+from the candidate tree.
 
 ## The governed loop
 

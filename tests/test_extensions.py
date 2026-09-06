@@ -144,6 +144,40 @@ def test_symlinked_manifest_file_is_refused(tmp_path: Path) -> None:
         read_extension_manifest(tmp_path, "openspec")
 
 
+def test_manifest_symlink_loop_is_refused_as_a_symlink(tmp_path: Path) -> None:
+    """A loop at the manifest path is a link at the manifest path; refused as one."""
+
+    path = tmp_path / ".agentmarshal" / "extensions" / "openspec.toml"
+    path.parent.mkdir(parents=True)
+    path.symlink_to(path)
+
+    with pytest.raises(ExtensionManifestError, match="symlink"):
+        read_extension_manifest(tmp_path, "openspec")
+
+
+def test_symlink_loop_above_the_manifest_is_a_reader_error(tmp_path: Path) -> None:
+    """A loop in an ancestor is not a link at the manifest path; strict resolution
+    reports it the same way on every supported Python."""
+
+    (tmp_path / ".agentmarshal").mkdir()
+    loop = tmp_path / ".agentmarshal" / "extensions"
+    loop.symlink_to(loop)
+
+    with pytest.raises(ExtensionManifestError, match="cannot resolve"):
+        read_extension_manifest(tmp_path, "openspec")
+
+
 def test_missing_manifest_is_its_own_error(tmp_path: Path) -> None:
     with pytest.raises(ExtensionManifestMissing, match="missing"):
+        read_extension_manifest(tmp_path, "openspec")
+
+
+def test_dangling_symlink_at_the_manifest_path_is_refused_as_a_symlink(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / ".agentmarshal" / "extensions" / "openspec.toml"
+    path.parent.mkdir(parents=True)
+    path.symlink_to(tmp_path / "nowhere.toml")
+
+    with pytest.raises(ExtensionManifestError, match="symlink"):
         read_extension_manifest(tmp_path, "openspec")

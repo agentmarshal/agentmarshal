@@ -442,11 +442,14 @@ def test_brief_does_not_inline_a_decision_file_linked_outside_the_tree(
     assert "Outside sentinel." not in briefing
 
 
-def test_brief_treats_a_trailing_slash_entry_naming_a_file_as_missing(
+def test_brief_inlines_the_file_a_trailing_slash_entry_covers(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    """The matcher says ``docs/guide.md/`` covers ``docs/guide.md``; the gate counts
+    a change to it as touching the entry, so the brief inlines it."""
+
     repo = _repo(tmp_path, monkeypatch)
     _schema2_contract(repo, 'documents = ["docs/guide.md/"]\n')
     (repo / "docs").mkdir()
@@ -456,8 +459,9 @@ def test_brief_treats_a_trailing_slash_entry_naming_a_file_as_missing(
     assert main(["brief", "--task", "CR-001"]) == 0
 
     briefing = capsys.readouterr().out
-    assert "MISSING: docs/guide.md/" in briefing
-    assert "Guide sentinel." not in briefing
+    assert "## Named document: docs/guide.md" in briefing
+    assert "Guide sentinel." in briefing
+    assert "MISSING" not in briefing
 
 
 def test_brief_reports_a_malformed_manifest_and_continues(
@@ -507,7 +511,7 @@ def test_brief_reports_a_document_it_cannot_resolve_inside_a_named_directory(
     )
 
 
-def test_brief_walks_a_linked_subdirectory_inside_the_tree(
+def test_brief_does_not_walk_a_linked_subdirectory_inside_the_tree(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -525,8 +529,8 @@ def test_brief_walks_a_linked_subdirectory_inside_the_tree(
     assert main(["brief", "--task", "CR-001"]) == 0
 
     briefing = capsys.readouterr().out
-    assert "Common sentinel." in briefing
-    assert "UNRESOLVABLE" not in briefing
+    assert "Common sentinel." not in briefing
+    assert "LINKED DIRECTORY (not followed; name its target): specs/link" in briefing
 
 
 def test_brief_distinguishes_an_empty_directory_and_an_outside_link_from_missing(
@@ -574,7 +578,30 @@ def test_brief_reports_a_symlink_cycle_instead_of_recursing(
 
     briefing = capsys.readouterr().out
     assert briefing.count("Leaf sentinel.") == 1
-    assert "or a cycle): specs/nested/up" in briefing
+    # A link to an ancestor is a linked directory like any other: not followed,
+    # so it cannot recurse, and it is reported under that name.
+    assert "LINKED DIRECTORY (not followed; name its target): specs/nested/up" in (
+        briefing
+    )
+
+
+def test_brief_reports_a_symlink_loop_at_a_document_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path, monkeypatch)
+    _schema2_contract(repo, 'documents = ["docs/loop.md"]\n')
+    loop = repo / "docs" / "loop.md"
+    loop.parent.mkdir()
+    loop.symlink_to(loop)
+    capsys.readouterr()
+
+    assert main(["brief", "--task", "CR-001"]) == 0
+
+    briefing = capsys.readouterr().out
+    assert "UNRESOLVABLE" in briefing
+    assert "docs/loop.md" in briefing
 
 
 def test_brief_names_a_directory_given_without_a_trailing_slash(
@@ -593,3 +620,64 @@ def test_brief_names_a_directory_given_without_a_trailing_slash(
     briefing = capsys.readouterr().out
     assert "DIRECTORY (name it with a trailing slash): specs" in briefing
     assert "Spec sentinel." not in briefing
+
+
+def test_brief_reports_a_linked_directory_named_as_the_entry_itself(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path, monkeypatch)
+    _schema2_contract(repo, 'documents = ["specs/"]\n')
+    shared = repo / "shared"
+    shared.mkdir()
+    (shared / "common.md").write_text("Common sentinel.\n", encoding="utf-8")
+    (repo / "specs").symlink_to(shared, target_is_directory=True)
+    capsys.readouterr()
+
+    assert main(["brief", "--task", "CR-001"]) == 0
+
+    briefing = capsys.readouterr().out
+    assert "LINKED DIRECTORY (not followed; name its target): specs" in briefing
+    assert "Common sentinel." not in briefing
+
+
+def test_brief_inlines_a_file_a_trailing_slash_entry_links_to(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path, monkeypatch)
+    _schema2_contract(repo, 'documents = ["specs/"]\n')
+    (repo / "guide.md").write_text("Guide sentinel.\n", encoding="utf-8")
+    (repo / "specs").symlink_to(repo / "guide.md")
+    capsys.readouterr()
+
+    assert main(["brief", "--task", "CR-001"]) == 0
+
+    briefing = capsys.readouterr().out
+    # The matcher covers the path itself, and a link to a file inside the tree
+    # is that file.
+    assert "## Named document: specs" in briefing
+    assert "Guide sentinel." in briefing
+
+
+def test_brief_reports_a_document_beneath_a_looping_ancestor_as_unresolvable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path, monkeypatch)
+    _schema2_contract(repo, 'documents = ["docs/loop/guide.md", "docs/loop/"]\n')
+    (repo / "docs").mkdir()
+    (repo / "docs" / "loop").symlink_to(repo / "docs" / "loop")
+    capsys.readouterr()
+
+    assert main(["brief", "--task", "CR-001"]) == 0
+
+    briefing = capsys.readouterr().out
+    assert (
+        "UNRESOLVABLE (outside the tree, a broken link, or a cycle): docs/loop/guide.md"
+        in briefing
+    )
+    assert "MISSING" not in briefing
