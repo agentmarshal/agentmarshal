@@ -502,7 +502,7 @@ def test_brief_reports_a_document_it_cannot_resolve_inside_a_named_directory(
     briefing = capsys.readouterr().out
     assert "Spec sentinel." in briefing
     assert (
-        "UNRESOLVABLE (outside the tree or a broken link): specs/dangling.md"
+        "UNRESOLVABLE (outside the tree, a broken link, or a cycle): specs/dangling.md"
         in briefing
     )
 
@@ -550,7 +550,46 @@ def test_brief_distinguishes_an_empty_directory_and_an_outside_link_from_missing
     briefing = capsys.readouterr().out
     assert "EMPTY: empty/" in briefing
     assert (
-        "UNRESOLVABLE (outside the tree or a broken link): docs/linked.md" in briefing
+        "UNRESOLVABLE (outside the tree, a broken link, or a cycle): docs/linked.md"
+        in briefing
     )
     assert "MISSING: docs/absent.md" in briefing
     assert "Outside sentinel." not in briefing
+
+
+def test_brief_reports_a_symlink_cycle_instead_of_recursing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path, monkeypatch)
+    _schema2_contract(repo, 'documents = ["specs/"]\n')
+    specs = repo / "specs"
+    (specs / "nested").mkdir(parents=True)
+    (specs / "nested" / "leaf.md").write_text("Leaf sentinel.\n", encoding="utf-8")
+    (specs / "nested" / "up").symlink_to(specs, target_is_directory=True)
+    capsys.readouterr()
+
+    assert main(["brief", "--task", "CR-001"]) == 0
+
+    briefing = capsys.readouterr().out
+    assert briefing.count("Leaf sentinel.") == 1
+    assert "or a cycle): specs/nested/up" in briefing
+
+
+def test_brief_names_a_directory_given_without_a_trailing_slash(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path, monkeypatch)
+    _schema2_contract(repo, 'documents = ["specs"]\n')
+    (repo / "specs").mkdir()
+    (repo / "specs" / "feature.md").write_text("Spec sentinel.\n", encoding="utf-8")
+    capsys.readouterr()
+
+    assert main(["brief", "--task", "CR-001"]) == 0
+
+    briefing = capsys.readouterr().out
+    assert "DIRECTORY (name it with a trailing slash): specs" in briefing
+    assert "Spec sentinel." not in briefing

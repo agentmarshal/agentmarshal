@@ -56,19 +56,32 @@ def _document_files(project_root: Path, entry: str) -> list[tuple[str | None, Pa
     return [(relative, target.resolve() if relative is not None else target)]
 
 
-def _files_below(project_root: Path, directory: Path) -> list[tuple[str | None, Path]]:
+def _files_below(
+    project_root: Path, directory: Path, seen: set[Path] | None = None
+) -> list[tuple[str | None, Path]]:
+    """Walk a directory; linked subdirectories inside the tree are walked once.
+
+    ``seen`` holds the resolved directories already walked, so a link to an
+    ancestor (a cycle) is reported as unresolvable instead of recursed into.
+    """
+
+    seen = seen if seen is not None else {directory.resolve()}
     files: list[tuple[str | None, Path]] = []
     for candidate in sorted(directory.rglob("*")):
         if candidate.is_symlink() and candidate.is_dir():
-            # A linked subdirectory inside the tree is walked; one pointing
-            # outside is reported, not followed.
             try:
                 resolved = candidate.resolve(strict=True)
                 resolved.relative_to(project_root.resolve())
             except (OSError, ValueError):
                 files.append((None, candidate))
                 continue
-            files.extend(_files_below(project_root, resolved))
+            if resolved in seen or any(
+                walked == resolved or walked.is_relative_to(resolved) for walked in seen
+            ):
+                files.append((None, candidate))
+                continue
+            seen.add(resolved)
+            files.extend(_files_below(project_root, resolved, seen))
             continue
         if candidate.is_dir():
             continue
@@ -153,9 +166,14 @@ def _append_named_material(
         for relative, path in files:
             if relative is None:
                 lexical = path.relative_to(material_root).as_posix()
+                if path.is_dir() and not path.is_symlink():
+                    reason = "DIRECTORY (name it with a trailing slash)"
+                else:
+                    reason = (
+                        "UNRESOLVABLE (outside the tree, a broken link, or a cycle)"
+                    )
                 sections.append(
-                    f"## Named document: {lexical}\n\n"
-                    f"UNRESOLVABLE (outside the tree or a broken link): {lexical}\n"
+                    f"## Named document: {lexical}\n\n{reason}: {lexical}\n"
                 )
                 continue
             if relative in seen_files:

@@ -141,14 +141,3 @@ def read_extension_manifest(project_root: Path, name: str) -> ExtensionManifest:
         install=_require_string(data, "install", path),
         remove=_require_string(data, "remove", path),
     )
-
-
-def extension_document_entries(
-    project_root: Path, names: tuple[str, ...]
-) -> tuple[str, ...]:
-    """Return named extensions' document entries in declaration order."""
-
-    entries: list[str] = []
-    for name in names:
-        entries.extend(read_extension_manifest(project_root, name).documents)
-    return tuple(entries)
