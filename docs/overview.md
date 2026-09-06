@@ -92,7 +92,11 @@ task is already closed.
 - **Task** — a unit of governed work (id like `CR-001`), living in
   `.agentmarshal/journal/tasks/<id>/`.
 - **Contract** — a task's specification: a TOML header (id, title, **scope**,
-  **acceptance** criteria) plus a markdown body. Committed before the work.
+  **acceptance** criteria) plus a markdown body. Its optional **decisions** field
+  names the ADRs the task serves. Its optional **documents** field names files
+  or directory prefixes delivered with the implementer's brief. Its optional
+  **extensions** field names process-extension manifests whose documents also
+  join that brief. Committed before the work.
 - **Scope** — the paths a task is allowed to change. The gate refuses a diff
   that touches anything outside it.
 - **Record** — one append-only JSON evidence file: `opened`, `finding`,

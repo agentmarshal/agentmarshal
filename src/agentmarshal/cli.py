@@ -365,7 +365,9 @@ def _run_brief(task_id: str, stderr: TextIO) -> int:
     if placement is None:
         return 1
     try:
-        briefing = build_brief(placement.journal_root, task_id)
+        briefing = build_brief(
+            placement.journal_root, task_id, host_root=placement.host_root
+        )
     except (OSError, TaskStatusError, ValueError) as error:
         print(error, file=stderr)
         return 1

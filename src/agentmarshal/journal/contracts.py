@@ -21,6 +21,9 @@ class ContractHeader:
     title: str
     scope: tuple[str, ...]
     acceptance: tuple[str, ...]
+    decisions: tuple[str, ...] = ()
+    documents: tuple[str, ...] = ()
+    extensions: tuple[str, ...] = ()
 
 
 def _require_string(data: dict[str, object], field: str) -> str:
@@ -39,6 +42,43 @@ def _require_string_array(data: dict[str, object], field: str) -> tuple[str, ...
             f"contract header field {field!r} must be an array of strings"
         )
     return tuple(cast(list[str], value))
+
+
+def _optional_string_array(data: dict[str, object], field: str) -> tuple[str, ...]:
+    if field not in data:
+        return ()
+    return _require_string_array(data, field)
+
+
+def reject_control_characters(value: str, what: str) -> None:
+    """Refuse values that could forge lines in generated task text."""
+
+    if any(not character.isprintable() for character in value):
+        raise JournalContractError(f"{what} must not contain control characters")
+
+
+def validate_scope_entry(entry: str, what: str) -> None:
+    """Validate the path syntax shared by named documents and manifests."""
+
+    if not entry:
+        raise JournalContractError(f"{what} entry {entry!r} is empty")
+    if entry.startswith("/"):
+        raise JournalContractError(
+            f"{what} entry {entry!r} starts with '/' and must be relative"
+        )
+    for metacharacter in ("*", "?", "["):
+        if metacharacter in entry:
+            raise JournalContractError(
+                f"{what} entry {entry!r} contains unsupported glob "
+                f"metacharacter {metacharacter!r}"
+            )
+    if any(part in {".", ".."} for part in entry.split("/")):
+        # A prefix matcher compares text; "openspec/../x" would read as under
+        # "openspec/" while naming something else entirely.
+        raise JournalContractError(
+            f"{what} entry {entry!r} contains a '.' or '..' component"
+        )
+    reject_control_characters(entry, f"{what} entry {entry!r}")
 
 
 def _ensure_contract_path_is_real(path: Path) -> None:
@@ -84,17 +124,39 @@ def parse_contract_text(text: str, source: str) -> ContractHeader:
 
     data = cast(dict[str, object], parsed)
     schema = data.get("schema")
-    if type(schema) is not int or schema != 1:
+    if type(schema) is not int or schema not in {1, 2}:
         raise JournalContractError(
             f"contract header has an unknown or missing schema version: {source}"
         )
+    if schema == 1:
+        for field in ("decisions", "documents", "extensions"):
+            if field in data:
+                raise JournalContractError(
+                    f"contract header field {field!r} requires schema 2: {source}"
+                )
     try:
+        decisions = _optional_string_array(data, "decisions")
+        documents = _optional_string_array(data, "documents")
+        extensions = _optional_string_array(data, "extensions")
+        for decision in decisions:
+            reject_control_characters(
+                decision, "contract header field 'decisions' entry"
+            )
+        for document in documents:
+            validate_scope_entry(document, "contract header field 'documents'")
+        for extension in extensions:
+            reject_control_characters(
+                extension, "contract header field 'extensions' entry"
+            )
         return ContractHeader(
             schema=schema,
             id=_require_string(data, "id"),
             title=_require_string(data, "title"),
             scope=_require_string_array(data, "scope"),
             acceptance=_require_string_array(data, "acceptance"),
+            decisions=decisions,
+            documents=documents,
+            extensions=extensions,
         )
     except JournalContractError as error:
         raise JournalContractError(f"{error}: {source}") from error

@@ -98,7 +98,12 @@ in it.
 Per task, in its TOML header: **`scope`** (paths the task may change — the gate
 enforces it) and **`acceptance`** (machine-readable criteria; populate these so
 a merged task doubles as an evaluation case). The markdown body holds the
-objective and prose acceptance.
+objective and prose acceptance. **`decisions`** names the ADR identifiers the
+task serves and puts their text in the brief. **`documents`** names exact files
+or directory prefixes whose files join the brief. **`extensions`** names
+process-extension manifests whose declared documents join the brief too. A
+header carrying any of these three optional fields uses `schema = 2`; headers
+without them may remain at schema 1.
 
 **Mind the trailing slash.** A scope entry ending in `/` matches everything
 under that directory; without it the entry must equal a path exactly. So

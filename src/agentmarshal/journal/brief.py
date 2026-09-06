@@ -4,6 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from agentmarshal.journal.contracts import ContractHeader
+from agentmarshal.journal.extensions import (
+    ExtensionManifestError,
+    ExtensionManifestMissing,
+    read_extension_manifest,
+)
 from agentmarshal.journal.status import TaskStatusError, load_task_status
 
 
@@ -19,8 +25,188 @@ def _contract_body(text: str) -> str:
     raise AssertionError("parsed contract has no closing header delimiter")
 
 
-def build_brief(journal_root: Path, task_id: str) -> str:
-    """Build an implementer briefing for an open task."""
+def _relative_file(project_root: Path, path: Path) -> str | None:
+    """Return a safe project-relative file name, or ``None`` outside the tree."""
+
+    try:
+        resolved = path.resolve(strict=True)
+        relative = resolved.relative_to(project_root.resolve())
+    except (OSError, ValueError):
+        return None
+    return relative.as_posix() if resolved.is_file() else None
+
+
+def _document_files(project_root: Path, entry: str) -> list[tuple[str | None, Path]]:
+    """Files under a documents entry, with ``None`` for one that cannot be read.
+
+    A trailing slash names a directory, as in scope; an entry with one that
+    resolves to a file is missing, not a file. Inside a directory, an entry
+    that does not resolve to a file under the project (a broken link, a link
+    outside the tree) is returned with ``None`` so the caller reports it.
+    """
+
+    target = project_root / entry.rstrip("/")
+    if entry.endswith("/"):
+        if not target.is_dir():
+            return []
+        return _files_below(project_root, target)
+    if not target.exists() and not target.is_symlink():
+        return []
+    relative = _relative_file(project_root, target)
+    return [(relative, target.resolve() if relative is not None else target)]
+
+
+def _files_below(
+    project_root: Path, directory: Path, seen: set[Path] | None = None
+) -> list[tuple[str | None, Path]]:
+    """Walk a directory; linked subdirectories inside the tree are walked once.
+
+    ``seen`` holds the resolved directories already walked, so a link to an
+    ancestor (a cycle) is reported as unresolvable instead of recursed into.
+    """
+
+    seen = seen if seen is not None else {directory.resolve()}
+    files: list[tuple[str | None, Path]] = []
+    for candidate in sorted(directory.rglob("*")):
+        if candidate.is_symlink() and candidate.is_dir():
+            try:
+                resolved = candidate.resolve(strict=True)
+                resolved.relative_to(project_root.resolve())
+            except (OSError, ValueError):
+                files.append((None, candidate))
+                continue
+            if resolved in seen or any(
+                walked == resolved or walked.is_relative_to(resolved) for walked in seen
+            ):
+                files.append((None, candidate))
+                continue
+            seen.add(resolved)
+            files.extend(_files_below(project_root, resolved, seen))
+            continue
+        if candidate.is_dir():
+            continue
+        files.append((_relative_file(project_root, candidate), candidate))
+    return files
+
+
+def _append_named_material(
+    brief: str, material_root: Path, manifest_root: Path, contract: ContractHeader
+) -> str:
+    """Append all decision and document text requested by the contract.
+
+    ``material_root`` is the governed tree — the host, in a sidecar — where
+    decisions and documents live; ``manifest_root`` is the project holding
+    the journal, where extension manifests live (ADR-0010).
+    """
+
+    sections: list[str] = []
+    adr_root = material_root / "docs" / "adr"
+    for decision in contract.decisions:
+        matches = (
+            sorted(
+                path
+                for path in adr_root.iterdir()
+                if path.is_file()
+                and path.name.startswith(f"{decision}-")
+                and path.suffix == ".md"
+            )
+            if adr_root.is_dir()
+            else []
+        )
+        if not matches:
+            sections.append(
+                f"## Named decision: {decision}\n\nMISSING: docs/adr/{decision}-*.md\n"
+            )
+            continue
+        content = [f"## Named decision: {decision}\n"]
+        for path in matches:
+            lexical = path.relative_to(material_root).as_posix()
+            relative = _relative_file(material_root, path)
+            if relative is None:
+                # A decision file is inlined as the implementer's authority;
+                # one that resolves outside the governed tree is not read.
+                content.append(
+                    f"\n### {lexical}\n\n"
+                    f"UNRESOLVABLE (outside the tree or a broken link): {lexical}\n"
+                )
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                content.append(
+                    f"\n### {relative}\n\nUNREADABLE (not UTF-8): {relative}\n"
+                )
+                continue
+            content.append(f"\n### {relative}\n\n{text}")
+            if not text.endswith("\n"):
+                content.append("\n")
+        sections.append("".join(content))
+
+    entries: list[str] = list(contract.documents)
+    for name in contract.extensions:
+        try:
+            entries.extend(read_extension_manifest(manifest_root, name).documents)
+        except ExtensionManifestMissing:
+            sections.append(
+                f"## Named extension: {name}\n\n"
+                f"MISSING: .agentmarshal/extensions/{name}.toml\n"
+            )
+        except ExtensionManifestError as error:
+            # Context, not authority: a manifest the brief cannot read is
+            # reported here; the gate, which decides, refuses it loudly.
+            sections.append(f"## Named extension: {name}\n\nMALFORMED: {error}\n")
+    seen_files: set[str] = set()
+    for entry in entries:
+        files = _document_files(material_root, entry)
+        if not files:
+            target = material_root / entry.rstrip("/")
+            state = "EMPTY" if entry.endswith("/") and target.is_dir() else "MISSING"
+            sections.append(f"## Named document: {entry}\n\n{state}: {entry}\n")
+            continue
+        for relative, path in files:
+            if relative is None:
+                lexical = path.relative_to(material_root).as_posix()
+                if path.is_dir() and not path.is_symlink():
+                    reason = "DIRECTORY (name it with a trailing slash)"
+                else:
+                    reason = (
+                        "UNRESOLVABLE (outside the tree, a broken link, or a cycle)"
+                    )
+                sections.append(
+                    f"## Named document: {lexical}\n\n{reason}: {lexical}\n"
+                )
+                continue
+            if relative in seen_files:
+                continue
+            seen_files.add(relative)
+            try:
+                text = path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                # A documents directory can hold anything; a file the brief
+                # cannot render is reported, like a missing one, not skipped.
+                sections.append(
+                    f"## Named document: {relative}\n\n"
+                    f"UNREADABLE (not UTF-8): {relative}\n"
+                )
+                continue
+            section = f"## Named document: {relative}\n\n{text}"
+            sections.append(section if section.endswith("\n") else section + "\n")
+    if not sections:
+        return brief
+    separator = (
+        "" if brief.endswith("\n\n") else "\n" if brief.endswith("\n") else "\n\n"
+    )
+    return brief + separator + "\n".join(sections)
+
+
+def build_brief(journal_root: Path, task_id: str, host_root: Path | None = None) -> str:
+    """Build an uncapped implementer briefing for an open task.
+
+    ``host_root`` is the governed tree whose decisions and documents the brief
+    inlines; it defaults to the project holding the journal, which is right
+    for the embedded placement and wrong for a sidecar, whose caller passes
+    the host.
+    """
 
     task = load_task_status(journal_root, task_id)
     if task.state != "open":
@@ -54,7 +240,7 @@ def build_brief(journal_root: Path, task_id: str) -> str:
         if task.contract.scope
         else "You are working on one governed AgentMarshal research task.\n\n"
     )
-    return opening + (
+    brief = opening + (
         f"Task id: {task.task_id}\n\n"
         f"{scope_section}\n"
         "Acceptance criteria (the definition of done):\n"
@@ -66,4 +252,8 @@ def build_brief(journal_root: Path, task_id: str) -> str:
         "- Satisfy every acceptance criterion; they are the definition of done.\n\n"
         "Contract body (verbatim):\n"
         f"{body}"
+    )
+    project_root = journal_root.parents[1]
+    return _append_named_material(
+        brief, host_root or project_root, project_root, task.contract
     )

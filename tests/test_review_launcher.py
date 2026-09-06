@@ -434,6 +434,76 @@ def test_prompt_requests_human_readable_claims_and_lists_the_allowed_verdicts(
     assert "advisory_findings" in prompt
 
 
+def test_prompt_lists_named_decisions_and_documents() -> None:
+    prompt = review._review_prompt(
+        "contract",
+        "diff",
+        "a" * 40,
+        decisions=("ADR-0010",),
+        documents=("docs/guide.md", "openspec/specs/"),
+    )
+
+    assert "Decisions:\n- ADR-0010" in prompt
+    assert "Documents:\n- docs/guide.md\n- openspec/specs/" in prompt
+    assert "A finding may cite a contradiction with a named decision." in prompt
+
+
+def test_review_prompt_resolves_extension_documents_from_reviewed_tree(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, _ = _review_repo(tmp_path, monkeypatch)
+    contract = repo / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "contract.md"
+    contract.write_text(
+        contract.read_text(encoding="utf-8").replace(
+            "schema = 1\n",
+            "schema = 2\ndecisions = ['ADR-0010']\n"
+            "documents = ['docs/guide.md']\n"
+            "extensions = ['openspec']\n",
+        ),
+        encoding="utf-8",
+    )
+    manifest = repo / ".agentmarshal" / "extensions" / "openspec.toml"
+    manifest.parent.mkdir()
+    manifest.write_text(
+        "schema = 1\n"
+        'name = "openspec"\n'
+        'version = "1"\n'
+        'footprint = ["openspec/"]\n'
+        'documents = ["openspec/specs/"]\n'
+        "artifacts = []\n"
+        'install = "install"\n'
+        'remove = "remove"\n',
+        encoding="utf-8",
+    )
+    _git(repo, "add", str(contract.relative_to(repo)), str(manifest.relative_to(repo)))
+    _git(
+        repo,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.com",
+        "commit",
+        "--quiet",
+        "-m",
+        "name review material",
+    )
+    commit = _git(repo, "rev-parse", "HEAD")
+    prompt_output = tmp_path / "review-prompt.txt"
+    stub = _reviewer_stub(
+        tmp_path,
+        _verdict(commit, "approved", []),
+        prompt_output=prompt_output,
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert main(_review_args(commit)) == 0
+
+    prompt = prompt_output.read_text(encoding="utf-8")
+    assert "Decisions:\n- ADR-0010" in prompt
+    assert "Documents:\n- docs/guide.md\n- openspec/specs/" in prompt
+
+
 def test_advisory_findings_reach_the_record(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -734,3 +804,86 @@ def test_the_review_is_recorded_even_when_the_output_cannot_be_kept(
     captured = capsys.readouterr()
     assert captured.out.strip().endswith(".json")
     assert "kept at" not in captured.err
+
+
+def test_prompt_without_named_material_is_the_prompt_written_before_schema_2() -> None:
+    """The 0.3.0 prompt, pinned literally: the split into a prefix and a suffix
+    must reproduce it, and this is the test that would notice a seam."""
+
+    from agentmarshal.journal.records import _REVIEW_VERDICTS
+    from agentmarshal.journal.review import _VERDICT_BEGIN, _VERDICT_END
+
+    verdicts = ", ".join(sorted(_REVIEW_VERDICTS))
+    commit = "b" * 40
+    expected = f"""You are a read-only code reviewer. Review the supplied task contract
+and diff.
+Do not modify files. Your reviewed commit is {commit}.
+
+For each blocking or advisory finding id you report, print one line of prose
+before the verdict block, naming what is wrong and where. The ids are labels
+for the machine; the prose is what a human will read.
+
+At the end, print exactly one JSON object between lines containing exactly
+{_VERDICT_BEGIN} and {_VERDICT_END}. The object must contain:
+- reviewed_commit: the exact reviewed commit SHA
+- verdict: exactly one of: {verdicts}
+- findings: an array of unique finding-id strings; empty only for "approved",
+  and non-empty for every other verdict
+and may additionally contain:
+- advisory_findings: an array of unique non-blocking finding-id strings,
+  disjoint from findings; allowed with any verdict, including "approved"
+
+No other key is accepted.
+
+Task contract:
+CONTRACT
+
+Diff:
+DIFF
+"""
+
+    assert review._review_prompt("CONTRACT", "DIFF", commit) == expected
+
+
+def test_review_launches_when_a_named_manifest_is_absent_from_the_reviewed_tree(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A removal candidate deletes its manifest; the review must still launch."""
+
+    repo, _ = _review_repo(tmp_path, monkeypatch)
+    contract = repo / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "contract.md"
+    contract.write_text(
+        contract.read_text(encoding="utf-8").replace(
+            "schema = 1\n", "schema = 2\nextensions = ['openspec']\n"
+        ),
+        encoding="utf-8",
+    )
+    _git(repo, "add", str(contract.relative_to(repo)))
+    _git(
+        repo,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.com",
+        "commit",
+        "--quiet",
+        "-m",
+        "name an extension whose manifest is gone",
+    )
+    commit = _git(repo, "rev-parse", "HEAD")
+    prompt_output = tmp_path / "review-prompt.txt"
+    stub = _reviewer_stub(
+        tmp_path,
+        _verdict(commit, "approved", []),
+        prompt_output=prompt_output,
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert main(_review_args(commit)) == 0
+
+    prompt = prompt_output.read_text(encoding="utf-8")
+    assert (
+        "Extensions whose manifest is absent in the reviewed tree:\n- openspec"
+        in prompt
+    )
