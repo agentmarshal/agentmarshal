@@ -1,0 +1,10 @@
+{
+  "created_at": "2026-09-06T07:08:12.964196Z",
+  "record_type": "opened",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "schema": 3,
+  "source": "live",
+  "task": "CR-089",
+  "tool_version": "0.3.0"
+}
