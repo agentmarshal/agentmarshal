@@ -47,21 +47,24 @@ repository:
 schema = 1
 name = "openspec"
 version = "<as installed>"          # informational; nothing pins it
-footprint = ["openspec/", ".claude/commands/opsx/", ".claude/skills/",
-             ".agents/skills/"]
+footprint = ["openspec/", ".claude/commands/opsx/",
+             ".claude/skills/openspec-propose/", ".agents/skills/openspec-propose/",
+             # ... one entry per skill directory the tool installs
+            ]
 documents = ["openspec/specs/"]                 # what brief feeds the implementer
 artifacts = ["openspec/changes/archive/"]       # what completion may pin
 install = "npx @fission-ai/openspec@latest init"  # recorded; run by the operator
-remove  = "rm -rf openspec .claude/commands/opsx" # recorded; run by the operator
+remove  = "rm -rf openspec .claude/commands/opsx .claude/skills/openspec-* .agents/skills/openspec-*"
 ```
 
 `footprint`, `documents` and `artifacts` entries use the scope syntax of
 ADR-0003 and nothing more: an exact path, or a directory prefix ending in `/`.
 There are no globs, because the gate's scope check has none, and one matcher
 serving two purposes is the point of D2. Where a tool's files share a directory
-with others (as OpenSpec's skills share `.claude/skills/`), the footprint names
-the directory and the operator accepts that the whole directory is the
-extension's to change under its tasks.
+with others (as OpenSpec's skills share `.claude/skills/`), the footprint lists
+the tool's own entries one by one; a footprint never claims a directory it
+shares. The `install` and `remove` strings are opaque to AgentMarshal and may
+use whatever the operator's shell understands.
 
 The manifest declares; AgentMarshal executes none of its strings. `install`
 and `remove` are recorded so the operator's action is reproducible and so a
@@ -78,20 +81,29 @@ printed since 0.1.0. No new check: the footprint joins the task's effective
 scope when the contract names the extension, and stays outside it when it does
 not.
 
-Installing or removing an extension is therefore an ordinary task: its contract
-names the extension, its scope is the footprint, the diff is reviewed and gated
-like any change, and the completion is evidence that the process tooling
-changed — when, by whom, under which review. There is no journal-only path for
-it, because the footprint lies outside `.agentmarshal/`.
+The gate reads a manifest where it reads the contract: from the base side of
+the history the candidate belongs to (ADR-0003), and in a sidecar from the
+sidecar working tree (ADR-0008). A candidate that edits a manifest changes
+what the *next* task's gate reads, not its own; it cannot widen its own scope
+or silence a documents check by rewriting the manifest it ships with.
 
-### 3. Named documents and decisions reach the implementer and the reviewer, and the gate checks the documents were touched
+Installing or removing an extension is therefore an ordinary task, and its
+contract lists its paths explicitly: the footprint and the manifest's own path
+`.agentmarshal/extensions/<name>.toml`. It must, because on an install task no
+manifest exists on the base side for `extensions = [...]` to resolve, and on a
+removal task the manifest is one of the paths being deleted. The diff is
+reviewed and gated like any change, and the completion is evidence that the
+process tooling changed — when, by whom, under which review. There is no
+journal-only path for it, because the footprint lies outside `.agentmarshal/`.
+
+### 3. Named documents and decisions reach implementer and reviewer, and the gate checks them
 
 A contract may name `documents = [...]` in scope syntax (an extension's
 `documents` join them when the contract names the extension) and
 `decisions = ["ADR-0003", ...]`, the decisions the task serves or is bounded
 by. `brief` includes the named documents' content and the named ADRs in the
-implementer's context; the review prompt names both, so a reviewer may refuse
-for contradicting a named decision and not only the contract. When a contract
+implementer's context, and the review prompt names both; how the reviewer is
+asked to use them is the implementation task's to word. When a contract
 names documents, the gate adds one line: `PASS: named documents touched
 (<paths>)` when the candidate's diff changes at least one path under them, or
 `FAIL: named documents untouched: <paths>` — a refusal, by the operator's
@@ -118,10 +130,12 @@ depends on the journal and the diff, not on third-party code.
 
 ### 5. Removal is verified, archival is a finding
 
-`remove` is a task (D2). Its completion is refused while any `footprint` path
-still exists in the candidate's tree — the manifest is the checklist, and the
-check is a gate line; the manifest file itself is the last path to go and is
-exempt from its own footprint. If the operator wants to keep what the tool produced, the removal
+`remove` is a task (D2). Its completion is refused while a `footprint` path of
+the base-side manifest still exists in the candidate's tree — the manifest is
+the checklist, read from the side the candidate cannot edit, and the check is
+a gate line. The candidate deletes the manifest itself along with the
+footprint; the base still holds it for the check. If the operator wants to
+keep what the tool produced, the removal
 task records a `finding` (ADR-0009) whose artifacts are hash-pinned copies
 under the journal: archived by content, provable later, and no longer in the
 working tree.
@@ -143,8 +157,7 @@ a second real user exists, not before.
 
 ## Consequences
 
-- Contract header gains optional `extensions`, `documents`, `decisions`;
-  `open` warns when scope touches `docs/adr/` and `decisions` is empty. The
+- Contract header gains optional `extensions`, `documents`, `decisions`. The
   header `schema` moves to 2, and the parser accepts 1 and 2: a schema-1
   contract, or a schema-2 contract without the fields, reads and behaves
   exactly as today. The record schema is untouched. UPGRADING names the header
@@ -162,7 +175,8 @@ a second real user exists, not before.
   them.
 - Downstream: docs/overview (contract header), quickstart (one paragraph),
   sidecar.md (the footprint is a host path; a sidecar contract may name it —
-  the gate's scope check in a sidecar is advisory as everywhere else).
+  the gate's scope check there is advisory, as every sidecar check is —
+  ADR-0008 D5).
 
 ## Alternatives considered
 
