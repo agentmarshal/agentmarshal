@@ -58,9 +58,9 @@ remove  = "rm -rf openspec .claude/commands/opsx .claude/skills/openspec-* .agen
 ```
 
 `footprint`, `documents` and `artifacts` entries use the syntax the gate's
-scope matcher accepts (ADR-0003 names the rule `diff ⊆ scope`; the matcher, in
-the gate since 0.2.0, accepts an exact path or a directory prefix ending in `/`)
-and nothing more. There are no globs, because the scope check has none, and one
+scope matcher accepts (ADR-0003 names the rule `diff ⊆ scope`; the matcher,
+in the gate since its first release, accepts an exact path or a directory
+prefix ending in `/`) and nothing more. There are no globs, because the scope check has none, and one
 matcher serving two purposes is the point of D2. Where a tool's files share a directory
 with others (as OpenSpec's skills share `.claude/skills/`), the footprint lists
 the tool's own entries one by one; a footprint never claims a directory it
@@ -68,10 +68,12 @@ shares. The `install` and `remove` strings are opaque to AgentMarshal and may
 use whatever the operator's shell understands.
 
 The manifest declares; AgentMarshal executes none of its strings. `install`
-and `remove` are recorded so that what the operator ran is known and a removal
-can be checked against `footprint`. The record says what was invoked, not what
-it resolved to: nothing pins the tool's version, and a manifest that records
-`@latest` records exactly that much. Declarative over imperative: this
+and `remove` are the operator's declaration of what was run, recorded so a
+later reader knows what was claimed and so a removal can be checked against
+`footprint`. AgentMarshal does not attest the declaration: it does not verify
+that the command ran, succeeded, or produced the files the footprint names.
+Nothing pins the tool's version either; a manifest that records `@latest`
+records exactly that much. Declarative over imperative: this
 is the pre-commit shape (id, entry, files), not an SDK.
 
 ### 2. The footprint is scope, and the gate already enforces scope
@@ -91,19 +93,21 @@ tree (ADR-0008). A candidate that edits a manifest changes what the *next*
 task's gate reads, not its own; it cannot widen its own scope or silence a
 documents check by rewriting the manifest it ships with.
 
-A change that touches only a manifest is **not** a journal-only transaction,
-although the path lies under `.agentmarshal/`. The deterministic lane exists
-for records — evidence that changes no behaviour of the tool. A manifest
-decides what the gate reads next: it is configuration, and configuration is
-reviewed. The journal-only lane therefore excludes `.agentmarshal/extensions/`;
-a manifest amendment takes the review-bound diff lane under a contract whose
-scope names the manifest path.
+A change that touches only a manifest is **not** a journal-only transaction.
+The deterministic lane is keyed on `.agentmarshal/journal/`, the records — and
+`.agentmarshal/extensions/` lies outside it, so a manifest-only change already
+takes the review-bound diff lane, under a contract whose scope names the
+manifest path. That is the right outcome and this ADR fixes it as intended: a
+manifest decides what the gate reads next; it is configuration, and
+configuration is reviewed. Placing manifests under `.agentmarshal/journal/`
+would have put them on the unreviewed lane, and is therefore ruled out.
 
-Installing or removing an extension is therefore an ordinary task, and its
-contract lists its paths explicitly: the footprint and the manifest's own path
-`.agentmarshal/extensions/<name>.toml`. It must, because on an install task no
-manifest exists on the base side for `extensions = [...]` to resolve, and on a
-removal task the manifest is one of the paths being deleted. The diff is
+Installing or removing an extension is therefore an ordinary task whose
+contract names the manifest's own path `.agentmarshal/extensions/<name>.toml`
+explicitly, because a footprint does not contain it. An install task lists the
+footprint paths explicitly as well: no manifest exists on the base side yet
+for `extensions = [...]` to resolve. A removal task may name the extension —
+the base still holds its manifest — and add only the manifest path. The diff is
 reviewed and gated like any change, and the completion is evidence that the
 process tooling changed — when, by whom, under which review. There is no
 journal-only path for it, because the footprint lies outside `.agentmarshal/`.
@@ -162,8 +166,11 @@ working tree.
 
 ### 6. What this establishes, and what it does not
 
-It establishes that a process tool's presence, footprint, inputs to the
-implementer and removal are recorded, bounded and checked. It does **not**
+It establishes that a declared footprint is bounded by the gate, that named
+documents reach the implementer and are checked for change, and that a
+removal is verified against the base-side manifest. A manifest's presence
+records a declaration — that a tool was said to be installed with those
+strings — not that the command ran, succeeded, or produced those files. It does **not**
 establish that the tool is safe (nothing is vetted; `install` runs whatever the
 operator runs), that its output is true (see D3), that it is isolated (a
 process tool writes into the repository — that is its purpose; the footprint
@@ -193,8 +200,9 @@ a second real user exists, not before.
   commands are decided after the dogfood, by its numbers (rounds, findings
   about spec–code mismatch, cost), which a research task in the operator's
   own journal pre-registers before the first data point.
-- The journal-only lane excludes `.agentmarshal/extensions/`: a manifest-only
-  change takes the diff lane and needs a review (D2).
+- No change to the journal-only lane: `.agentmarshal/extensions/` lies outside
+  `.agentmarshal/journal/`, so a manifest-only change already takes the diff
+  lane and needs a review (D2).
 - Downstream: docs/overview (contract header), quickstart (one paragraph),
   sidecar.md (the footprint is a host path; a sidecar contract may name it —
   the gate's scope check there is advisory, as every sidecar check is —
