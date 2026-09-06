@@ -6,7 +6,7 @@ scope = ["docs/adr/ADR-0010-process-extensions.md"]
 acceptance = [
   "the ADR exists at the scoped path, reads Status: Accepted, and states up front that it decides and does not implement",
   "it names the extension manifest and its fields, states that footprint and documents entries use the scope syntax (an exact path, or a directory prefix ending in a slash), and states that AgentMarshal executes none of the manifest's commands",
-  "it states which command reads the manifest at which lifecycle point (open, brief, complete, gate), and that no extension-defined code runs inside the gate",
+  "it states which command reads the manifest at which lifecycle point — brief, and the gate that complete runs — what each reads it for, and that no extension-defined code runs inside the gate",
   "it fixes the operator's decisions of 2026-09-06: installing or removing an extension is a task with review; a contract that names documents makes a candidate that leaves them untouched a gate refusal; the contract header moves to schema 2 with optional fields while schema-1 contracts keep their behaviour",
   "it states what a governed extension establishes and what it does not, in the manner of ADR-0006 and ADR-0009 §5",
   "it records the alternatives considered — lifecycle hooks, bundling a tool, an SDK with a registry, harness-native plugins alone, a sandbox — and why each was not taken",
@@ -47,12 +47,12 @@ against — as ADR-0009 did for CR-086.
   fields, states that `footprint` and `documents` entries use the scope
   syntax — an exact path, or a directory prefix ending in `/` — and that the
   `install` and `remove` strings are recorded, never executed by AgentMarshal.
-- It states which command reads the manifest where: `open` (footprint into
-  effective scope when the contract names the extension), `brief` (documents
-  and decisions into the implementer's context, named in the reviewer prompt),
-  `complete` (artifacts pinned; removal refused while footprint paths remain
-  in the candidate tree), `gate` (one line for named documents) — and that
-  no extension-defined code runs inside the gate.
+- It states which command reads the manifest where: `brief` (documents and
+  decisions into the implementer's context, named in the reviewer prompt) and
+  the gate (effective scope from the base-side manifest, one line for named
+  documents, the removal check — `complete` refuses through the gate it runs)
+  — and that no extension-defined code runs inside the gate. Whether anything
+  pins an extension's artifacts, and what, is the ADR's to decide.
 - It fixes the three operator decisions of 2026-09-06 named in the header.
 - It states what a governed extension establishes and what it does not.
 - It records the alternatives considered and why each was not taken.
