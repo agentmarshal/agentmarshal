@@ -1587,3 +1587,60 @@ def test_gate_sees_a_reopening_and_lets_work_land_again(
 
     assert passed, output
     assert "PASS: task CR-001 is not closed at base" in output
+
+
+def test_renaming_a_named_document_counts_as_touched(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, _ = _gate_repo(tmp_path, monkeypatch, ["docs/"])
+    _write_schema2_contract(repo, ["docs/"], documents=["docs/guide.md"])
+    guide = repo / "docs" / "guide.md"
+    guide.parent.mkdir()
+    guide.write_text("guide\n", encoding="utf-8")
+    base = _commit_all(repo, "name document")
+    guide.rename(repo / "docs" / "other.md")
+    head = _commit_all(repo, "rename document")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    assert passed
+    assert "PASS: named documents touched (docs/guide.md)" in output
+
+
+def test_deleting_an_invalid_base_side_manifest_is_not_examined_not_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The base holds bytes the candidate cannot repair; no footprint is declared."""
+
+    manifest_path = ".agentmarshal/extensions/openspec.toml"
+    repo, _ = _gate_repo(tmp_path, monkeypatch, [manifest_path])
+    manifest = _write_extension_manifest(repo)
+    manifest.write_text("schema = [\n", encoding="utf-8")
+    base = _commit_all(repo, "parked an invalid manifest")
+    manifest.unlink()
+    head = _commit_all(repo, "delete it")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    assert passed
+    assert "NOT EXAMINED: removal of extension 'openspec'" in output
+    assert "removal incomplete" not in output
+
+
+def test_named_manifest_that_git_cannot_show_as_text_is_a_refusal_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, _ = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    _write_schema2_contract(repo, ["src/"], extensions=["openspec"])
+    manifest = _write_extension_manifest(repo)
+    manifest.write_bytes(b"\xff\xfe not text")
+    base = _commit_all(repo, "binary manifest at base")
+    head = _implement(repo, "src/change.py")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    assert not passed
+    assert "FAIL: named extension 'openspec' manifest unreadable" in output

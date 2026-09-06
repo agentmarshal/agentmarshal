@@ -388,7 +388,9 @@ def test_sidecar_gate_reads_manifest_from_sidecar_for_host_paths(
     assert output.startswith("Sidecar checks are advisory and decide no merge.\n")
     assert "extensions: openspec" in output
     assert "PASS: named documents touched (openspec/specs/feature.md)" in output
-    assert "PASS: extension 'openspec' removal complete" in output
+    # A host path deletion says nothing about this journal's extensions; how a
+    # sidecar removal is recognised awaits an ADR-0010 amendment.
+    assert "removal" not in output
     assert output.endswith("gate: advisory checks passed; decides no merge\n")
 
 

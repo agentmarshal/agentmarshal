@@ -140,15 +140,9 @@ def run_findings_gate(journal_root: Path, task_id: str) -> GateReport:
     else:
         lines.append("NOT EXAMINED: scope diff (findings lane has no candidate)")
 
-    named_documents = list(task.contract.documents)
-    for name in task.contract.extensions:
-        try:
-            manifest = read_extension_manifest(journal_root.parents[1], name)
-        except ExtensionManifestError as error:
-            check(False, f"named extension {name!r} manifest unreadable: {error}")
-            continue
-        named_documents.extend(manifest.documents)
-    if named_documents:
+    if task.contract.documents or task.contract.extensions:
+        # This lane has no candidate to examine, so the contract's naming is
+        # all it needs to say so; it reads no manifest and refuses nothing.
         lines.append("NOT EXAMINED: named documents (findings lane has no candidate)")
 
     findings = [record for record in task.records if record["record_type"] == "finding"]
@@ -455,12 +449,22 @@ def _manifest_from_tree(
 
     path = extension_manifest_path(name)
     source = f"{tree_ref}:{path}"
-    listing = _run_git(project_root, ["ls-tree", "--name-only", tree_ref, "--", path])
-    if not listing.strip():
-        raise ExtensionManifestMissing(
-            f"extension manifest {name!r} is missing: {source}"
+    try:
+        listing = _run_git(
+            project_root, ["ls-tree", "--name-only", tree_ref, "--", path]
         )
-    text = _run_git(project_root, ["show", source])
+        if not listing.strip():
+            raise ExtensionManifestMissing(
+                f"extension manifest {name!r} is missing: {source}"
+            )
+        text = _run_git(project_root, ["show", source])
+    except GateError as error:
+        # A blob git cannot show as UTF-8 text, or a tree entry that is not a
+        # blob, is a manifest the gate cannot read — a refusal line, not an
+        # aborted run.
+        raise ExtensionManifestError(
+            f"cannot read extension manifest {name!r} at {source}: {error}"
+        ) from error
     return parse_extension_manifest_text(text, name, source)
 
 
@@ -586,12 +590,21 @@ def run_gate(
     changes_with_status = _changed_with_status(
         project_root, merge_base, resolved_commit
     )
-    deleted_extensions = sorted(
-        {
-            name
-            for status, path in changes_with_status
-            if status == "D" and (name := _extension_name(path)) is not None
-        }
+    # A removal is a candidate that deletes a base-side manifest (ADR-0010
+    # D5). In a sidecar the manifest lives in the sidecar, not in the host's
+    # history, so a host path deletion says nothing about this journal's
+    # extensions; how a sidecar removal is recognised awaits an amendment to
+    # ADR-0010, and until then no removal line prints there.
+    deleted_extensions = (
+        []
+        if sidecar
+        else sorted(
+            {
+                name
+                for status, path in changes_with_status
+                if status == "D" and (name := _extension_name(path)) is not None
+            }
+        )
     )
     record_changes = [
         (status, path) for status, path in changes_with_status if _is_record_path(path)
@@ -712,13 +725,14 @@ def run_gate(
                 raise GateError(
                     f"contract in the base tree is invalid: {error}"
                 ) from error
-        manifest_root = journal_root.parents[1] if sidecar else project_root
         manifests: dict[str, ExtensionManifest] = {}
         for name in dict.fromkeys((*contract.extensions, *deleted_extensions)):
             try:
+                # The trusted side, as for the contract: the sidecar working
+                # tree, or the merge-base tree the candidate cannot edit.
                 loaded_manifest = (
-                    read_extension_manifest(manifest_root, name)
-                    if sidecar
+                    read_extension_manifest(journal_root.parents[1], name)
+                    if sidecar and journal_root is not None
                     else _manifest_from_tree(project_root, merge_base, name)
                 )
             except ExtensionManifestError as error:
@@ -728,9 +742,13 @@ def run_gate(
                         f"named extension {name!r} manifest unreadable: {error}",
                     )
                 else:
-                    check(
-                        False,
-                        f"removed extension {name!r} manifest unreadable: {error}",
+                    # The candidate deleted a file at a manifest's path, but the
+                    # base holds no valid manifest there: nothing declares a
+                    # footprint, so there is no removal to verify — and no
+                    # refusal the candidate could repair from its side.
+                    lines.append(
+                        f"NOT EXAMINED: removal of extension {name!r} (base-side "
+                        f"file is not a valid manifest: {error})"
                     )
                 continue
             manifests[name] = loaded_manifest
@@ -743,9 +761,8 @@ def run_gate(
                 effective_scope.extend(named_manifest.footprint)
                 if named_manifest.footprint:
                     contributors.append(name)
-        outside = [
-            path for path in changed if not scope_covers(tuple(effective_scope), path)
-        ]
+        effective = tuple(effective_scope)
+        outside = [path for path in changed if not scope_covers(effective, path)]
         # The embedded gate reads the contract from the base tree, so a
         # candidate cannot widen its own scope. A sidecar's contract is not in
         # the host's history at all — the candidate cannot reach it, but nor is
@@ -783,8 +800,16 @@ def run_gate(
                 named_documents.extend(named_manifest.documents)
         named_documents = list(dict.fromkeys(named_documents))
         if named_documents:
+            named = tuple(named_documents)
+            # From the status pairs, not the name-only list: a rename decomposes
+            # into a deletion and an addition there, and a deleted document
+            # counts as touched.
             touched_documents = sorted(
-                path for path in changed if scope_covers(tuple(named_documents), path)
+                {
+                    path
+                    for _status, path in changes_with_status
+                    if scope_covers(named, path)
+                }
             )
             check(
                 bool(touched_documents),

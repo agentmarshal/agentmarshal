@@ -616,3 +616,23 @@ def test_brief_names_a_directory_given_without_a_trailing_slash(
     briefing = capsys.readouterr().out
     assert "DIRECTORY (name it with a trailing slash): specs" in briefing
     assert "Spec sentinel." not in briefing
+
+
+def test_brief_reports_a_linked_directory_named_as_the_entry_itself(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path, monkeypatch)
+    _schema2_contract(repo, 'documents = ["specs/"]\n')
+    shared = repo / "shared"
+    shared.mkdir()
+    (shared / "common.md").write_text("Common sentinel.\n", encoding="utf-8")
+    (repo / "specs").symlink_to(shared, target_is_directory=True)
+    capsys.readouterr()
+
+    assert main(["brief", "--task", "CR-001"]) == 0
+
+    briefing = capsys.readouterr().out
+    assert "LINKED DIRECTORY (not followed; name its target): specs" in briefing
+    assert "Common sentinel." not in briefing

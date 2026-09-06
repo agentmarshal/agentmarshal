@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 from agentmarshal.journal.contracts import ContractHeader, scope_covers
@@ -37,54 +38,84 @@ def _relative_file(project_root: Path, path: Path) -> str | None:
     return relative.as_posix() if resolved.is_file() else None
 
 
-def _document_files(project_root: Path, entry: str) -> list[tuple[str | None, Path]]:
-    """Files under a documents entry, with ``None`` for one that cannot be read.
+@dataclass(frozen=True)
+class _Listed:
+    """One entry found under a documents entry, with what the brief can do with it."""
+
+    kind: str  # "file", "linked_directory", "directory" or "unresolvable"
+    lexical: str
+    path: Path
+
+
+_LISTED_REASONS = {
+    "linked_directory": "LINKED DIRECTORY (not followed; name its target)",
+    "directory": "DIRECTORY (name it with a trailing slash)",
+    "unresolvable": "UNRESOLVABLE (outside the tree, a broken link, or a cycle)",
+}
+
+
+def _link_kind(project_root: Path, link: Path) -> str:
+    """Classify a symlink: a linked directory inside the tree, or unresolvable."""
+
+    try:
+        resolved = link.resolve(strict=True)
+        resolved.relative_to(project_root.resolve())
+    except (OSError, RuntimeError, ValueError):
+        return "unresolvable"
+    return "linked_directory" if resolved.is_dir() else "file"
+
+
+def _document_files(project_root: Path, entry: str) -> list[_Listed]:
+    """What lies under a documents entry, by lexical path.
 
     A trailing slash names a directory, as in scope; an entry with one that
-    resolves to a file is missing, not a file. Inside a directory, an entry
-    that does not resolve to a file under the project (a broken link, a link
-    outside the tree) is returned with ``None`` so the caller reports it.
+    resolves to a file is missing, not a file. A linked directory — as the
+    entry or below it — is not followed, so brief and gate agree on what is
+    under the entry. Whatever cannot be read is returned with its kind so the
+    caller reports it rather than skipping it.
     """
 
-    target = project_root / entry.rstrip("/")
+    lexical_target = entry.rstrip("/")
+    target = project_root / lexical_target
     if entry.endswith("/"):
         if target.is_symlink():
-            return [(None, target)]
+            kind = _link_kind(project_root, target)
+            kind = "linked_directory" if kind == "linked_directory" else "unresolvable"
+            return [_Listed(kind, lexical_target, target)]
         if not target.is_dir():
             return []
         return _files_below(project_root, target, entry)
     if not target.exists() and not target.is_symlink():
         return []
+    if target.is_symlink():
+        kind = _link_kind(project_root, target)
+        if kind != "file":
+            return [_Listed(kind, lexical_target, target)]
+    if target.is_dir():
+        return [_Listed("directory", lexical_target, target)]
     relative = _relative_file(project_root, target)
-    return [(relative, target.resolve() if relative is not None else target)]
+    kind = "file" if relative is not None else "unresolvable"
+    return [_Listed(kind, lexical_target, target)]
 
 
-def _files_below(
-    project_root: Path, directory: Path, entry: str
-) -> list[tuple[str | None, Path]]:
+def _files_below(project_root: Path, directory: Path, entry: str) -> list[_Listed]:
     """Walk lexical paths below ``entry`` without following linked directories."""
 
-    files: list[tuple[str | None, Path]] = []
+    files: list[_Listed] = []
     for candidate in sorted(directory.rglob("*")):
         lexical = candidate.relative_to(project_root).as_posix()
         if not scope_covers((entry,), lexical):
             continue
         if candidate.is_symlink():
-            try:
-                resolved = candidate.resolve(strict=True)
-                resolved.relative_to(project_root.resolve())
-            except (OSError, RuntimeError, ValueError):
-                files.append((None, candidate))
-                continue
-            if resolved.is_dir():
-                # A linked directory has a lexical child set different from its
-                # target's. Following it would make brief and gate disagree about
-                # what is under the named documents entry.
-                files.append(("", candidate))
+            kind = _link_kind(project_root, candidate)
+            if kind != "file":
+                files.append(_Listed(kind, lexical, candidate))
                 continue
         if candidate.is_dir():
             continue
-        files.append((_relative_file(project_root, candidate), candidate))
+        relative = _relative_file(project_root, candidate)
+        kind = "file" if relative is not None else "unresolvable"
+        files.append(_Listed(kind, lexical, candidate))
     return files
 
 
@@ -162,26 +193,15 @@ def _append_named_material(
             state = "EMPTY" if entry.endswith("/") and target.is_dir() else "MISSING"
             sections.append(f"## Named document: {entry}\n\n{state}: {entry}\n")
             continue
-        for relative, path in files:
-            if relative == "":
-                lexical = path.relative_to(material_root).as_posix()
-                sections.append(
-                    f"## Named document: {lexical}\n\n"
-                    f"LINKED DIRECTORY (not followed; name its target): {lexical}\n"
-                )
-                continue
-            if relative is None:
-                lexical = path.relative_to(material_root).as_posix()
-                if path.is_dir() and not path.is_symlink():
-                    reason = "DIRECTORY (name it with a trailing slash)"
-                else:
-                    reason = (
-                        "UNRESOLVABLE (outside the tree, a broken link, or a cycle)"
-                    )
+        for listed in files:
+            if listed.kind != "file":
+                reason = _LISTED_REASONS[listed.kind]
+                lexical = listed.lexical
                 sections.append(
                     f"## Named document: {lexical}\n\n{reason}: {lexical}\n"
                 )
                 continue
+            relative, path = listed.lexical, listed.path
             if relative in seen_files:
                 continue
             seen_files.add(relative)
