@@ -1674,3 +1674,48 @@ def test_named_manifest_with_a_bracket_in_its_name_is_read_as_an_object(
 
     assert passed
     assert "extensions: open[spec]" in output
+
+
+def test_removal_check_sees_a_surviving_footprint_path_with_a_non_ascii_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """git C-quotes such a path unless asked for NUL separation; quoted, it
+    would hide from the matcher and the removal would read as complete."""
+
+    manifest_path = ".agentmarshal/extensions/openspec.toml"
+    repo, _ = _gate_repo(tmp_path, monkeypatch, [manifest_path])
+    _write_schema2_contract(repo, [manifest_path], extensions=["openspec"])
+    manifest = _write_extension_manifest(repo)
+    survivor = repo / "openspec" / "caf\u00e9.md"
+    survivor.parent.mkdir()
+    survivor.write_text("still here\n", encoding="utf-8")
+    base = _commit_all(repo, "installed extension")
+    manifest.unlink()
+    head = _commit_all(repo, "delete the manifest, keep a file")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    assert not passed
+    assert "FAIL: extension 'openspec' removal incomplete" in output
+    assert "openspec/caf\u00e9.md" in output
+
+
+def test_a_symlink_at_the_manifest_path_on_the_base_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, _ = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    _write_schema2_contract(repo, ["src/"], extensions=["openspec"])
+    real = _write_extension_manifest(repo)
+    target = repo / "elsewhere.toml"
+    real.rename(target)
+    real.symlink_to(target)
+    base = _commit_all(repo, "manifest is a symlink at base")
+    head = _implement(repo, "src/change.py")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    assert not passed
+    assert "FAIL: named extension 'openspec' manifest unreadable" in output
+    assert "symlink" in output

@@ -450,15 +450,22 @@ def _manifest_from_tree(
     path = extension_manifest_path(name)
     source = f"{tree_ref}:{path}"
     try:
-        try:
-            kind = _run_git(project_root, ["cat-file", "-t", source]).strip()
-        except GateError as error:
-            # ``<tree>:<path>`` is an object name, not a pathspec: a bracket
-            # or a star in an extension's name is a character, not a glob, and
-            # an entry that is not there fails to resolve.
+        # A literal pathspec: a bracket or a star in an extension's name is a
+        # character, not a glob. The entry's mode is part of the answer — a
+        # symlink is refused here as the filesystem reader refuses one.
+        entry = _run_git(
+            project_root, ["ls-tree", "-z", tree_ref, "--", f":(literal){path}"]
+        )
+        if not entry.strip("\0"):
             raise ExtensionManifestMissing(
                 f"extension manifest {name!r} is missing: {source}"
-            ) from error
+            )
+        mode, kind = entry.split("\0", 1)[0].split(" ")[:2]
+        if mode == "120000":
+            raise ExtensionManifestError(
+                f"refusing to read extension manifest {name!r} through a symlink: "
+                f"{source}"
+            )
         if kind != "blob":
             raise ExtensionManifestError(
                 f"extension manifest {name!r} at {source} is a {kind}, not a file"
@@ -825,12 +832,17 @@ def run_gate(
             )
 
         if deleted_extensions:
-            candidate_tree = set(
-                _run_git(
+            # NUL-separated, as the diff listings are: git C-quotes a path
+            # with a non-ASCII or control character otherwise, and a quoted
+            # path is one the matcher cannot see — a false "removal complete".
+            candidate_tree = {
+                path
+                for path in _run_git(
                     project_root,
-                    ["ls-tree", "-r", "--name-only", resolved_commit],
-                ).splitlines()
-            )
+                    ["ls-tree", "-r", "--name-only", "-z", resolved_commit],
+                ).split("\0")
+                if path
+            }
             for name in deleted_extensions:
                 removed_manifest = manifests.get(name)
                 if removed_manifest is None:
