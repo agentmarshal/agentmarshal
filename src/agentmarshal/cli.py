@@ -597,9 +597,11 @@ def _run_review(args: argparse.Namespace, stderr: TextIO) -> int:
     except ReviewLaunchError as error:
         print(error, file=stderr)
         return 1
+    if submitted.artifact_ref is not None:
+        # The record pins the reasoning; say where, on stderr, so stdout
+        # stays the record path a caller can read.
+        print(f"reviewer prose pinned: {submitted.artifact_ref}", file=stderr)
     if submitted.reviewer_output_path is not None:
-        # The record names findings by id only. Point at the reasoning on
-        # stderr, so stdout stays the record path a caller can read.
         print(
             f"reviewer output kept at {submitted.reviewer_output_path}",
             file=stderr,

@@ -511,3 +511,45 @@ def test_findings_lane_names_an_extension_without_reading_its_manifest(
     assert (
         "NOT EXAMINED: named documents (findings lane has no candidate)" in report.lines
     )
+
+
+def test_review_bound_to_an_unknown_finding_leaves_no_prose_behind(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A refused record must not leave an orphan in an append-only directory."""
+
+    repo, _ = _repo(tmp_path, monkeypatch)
+    _finding(repo)
+    prose = tmp_path / "review.md"
+    prose.write_text("prose\n", encoding="utf-8")
+
+    assert (
+        main(
+            [
+                "submit-review",
+                "--task",
+                "CR-001",
+                "--reviewed-finding",
+                "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+                "--verdict",
+                "approved",
+                "--role",
+                "reviewer",
+                "--vendor",
+                "human",
+                "--model",
+                "none",
+                "--email",
+                "reviewer@test.invalid",
+                "--prose",
+                str(prose),
+            ]
+        )
+        == 1
+    )
+    assert "must name a finding in the same task" in capsys.readouterr().err
+    assert not (
+        repo / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "artifacts"
+    ).exists()

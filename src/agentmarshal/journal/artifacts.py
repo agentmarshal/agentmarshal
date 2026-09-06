@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
+from agentmarshal.journal.open_task import _TASK_ID_PATTERN
 from agentmarshal.journal.records import (
     JournalRecordError,
     _prepare_record_directory,
@@ -41,6 +42,8 @@ def write_artifact(
 ) -> dict[str, str]:
     """Exclusively write exact artifact bytes and return their journal pin."""
 
+    if _TASK_ID_PATTERN.fullmatch(task_id) is None:
+        raise JournalRecordError(f"artifact task id is not a task id: {task_id!r}")
     _reject_control_characters(name, "artifact name")
     if not name or Path(name).name != name or name in {".", ".."}:
         raise JournalRecordError("artifact name must be a single path component")

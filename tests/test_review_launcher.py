@@ -944,3 +944,24 @@ def test_review_launches_when_a_named_manifest_is_absent_from_the_reviewed_tree(
         "Extensions whose manifest is absent in the reviewed tree:\n- openspec"
         in prompt
     )
+
+
+def test_pinned_prose_is_announced(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The operator is told where the pinned prose is."""
+
+    _repo, commit = _review_repo(tmp_path, monkeypatch)
+    output = "one finding, explained\n" + _verdict(commit, "approved", [], ["A-1"])
+    stub = _reviewer_stub(tmp_path, output)
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+    capsys.readouterr()
+
+    assert _run_review(commit) == 0
+
+    captured = capsys.readouterr()
+    assert "reviewer prose pinned: .agentmarshal/journal/tasks/CR-001/artifacts/" in (
+        captured.err
+    )

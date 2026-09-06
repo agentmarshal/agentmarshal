@@ -12,6 +12,7 @@ from agentmarshal.journal.records import (
     JournalRecordError,
     create_review_record,
     generate_ulid,
+    read_records,
     validate_record_content,
     write_record,
 )
@@ -33,6 +34,7 @@ class SubmittedReview:
 
     record_path: Path
     reviewer_output_path: Path | None = None
+    artifact_ref: str | None = None
 
 
 def submit_review(
@@ -71,17 +73,30 @@ def submit_review(
             return SubmittedReview(write_record(journal_root, task_id, record))
 
         record_id = generate_ulid()
-        # Refuse malformed verdicts before creating their durable artifact.
-        # write_record validates again after the pin is attached and remains
-        # the only record writer.
+        # Refuse a record that write_record would refuse before creating its
+        # durable artifact: the verdict's shape, and a finding binding that
+        # names no finding of this task. write_record validates again after
+        # the pin is attached and remains the only record writer.
         validate_record_content(
             f"{record_id}-review.json",
             json.dumps(record),
         )
+        if reviewed_finding is not None:
+            finding_ids = {
+                item["id"]
+                for item in read_records(journal_root, task_id)
+                if item["record_type"] == "finding"
+            }
+            if reviewed_finding not in finding_ids:
+                raise JournalRecordError(
+                    "record field 'reviewed_finding' must name a finding in the "
+                    "same task"
+                )
         pin = write_artifact(journal_root, task_id, f"{record_id}-review.md", prose)
         record["artifacts"] = [pin]
         return SubmittedReview(
-            write_record(journal_root, task_id, record, record_id=record_id)
+            write_record(journal_root, task_id, record, record_id=record_id),
+            artifact_ref=pin["ref"],
         )
     except (JournalRecordError, TaskStatusError, OSError, ValueError) as error:
         raise ReviewSubmitError(str(error)) from error

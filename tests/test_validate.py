@@ -237,3 +237,52 @@ def test_validate_cli_passes_clean_journal(
 
     assert main(["validate"]) == 0
     assert "validate: passed" in capsys.readouterr().out
+
+
+def test_validate_refuses_an_artifact_reached_through_a_symlinked_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Matching bytes outside the journal are not its evidence."""
+
+    repo = _project(tmp_path, monkeypatch, tasks=1)
+    prose = tmp_path / "review.md"
+    prose.write_bytes(b"review evidence\n")
+    assert (
+        main(
+            [
+                "submit-review",
+                "--task",
+                "CR-001",
+                "--commit",
+                "a" * 40,
+                "--verdict",
+                "approved",
+                "--role",
+                "qa",
+                "--vendor",
+                "human",
+                "--model",
+                "none",
+                "--email",
+                "reviewer@test.invalid",
+                "--prose",
+                str(prose),
+            ]
+        )
+        == 0
+    )
+    artifacts = repo / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "artifacts"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    for artifact in artifacts.iterdir():
+        (outside / artifact.name).write_bytes(artifact.read_bytes())
+        artifact.unlink()
+    artifacts.rmdir()
+    artifacts.symlink_to(outside, target_is_directory=True)
+
+    report = validate_journal(repo)
+
+    assert not report.passed
+    assert any(
+        "through a symlink" in line and "CR-001" in line for line in report.lines
+    )

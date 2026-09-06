@@ -80,9 +80,28 @@ def _review_artifact_failures(
                 )
                 continue
             path = project_root.joinpath(*ref_path.parts)
-            if path.is_symlink() or not path.is_file():
+            try:
+                resolved = path.resolve(strict=True)
+            except FileNotFoundError:
                 failures.append(
                     f"review record {record_id} artifact {reference} is missing"
+                )
+                continue
+            except (OSError, RuntimeError) as error:
+                failures.append(
+                    f"review record {record_id} artifact {reference} cannot be "
+                    f"resolved: {error}"
+                )
+                continue
+            # A symlink anywhere between the project root and the file — the
+            # artifacts directory included — would let bytes outside the
+            # journal pass as its evidence: the resolved path must be the
+            # lexical one, and a file.
+            lexical = project_root.resolve().joinpath(*ref_path.parts)
+            if resolved != lexical or not resolved.is_file():
+                failures.append(
+                    f"review record {record_id} artifact {reference} is reached "
+                    "through a symlink or is not a file"
                 )
                 continue
             try:
