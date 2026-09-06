@@ -158,6 +158,12 @@ def read_extension_manifest(project_root: Path, name: str) -> ExtensionManifest:
     # Strict resolution reports a symlink loop the same way on every Python
     # this project supports (RuntimeError on one release, ELOOP on the next);
     # an absent file is the one resolution failure that means "missing".
+    if (project_root / relative_path).is_symlink():
+        # Dangling or not, a link at the manifest path is refused as a link,
+        # before strict resolution could report a dangling one as missing.
+        raise ExtensionManifestError(
+            f"refusing to read through a symlink: {project_root / relative_path}"
+        )
     try:
         root = project_root.resolve(strict=True)
         path = root / relative_path

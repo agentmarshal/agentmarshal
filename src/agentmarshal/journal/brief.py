@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from agentmarshal.journal.contracts import ContractHeader, scope_covers
+from agentmarshal.journal.contracts import ContractHeader
 from agentmarshal.journal.extensions import (
     ExtensionManifestError,
     ExtensionManifestMissing,
@@ -54,6 +54,19 @@ _LISTED_REASONS = {
 }
 
 
+def _ancestor_unresolvable(path: Path) -> bool:
+    """Whether the parent of ``path`` fails to resolve for a reason other than
+    absence — a symlink loop, or a link the tree cannot follow."""
+
+    try:
+        path.parent.resolve(strict=True)
+    except FileNotFoundError:
+        return False
+    except (OSError, RuntimeError):
+        return True
+    return False
+
+
 def _link_kind(project_root: Path, link: Path) -> str:
     """Classify a symlink: a linked directory inside the tree, or unresolvable."""
 
@@ -77,6 +90,10 @@ def _document_files(project_root: Path, entry: str) -> list[_Listed]:
 
     lexical_target = entry.rstrip("/")
     target = project_root / lexical_target
+    if _ancestor_unresolvable(target):
+        # ``exists()`` swallows a symlink loop in an ancestor and would report
+        # the entry missing; it is unresolvable, and the brief says so.
+        return [_Listed("unresolvable", lexical_target, target)]
     if entry.endswith("/"):
         if target.is_symlink():
             kind = _link_kind(project_root, target)
@@ -87,7 +104,7 @@ def _document_files(project_root: Path, entry: str) -> list[_Listed]:
             return [_Listed(kind, lexical_target, target)]
         if not target.is_dir():
             return []
-        return _files_below(project_root, target, entry)
+        return _files_below(project_root, target)
     if not target.exists() and not target.is_symlink():
         return []
     if target.is_symlink():
@@ -101,14 +118,12 @@ def _document_files(project_root: Path, entry: str) -> list[_Listed]:
     return [_Listed(kind, lexical_target, target)]
 
 
-def _files_below(project_root: Path, directory: Path, entry: str) -> list[_Listed]:
-    """Walk lexical paths below ``entry`` without following linked directories."""
+def _files_below(project_root: Path, directory: Path) -> list[_Listed]:
+    """Walk lexical paths below a directory without following linked directories."""
 
     files: list[_Listed] = []
     for candidate in sorted(directory.rglob("*")):
         lexical = candidate.relative_to(project_root).as_posix()
-        if not scope_covers((entry,), lexical):
-            continue
         if candidate.is_symlink():
             kind = _link_kind(project_root, candidate)
             if kind != "file":

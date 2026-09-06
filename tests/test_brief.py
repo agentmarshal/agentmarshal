@@ -654,3 +654,24 @@ def test_brief_treats_a_trailing_slash_entry_that_links_to_a_file_as_missing(
     briefing = capsys.readouterr().out
     assert "MISSING: specs/" in briefing
     assert "Guide sentinel." not in briefing
+
+
+def test_brief_reports_a_document_beneath_a_looping_ancestor_as_unresolvable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path, monkeypatch)
+    _schema2_contract(repo, 'documents = ["docs/loop/guide.md", "docs/loop/"]\n')
+    (repo / "docs").mkdir()
+    (repo / "docs" / "loop").symlink_to(repo / "docs" / "loop")
+    capsys.readouterr()
+
+    assert main(["brief", "--task", "CR-001"]) == 0
+
+    briefing = capsys.readouterr().out
+    assert (
+        "UNRESOLVABLE (outside the tree, a broken link, or a cycle): docs/loop/guide.md"
+        in briefing
+    )
+    assert "MISSING" not in briefing
