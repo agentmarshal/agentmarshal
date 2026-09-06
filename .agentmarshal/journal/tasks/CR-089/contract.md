@@ -29,7 +29,7 @@ acceptance = [
   "a candidate that deletes a manifest present on the base side is a removal: the diff lane prints a PASS line when no path of that manifest's footprint remains in the candidate tree and a FAIL line naming the remaining paths otherwise; a candidate that edits footprint paths and keeps the manifest gets no such line",
   "a symlink loop met while resolving a document path or a manifest path is reported — unresolvable in the brief, a refusal from the manifest reader — and raises nothing",
   "the diff-lane transcript of a task whose contract names neither extensions nor documents is unchanged: the existing byte-for-byte test against the released 0.3.0 and the sidecar transcript tests pass with their expectations unmodified",
-  "in a sidecar the manifest is read from the sidecar working tree, its footprint names host paths, and the scope, documents and removal lines are advisory as every sidecar check is — demonstrated by a host-plus-sidecar test",
+  "in a sidecar the manifest is read from the sidecar working tree, its footprint names host paths, and the scope and documents lines are advisory as every sidecar check is — demonstrated by a host-plus-sidecar test; no removal line prints in a sidecar, because the manifest is not in the host's history and ADR-0010 does not yet say how a sidecar removal is recognised",
   "scope_warnings' docstring lists the docs/adr/ warning and the quickstart's list of open warnings names it; overview and sidecar.md describe the new gate lines in a sentence each; the reviewer prompt's fixed text is one module constant with no sentence split across literals, and the golden prompt test passes unchanged",
 ]
 +++
@@ -68,7 +68,11 @@ As in the header, with these clarifications:
   when the base-side contract names an extension or a document, or the
   candidate deletes a base-side manifest.
 - "Advisory as every sidecar check is": the lines print in the sidecar
-  transcript under the advisory notice, as the scope line already does.
+  transcript under the advisory notice, as the scope line already does. The
+  removal check does not run in a sidecar: a removal is a candidate that
+  deletes a base-side manifest, and a sidecar's manifest is not in the
+  host's history — how a sidecar removal is recognised is an open question
+  for ADR-0010, recorded, not decided here.
 
 ## Threat model and boundaries
 
