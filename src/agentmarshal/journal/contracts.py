@@ -53,9 +53,7 @@ def _optional_string_array(data: dict[str, object], field: str) -> tuple[str, ..
 def reject_control_characters(value: str, what: str) -> None:
     """Refuse values that could forge lines in generated task text."""
 
-    if any(
-        character.isprintable() is False and character != " " for character in value
-    ):
+    if any(not character.isprintable() for character in value):
         raise JournalContractError(f"{what} must not contain control characters")
 
 
