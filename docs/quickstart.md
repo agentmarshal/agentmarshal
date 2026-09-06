@@ -281,6 +281,9 @@ and use `agentmarshal review` with the same `--task/--commit/--base` plus
 The review record is written into the journal working tree. It stays
 uncommitted until you record completion, so a review never has to be part of
 the very diff it attests.
+`agentmarshal review` preserves the reviewer's prose, and the `--prose FILE`
+option to `submit-review` attaches human prose the same way, under the task's
+`artifacts/` directory with its SHA-256 pinned by the review record.
 
 If the latest review of the candidate is non-approving, an operator may instead
 accept that exact commit over all of its blocking findings:

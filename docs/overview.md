@@ -104,7 +104,8 @@ task is already closed.
   completely removed.
 - **Record** — one append-only JSON evidence file: `opened`, `finding`,
   `review`, `acceptance`, `amendment`, `completed`, `reopened`, `abandoned`,
-  or a `session` (measurement). Written once, never edited.
+  or a `session` (measurement). Written once, never edited. A review may pin
+  the reviewer's prose by SHA-256 as an artifact beside the task's records.
 - **Projection / state** — a task's status computed from its records, never
   stored.
 - **Review** — a recorded verdict (`approved`, `changes_required`, …) for an

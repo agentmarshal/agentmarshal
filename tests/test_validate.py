@@ -117,6 +117,60 @@ def test_validate_reports_record_id_collision(
     assert any("also used by" in line for line in report.lines)
 
 
+@pytest.mark.parametrize("damage", ["missing", "mismatched"])
+def test_artifacts_hash_is_checked_where_its_record_is_validated(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    damage: str,
+) -> None:
+    """Scenario: the artifact's hash is checked where its record is validated."""
+
+    repo = _project(tmp_path, monkeypatch, tasks=1)
+    prose = tmp_path / "review.md"
+    prose.write_bytes(b"review evidence\n")
+    assert (
+        main(
+            [
+                "submit-review",
+                "--task",
+                "CR-001",
+                "--commit",
+                "a" * 40,
+                "--verdict",
+                "approved",
+                "--role",
+                "qa",
+                "--vendor",
+                "human",
+                "--model",
+                "none",
+                "--email",
+                "reviewer@test.invalid",
+                "--prose",
+                str(prose),
+            ]
+        )
+        == 0
+    )
+    artifact = next(
+        (
+            repo / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "artifacts"
+        ).iterdir()
+    )
+    if damage == "missing":
+        artifact.unlink()
+    else:
+        artifact.write_bytes(b"different bytes\n")
+
+    report = validate_journal(repo)
+
+    assert not report.passed
+    record_id = artifact.name.removesuffix("-review.md")
+    failure = next(line for line in report.lines if "artifact" in line)
+    assert record_id in failure
+    assert "missing" in failure if damage == "missing" else "sha256" in failure
+
+
 def test_validate_reports_non_utf8_record(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

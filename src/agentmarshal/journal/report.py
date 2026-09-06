@@ -28,6 +28,7 @@ class TaskReport:
     state: str
     review_cycles: int
     tokens: int
+    artifacts: int = 0
     usage_provenance: str | None = None
     decision: str | None = None
 
@@ -39,6 +40,7 @@ class JournalReport:
     tasks: tuple[TaskReport, ...]
     review_cycles: int
     tokens: int
+    artifacts: int = 0
     usage_provenance: str | None = None
 
 
@@ -60,6 +62,11 @@ def _usage_provenance(records: Iterable[dict[str, object]]) -> str | None:
 def _task_report(status: TaskStatus) -> TaskReport:
     records = status.records
     review_cycles = sum(record["record_type"] == "review" for record in records)
+    artifacts = sum(
+        len(cast(list[object], record.get("artifacts", [])))
+        for record in records
+        if record["record_type"] == "review"
+    )
     tokens = sum(
         sum(cast(dict[str, int], record["tokens"]).values())
         for record in records
@@ -96,8 +103,9 @@ def _task_report(status: TaskStatus) -> TaskReport:
         status.state,
         review_cycles,
         tokens,
-        _usage_provenance(records),
-        decision,
+        artifacts=artifacts,
+        usage_provenance=_usage_provenance(records),
+        decision=decision,
     )
 
 
@@ -118,7 +126,10 @@ def build_report(journal_root: Path, task_id: str | None = None) -> JournalRepor
         tasks,
         sum(task.review_cycles for task in tasks),
         sum(task.tokens for task in tasks),
-        _usage_provenance([record for status in statuses for record in status.records]),
+        artifacts=sum(task.artifacts for task in tasks),
+        usage_provenance=_usage_provenance(
+            [record for status in statuses for record in status.records]
+        ),
     )
 
 
@@ -133,6 +144,8 @@ def format_report(
             f"{task.task_id}\t{task.state}\treviews={task.review_cycles}"
             f"\ttokens={task.tokens}"
         )
+        if task.artifacts:
+            line += f"\tartifacts={task.artifacts}"
         if task.usage_provenance is not None:
             line += f"\tusage={task.usage_provenance}"
         if task.decision is not None:
@@ -150,6 +163,8 @@ def format_report(
         f"Summary\t{state_summary}\treviews={report.review_cycles}"
         f"\ttokens={report.tokens}"
     )
+    if report.artifacts:
+        summary += f"\tartifacts={report.artifacts}"
     if report.usage_provenance is not None:
         summary += f"\tusage={report.usage_provenance}"
     lines.append(summary)

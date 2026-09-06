@@ -1,5 +1,6 @@
 """Tests for the read-only review launcher."""
 
+import hashlib
 import json
 import subprocess
 import tempfile
@@ -542,6 +543,34 @@ def test_advisory_findings_reach_the_record(
     assert records[-1]["advisory_findings"] == ["A-001"]
 
 
+def test_model_review_path_keeps_its_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: the model review path keeps its output."""
+
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    output = "verbatim reviewer prose\n" + _verdict(commit, "approved", [])
+    stub = _reviewer_stub(tmp_path, output)
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert _run_review(commit) == 0
+
+    journal = repo / ".agentmarshal" / "journal"
+    record = read_records(journal, "CR-001")[-1]
+    artifacts = record["artifacts"]
+    assert isinstance(artifacts, list)
+    artifact = artifacts[0]
+    assert isinstance(artifact, dict)
+    expected_ref = (
+        f".agentmarshal/journal/tasks/CR-001/artifacts/{record['id']}-review.md"
+    )
+    assert artifact == {
+        "ref": expected_ref,
+        "hash": hashlib.sha256(output.encode("utf-8")).hexdigest(),
+    }
+    assert (repo / expected_ref).read_bytes() == output.encode("utf-8")
+
+
 def test_rejected_verdict_keeps_the_reviewer_output(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -589,6 +618,34 @@ def test_rejected_verdict_keeps_the_reviewer_output(
         assert len(kept) == 1, message
         assert str(kept[0]) in message
         assert analysis in kept[0].read_text(encoding="utf-8")
+    finally:
+        for path in kept:
+            path.unlink(missing_ok=True)
+
+
+def test_rejected_verdict_still_keeps_the_prose(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a rejected verdict still keeps the prose."""
+
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    output = "prose from a rejected verdict\nAGENTMARSHAL_VERDICT_BEGIN\n{}\n"
+    output += "AGENTMARSHAL_VERDICT_END\n"
+    stub = _reviewer_stub(tmp_path, output)
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert _run_review(commit) == 1
+
+    message = capsys.readouterr().err
+    kept = _kept_outputs(tmp_path)
+    try:
+        assert len(kept) == 1
+        assert str(kept[0]) in message
+        assert kept[0].read_text(encoding="utf-8") == output
+        records = read_records(repo / ".agentmarshal" / "journal", "CR-001")
+        assert [record["record_type"] for record in records] == ["opened"]
     finally:
         for path in kept:
             path.unlink(missing_ok=True)

@@ -423,6 +423,7 @@ def launch_review(
             reviewer_email,
             review_result[2],
             review_result[3] or None,
+            prose=reviewer_output.encode("utf-8"),
         )
     except ReviewSubmitError as error:
         # A verdict can parse cleanly and still be refused by record validation —

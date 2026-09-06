@@ -14,6 +14,7 @@ from agentmarshal.journal.records import (
     create_acceptance_record,
     create_completed_record,
     create_session_record,
+    read_records,
     write_record,
 )
 
@@ -885,6 +886,30 @@ def test_gate_journal_only_lane_needs_no_review(
     assert "deterministic lane" in output
 
 
+def test_old_journal_reads_as_before(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: an old journal reads as before."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    head = _implement(repo, "src/module.py")
+    _approve(repo, head)
+    review = read_records(repo / ".agentmarshal" / "journal", "CR-001")[-1]
+    assert "artifacts" not in review
+    capsys.readouterr()
+
+    assert main(["status", "CR-001"]) == 0
+    assert "artifacts=" not in capsys.readouterr().out
+    assert main(["report", "--task", "CR-001"]) == 0
+    assert "artifacts=" not in capsys.readouterr().out
+
+    passed, output = _run(repo, head, base, head)
+    assert passed
+    assert "PASS: evidence records are append-only" in output
+
+
 def test_gate_detects_record_path_collision(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -954,6 +979,64 @@ def test_gate_refuses_record_tampering(
     passed, output = _run(repo, head, base, head)
     assert not passed
     assert "append-only" in output
+
+
+@pytest.mark.parametrize("operation", ["modify", "delete"])
+def test_gate_refuses_a_modified_artifact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+) -> None:
+    """Scenario: the gate refuses a modified artifact."""
+
+    repo, opened = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    prose = tmp_path / "review.md"
+    prose.write_bytes(b"review evidence\n")
+    assert (
+        main(
+            [
+                "submit-review",
+                "--task",
+                "CR-001",
+                "--commit",
+                opened,
+                "--verdict",
+                "approved",
+                "--role",
+                "qa",
+                "--vendor",
+                "human",
+                "--model",
+                "none",
+                "--email",
+                _REVIEWER_EMAIL,
+                "--prose",
+                str(prose),
+            ]
+        )
+        == 0
+    )
+    artifact = next(
+        (
+            repo / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "artifacts"
+        ).iterdir()
+    )
+    base = _commit_all(repo, "record review evidence")
+
+    def tamper() -> None:
+        if operation == "modify":
+            artifact.write_bytes(b"changed\n")
+        else:
+            artifact.unlink()
+
+    head = _candidate_head(repo, f"artifact-{operation}", base, tamper)
+    passed, output = _run(repo, head, base, head)
+
+    assert not passed
+    relative = artifact.relative_to(repo).as_posix()
+    assert (
+        f"FAIL: append-only violation, records modified, deleted or renamed: {relative}"
+    ) in output
 
 
 def test_gate_refuses_record_rename_out_of_records(

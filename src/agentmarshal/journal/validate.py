@@ -10,8 +10,10 @@ beyond checking that record ids do not collide across tasks.
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+from typing import cast
 
 from agentmarshal.journal.contracts import JournalContractError
 from agentmarshal.journal.open_task import journal_root
@@ -49,6 +51,54 @@ def _task_sort_key(task_id: str) -> tuple[int, str]:
         return (int(task_id.removeprefix("CR-")), task_id)
     except ValueError:
         return (1 << 30, task_id)
+
+
+def _review_artifact_failures(
+    project_root: Path, task_id: str, records: tuple[dict[str, object], ...]
+) -> list[str]:
+    """Return failures for local artifacts pinned by review records."""
+
+    failures: list[str] = []
+    expected_root = PurePosixPath(
+        ".agentmarshal", "journal", "tasks", task_id, "artifacts"
+    )
+    for record in records:
+        if record["record_type"] != "review" or "artifacts" not in record:
+            continue
+        record_id = cast(str, record["id"])
+        for artifact in cast(list[dict[str, str]], record["artifacts"]):
+            reference = artifact["ref"]
+            ref_path = PurePosixPath(reference)
+            try:
+                relative = ref_path.relative_to(expected_root)
+            except ValueError:
+                relative = PurePosixPath()
+            if ref_path.is_absolute() or not relative.parts or ".." in ref_path.parts:
+                failures.append(
+                    f"review record {record_id} artifact {reference} is not under "
+                    f"{expected_root.as_posix()}/"
+                )
+                continue
+            path = project_root.joinpath(*ref_path.parts)
+            if path.is_symlink() or not path.is_file():
+                failures.append(
+                    f"review record {record_id} artifact {reference} is missing"
+                )
+                continue
+            try:
+                digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            except OSError as error:
+                failures.append(
+                    f"review record {record_id} artifact {reference} cannot be read: "
+                    f"{error}"
+                )
+                continue
+            if digest != artifact["hash"]:
+                failures.append(
+                    f"review record {record_id} artifact {reference} does not match "
+                    "its recorded sha256"
+                )
+    return failures
 
 
 def validate_journal(project_root: Path) -> ValidationReport:
@@ -122,7 +172,13 @@ def validate_journal(project_root: Path) -> ValidationReport:
                 collision = True
             else:
                 seen_record_ids[record_id] = task_id
-        if not collision:
+        artifact_failures = _review_artifact_failures(
+            project_root, task_id, status.records
+        )
+        for failure in artifact_failures:
+            lines.append(f"FAIL: {task_id}: {failure}")
+            passed = False
+        if not collision and not artifact_failures:
             lines.append(
                 f"OK: {task_id} ({status.state}, {len(status.records)} records)"
             )
