@@ -211,9 +211,7 @@ def _run_reviewer(command: list[str], snapshot: Path, prompt: str) -> bytes:
     return result.stdout
 
 
-def _preserve_output(
-    output: str, prefix: str = "agentmarshal-rejected-verdict-"
-) -> Path:
+def _preserve_output(output: str) -> Path:
     """Write a reviewer's raw output where the caller can still read it.
 
     A verdict that fails validation used to take the whole run with it: the
@@ -222,7 +220,9 @@ def _preserve_output(
     removing it is the caller's decision.
     """
 
-    descriptor, name = tempfile.mkstemp(prefix=prefix, suffix=".txt")
+    descriptor, name = tempfile.mkstemp(
+        prefix="agentmarshal-rejected-verdict-", suffix=".txt"
+    )
     with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
         handle.write(output)
     return Path(name)

@@ -136,8 +136,10 @@ def _kept_outputs(tmp_path: Path) -> list[Path]:
     return list(tmp_path.glob("agentmarshal-rejected-verdict-*.txt"))
 
 
-def _kept_findings_outputs(tmp_path: Path) -> list[Path]:
-    return list(tmp_path.glob("agentmarshal-verdict-findings-*.txt"))
+def _kept_any_outputs(tmp_path: Path) -> list[Path]:
+    """Every file the launcher could have left in the temp dir, any prefix."""
+
+    return list(tmp_path.glob("agentmarshal-*.txt"))
 
 
 def _run_review(commit: str) -> int:
@@ -788,7 +790,7 @@ def test_an_accepted_verdict_keeps_no_copy_outside_the_journal(
     assert _run_review(commit) == 0
 
     captured = capsys.readouterr()
-    assert _kept_findings_outputs(tmp_path) == []
+    assert _kept_any_outputs(tmp_path) == []
     assert "reviewer prose pinned: .agentmarshal/journal/tasks/CR-001/artifacts/" in (
         captured.err
     )
@@ -815,7 +817,7 @@ def test_a_clean_approval_keeps_nothing_and_says_nothing(
     assert _run_review(commit) == 0
 
     captured = capsys.readouterr()
-    kept = _kept_findings_outputs(tmp_path)
+    kept = _kept_any_outputs(tmp_path)
     try:
         assert kept == []
         assert "kept at" not in captured.err
@@ -858,7 +860,7 @@ def test_a_failure_after_the_pin_names_the_artifact_and_keeps_no_other_copy(
     assert _run_review(commit) == 1
 
     captured = capsys.readouterr()
-    kept = _kept_findings_outputs(tmp_path)
+    kept = _kept_any_outputs(tmp_path)
     try:
         assert kept == [], captured.err
         artifact_ref = (
