@@ -272,8 +272,6 @@ def test_embedded_diff_lane_transcript_matches_published_030_byte_for_byte(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Scenario: a candidate without renames prints the transcript it printed before."""
-
     published = released_030()
     if published is None:
         pytest.skip(SKIP_030)
@@ -306,6 +304,22 @@ def test_embedded_diff_lane_transcript_matches_published_030_byte_for_byte(
     assert current.out.encode() == released.stdout
     assert current.err.encode() == released.stderr
     assert current.out.endswith("gate: passed\n")
+
+
+def test_a_candidate_without_renames_prints_the_transcript_it_printed_before(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a candidate without renames prints the transcript it printed before.
+
+    The byte-for-byte comparison against the released 0.3.0 above is the
+    demonstration; it is pinned and must stay as it is, so this test names the
+    scenario and delegates rather than copying it."""
+
+    test_embedded_diff_lane_transcript_matches_published_030_byte_for_byte(
+        tmp_path, monkeypatch, capsys
+    )
 
 
 def test_gate_refuses_a_rename_out_of_scope(
