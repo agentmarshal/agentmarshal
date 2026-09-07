@@ -9,6 +9,8 @@ from pathlib import Path
 import pytest
 
 from agentmarshal.cli import main
+from agentmarshal.journal import gate as gate_module
+from agentmarshal.journal.contracts import scope_covers
 from agentmarshal.journal.gate import GateError, markers_from_tree, run_gate
 from agentmarshal.journal.records import (
     create_acceptance_record,
@@ -302,6 +304,110 @@ def test_embedded_diff_lane_transcript_matches_published_030_byte_for_byte(
     assert current.out.encode() == released.stdout
     assert current.err.encode() == released.stderr
     assert current.out.endswith("gate: passed\n")
+
+
+def test_a_candidate_without_renames_prints_the_transcript_it_printed_before(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a candidate without renames prints the transcript it printed before.
+
+    The byte-for-byte comparison against the released 0.3.0 above is the
+    demonstration; it is pinned and must stay as it is, so this test names the
+    scenario and delegates rather than copying it."""
+
+    test_embedded_diff_lane_transcript_matches_published_030_byte_for_byte(
+        tmp_path, monkeypatch, capsys
+    )
+
+
+def test_gate_refuses_a_rename_out_of_scope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a rename out of scope is refused."""
+
+    repo, _ = _gate_repo(tmp_path, monkeypatch, ["inside/"])
+    source = repo / "outside" / "original.py"
+    source.parent.mkdir()
+    source.write_text("code\n", encoding="utf-8")
+    base = _commit_all(repo, "add source outside scope")
+    destination = repo / "inside" / "renamed.py"
+    destination.parent.mkdir()
+    _git(
+        repo,
+        "mv",
+        source.relative_to(repo).as_posix(),
+        destination.relative_to(repo).as_posix(),
+    )
+    head = _commit_all(repo, "rename into scope")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    assert not passed
+    assert "FAIL: paths outside contract scope: outside/original.py" in output
+
+
+def test_gate_passes_a_rename_within_scope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a rename within scope passes."""
+
+    repo, _ = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    source = repo / "src" / "original.py"
+    source.parent.mkdir()
+    source.write_text("code\n", encoding="utf-8")
+    base = _commit_all(repo, "add source within scope")
+    destination = repo / "src" / "renamed.py"
+    _git(
+        repo,
+        "mv",
+        source.relative_to(repo).as_posix(),
+        destination.relative_to(repo).as_posix(),
+    )
+    head = _commit_all(repo, "rename within scope")
+    _approve(repo, head)
+
+    checked_paths: list[str] = []
+
+    def recording_scope_covers(scope: tuple[str, ...], path: str) -> bool:
+        checked_paths.append(path)
+        return scope_covers(scope, path)
+
+    monkeypatch.setattr(gate_module, "scope_covers", recording_scope_covers)
+    passed, output = _run(repo, head, base, head)
+
+    assert passed, output
+    assert "PASS: diff within contract scope" in output.splitlines()
+    assert checked_paths == ["src/original.py", "src/renamed.py"]
+
+
+def test_move_into_the_journal_takes_the_diff_lane(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a move into the journal takes the diff lane."""
+
+    repo, _ = _gate_repo(tmp_path, monkeypatch, [".agentmarshal/journal/"])
+    source = repo / "staging" / "note.md"
+    source.parent.mkdir()
+    source.write_text("note\n", encoding="utf-8")
+    base = _commit_all(repo, "add source outside journal")
+    destination = repo / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "note.md"
+    _git(
+        repo,
+        "mv",
+        source.relative_to(repo).as_posix(),
+        destination.relative_to(repo).as_posix(),
+    )
+    head = _commit_all(repo, "move note into journal")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    assert not passed
+    assert "FAIL: paths outside contract scope: staging/note.md" in output
+    assert "journal-only transaction" not in output
 
 
 def _empty_scope_candidate(

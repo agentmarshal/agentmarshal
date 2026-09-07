@@ -294,13 +294,6 @@ def _resolve_commit(project_root: Path, reference: str) -> str:
     return resolved
 
 
-def _changed_paths(project_root: Path, merge_base: str, commit: str) -> list[str]:
-    output = _run_git(
-        project_root, ["diff", "--name-only", "-z", f"{merge_base}..{commit}"]
-    )
-    return [path for path in output.split("\0") if path]
-
-
 def _changed_with_status(
     project_root: Path, merge_base: str, commit: str
 ) -> list[tuple[str, str]]:
@@ -602,7 +595,13 @@ def run_gate(
     merge_base = _run_git(
         project_root, ["merge-base", base_commit, resolved_commit]
     ).strip()
-    changed = _changed_paths(project_root, merge_base, resolved_commit)
+    # One listing defines every path the candidate touches. In particular, the
+    # status helper expands a rename to its deleted source and added destination;
+    # the scope check, lane choice and empty-range refusal must all see both.
+    changes_with_status = _changed_with_status(
+        project_root, merge_base, resolved_commit
+    )
+    changed = list(dict.fromkeys(path for _status, path in changes_with_status))
     if not changed:
         raise GateError("candidate range contains no changes")
 
@@ -612,13 +611,10 @@ def run_gate(
         ).splitlines()
     )
 
-    # The candidate's per-path change statuses drive both the measurements
-    # lane below and the append-only / validity checks later; compute them
-    # once here. A rename decomposes into a deletion plus an addition, so a
-    # move is never seen as a pure addition.
-    changes_with_status = _changed_with_status(
-        project_root, merge_base, resolved_commit
-    )
+    # The candidate's per-path change statuses also drive the measurements
+    # lane below and the append-only / validity checks later. A rename
+    # decomposes into a deletion plus an addition, so a move is never seen as a
+    # pure addition.
     # A removal is a candidate that deletes a base-side manifest (ADR-0010
     # D5). In a sidecar the manifest lives in the sidecar, not in the host's
     # history, so a host path deletion says nothing about this journal's
@@ -836,9 +832,8 @@ def run_gate(
         named_documents = list(dict.fromkeys(named_documents))
         if named_documents:
             named = tuple(named_documents)
-            # From the status pairs, not the name-only list: a rename decomposes
-            # into a deletion and an addition there, and a deleted document
-            # counts as touched.
+            # From the status pairs: a rename decomposes into a deletion and
+            # an addition there, and a deleted document counts as touched.
             touched_documents = sorted(
                 {
                     path
