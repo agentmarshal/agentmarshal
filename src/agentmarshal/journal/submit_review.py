@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -12,8 +11,7 @@ from agentmarshal.journal.records import (
     JournalRecordError,
     create_review_record,
     generate_ulid,
-    read_records,
-    validate_record_content,
+    validate_record_for_write,
     write_record,
 )
 from agentmarshal.journal.status import TaskStatusError, load_task_status
@@ -22,18 +20,16 @@ from agentmarshal.journal.status import TaskStatusError, load_task_status
 class ReviewSubmitError(Exception):
     """Raised when a review verdict cannot be recorded."""
 
+    def __init__(self, message: str, *, artifact_ref: str | None = None) -> None:
+        super().__init__(message)
+        self.artifact_ref = artifact_ref
+
 
 @dataclass(frozen=True)
 class SubmittedReview:
-    """A successfully recorded review, and any temporary reasoning copy.
-
-    ``reviewer_output_path`` is set only when a launcher preserved the
-    reviewer's raw output outside the journal for compatibility with the
-    rejected-verdict path. Durable prose is pinned by the review record itself.
-    """
+    """A successfully recorded review and its optional durable prose pin."""
 
     record_path: Path
-    reviewer_output_path: Path | None = None
     artifact_ref: str | None = None
 
 
@@ -73,30 +69,23 @@ def submit_review(
             return SubmittedReview(write_record(journal_root, task_id, record))
 
         record_id = generate_ulid()
-        # Refuse a record that write_record would refuse before creating its
-        # durable artifact: the verdict's shape, and a finding binding that
-        # names no finding of this task. write_record validates again after
-        # the pin is attached and remains the only record writer.
-        validate_record_content(
-            f"{record_id}-review.json",
-            json.dumps(record),
-        )
-        if reviewed_finding is not None:
-            finding_ids = {
-                item["id"]
-                for item in read_records(journal_root, task_id)
-                if item["record_type"] == "finding"
-            }
-            if reviewed_finding not in finding_ids:
-                raise JournalRecordError(
-                    "record field 'reviewed_finding' must name a finding in the "
-                    "same task"
-                )
+        validate_record_for_write(journal_root, task_id, record, record_id=record_id)
         pin = write_artifact(journal_root, task_id, f"{record_id}-review.md", prose)
         record["artifacts"] = [pin]
+        try:
+            record_path = write_record(
+                journal_root, task_id, record, record_id=record_id
+            )
+        except (JournalRecordError, OSError, ValueError) as error:
+            raise ReviewSubmitError(
+                f"{error}; reviewer prose artifact left at {pin['ref']}",
+                artifact_ref=pin["ref"],
+            ) from error
         return SubmittedReview(
-            write_record(journal_root, task_id, record, record_id=record_id),
+            record_path,
             artifact_ref=pin["ref"],
         )
+    except ReviewSubmitError:
+        raise
     except (JournalRecordError, TaskStatusError, OSError, ValueError) as error:
         raise ReviewSubmitError(str(error)) from error

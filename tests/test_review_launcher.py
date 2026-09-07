@@ -1,6 +1,7 @@
 """Tests for the read-only review launcher."""
 
 import hashlib
+import importlib
 import json
 import subprocess
 import tempfile
@@ -10,7 +11,11 @@ import pytest
 
 from agentmarshal.cli import main
 from agentmarshal.journal import review
-from agentmarshal.journal.records import read_records
+from agentmarshal.journal.records import (
+    create_review_record,
+    read_records,
+    write_record,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -754,63 +759,44 @@ def test_record_validation_failure_also_keeps_the_output(
             path.unlink(missing_ok=True)
 
 
-def test_blocking_verdict_keeps_the_reasoning_behind_its_findings(
+@pytest.mark.parametrize(
+    ("verdict", "findings", "advisory"),
+    [
+        ("changes_required", ["F-001"], None),
+        ("approved", [], ["F-002"]),
+    ],
+)
+def test_an_accepted_verdict_keeps_no_copy_outside_the_journal(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    verdict: str,
+    findings: list[str],
+    advisory: list[str] | None,
 ) -> None:
-    """A record names findings by id; the claim itself lives only in the output."""
+    """Scenario: an accepted verdict keeps no copy outside the journal."""
 
-    _repo, commit = _review_repo(tmp_path, monkeypatch)
-    analysis = "the readback opens the file and never reads it"
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    analysis = "reasoning kept only as pinned journal evidence"
     stub = _reviewer_stub(
         tmp_path,
-        analysis + "\n" + _verdict(commit, "changes_required", ["F-001"]),
+        analysis + "\n" + _verdict(commit, verdict, findings, advisory),
     )
     monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
-    capsys.readouterr()  # discard the fixture's own output
+    capsys.readouterr()
 
     assert _run_review(commit) == 0
 
     captured = capsys.readouterr()
-    kept = _kept_findings_outputs(tmp_path)
-    try:
-        assert len(kept) == 1, captured.err
-        assert str(kept[0]) in captured.err
-        assert analysis in kept[0].read_text(encoding="utf-8")
-        # stdout stays the record path alone, for callers that read it.
-        assert captured.out.strip().endswith(".json")
-        assert len(captured.out.strip().splitlines()) == 1
-    finally:
-        for path in kept:
-            path.unlink(missing_ok=True)
-
-
-def test_advisory_findings_on_an_approval_keep_the_reasoning_too(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """An advisory finding is still a claim, and its reasoning is not in the record."""
-
-    _repo, commit = _review_repo(tmp_path, monkeypatch)
-    analysis = "worth doing later, not now"
-    stub = _reviewer_stub(
-        tmp_path,
-        analysis + "\n" + _verdict(commit, "approved", [], ["F-002"]),
+    assert _kept_findings_outputs(tmp_path) == []
+    assert "reviewer prose pinned: .agentmarshal/journal/tasks/CR-001/artifacts/" in (
+        captured.err
     )
-    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
-
-    assert _run_review(commit) == 0
-
-    captured = capsys.readouterr()
-    kept = _kept_findings_outputs(tmp_path)
-    try:
-        assert len(kept) == 1, captured.err
-        assert analysis in kept[0].read_text(encoding="utf-8")
-    finally:
-        for path in kept:
-            path.unlink(missing_ok=True)
+    assert "kept at" not in captured.err
+    assert captured.out.strip().endswith(".json")
+    assert len(captured.out.strip().splitlines()) == 1
+    artifact = next((repo / ".agentmarshal/journal/tasks/CR-001/artifacts").iterdir())
+    assert analysis in artifact.read_text(encoding="utf-8")
 
 
 def test_a_clean_approval_keeps_nothing_and_says_nothing(
@@ -838,29 +824,52 @@ def test_a_clean_approval_keeps_nothing_and_says_nothing(
             path.unlink(missing_ok=True)
 
 
-def test_the_review_is_recorded_even_when_the_output_cannot_be_kept(
+def test_a_failure_after_the_pin_names_the_artifact_and_keeps_no_other_copy(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Losing the prose must not cost the record, which is the evidence."""
+    """Scenario: a refusal the writer cannot foresee is named as a limit — on
+    the model path too: the artifact is named, and no temporary copy joins it."""
 
-    _repo, commit = _review_repo(tmp_path, monkeypatch)
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    root = repo / ".agentmarshal" / "journal"
+    record_id = "01J00000000000000000000000"
+    earlier = create_review_record(
+        "CR-001",
+        "test",
+        commit,
+        "approved",
+        "reviewer",
+        "human",
+        "none",
+        "reviewer@test.invalid",
+        [],
+    )
+    write_record(root, "CR-001", earlier, record_id=record_id)
+    submit_review_module = importlib.import_module("agentmarshal.journal.submit_review")
+    monkeypatch.setattr(submit_review_module, "generate_ulid", lambda: record_id)
     stub = _reviewer_stub(
-        tmp_path, "reasoning\n" + _verdict(commit, "changes_required", ["F-003"])
+        tmp_path, "reasoning\n" + _verdict(commit, "changes_required", ["F-001"])
     )
     monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+    capsys.readouterr()
 
-    def _refuse(*args: object, **kwargs: object) -> tuple[int, str]:
-        raise OSError(28, "No space left on device")
-
-    monkeypatch.setattr("agentmarshal.journal.review.tempfile.mkstemp", _refuse)
-
-    assert _run_review(commit) == 0
+    assert _run_review(commit) == 1
 
     captured = capsys.readouterr()
-    assert captured.out.strip().endswith(".json")
-    assert "kept at" not in captured.err
+    kept = _kept_findings_outputs(tmp_path)
+    try:
+        assert kept == [], captured.err
+        artifact_ref = (
+            f".agentmarshal/journal/tasks/CR-001/artifacts/{record_id}-review.md"
+        )
+        assert f"reviewer prose artifact left at {artifact_ref}" in captured.err
+        assert "kept at" not in captured.err
+        assert (repo / artifact_ref).read_bytes().startswith(b"reasoning\n")
+    finally:
+        for path in kept:
+            path.unlink(missing_ok=True)
 
 
 def test_prompt_without_named_material_is_the_prompt_written_before_schema_2() -> None:

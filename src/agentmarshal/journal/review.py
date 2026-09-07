@@ -9,7 +9,6 @@ import shlex
 import subprocess
 import tarfile
 import tempfile
-from dataclasses import replace
 from pathlib import Path
 from typing import cast
 
@@ -219,10 +218,8 @@ def _preserve_output(
 
     A verdict that fails validation used to take the whole run with it: the
     launcher prints only the record path, so the analysis the reviewer was paid
-    to produce had nowhere to survive. The same is true of a verdict that is
-    accepted and names a finding — the record keeps the finding's id and not one
-    word of what it claims. The file is deliberately not cleaned up; removing it
-    is the caller's decision.
+    to produce had nowhere to survive. The file is deliberately not cleaned up;
+    removing it is the caller's decision.
     """
 
     descriptor, name = tempfile.mkstemp(prefix=prefix, suffix=".txt")
@@ -434,19 +431,11 @@ def launch_review(
             prose=raw_output,
         )
     except ReviewSubmitError as error:
+        if error.artifact_ref is not None:
+            raise ReviewLaunchError(str(error)) from error
         # A verdict can parse cleanly and still be refused by record validation —
         # an unknown verdict value, empty findings for a non-approving verdict,
         # duplicates, or advisory ids overlapping findings. That path discarded
         # the analysis too, and it is the one seen most often in practice.
         raise _reject(reviewer_output, str(error)) from error
-    # A recorded verdict that names a finding — blocking, or advisory alongside
-    # an approval — is a claim whose reasoning exists only in the reviewer's
-    # output. Keeping it is best effort: losing the prose must not cost the
-    # record, which is the evidence.
-    if review_result[2] or review_result[3]:
-        try:
-            kept = _preserve_output(reviewer_output, "agentmarshal-verdict-findings-")
-        except OSError:
-            kept = None
-        return replace(submitted, reviewer_output_path=kept)
     return submitted
