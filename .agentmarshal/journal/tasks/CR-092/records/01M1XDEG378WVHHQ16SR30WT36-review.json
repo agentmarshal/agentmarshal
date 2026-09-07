@@ -1,0 +1,25 @@
+{
+  "artifacts": [
+    {
+      "hash": "df50725473c7f55d5788af208d7a677258fbca6851b73eb0161aaef79f81dbd9",
+      "ref": ".agentmarshal/journal/tasks/CR-092/artifacts/01M1XDEG378WVHHQ16SR30WT36-review.md"
+    }
+  ],
+  "created_at": "2026-09-07T07:48:42.215287Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "a002e6b064e74b741f9e5b759fd78a4f1679107d",
+  "reviewer": {
+    "email": "auto-review@agent.example.invalid",
+    "model": "codex-auto-review",
+    "role": "code-reviewer",
+    "vendor": "openai"
+  },
+  "schema": 3,
+  "source": "live",
+  "task": "CR-092",
+  "tool_version": "0.3.0",
+  "verdict": "approved"
+}

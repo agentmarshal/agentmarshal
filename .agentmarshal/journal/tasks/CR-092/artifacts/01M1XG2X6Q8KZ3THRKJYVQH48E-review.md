@@ -1,0 +1,21 @@
+I reviewed the diff statically against the contract, the archived change (proposal/design/tasks/delta spec), the updated baseline spec, and the surrounding code. I could not execute the suite — `uv run pytest` was denied by the sandbox and the repo has no `.venv` — so "tests pass unmodified" is unverified by execution; I checked it by reading the assertions and the code paths they exercise instead.
+
+**What I verified holds:**
+
+- **One copy of the prose.** `review.py:434-437` now re-raises a `ReviewSubmitError` that carries `artifact_ref` without going through `_reject`, and the `replace(submitted, reviewer_output_path=kept)` branch is gone; `_preserve_output` is reachable only from `_reject`, i.e. only on the rejected-verdict path. `cli.py` prints `reviewer prose pinned:` and nothing else. `SubmittedReview.reviewer_output_path` is removed and has no remaining consumer anywhere in the tree.
+- **One pre-write refusal.** `validate_record_for_write` (`records.py:653-694`) applies shape, task match, finding binding, recorder identity and id format; `write_record` calls it and so does `submit_review` before `write_artifact`. Ordering of raised errors is preserved (`generate_ulid()` moved ahead of validation but has no side effects, and `write_record` always passes a non-`None` identifier, so the ULID check is not weakened). `"must name a finding in the same task"` now exists exactly once in `src/`. The refusals `validate_record_for_write` does *not* restate — `validate_task_id`, the record-type path component, and `_prepare_record_directory`'s symlink checks — cannot orphan an artifact, because `write_artifact` runs the equivalent task-id check and calls `_prepare_record_directory` itself before creating the file.
+- **The residual window.** The inner `except` in `submit_review.py:75-83` raises `ReviewSubmitError`, which is not in the outer handler's tuple, so it propagates with its `artifact_ref` intact to both the CLI and the launcher.
+- **Collisions.** `evidence_changes` is a strict superset of `record_changes` and is emptied in sidecar mode alongside `added_records`, so the sidecar transcript line and the 0.3.0 byte-for-byte transcript are untouched; the new gate test's candidate is journal-only and reaches the collision check with the artifact path in `base_tree`.
+- **Spec and report.** The baseline `openspec/specs/review-evidence/spec.md` matches the delta's MODIFIED text and carries the three ADDED requirements; `_task_report` already sums `artifacts` over review records only, and with no session/acceptance/completed records the new exact-match assertion in `test_report_totals_the_prose` yields exactly the asserted line. Every scenario in the delta spec is named by a test docstring.
+
+Three advisory notes follow.
+
+A-001 — `docs/adr/ADR-0005-evidence-capture-and-format.md:29` and `docs/adr/ADR-0004-journal-data-model.md:109` still say reviewer output is preserved best-effort in a temporary file "when a verdict is refused **or names findings**"; after this change that is true only of the rejected path, so a named contract decision (ADR-0005) now misdescribes shipped behaviour — design.md records the deferral and `docs/adr/` is outside the contract's scope, so this is a scheduling item, not a defect in the diff.
+
+A-002 — `tests/test_review_launcher.py:803` keeps the name and docstring `test_a_clean_approval_keeps_nothing_and_says_nothing` / "no file to leave behind", but a clean approval now pins the prose as a journal artifact and prints `reviewer prose pinned:`; the test only asserts the absence of a *temp* file, so the name tells a future reader the opposite of what the code does.
+
+A-003 — `src/agentmarshal/cli.py:547` prints only the record path on a successful `submit-review --prose`, while `_run_review` names the artifact on stderr; `docs/quickstart.md:284` says `--prose` "attaches human prose the same way", so a human reviewer is never told where their prose landed despite `SubmittedReview.artifact_ref` being populated on that path.
+
+AGENTMARSHAL_VERDICT_BEGIN
+{"reviewed_commit": "aa722ec8f75f0403c1d9e91078a4c6ba0533bba2", "verdict": "approved", "findings": [], "advisory_findings": ["A-001", "A-002", "A-003"]}
+AGENTMARSHAL_VERDICT_END
