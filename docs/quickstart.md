@@ -69,15 +69,14 @@ is what a human will read. When a verdict is refused the reviewer's **raw
 output is kept** and its path is named in the error — a rejected verdict should
 not cost you the analysis.
 
-The same holds for a verdict that is *accepted* and **names a finding** —
-blocking, or advisory alongside an approval. A record carries finding **ids**
-and not the reasoning behind them, so the raw output is kept and
-`agentmarshal review` names the file **on stderr**; stdout stays the record
-path alone, for callers that read it. Keeping the output is best effort: if the
-file cannot be written the review is still recorded, because the record is the
-evidence. And it keeps only what the reviewer actually wrote — a reviewer that
-ignores the prompt and emits an id with no prose leaves you a file with no prose
-in it.
+An *accepted* verdict keeps the reviewer's output too, as the journal
+artifact the review record pins (see below): a record carries finding **ids**
+and not the reasoning behind them, so the prose lives beside the record, under
+the task's `artifacts/` directory, and nowhere else. `agentmarshal review`
+names the artifact **on stderr**; stdout stays the record path alone, for
+callers that read it. It keeps only what the reviewer actually wrote — a
+reviewer that ignores the prompt and emits an id with no prose leaves you an
+artifact with no prose in it.
 
 ### Gate attestation modes (`--attestation`)
 
@@ -283,7 +282,9 @@ uncommitted until you record completion, so a review never has to be part of
 the very diff it attests.
 `agentmarshal review` preserves the reviewer's prose, and the `--prose FILE`
 option to `submit-review` attaches human prose the same way, under the task's
-`artifacts/` directory with its SHA-256 pinned by the review record.
+`artifacts/` directory with its SHA-256 pinned by the review record. On a
+successful model review, that journal artifact is the only retained copy: the
+command prints `reviewer prose pinned: <ref>` and creates no temporary copy.
 
 If the latest review of the candidate is non-approving, an operator may instead
 accept that exact commit over all of its blocking findings:

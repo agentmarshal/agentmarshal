@@ -518,7 +518,7 @@ def test_review_bound_to_an_unknown_finding_leaves_no_prose_behind(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """A refused record must not leave an orphan in an append-only directory."""
+    """Scenario: a binding to an unknown finding writes nothing."""
 
     repo, _ = _repo(tmp_path, monkeypatch)
     _finding(repo)

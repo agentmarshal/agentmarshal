@@ -1023,7 +1023,9 @@ def run_gate(
 
     # Collisions are checked against the merge target's tip: a record
     # path independently created on both sides would collide at merge.
-    colliding = [path for path in added_records if path in base_tree]
+    colliding = [
+        path for status, path in evidence_changes if status == "A" and path in base_tree
+    ]
     if colliding:
         check(
             False,
