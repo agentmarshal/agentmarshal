@@ -49,6 +49,10 @@ filesystem failures (they are named, not removed).
   BREAKING in the proposal; UPGRADING mentions it at release.
 - [Pre-write refusal drifts from `write_record` again] → it is the same
   function, called by both.
+- [ADR status notes go stale] → the notes in ADR-0004 and ADR-0005 still say
+  reviewer output that names findings is kept in a temporary file; `docs/adr/`
+  is outside this task's scope, so they are left to a docs task rather than
+  edited here.
 
 ## Migration Plan
 
@@ -58,6 +62,3 @@ script that parsed the temp-file line.
 ## Open Questions
 
 None.
-- The status notes in ADR-0004 and ADR-0005 still say reviewer output that
-  names findings is kept in a temporary file; `docs/adr/` is outside this
-  task's scope, so they are left to a docs task rather than edited here.
