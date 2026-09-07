@@ -965,3 +965,21 @@ def test_pinned_prose_is_announced(
     assert "reviewer prose pinned: .agentmarshal/journal/tasks/CR-001/artifacts/" in (
         captured.err
     )
+
+
+def test_pinned_prose_keeps_the_reviewer_bytes_including_crlf(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: the model review path keeps its output — as received, not
+    newline-normalised."""
+
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    output = "first line\r\nsecond line\r\n" + _verdict(commit, "approved", [])
+    stub = _reviewer_stub(tmp_path, output)
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert _run_review(commit) == 0
+
+    artifacts = repo / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "artifacts"
+    artifact = next(artifacts.iterdir())
+    assert artifact.read_bytes().startswith(b"first line\r\nsecond line\r\n")
