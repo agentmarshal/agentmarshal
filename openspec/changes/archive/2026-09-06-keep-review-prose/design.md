@@ -35,8 +35,18 @@ pinning the implementer brief.
   applies to artifact paths under a task; `validate` verifies pinned hashes.
   Alternative: trust the record — rejected, a pinned hash nobody checks is a
   field filled in by eye.
-- **Verbatim, unredacted.** The prose is what the reviewer wrote; the leak
-  scan already runs over candidate additions in the completion transaction.
+- **Verbatim, unredacted.** The prose is what the reviewer wrote; in this
+  project's flow the completion transaction is itself gated, so the leak scan
+  runs over the artifact before it is merged — a project that lands
+  completions without the gate has no such scan.
+- **No capture-policy switch in this change.** ADR-0005 D2 governs
+  supplements by policy; the prose is kept whenever a verdict is accepted,
+  because the policy writer does not exist yet and a switch nobody reads
+  would be a field filled in by eye. The switch is a follow-up decision, and
+  until then the journal's placement (ADR-0008) is what decides publication.
+- **Display.** `status` counts artifacts per review record, on that record's
+  line; `report` has no per-record line and shows the task's total. The two
+  agree when a task has one review with prose, and differ by design otherwise.
 
 ## Risks / Trade-offs
 

@@ -68,6 +68,14 @@ def _review_artifact_failures(
         record_id = cast(str, record["id"])
         for artifact in cast(list[dict[str, str]], record["artifacts"]):
             reference = artifact["ref"]
+            if any(not character.isprintable() for character in reference):
+                # A ref is printed in every failure below; one that could add
+                # a line to this output is refused, shown as repr.
+                failures.append(
+                    f"review record {record_id} artifact ref {reference!r} contains "
+                    "control characters"
+                )
+                continue
             ref_path = PurePosixPath(reference)
             try:
                 relative = ref_path.relative_to(expected_root)

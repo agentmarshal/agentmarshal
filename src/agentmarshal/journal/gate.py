@@ -377,7 +377,9 @@ def _sidecar_history_tampering(project_root: Path, journal_path: str) -> list[st
             # seen. Verified: an evil merge scores zero without these flags.
             "-m",
             "--first-parent",
-            "--diff-filter=MDR",
+            # T: a file replaced by a symlink (or the reverse) is a change to
+            # the evidence as much as an edit is.
+            "--diff-filter=MDRT",
             "--name-only",
             "--format=",
             "--",

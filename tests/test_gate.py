@@ -1802,3 +1802,32 @@ def test_a_symlink_at_the_manifest_path_on_the_base_is_refused(
     assert not passed
     assert "FAIL: named extension 'openspec' manifest unreadable" in output
     assert "symlink" in output
+
+
+def test_sidecar_history_sees_an_artifact_replaced_by_a_symlink(tmp_path: Path) -> None:
+    """A type change (file → symlink) in a committed sidecar history is tampering."""
+
+    from agentmarshal.journal.gate import _sidecar_history_tampering
+
+    repo = tmp_path / "sidecar"
+    repo.mkdir()
+    subprocess.run(["git", "init", "--quiet", "-b", "master"], cwd=repo, check=True)
+    writer = ["-c", "user.name=T", "-c", "user.email=t@t.invalid"]
+    artifact = (
+        repo / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "artifacts" / "r.md"
+    )
+    artifact.parent.mkdir(parents=True)
+    artifact.write_text("prose\n", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", *writer, "commit", "-q", "-m", "evidence"], cwd=repo, check=True
+    )
+    artifact.unlink()
+    (repo / "elsewhere.md").write_text("other\n", encoding="utf-8")
+    artifact.symlink_to(repo / "elsewhere.md")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    subprocess.run(["git", *writer, "commit", "-q", "-m", "swap"], cwd=repo, check=True)
+
+    tampered = _sidecar_history_tampering(repo, ".agentmarshal/journal")
+
+    assert ".agentmarshal/journal/tasks/CR-001/artifacts/r.md" in tampered

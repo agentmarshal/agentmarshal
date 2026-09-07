@@ -286,3 +286,37 @@ def test_validate_refuses_an_artifact_reached_through_a_symlinked_directory(
     assert any(
         "through a symlink" in line and "CR-001" in line for line in report.lines
     )
+
+
+def test_validate_refuses_an_artifact_ref_with_control_characters(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A ref is printed in validate's output; one that could forge a line is refused."""
+
+    from agentmarshal.journal.records import create_review_record, write_record
+
+    repo = _project(tmp_path, monkeypatch, tasks=1)
+    record = create_review_record(
+        "CR-001",
+        "1",
+        "a" * 40,
+        "approved",
+        "qa",
+        "human",
+        "none",
+        "r@x.invalid",
+        [],
+        artifacts=[
+            {
+                "ref": ".agentmarshal/journal/tasks/CR-001/artifacts/a\nPASS: forged",
+                "hash": "0" * 64,
+            }
+        ],
+    )
+    write_record(repo / ".agentmarshal" / "journal", "CR-001", record)
+
+    report = validate_journal(repo)
+
+    assert not report.passed
+    line = next(line for line in report.lines if "control characters" in line)
+    assert "\n" not in line and "forged" in line
