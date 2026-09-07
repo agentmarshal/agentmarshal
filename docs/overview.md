@@ -104,7 +104,8 @@ task is already closed.
   completely removed.
 - **Record** — one append-only JSON evidence file: `opened`, `finding`,
   `review`, `acceptance`, `amendment`, `completed`, `reopened`, `abandoned`,
-  or a `session` (measurement). Written once, never edited.
+  or a `session` (measurement). Written once, never edited. A review may pin
+  the reviewer's prose by SHA-256 as an artifact beside the task's records.
 - **Projection / state** — a task's status computed from its records, never
   stored.
 - **Review** — a recorded verdict (`approved`, `changes_required`, …) for an
@@ -153,10 +154,11 @@ active in 0.3.0**, in rough order (features land in later releases —
 - **Capture policy** — token-economics/session records accrue in 0.3.0
   (`record-session` / `report`). What is roadmap is the *capture policy* that
   governs retaining heavier supplementary evidence — full review and prompt
-  text, raw session transcripts — public or in a private store. In 0.3.0 the
-  policy parser exists but no policy-driven writer or private store retains
-  those artifacts. Reviewer output with findings is kept separately in a
-  best-effort temporary file; that is not policy-governed durable capture.
+  text, raw session transcripts — public or in a private store. The policy
+  parser exists but no policy-driven writer or private store retains those
+  artifacts. A review's prose is the one supplement kept today, pinned by
+  SHA-256 as a journal artifact (see Record); prompt text and transcripts are
+  not, and no capture policy governs any of it yet.
 - **Mandatory leak-scan enforcement** — 0.3.0 ships a standalone `leak-scan`
   command and an advisory merge-time scan that warns on possible leaks in a
   candidate's additions. Making a match block is roadmap. The scan is

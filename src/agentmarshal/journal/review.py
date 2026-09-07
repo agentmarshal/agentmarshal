@@ -175,7 +175,7 @@ def _reviewer_command(model: str, prompt_file: Path) -> list[str]:
         ) from error
 
 
-def _run_reviewer(command: list[str], snapshot: Path, prompt: str) -> str:
+def _run_reviewer(command: list[str], snapshot: Path, prompt: str) -> bytes:
     """Execute the reviewer adapter against the metadata-free snapshot.
 
     Process-level isolation belongs to the reviewer command's own vendor
@@ -188,19 +188,23 @@ def _run_reviewer(command: list[str], snapshot: Path, prompt: str) -> str:
     isolation.
     """
 
+    # Bytes, not text: the output is pinned as the reviewer's prose "as
+    # received", and text mode would fold a CRLF into LF before the pin.
     try:
         result = subprocess.run(
             command,
             cwd=snapshot,
             capture_output=True,
-            encoding="utf-8",
-            input=prompt,
+            input=prompt.encode("utf-8"),
             check=False,
         )
     except OSError as error:
         raise ReviewLaunchError(f"cannot run reviewer: {error}") from error
     if result.returncode != 0:
-        detail = result.stderr.strip() or result.stdout.strip()
+        detail = (
+            result.stderr.decode("utf-8", errors="replace").strip()
+            or result.stdout.decode("utf-8", errors="replace").strip()
+        )
         message = f"reviewer exited with status {result.returncode}"
         if detail:
             message = f"{message}: {detail}"
@@ -348,6 +352,7 @@ def launch_review(
 
     review_result: tuple[str, str, list[str], list[str]]
     reviewer_output = ""
+    raw_output = b""
     with tempfile.TemporaryDirectory(
         prefix="agentmarshal-review-"
     ) as temporary_directory:
@@ -399,11 +404,14 @@ def launch_review(
             absent_extensions=tuple(absent),
         )
         prompt_file.write_text(prompt, encoding="utf-8")
-        output = _run_reviewer(
+        raw_output = _run_reviewer(
             _reviewer_command(reviewer_model, prompt_file),
             snapshot,
             prompt,
         )
+        # The verdict is parsed from a decoded copy; the artifact pins the
+        # bytes the reviewer wrote, so nothing is normalised on the way.
+        output = raw_output.decode("utf-8", errors="replace")
         reviewer_output = output
         reviewed_commit, verdict, findings, advisory = _parse_verdict(output)
         if reviewed_commit != resolved_commit:
@@ -423,6 +431,7 @@ def launch_review(
             reviewer_email,
             review_result[2],
             review_result[3] or None,
+            prose=raw_output,
         )
     except ReviewSubmitError as error:
         # A verdict can parse cleanly and still be refused by record validation —

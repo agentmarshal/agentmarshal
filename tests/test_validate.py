@@ -117,6 +117,60 @@ def test_validate_reports_record_id_collision(
     assert any("also used by" in line for line in report.lines)
 
 
+@pytest.mark.parametrize("damage", ["missing", "mismatched"])
+def test_artifacts_hash_is_checked_where_its_record_is_validated(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    damage: str,
+) -> None:
+    """Scenario: the artifact's hash is checked where its record is validated."""
+
+    repo = _project(tmp_path, monkeypatch, tasks=1)
+    prose = tmp_path / "review.md"
+    prose.write_bytes(b"review evidence\n")
+    assert (
+        main(
+            [
+                "submit-review",
+                "--task",
+                "CR-001",
+                "--commit",
+                "a" * 40,
+                "--verdict",
+                "approved",
+                "--role",
+                "qa",
+                "--vendor",
+                "human",
+                "--model",
+                "none",
+                "--email",
+                "reviewer@test.invalid",
+                "--prose",
+                str(prose),
+            ]
+        )
+        == 0
+    )
+    artifact = next(
+        (
+            repo / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "artifacts"
+        ).iterdir()
+    )
+    if damage == "missing":
+        artifact.unlink()
+    else:
+        artifact.write_bytes(b"different bytes\n")
+
+    report = validate_journal(repo)
+
+    assert not report.passed
+    record_id = artifact.name.removesuffix("-review.md")
+    failure = next(line for line in report.lines if "artifact" in line)
+    assert record_id in failure
+    assert "missing" in failure if damage == "missing" else "sha256" in failure
+
+
 def test_validate_reports_non_utf8_record(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -183,3 +237,86 @@ def test_validate_cli_passes_clean_journal(
 
     assert main(["validate"]) == 0
     assert "validate: passed" in capsys.readouterr().out
+
+
+def test_validate_refuses_an_artifact_reached_through_a_symlinked_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Matching bytes outside the journal are not its evidence."""
+
+    repo = _project(tmp_path, monkeypatch, tasks=1)
+    prose = tmp_path / "review.md"
+    prose.write_bytes(b"review evidence\n")
+    assert (
+        main(
+            [
+                "submit-review",
+                "--task",
+                "CR-001",
+                "--commit",
+                "a" * 40,
+                "--verdict",
+                "approved",
+                "--role",
+                "qa",
+                "--vendor",
+                "human",
+                "--model",
+                "none",
+                "--email",
+                "reviewer@test.invalid",
+                "--prose",
+                str(prose),
+            ]
+        )
+        == 0
+    )
+    artifacts = repo / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "artifacts"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    for artifact in artifacts.iterdir():
+        (outside / artifact.name).write_bytes(artifact.read_bytes())
+        artifact.unlink()
+    artifacts.rmdir()
+    artifacts.symlink_to(outside, target_is_directory=True)
+
+    report = validate_journal(repo)
+
+    assert not report.passed
+    assert any(
+        "through a symlink" in line and "CR-001" in line for line in report.lines
+    )
+
+
+def test_validate_refuses_an_artifact_ref_with_control_characters(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A ref is printed in validate's output; one that could forge a line is refused."""
+
+    from agentmarshal.journal.records import create_review_record, write_record
+
+    repo = _project(tmp_path, monkeypatch, tasks=1)
+    record = create_review_record(
+        "CR-001",
+        "1",
+        "a" * 40,
+        "approved",
+        "qa",
+        "human",
+        "none",
+        "r@x.invalid",
+        [],
+        artifacts=[
+            {
+                "ref": ".agentmarshal/journal/tasks/CR-001/artifacts/a\nPASS: forged",
+                "hash": "0" * 64,
+            }
+        ],
+    )
+    write_record(repo / ".agentmarshal" / "journal", "CR-001", record)
+
+    report = validate_journal(repo)
+
+    assert not report.passed
+    line = next(line for line in report.lines if "control characters" in line)
+    assert "\n" not in line and "forged" in line

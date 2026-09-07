@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -554,6 +555,91 @@ def test_review_record_round_trip_and_status_detail(
     output = capsys.readouterr().out
     assert "reviewed_commit=aaaaaaa" in output
     assert "verdict=changes_required findings=1" in output
+
+
+def test_human_review_path_attaches_prose(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: the human review path attaches prose."""
+
+    repo = tmp_path / "repo"
+    root = initialize_status_repo(repo)
+    monkeypatch.chdir(repo)
+    assert main(["open", "--title", "Task"]) == 0
+    prose = b"human review bytes\n\xff"
+    prose_path = repo / "review.txt"
+    prose_path.write_bytes(prose)
+
+    assert (
+        main(
+            [
+                "submit-review",
+                "--task",
+                "CR-001",
+                "--commit",
+                "a" * 40,
+                "--verdict",
+                "approved",
+                "--role",
+                "reviewer",
+                "--vendor",
+                "human",
+                "--model",
+                "none",
+                "--email",
+                "reviewer@test.invalid",
+                "--prose",
+                str(prose_path),
+            ]
+        )
+        == 0
+    )
+    record = read_records(root, "CR-001")[-1]
+    artifacts = record["artifacts"]
+    assert isinstance(artifacts, list)
+    artifact = artifacts[0]
+    assert isinstance(artifact, dict)
+    expected_ref = (
+        f".agentmarshal/journal/tasks/CR-001/artifacts/{record['id']}-review.md"
+    )
+    assert artifact == {
+        "ref": expected_ref,
+        "hash": hashlib.sha256(prose).hexdigest(),
+    }
+    assert (repo / expected_ref).read_bytes() == prose
+
+
+def test_submit_review_without_prose_omits_artifacts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    root = initialize_status_repo(repo)
+    monkeypatch.chdir(repo)
+    assert main(["open", "--title", "Task"]) == 0
+
+    assert (
+        main(
+            [
+                "submit-review",
+                "--task",
+                "CR-001",
+                "--commit",
+                "a" * 40,
+                "--verdict",
+                "approved",
+                "--role",
+                "reviewer",
+                "--vendor",
+                "human",
+                "--model",
+                "none",
+                "--email",
+                "reviewer@test.invalid",
+            ]
+        )
+        == 0
+    )
+    assert "artifacts" not in read_records(root, "CR-001")[-1]
 
 
 @pytest.mark.parametrize(

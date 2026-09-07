@@ -127,6 +127,11 @@ def _build_parser() -> argparse.ArgumentParser:
     review_parser.add_argument("--vendor", required=True, help="reviewer vendor")
     review_parser.add_argument("--model", required=True, help="reviewer model")
     review_parser.add_argument("--email", required=True, help="reviewer email")
+    review_parser.add_argument(
+        "--prose",
+        type=Path,
+        help="file containing the reviewer's prose to preserve and pin",
+    )
     accept_parser = subparsers.add_parser(
         "accept", help="record acceptance over a review's blocking findings"
     )
@@ -451,11 +456,13 @@ def _print_task_detail(project_root: Path, task: TaskStatus) -> None:
                 if "reviewed_finding" in record
                 else f"reviewed_commit={str(record['reviewed_commit'])[:7]}"
             )
+            artifacts = cast(list[object], record.get("artifacts", []))
+            artifact_detail = f" artifacts={len(artifacts)}" if artifacts else ""
             print(
                 f"- {record['id']} review {record['created_at']} "
                 f"{binding} "
                 f"verdict={record['verdict']} findings={len(findings)} "
-                f"advisory={len(advisory)}"
+                f"advisory={len(advisory)}{artifact_detail}"
             )
         elif record["record_type"] == "acceptance":
             findings = cast(list[object], record["findings"])
@@ -519,6 +526,7 @@ def _run_submit_review(args: argparse.Namespace, stderr: TextIO) -> int:
     # argparse enforces exactly one of --commit / --reviewed-finding; --finding
     # keeps its one meaning, a blocking finding id, under either binding.
     try:
+        prose = args.prose.read_bytes() if args.prose is not None else None
         submitted = submit_review(
             placement.journal_root,
             args.task,
@@ -531,8 +539,9 @@ def _run_submit_review(args: argparse.Namespace, stderr: TextIO) -> int:
             args.finding,
             args.advisory_finding,
             reviewed_finding=args.reviewed_finding,
+            prose=prose,
         )
-    except ReviewSubmitError as error:
+    except (OSError, ReviewSubmitError) as error:
         print(error, file=stderr)
         return 1
     print(submitted.record_path)
@@ -588,9 +597,11 @@ def _run_review(args: argparse.Namespace, stderr: TextIO) -> int:
     except ReviewLaunchError as error:
         print(error, file=stderr)
         return 1
+    if submitted.artifact_ref is not None:
+        # The record pins the reasoning; say where, on stderr, so stdout
+        # stays the record path a caller can read.
+        print(f"reviewer prose pinned: {submitted.artifact_ref}", file=stderr)
     if submitted.reviewer_output_path is not None:
-        # The record names findings by id only. Point at the reasoning on
-        # stderr, so stdout stays the record path a caller can read.
         print(
             f"reviewer output kept at {submitted.reviewer_output_path}",
             file=stderr,

@@ -338,6 +338,14 @@ def _is_record_path(path: str) -> bool:
     return path.startswith(_JOURNAL_PREFIX) and "/records/" in path
 
 
+def _is_append_only_evidence_path(path: str) -> bool:
+    """Whether *path* is immutable record or artifact evidence."""
+
+    return _is_record_path(path) or (
+        path.startswith(f"{_JOURNAL_PREFIX}tasks/") and "/artifacts/" in path
+    )
+
+
 def _sidecar_history_tampering(project_root: Path, journal_path: str) -> list[str]:
     """Return records that a sidecar commit modified, deleted or renamed.
 
@@ -369,7 +377,9 @@ def _sidecar_history_tampering(project_root: Path, journal_path: str) -> list[st
             # seen. Verified: an evil merge scores zero without these flags.
             "-m",
             "--first-parent",
-            "--diff-filter=MDR",
+            # T: a file replaced by a symlink (or the reverse) is a change to
+            # the evidence as much as an edit is.
+            "--diff-filter=MDRT",
             "--name-only",
             "--format=",
             "--",
@@ -377,7 +387,11 @@ def _sidecar_history_tampering(project_root: Path, journal_path: str) -> list[st
         ],
     )
     return sorted(
-        {line for line in output.splitlines() if line and _is_record_path(line)}
+        {
+            line
+            for line in output.splitlines()
+            if line and _is_append_only_evidence_path(line)
+        }
     )
 
 
@@ -416,7 +430,9 @@ def _sidecar_tampered_records(journal_root: Path) -> list[str]:
             if index < len(tokens) and tokens[index]:
                 paths.append(tokens[index])
         if status != "??" and "A" not in status:
-            tampered.update(path for path in paths if _is_record_path(path))
+            tampered.update(
+                path for path in paths if _is_append_only_evidence_path(path)
+            )
         index += 1
     tampered.update(
         _sidecar_history_tampering(
@@ -619,6 +635,11 @@ def run_gate(
             }
         )
     )
+    evidence_changes = [
+        (status, path)
+        for status, path in changes_with_status
+        if _is_append_only_evidence_path(path)
+    ]
     record_changes = [
         (status, path) for status, path in changes_with_status if _is_record_path(path)
     ]
@@ -631,6 +652,7 @@ def run_gate(
         # — those would decide this task from a different journal's records
         # (ADR-0008 Decision 2). Carving out one check at a time left the rest
         # reading host paths as evidence, which is how this was wrong twice.
+        evidence_changes = []
         record_changes = []
         added_records = []
         base_tree = {path for path in base_tree if not path.startswith(_JOURNAL_PREFIX)}
@@ -964,7 +986,7 @@ def run_gate(
     tampered = (
         _sidecar_tampered_records(journal_root)
         if sidecar
-        else sorted(path for status, path in record_changes if status != "A")
+        else sorted(path for status, path in evidence_changes if status != "A")
     )
     check(
         not tampered,

@@ -880,6 +880,7 @@ def create_review_record(
     *,
     reviewed_finding: str | None = None,
     advisory_findings: list[str] | None = None,
+    artifacts: list[dict[str, str]] | None = None,
     source: str = SOURCE_LIVE,
 ) -> dict[str, object]:
     """Build the review evidence record submitted by a reviewer.
@@ -917,6 +918,8 @@ def create_review_record(
         record["reviewed_commit"] = reviewed_commit
     if advisory_findings:
         record["advisory_findings"] = advisory_findings
+    if artifacts:
+        record["artifacts"] = artifacts
     return record
 
 

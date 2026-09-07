@@ -261,6 +261,55 @@ def test_report_for_one_task_and_empty_journal(
     assert capsys.readouterr().out == "CR-001\topen\treviews=0\ttokens=0\n"
 
 
+def test_status_names_the_prose(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: status names the prose."""
+
+    repo = tmp_path / "repo"
+    _initialize_repo(repo, monkeypatch)
+    assert main(["open", "--title", "Task"]) == 0
+    prose = tmp_path / "review.md"
+    prose.write_text("review prose\n", encoding="utf-8")
+    assert (
+        main(
+            [
+                "submit-review",
+                "--task",
+                "CR-001",
+                "--commit",
+                "a" * 40,
+                "--verdict",
+                "approved",
+                "--role",
+                "reviewer",
+                "--vendor",
+                "human",
+                "--model",
+                "none",
+                "--email",
+                "reviewer@test.invalid",
+                "--prose",
+                str(prose),
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+
+    assert main(["status", "CR-001"]) == 0
+    status_output = capsys.readouterr().out
+    review_line = next(
+        line for line in status_output.splitlines() if " review " in line
+    )
+    assert review_line.endswith("artifacts=1")
+
+    assert main(["report", "--task", "CR-001"]) == 0
+    assert "\tartifacts=1" in capsys.readouterr().out
+
+
 def test_task_scoped_report_ignores_unrelated_malformed_task(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
