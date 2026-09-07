@@ -85,7 +85,5 @@ def submit_review(
             record_path,
             artifact_ref=pin["ref"],
         )
-    except ReviewSubmitError:
-        raise
     except (JournalRecordError, TaskStatusError, OSError, ValueError) as error:
         raise ReviewSubmitError(str(error)) from error

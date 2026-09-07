@@ -24,9 +24,11 @@ filesystem failures (they are named, not removed).
   no record and keeps its copy. Alternative: keep both copies for
   compatibility — rejected, the copy leaks prose outside the placement that
   decides publication and duplicates evidence.
-- **One pre-write refusal in `records`.** A function checks what
-  `write_record` would refuse without touching the filesystem; `write_record`
-  calls it and so does `submit_review` before `write_artifact`. Alternative:
+- **One pre-write refusal in `records`.** A function applies every refusal
+  `write_record` applies before its exclusive create — reading the task's
+  records for the finding binding and the environment for the recorder's
+  identity, as the writer does; `write_record` calls it and so does
+  `submit_review` before `write_artifact`. Alternative:
   keep the hand copy in `submit_review` — rejected, two copies of one rule
   drift, and the reviews found exactly that.
 - **Residual window is named, not closed.** A filesystem failure or an id
@@ -56,3 +58,6 @@ script that parsed the temp-file line.
 ## Open Questions
 
 None.
+- The status notes in ADR-0004 and ADR-0005 still say reviewer output that
+  names findings is kept in a temporary file; `docs/adr/` is outside this
+  task's scope, so they are left to a docs task rather than edited here.
