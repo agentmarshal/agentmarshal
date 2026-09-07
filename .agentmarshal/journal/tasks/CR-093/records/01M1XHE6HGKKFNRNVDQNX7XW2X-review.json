@@ -1,0 +1,29 @@
+{
+  "advisory_findings": [
+    "transcript-test-modified-by-docstring",
+    "rename-tests-inherit-global-diff-renames"
+  ],
+  "artifacts": [
+    {
+      "hash": "89eb65f29bcd1e7e99ed58e149a3ab2fed3fe8ec0e81f5ded7c547bd7b5eeb17",
+      "ref": ".agentmarshal/journal/tasks/CR-093/artifacts/01M1XHE6HGKKFNRNVDQNX7XW2X-review.md"
+    }
+  ],
+  "created_at": "2026-09-07T08:58:26.736342Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "c3a0a7a7ec0364c007b5f5bf123cc91a68654987",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 3,
+  "source": "live",
+  "task": "CR-093",
+  "tool_version": "0.3.0",
+  "verdict": "approved"
+}
