@@ -272,45 +272,6 @@ def test_embedded_diff_lane_transcript_matches_published_030_byte_for_byte(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    published = released_030()
-    if published is None:
-        pytest.skip(SKIP_030)
-    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
-    head = _implement(repo, "src/module.py")
-    _approve(repo, head)
-    arguments = [
-        "gate",
-        "--task",
-        "CR-001",
-        "--commit",
-        head,
-        "--base",
-        base,
-        "--pipeline-sha",
-        head,
-    ]
-    capsys.readouterr()
-
-    current_code = main(arguments)
-    current = capsys.readouterr()
-    released = subprocess.run(
-        [str(published), *arguments],
-        cwd=repo,
-        capture_output=True,
-        env=os.environ.copy(),
-    )
-
-    assert current_code == released.returncode == 0
-    assert current.out.encode() == released.stdout
-    assert current.err.encode() == released.stderr
-    assert current.out.endswith("gate: passed\n")
-
-
-def test_candidate_without_renames_prints_the_transcript_it_printed_before(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
     """Scenario: a candidate without renames prints the transcript it printed before."""
 
     published = released_030()
@@ -344,6 +305,7 @@ def test_candidate_without_renames_prints_the_transcript_it_printed_before(
     assert current_code == released.returncode == 0
     assert current.out.encode() == released.stdout
     assert current.err.encode() == released.stderr
+    assert current.out.endswith("gate: passed\n")
 
 
 def test_gate_refuses_a_rename_out_of_scope(
