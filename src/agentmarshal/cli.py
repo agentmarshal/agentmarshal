@@ -601,11 +601,6 @@ def _run_review(args: argparse.Namespace, stderr: TextIO) -> int:
         # The record pins the reasoning; say where, on stderr, so stdout
         # stays the record path a caller can read.
         print(f"reviewer prose pinned: {submitted.artifact_ref}", file=stderr)
-    if submitted.reviewer_output_path is not None:
-        print(
-            f"reviewer output kept at {submitted.reviewer_output_path}",
-            file=stderr,
-        )
     print(submitted.record_path)
     return 0
 

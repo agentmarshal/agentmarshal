@@ -1,0 +1,29 @@
+{
+  "advisory_findings": [
+    "ADR-STALE-TEMP-COPY",
+    "TAUTOLOGICAL-TEMP-COPY-ASSERT"
+  ],
+  "artifacts": [
+    {
+      "hash": "6aad22b73f1ef44485b5e3f51b134b0a17f128eb831a867ad8c20aaf4d6cec51",
+      "ref": ".agentmarshal/journal/tasks/CR-092/artifacts/01M1XCVBN1WF7CNDY7EBE8SSYR-review.md"
+    }
+  ],
+  "created_at": "2026-09-07T07:38:15.073101Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "a002e6b064e74b741f9e5b759fd78a4f1679107d",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 3,
+  "source": "live",
+  "task": "CR-092",
+  "tool_version": "0.3.0",
+  "verdict": "approved"
+}

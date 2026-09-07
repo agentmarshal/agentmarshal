@@ -1039,6 +1039,37 @@ def test_gate_detects_record_path_collision(
     assert "already exist" in output
 
 
+def test_two_candidates_add_the_same_artifact_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: two candidates add the same artifact path."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    artifact = (
+        repo
+        / ".agentmarshal"
+        / "journal"
+        / "tasks"
+        / "CR-001"
+        / "artifacts"
+        / "shared-review.md"
+    )
+    artifact.parent.mkdir()
+    artifact.write_bytes(b"base candidate\n")
+    _commit_all(repo, "add artifact on master")
+
+    _git(repo, "switch", "--quiet", "-c", "artifact-candidate", base)
+    artifact.parent.mkdir()
+    artifact.write_bytes(b"other candidate\n")
+    head = _commit_all(repo, "independently add same artifact")
+
+    passed, output = _run(repo, head, "master", head)
+
+    relative = artifact.relative_to(repo).as_posix()
+    assert not passed
+    assert f"record paths already exist on the base: {relative}" in output
+
+
 def _candidate_head(repo: Path, branch: str, base: str, mutate: object) -> str:
     """Commit a candidate on its own branch, evaluate from a clean master."""
 

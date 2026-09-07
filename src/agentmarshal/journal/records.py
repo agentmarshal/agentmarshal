@@ -650,19 +650,18 @@ def _project_root_for(journal_root: Path) -> Path:
     return journal_root.parent.parent
 
 
-def write_record(
+def validate_record_for_write(
     journal_root: Path,
     task_id: str,
     record: Mapping[str, object],
     *,
     record_id: str | None = None,
-) -> Path:
-    """Exclusively create an evidence record and return its path.
+) -> dict[str, object]:
+    """Apply every record refusal knowable before an exclusive write.
 
-    Every record passes through here, so this is where the creating actor is
-    stamped (ADR-0006) — no record type is missed and no caller has to remember.
-    A record that already carries ``recorded_by`` keeps it; one written where no
-    identity can be determined carries neither field.
+    The returned record includes derived recorder identity. Callers that write
+    related evidence first use this preflight so shape, task, finding-binding,
+    identity, and identifier failures cannot leave an orphan behind.
     """
 
     if "recorded_by" in record or "recorded_by_source" in record:
@@ -690,12 +689,33 @@ def write_record(
             raise JournalRecordError(
                 f"record field {binding!r} must name a finding in the same task"
             )
-    record_type = cast(str, data["record_type"])
-    identifier = generate_ulid() if record_id is None else record_id
-    if not _is_ulid(identifier):
+    if record_id is not None and not _is_ulid(record_id):
         raise JournalRecordError(
             "record id must be a 26-character Crockford base32 ULID"
         )
+    return data
+
+
+def write_record(
+    journal_root: Path,
+    task_id: str,
+    record: Mapping[str, object],
+    *,
+    record_id: str | None = None,
+) -> Path:
+    """Exclusively create an evidence record and return its path.
+
+    Every record passes through here, so this is where the creating actor is
+    stamped (ADR-0006) — no record type is missed and no caller has to remember.
+    A record that already carries ``recorded_by`` keeps it; one written where no
+    identity can be determined carries neither field.
+    """
+
+    identifier = generate_ulid() if record_id is None else record_id
+    data = validate_record_for_write(
+        journal_root, task_id, record, record_id=identifier
+    )
+    record_type = cast(str, data["record_type"])
     path = _record_path(journal_root, task_id, identifier, record_type)
     _prepare_record_directory(journal_root, task_id)
     content = json.dumps(data, indent=2, sort_keys=True, ensure_ascii=False)

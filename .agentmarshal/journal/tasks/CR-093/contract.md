@@ -10,14 +10,14 @@ scope = [
   "openspec/specs/scope-enforcement/",
 ]
 acceptance = [
-  "every scenario in openspec/changes/close-rename-scope-hole/specs/scope-enforcement/spec.md is demonstrated by a test whose docstring names it, and each such test fails when the scope check reads git diff --name-only again; the implementation follows design.md's decisions or records in design.md why it departed",
+  "every scenario in openspec/changes/close-rename-scope-hole/specs/scope-enforcement/spec.md is demonstrated by a test whose docstring names it, and each test of a rename scenario fails when the scope check reads git diff --name-only again; the implementation follows design.md's decisions or records in design.md why it departed",
   "the gate reads a candidate's paths from one listing: the name-only helper is gone, and a rename's source counts as a deleted path for the scope check, the lane choice and the empty-range refusal",
   "the byte-for-byte 0.3.0 transcript test and the sidecar transcript tests pass unmodified; no PASS wording changes",
   "the change is archived in the same candidate: openspec/specs/scope-enforcement/spec.md exists with a written Purpose, openspec/changes/archive/ holds the change, and openspec validate --all passes",
   "tasks.md's checkboxes are ticked for the work that landed",
 ]
 decisions = ["ADR-0010"]
-documents = ["openspec/changes/close-rename-scope-hole/"]
+documents = ["openspec/changes/close-rename-scope-hole/", "openspec/specs/scope-enforcement/"]
 +++
 
 # CR-093: the gate sees both ends of a rename
@@ -44,6 +44,13 @@ deleted and its destination added, read by every check that reads paths.
 
 As in the header. The spec's scenarios are the behaviour; design.md's
 decisions are the shape; tasks.md is the checklist the implementer ticks.
+
+Amended: `documents` also names the baseline spec the archive creates. A
+candidate that archives the change in the same range adds and removes the
+change directory within that range, so the gate's documents line sees no
+change there; the spec the archive writes is the document it can see. The
+mutation clause of criterion 1 applies to the three rename scenarios; the
+unchanged-transcript scenario is unchanged by construction.
 
 ## Threat model and boundaries
 

@@ -1,13 +1,4 @@
-# review-evidence Specification
-
-## Purpose
-What a review record may carry beyond its verdict and finding ids: the
-reviewer's prose, kept verbatim as a file under the task's journal directory
-and pinned by sha256 on the record — evidence a reader can open, held to the
-same immutability as the record that cites it. Keeping prose is a capability
-of both review paths, never an obligation of a journal.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: A review may carry the reviewer's prose as a pinned artifact
 A review record MAY carry `artifacts`: a list of `{ref, hash}` where `ref` is
@@ -39,24 +30,10 @@ other copy of it outside the journal.
 - **THEN** the output is kept where the operator can read it, as today, and
   no review record is written
 
-### Requirement: Review artifacts are evidence and follow the record rule
-A review artifact, once written, MUST NOT be modified or deleted.
-
-#### Scenario: the gate refuses a modified artifact
-- **WHEN** a candidate modifies or deletes a file under
-  `.agentmarshal/journal/tasks/<task>/artifacts/`
-- **THEN** the gate reports it in the append-only check and refuses the
-  candidate, as it does for a record
-
-#### Scenario: the artifact's hash is checked where its record is validated
-- **WHEN** `agentmarshal validate` reads a review record carrying `artifacts`
-- **THEN** it refuses a journal whose artifact file is missing or whose bytes
-  do not match the pinned hash
-
 ### Requirement: The prose is visible where the record is
 `status` SHALL show, on the line of a review record that carries `artifacts`,
-how many it carries; `report`, which has no per-record line, SHALL show on the
-task's line the total over the task's review records.
+how many it carries; `report`, which has no per-record line, SHALL show on
+the task's line the total over the task's review records.
 
 #### Scenario: status names the prose
 - **WHEN** `agentmarshal status <task>` lists a review record that carries `artifacts`
@@ -67,14 +44,7 @@ task's line the total over the task's review records.
   records carry artifacts
 - **THEN** the task's line shows the sum over those records
 
-### Requirement: Nothing is required of a journal that keeps no prose
-A review record without `artifacts` SHALL be read, gated and displayed as in
-0.3.0; keeping prose is a capability, not an obligation.
-
-#### Scenario: an old journal reads as before
-- **WHEN** a review record carries no `artifacts`
-- **THEN** every command behaves as it did in 0.3.0, and the gate's
-  transcript for such a candidate is unchanged
+## ADDED Requirements
 
 ### Requirement: A refused record leaves no artifact behind
 A review path SHALL refuse a record for every reason the record writer can

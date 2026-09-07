@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
 import os
 import subprocess
@@ -609,6 +610,53 @@ def test_human_review_path_attaches_prose(
     assert (repo / expected_ref).read_bytes() == prose
 
 
+def test_report_totals_the_prose(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: report totals the prose."""
+
+    repo = tmp_path / "repo"
+    root = initialize_status_repo(repo)
+    monkeypatch.chdir(repo)
+    assert main(["open", "--title", "Task"]) == 0
+    for index in range(2):
+        prose = repo / f"review-{index}.txt"
+        prose.write_bytes(f"review prose {index}\n".encode())
+        assert (
+            main(
+                [
+                    "submit-review",
+                    "--task",
+                    "CR-001",
+                    "--commit",
+                    "a" * 40,
+                    "--verdict",
+                    "approved",
+                    "--role",
+                    "reviewer",
+                    "--vendor",
+                    "human",
+                    "--model",
+                    "none",
+                    "--email",
+                    "reviewer@test.invalid",
+                    "--prose",
+                    str(prose),
+                ]
+            )
+            == 0
+        )
+    assert len(read_records(root, "CR-001")) == 3
+    capsys.readouterr()
+
+    assert main(["report", "--task", "CR-001"]) == 0
+    assert capsys.readouterr().out == (
+        "CR-001\topen\treviews=2\ttokens=0\tartifacts=2\n"
+    )
+
+
 def test_submit_review_without_prose_omits_artifacts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -640,6 +688,67 @@ def test_submit_review_without_prose_omits_artifacts(
         == 0
     )
     assert "artifacts" not in read_records(root, "CR-001")[-1]
+
+
+def test_record_write_failure_names_the_artifact_it_left(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a refusal the writer cannot foresee is named as a limit."""
+
+    repo = tmp_path / "repo"
+    root = initialize_status_repo(repo)
+    monkeypatch.chdir(repo)
+    assert main(["open", "--title", "Task"]) == 0
+    record_id = "01J00000000000000000000000"
+    record = create_review_record(
+        "CR-001",
+        "test",
+        "a" * 40,
+        "approved",
+        "reviewer",
+        "human",
+        "none",
+        "reviewer@test.invalid",
+        [],
+    )
+    write_record(root, "CR-001", record, record_id=record_id)
+    submit_review_module = importlib.import_module("agentmarshal.journal.submit_review")
+    monkeypatch.setattr(submit_review_module, "generate_ulid", lambda: record_id)
+    prose = repo / "review.txt"
+    prose.write_bytes(b"review prose\n")
+    capsys.readouterr()
+
+    assert (
+        main(
+            [
+                "submit-review",
+                "--task",
+                "CR-001",
+                "--commit",
+                "b" * 40,
+                "--verdict",
+                "approved",
+                "--role",
+                "reviewer",
+                "--vendor",
+                "human",
+                "--model",
+                "none",
+                "--email",
+                "reviewer@test.invalid",
+                "--prose",
+                str(prose),
+            ]
+        )
+        == 1
+    )
+    artifact_ref = f".agentmarshal/journal/tasks/CR-001/artifacts/{record_id}-review.md"
+    message = capsys.readouterr().err
+    assert "File exists" in message
+    assert f"reviewer prose artifact left at {artifact_ref}" in message
+    assert (repo / artifact_ref).read_bytes() == b"review prose\n"
 
 
 @pytest.mark.parametrize(
