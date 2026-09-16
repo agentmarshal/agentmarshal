@@ -63,8 +63,18 @@ under an approved candidate with no commit anywhere in the host.
 
 Every path that hands a contract to a party who must act on it renders the
 task's amendment records alongside it: the review prompt and the implementer's
-brief. Each entry says when, by whom, and the reason the record already
-carries.
+brief. Each entry says when, why — the reason an amendment record already
+requires — and who recorded it when the record names an actor, which
+[ADR-0006](ADR-0006-actors-and-identity.md) leaves optional.
+
+The records are read from the journal the command is working in: the working
+tree in an embedded journal, the sidecar's journal in a sidecar. That is not
+the side the contract comes from — the review prompt takes the contract from
+the reviewed commit's snapshot — and the difference is deliberate. An
+amendment is evidence about the task, not about the candidate, and a reviewer
+asked whether a criterion is new needs the history as it stands when the
+verdict is given, including an amendment recorded after the candidate was
+built. Reading the records from the snapshot would hide exactly those.
 
 The rendering is built from the records, which are JSON, and never from prose.
 That is not an implementation detail. [ADR-0004](ADR-0004-journal-data-model.md)
@@ -92,11 +102,15 @@ operator writes there, and nothing reads it back.
 
 ### 3. The gate gains no check, and its transcript does not change
 
-Nothing here adds a line to the gate, in any placement and on any lane. The
-existing rules already cover what can be covered: amendment records are
+This decision adds no line to the gate. In an embedded journal that is because
+the existing rules already cover what can be covered: amendment records are
 append-only evidence, and a candidate cannot be judged against a contract it
-has not incorporated, because the gate reads the contract from the merge-base
-tree and a review is bound to the SHA it judged.
+has not incorporated, since the gate reads the contract from the merge-base
+tree and a review is bound to the SHA it judged. In a sidecar none of that
+reasoning holds — the contract comes from the sidecar's working tree and no SHA
+binds it — and the answer there is not that the exposure is covered but that
+this decision does not close it; Decision 5 says so and leaves the question
+open.
 
 What this decision changes is what the deciding party is *shown*, not what the
 gate refuses. That is its honest scope, and it is why no question about
@@ -106,10 +120,15 @@ transcripts arises.
 
 A review record carries `reviewed_contract`: the sha256 of the contract text
 the reviewer was given, in the lowercase hex every other digest in this journal
-uses. It is an optional field of the review record as it already is, not a new
-schema. A record written before this decision does not carry it, and a record
-written after it may also lack it — a review of a finding is handed no contract
-— so its absence is never a violation and never a line anywhere.
+uses.
+
+Adding it raises the review record's schema number. Record validation is
+closed — a record carrying a field its schema does not allow is refused — so a
+new field arrives the way every other one has, through a version, and records
+written under the previous schema keep it and are read as they were. The field
+is optional within its schema: a review of a finding is handed no contract, so
+there is nothing to hash, and its absence is never a violation and never a line
+anywhere.
 
 The field is read where every review record is read, and it is covered by the
 same append-only rule as the rest of the record: a change to it after the fact is
@@ -139,7 +158,14 @@ read absence as suspicion would refuse the whole history. Making this one line t
 sidecar gate is, and that is not what an adopter's proposal about review prompts
 should be allowed to decide.
 
-### 6. What this does not decide
+### 6. What is settled here, and what is left open
+
+One question is genuinely open, and Decision 5 names it: whether a sidecar gate
+should say anything when an approving review's `reviewed_contract` differs from
+the contract it reads. It cannot be answered before the absent-field case is,
+and that belongs to the task that implements this.
+
+The rest of this section settles small questions rather than leaving them:
 
 - Whether an amendment needs its own review. It does not: the reason is
   mandatory, and it is now visible to the next reviewer, which is the cheaper
@@ -147,12 +173,12 @@ should be allowed to decide.
 - Whether a reviewer should be shown *what* changed. It should not: the
   reviewer is given a snapshot, not a repository, and the question it is being
   asked is about the work, not about the document's drafting.
-- An exception for the findings lane. A findings-lane task has a contract —
-  [ADR-0009](ADR-0009-research-findings-lifecycle.md) D3 admits a task to that
-  lane *because* its contract declares no scope — and it is amended like any
-  other, so its reviews are handed the same rendering. What does not reach it
-  is the SHA reasoning above: a finding is bound to its artifacts rather than
-  to a candidate commit.
+- Whether the findings lane is an exception. It is not: a findings-lane task
+  has a contract — [ADR-0009](ADR-0009-research-findings-lifecycle.md) D3
+  admits a task to that lane *because* its contract declares no scope — and it
+  is amended like any other, so its reviews are handed the same rendering. What
+  does not reach it is the SHA reasoning above: a finding is bound to its
+  artifacts rather than to a candidate commit.
 
 ## Consequences
 
