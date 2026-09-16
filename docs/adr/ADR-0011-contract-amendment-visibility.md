@@ -61,20 +61,26 @@ under an approved candidate with no commit anywhere in the host.
 
 ### 1. The history is rendered where the contract is delivered, from the records
 
-Every path that hands a contract to a party who must act on it renders the
-task's amendment records alongside it: the review prompt and the implementer's
-brief. Each entry says when, why — the reason an amendment record already
-requires — and who recorded it when the record names an actor, which
-[ADR-0006](ADR-0006-actors-and-identity.md) leaves optional.
+The review prompt and the implementer's brief render the task's amendment
+records alongside the contract they already carry. Each entry says when, why —
+the reason an amendment record requires — and who recorded it, when the record
+names an actor; older records may not, which is why the rendering states what
+it has rather than promising three fields.
 
 The records are read from the journal the command is working in: the working
-tree in an embedded journal, the sidecar's journal in a sidecar. That is not
-the side the contract comes from — the review prompt takes the contract from
-the reviewed commit's snapshot — and the difference is deliberate. An
-amendment is evidence about the task, not about the candidate, and a reviewer
-asked whether a criterion is new needs the history as it stands when the
-verdict is given, including an amendment recorded after the candidate was
-built. Reading the records from the snapshot would hide exactly those.
+tree in an embedded journal, the sidecar's journal in a sidecar.
+
+Whether that is the same side the contract comes from depends on the placement,
+and the difference is worth naming rather than smoothing over. In an embedded
+journal the review prompt takes the contract from the reviewed commit's
+snapshot while the records come from the working tree, so the two sides differ.
+In a sidecar both come from the sidecar's working tree, and they do not.
+
+The asymmetry in the embedded case is deliberate. An amendment is evidence about
+the task, not about the candidate, and a reviewer asked whether a criterion is
+new needs the history as it stands when the verdict is given, including an
+amendment recorded after the candidate was built. Reading the records from the
+snapshot would hide exactly those.
 
 It follows that a rendering can name an amendment the contract text beside it
 does not yet reflect. That is the signal rather than a defect: the contract has
@@ -167,19 +173,19 @@ read from the sidecar's own working tree — no SHA binds the contract. The
 exposure is real and this decision still adds no gate line. What it adds there is the evidence to see the
 problem afterwards: an approving review names the contract it judged, so a
 reader can compare that with the contract as it now stands. Whether a sidecar
-gate should say anything about a mismatch is left to the task that implements
-this, and that task has to answer the absent-field case first: almost every
-record in an existing journal carries no `reviewed_contract`, and a check that
-read absence as suspicion would refuse the whole history. Making this one line the exception would be a change to what a
-sidecar gate is, and that is not what an adopter's proposal about review prompts
-should be allowed to decide.
+gate should say anything when the field is present and differs is left to the
+task that implements this. Absence is not part of that question: Decision 4
+settles it, and a check that read a missing field as suspicion would condemn
+every record written before this decision. Making a sidecar line the one
+exception to a gate that advises would also change what a sidecar gate is, and
+that is not what a record about review prompts should decide.
 
 ### 6. What is settled here, and what is left open
 
 One question is genuinely open, and Decision 5 names it: whether a sidecar gate
-should say anything when an approving review's `reviewed_contract` differs from
-the contract it reads. It cannot be answered before the absent-field case is,
-and that belongs to the task that implements this.
+should say anything when an approving review carries a `reviewed_contract` that
+differs from the contract it reads. It belongs to the task that implements
+this.
 
 The rest of this section settles small questions rather than leaving them:
 
