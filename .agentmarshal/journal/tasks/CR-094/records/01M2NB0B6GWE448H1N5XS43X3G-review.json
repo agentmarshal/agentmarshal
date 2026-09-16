@@ -1,0 +1,32 @@
+{
+  "advisory_findings": [
+    "016-kept-at-claim-broader-than-mechanism",
+    "020-self-attribution-overstated-no-private-markers-configured",
+    "partial-disposition-not-in-documented-vocabulary"
+  ],
+  "artifacts": [
+    {
+      "hash": "af5b8bf58711b92511f9eda6e5ce5772c2b91af40ebc47e4e3487aa0629b70c4",
+      "ref": ".agentmarshal/journal/tasks/CR-094/artifacts/01M2NB0B6GWE448H1N5XS43X3G-review.md"
+    }
+  ],
+  "created_at": "2026-09-16T14:47:47.664948Z",
+  "findings": [
+    "scope-violation-cr095-journal-in-cr094-candidate"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "2a57cd3f02f85cb1d5c8e122a36909a0a4e9f003",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 3,
+  "source": "live",
+  "task": "CR-094",
+  "tool_version": "0.3.0",
+  "verdict": "changes_required"
+}

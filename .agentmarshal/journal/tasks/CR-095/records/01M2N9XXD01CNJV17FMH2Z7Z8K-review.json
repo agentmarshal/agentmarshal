@@ -1,0 +1,34 @@
+{
+  "advisory_findings": [
+    "adr0011-every-sidecar-check-advisory",
+    "adr0011-record-read-side-unstated",
+    "adr0011-alternative-reason-garbled"
+  ],
+  "artifacts": [
+    {
+      "hash": "2c4ad2b5e56ba63cb734b194d3f75bc324fabeefc3726022474afcc4f0adb050",
+      "ref": ".agentmarshal/journal/tasks/CR-095/artifacts/01M2N9XXD01CNJV17FMH2Z7Z8K-review.md"
+    }
+  ],
+  "created_at": "2026-09-16T14:28:59.424101Z",
+  "findings": [
+    "adr0011-dangling-proposal-link",
+    "adr0011-sidecar-refusal-unanswered",
+    "adr0011-no-change-at-all-overbroad"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "0e598ba7292277c9100f81031794e9809c3fc5fe",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 3,
+  "source": "live",
+  "task": "CR-095",
+  "tool_version": "0.3.0",
+  "verdict": "changes_required"
+}
