@@ -1,6 +1,6 @@
-# 017 — In the GitHub template the gate check is red on every implementation pull request, not advisory
+# 017 — In the shipped provider template the gate check is red on every implementation pull request, not advisory
 
-- **Reporter:** Adopter D (greenfield project on Linux, GitHub, agent-driven loop with three paid roles) · **Observed on:** 0.3.0 · **Source:** `sha256:ee68faf9b69d3145` · **Disposition:** accepted
+- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.3.0 · **Source:** `sha256:ee68faf9b69d314531b4f0e0df2dcfa3012d9c91643aeb2dcf05f42ddbf35546` · **Disposition:** accepted
 
 ## Finding
 

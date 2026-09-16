@@ -54,8 +54,8 @@ attribution, the tool version it was observed on, and a disposition (accepted,
 declined, deferred) with the reasoning. A declined proposal keeps its file and
 its reason: the record is the point.
 
-Each digest carries the sha256 of the file you sent, so you can find your own
-proposal here by hashing your copy of it: the digest identifies the original to
+Each digest carries the full sha256 of the file you sent, so you can find your
+own proposal here by hashing your copy of it and searching for the result: the digest identifies the original to
 whoever holds it and discloses nothing to anyone else. Alongside the
 disposition, an accepted proposal names where it went — a release, a decision
 record, or the work that carries it. That is how you follow a proposal after

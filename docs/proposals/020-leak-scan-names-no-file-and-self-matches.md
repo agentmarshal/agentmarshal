@@ -1,6 +1,6 @@
 # 020 — `leak-scan` reports a category but not the file, and a marker list matches its own declaration
 
-- **Reporter:** Adopter D (greenfield project on Linux, GitHub, agent-driven loop with three paid roles) · **Observed on:** 0.3.0 · **Source:** `sha256:dc5f932d5e4712c5` · **Disposition:** accepted
+- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.3.0 · **Source:** `sha256:dc5f932d5e4712c56b87ee33e48bd9408b98d9c1c2f1d7d1719ced102b7491cb` · **Disposition:** accepted
 
 ## Finding
 

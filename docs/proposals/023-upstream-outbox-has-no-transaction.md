@@ -1,6 +1,6 @@
 # 023 — The upstream outbox has a convention but no transaction, and it sits where journal tooling sweeps it
 
-- **Reporter:** Adopter D (greenfield project on Linux, GitHub, agent-driven loop with three paid roles) · **Observed on:** 0.3.0 · **Source:** `sha256:bc65a3ee95507aea` · **Disposition:** accepted
+- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.3.0 · **Source:** `sha256:bc65a3ee95507aea4938910150b5684a1b765377d7c081d2126d0ebc4b338c52` · **Disposition:** accepted
 
 ## Finding
 

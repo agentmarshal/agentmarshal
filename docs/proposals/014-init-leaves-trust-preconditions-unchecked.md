@@ -1,6 +1,6 @@
 # 014 — `init` leaves the trust preconditions unconfigured, and `doctor` does not check them
 
-- **Reporter:** Adopter D (greenfield project on Linux, GitHub, agent-driven loop with three paid roles) · **Observed on:** 0.3.0 · **Source:** `sha256:df93c52e9b1a3e6d` · **Disposition:** accepted
+- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.3.0 · **Source:** `sha256:df93c52e9b1a3e6d030073f5f28de4307f2cc697f89f8d752b0b0ea6a2478877` · **Disposition:** accepted
 
 ## Finding
 

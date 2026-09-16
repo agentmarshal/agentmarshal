@@ -1,6 +1,6 @@
 # 015 — The reviewer command contract is only discoverable from source
 
-- **Reporter:** Adopter D (greenfield project on Linux, GitHub, agent-driven loop with three paid roles) · **Observed on:** 0.3.0 · **Source:** `sha256:5023b87a15185c08` · **Disposition:** accepted
+- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.3.0 · **Source:** `sha256:5023b87a15185c08113d65405f43007090d04f6cdfb5d2b039e37abed9df6ab7` · **Disposition:** accepted
 
 ## Finding
 

@@ -1,6 +1,6 @@
 # 019 — Journal-only transactions assume direct commits to the base branch
 
-- **Reporter:** Adopter D (greenfield project on Linux, GitHub, agent-driven loop with three paid roles) · **Observed on:** 0.3.0 · **Source:** `sha256:fb551e203f2f4fca` · **Disposition:** accepted
+- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.3.0 · **Source:** `sha256:fb551e203f2f4fca47f1b4a94621eb34291ad872edf6167acf0134a10108009a` · **Disposition:** accepted
 
 ## Finding
 

@@ -1,6 +1,6 @@
 # 016 — Reviewer prose is not durable in the published release, contrary to the quickstart
 
-- **Reporter:** Adopter D (greenfield project on Linux, GitHub, agent-driven loop with three paid roles) · **Observed on:** 0.3.0 · **Source:** `sha256:932ed62a172073c8` · **Disposition:** accepted
+- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.3.0 · **Source:** `sha256:932ed62a172073c8192969ce8a1810b2d72acee644cc956d3b18e09173d19265` · **Disposition:** accepted
 
 ## Finding
 
@@ -44,8 +44,8 @@ build from the default branch reports the same version as the published one, so
 neither the reader nor the tool can tell which set of promises applies.
 
 The reporter paid sixty lines for that, which is the honest measure of the
-defect. Two things follow, and both are accepted. The behaviour ships in the
-next release, which this proposal has moved earlier in the plan. And the
+defect. Two things follow, and both are accepted. The behaviour ships in 0.4.0,
+which this proposal has moved earlier in the plan. And the
 documentation stops describing unreleased behaviour as though it were current:
 a paragraph that describes work not in the latest release says so, in the
 paragraph, until the release catches up.

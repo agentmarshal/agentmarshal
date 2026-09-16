@@ -1,6 +1,6 @@
 # 022 — Contract amendments are invisible to the reviewer that judges the work against the contract
 
-- **Reporter:** Adopter D (greenfield project on Linux, GitHub, agent-driven loop with three paid roles) · **Observed on:** 0.3.0 · **Source:** `sha256:688e569ec6de9307` · **Disposition:** accepted
+- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.3.0 · **Source:** `sha256:688e569ec6de930791dee0dd18c54b882cdaed2e129d9510feb114dde66bbd8d` · **Disposition:** accepted
 
 ## Finding
 

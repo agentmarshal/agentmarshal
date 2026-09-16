@@ -1,6 +1,6 @@
 # 021 — A reviewer command cannot report anything: its stderr is discarded on success
 
-- **Reporter:** Adopter D (greenfield project on Linux, GitHub, agent-driven loop with three paid roles) · **Observed on:** 0.3.0 · **Source:** `sha256:a1d75dd936bfc61a` · **Disposition:** accepted
+- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.3.0 · **Source:** `sha256:a1d75dd936bfc61ab14038be3468555b2900c63a76bb26ab17c07d2716b6cabb` · **Disposition:** accepted
 
 ## Finding
 

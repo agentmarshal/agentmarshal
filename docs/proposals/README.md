@@ -42,7 +42,8 @@ changed our roadmap we say that too.
 A proposal you sent carries three things you can read from here without asking
 anyone.
 
-Its **source line** is the sha256 of the file you sent, as sent. It is a one-way
+Its **source line** is the sha256 of the file you sent, as sent, in full and in
+lowercase hex, as every other digest in this project is written. It is a one-way
 digest: it identifies your original to you, who already hold it, and says
 nothing about its content to anyone else. Hash your outbox file and search this
 directory for the result, and you have your proposal whatever we numbered it and
@@ -80,8 +81,8 @@ project also has in its own journal, and 022 changed the release plan.
 | [014](014-init-leaves-trust-preconditions-unchecked.md) | `init` leaves the trust preconditions unchecked | D | accepted | 0.4.0, onboarding |
 | [015](015-reviewer-command-contract-undocumented.md) | The reviewer command contract is only in the source | D | accepted | 0.4.0, onboarding |
 | [016](016-reviewer-prose-not-durable-in-the-published-release.md) | Reviewer prose is not durable in the published release | D | accepted | 0.4.0 carries the fix |
-| [017](017-github-template-gate-check-structurally-red.md) | The template's gate check is red on every implementation PR | D | accepted | 0.4.0, onboarding |
-| [018](018-session-activity-vocabulary-and-cost.md) | No activity for a coordinating role, no place for cost | D | accepted *(cost deferred)* | accounting rework |
+| [017](017-provider-template-gate-check-structurally-red.md) | The shipped template's gate check is red on every implementation PR | D | accepted | 0.4.0, onboarding |
+| [018](018-session-activity-vocabulary-and-cost.md) | No activity for a coordinating role, no place for cost | D | accepted *(cost deferred)* | 0.4.0 for the activity; the cost field with the accounting rework |
 | [019](019-journal-transactions-assume-direct-commits.md) | Journal transactions assume direct commits to the base | D | accepted | 0.4.0, templates |
 | [020](020-leak-scan-names-no-file-and-self-matches.md) | `leak-scan` names no file, and matches its own markers | D | accepted *(third part deferred)* | 0.4.0; a record type decided separately |
 | [021](021-reviewer-stderr-discarded-on-success.md) | A reviewer command's stderr is discarded on success | D | accepted | 0.4.0 |
@@ -119,4 +120,4 @@ adopters.
 | **Adopter A** | Python web service, Git hosting provider, Linux runner, vendored wheel |
 | **Adopter B** | business-application project, Windows host, external executor |
 | **Adopter C** | business-application project, Windows host |
-| **Adopter D** | greenfield project, Linux host, GitHub, agent-driven loop with three paid roles: a coordinator, an implementer and a model reviewer |
+| **Adopter D** | greenfield project, Linux host, Git hosting provider, agent-driven loop with three paid roles: a coordinator, an implementer and a model reviewer |
