@@ -76,6 +76,12 @@ asked whether a criterion is new needs the history as it stands when the
 verdict is given, including an amendment recorded after the candidate was
 built. Reading the records from the snapshot would hide exactly those.
 
+It follows that a rendering can name an amendment the contract text beside it
+does not yet reflect, and that is the signal rather than a defect: the contract
+has moved since the candidate incorporated it, the reviewer is told so, and the
+gate will require the candidate to take the newer text before it can be judged
+against it.
+
 The rendering is built from the records, which are JSON, and never from prose.
 That is not an implementation detail. [ADR-0004](ADR-0004-journal-data-model.md)
 D3 says the record is the source of truth for machines and that **gates never
@@ -125,9 +131,15 @@ uses.
 Adding it raises the review record's schema number. Record validation is
 closed — a record carrying a field its schema does not allow is refused — so a
 new field arrives the way every other one has, through a version, and records
-written under the previous schema keep it and are read as they were. The field
-is optional within its schema: a review of a finding is handed no contract, so
-there is nothing to hash, and its absence is never a violation and never a line
+written under the previous schema keep it and are read as they were. As with
+the version before it ([ADR-0004](ADR-0004-journal-data-model.md)), a writer
+stamps the new schema only on a record that carries the field and keeps the
+current one as the floor for the rest.
+
+The field is optional within its schema, and the case it is optional for is the
+human path: `submit-review` records a verdict without a prompt, so there is no
+contract the tool handed anyone and nothing it can honestly hash. The launcher
+always has one. An absence is therefore never a violation and never a line
 anywhere.
 
 The field is read where every review record is read, and it is covered by the
@@ -147,8 +159,10 @@ amendment, which changes its SHA, and no verdict about the earlier SHA speaks
 for the new one. A second refusal would cost a paid review round for a typo and
 protect nothing that is not already protected.
 
-In a sidecar, where no SHA binds the contract, the exposure is real and this
-decision still adds no gate line. What it adds there is the evidence to see the
+In a sidecar — the placement [ADR-0008](ADR-0008-journal-placements.md)
+defines, where the gate advises and decides no merge, and where the contract is
+read from the sidecar's own working tree — no SHA binds the contract. The
+exposure is real and this decision still adds no gate line. What it adds there is the evidence to see the
 problem afterwards: an approving review names the contract it judged, so a
 reader can compare that with the contract as it now stands. Whether a sidecar
 gate should say anything about a mismatch is left to the task that implements
