@@ -1,6 +1,6 @@
 # 016 — Reviewer prose is not durable in the published release, contrary to the quickstart
 
-- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.3.0 · **Source:** `sha256:932ed62a172073c8192969ce8a1810b2d72acee644cc956d3b18e09173d19265` · **Disposition:** accepted
+- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.3.0 · **Source:** `sha256:932ed62a172073c8192969ce8a1810b2d72acee644cc956d3b18e09173d19265` · **Disposition:** accepted *(in part; the third request is met in another shape)*
 
 ## Finding
 
@@ -55,8 +55,8 @@ well — is met on the default branch in a different shape, and the difference i
 worth stating rather than folding into a blanket acceptance. On the path the
 request is about there is no kept-at file any more: an approving review with no
 findings pins its prose in the journal like every other model review, and the
-command names the artifact instead. A verdict that fails to parse or is refused
-by record validation still keeps its output in a temporary file and says where,
-which is the one place that line survives. What the request was for, the reasoning behind an
-approval surviving the run, is what ships. What it asked for literally is what
+command names the artifact instead. A verdict that fails to parse, or one
+refused by record validation, still keeps its output in a temporary file and
+says where — the one place that line survives. What the request was for, the
+reasoning behind an approval surviving the run, is what ships. What it asked for literally is what
 0.4.0 removes.

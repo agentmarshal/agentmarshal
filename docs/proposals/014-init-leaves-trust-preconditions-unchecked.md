@@ -33,7 +33,9 @@ Measurements, as reported:
 - Launches of `agentmarshal review` that failed on configuration before the
   first success: **3 of 3**.
 - Elapsed from `init` to the first gate pass on a throwaway task: about
-  **6 minutes**, with the source of the review launcher open.
+  **6 minutes**, with the source of the review launcher open. The remaining
+  settings — merge methods, hooks, the journal-through-pull-request wrapper —
+  were added over the following hours as each gap surfaced.
 
 ## Proposed
 

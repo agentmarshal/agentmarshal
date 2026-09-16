@@ -11,9 +11,10 @@ reach a commit in a repository whose journal is written by tooling rather than
 by hand.
 
 That gap has a specific consequence, because the outbox lives in the project
-directory beside the journal rather than somewhere a tool would treat as
-separate. Any wrapper that commits a journal transaction the obvious way — stage the
-journal directory, commit, open a pull request — sweeps whatever findings happen
+directory beside the journal, rather than anywhere a tool would treat as
+separate from it. Any wrapper that commits a journal transaction the obvious
+way — stage the journal directory, commit, open a pull request — sweeps
+whatever findings happen
 to be unstaged at that moment into a commit about something else. The adopter
 does not choose this; it is what the layout produces.
 

@@ -92,7 +92,7 @@ and 022 put a decision record in front of it.
 |---|---|---|---|---|
 | [014](014-init-leaves-trust-preconditions-unchecked.md) | `init` leaves the trust preconditions unchecked | D | accepted | 0.4.0, onboarding |
 | [015](015-reviewer-command-contract-undocumented.md) | The reviewer command contract is only in the source | D | accepted | 0.4.0, onboarding |
-| [016](016-reviewer-prose-not-durable-in-the-published-release.md) | Reviewer prose is not durable in the published release | D | accepted | 0.4.0 carries the fix |
+| [016](016-reviewer-prose-not-durable-in-the-published-release.md) | Reviewer prose is not durable in the published release | D | accepted *(third request met in another shape)* | 0.4.0 carries the fix |
 | [017](017-provider-template-gate-check-structurally-red.md) | The shipped template's gate check is red on every implementation PR | D | accepted | 0.4.0, onboarding |
 | [018](018-session-activity-vocabulary-and-cost.md) | No activity for a coordinating role, no place for cost | D | accepted *(cost deferred)* | 0.4.0 for the activity; the cost field with the accounting rework |
 | [019](019-journal-transactions-assume-direct-commits.md) | Journal transactions assume direct commits to the base | D | accepted | 0.4.0, templates |
