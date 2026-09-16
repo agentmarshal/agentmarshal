@@ -49,3 +49,12 @@ which this proposal has moved earlier in the plan. And the
 documentation stops describing unreleased behaviour as though it were current:
 a paragraph that describes work not in the latest release says so, in the
 paragraph, until the release catches up.
+
+The reporter's third request — print the kept-at path for approved reviews as
+well — is met on the default branch in a different shape, and the difference is
+worth stating rather than folding into a blanket acceptance. There is no kept-at
+path there any more: an approving review with no findings pins its prose in the
+journal like every other model review, and the command names the artifact
+instead of a temporary file. What the request was for, the reasoning behind an
+approval surviving the run, is what ships. What it asked for literally is what
+0.4.0 removes.
