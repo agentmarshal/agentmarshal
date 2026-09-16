@@ -4,14 +4,13 @@ id = "CR-095"
 title = "A contract shows that it changed, and a review says which contract it judged (ADR-0011)"
 scope = [
   "docs/adr/ADR-0011-contract-amendment-visibility.md",
-  "docs/adr/README.md",
 ]
 acceptance = [
   "the decision record states the defect as it is: the amendment records exist and are intact, the gate reads the contract from the merge-base and the reviewer from the reviewed commit, a review is bound to the SHA it judged, and what is missing is that the judging party is not shown the document's history",
   "for every entity the decision introduces, it says from which side it is read, when it is read, what happens when it is absent, and what happens when it changes; the sidecar placement is answered separately wherever its answer differs",
   "the decision says what it does not decide, and each alternative it rejects carries the reason it was rejected rather than a preference",
   "no absolute claim in the record is broader than the mechanism it describes; a reader who greps it for every, always, never or cannot finds each one defensible",
-  "the record names the adopter proposal it answers and this project's own amendment counts, and the ADR index lists it",
+  "the record names the adopter proposal it answers and this project's own amendment counts",
 ]
 decisions = ["ADR-0004", "ADR-0006", "ADR-0008"]
 +++
@@ -49,6 +48,14 @@ already binds a review to its SHA, and a candidate cannot be judged against a
 contract it has not incorporated. In a sidecar nothing binds the contract to a
 commit, and the record must say so rather than let the reader assume the
 embedded reasoning carries over.
+
+## Amended 2026-09-16
+
+The scope named `docs/adr/README.md` and a criterion asked for the record to be
+listed in an ADR index. Neither exists: this project keeps no index of decision
+records, and refers to one from whatever prose needs it. Both were written from
+habit rather than from the repository. The scope now names the record alone, and
+the criterion keeps what it can check.
 
 ## Non-Goals
 
