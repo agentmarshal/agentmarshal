@@ -77,10 +77,12 @@ verdict is given, including an amendment recorded after the candidate was
 built. Reading the records from the snapshot would hide exactly those.
 
 It follows that a rendering can name an amendment the contract text beside it
-does not yet reflect, and that is the signal rather than a defect: the contract
-has moved since the candidate incorporated it, the reviewer is told so, and the
-gate will require the candidate to take the newer text before it can be judged
-against it.
+does not yet reflect. That is the signal rather than a defect: the contract has
+moved since the candidate incorporated it, and the reviewer is told so instead
+of being left to judge a text whose history it cannot see. Nothing here makes
+the candidate take the newer text — the gate reads the contract from the
+merge-base tree, so a candidate that has not merged the amendment is judged
+against the contract it did incorporate.
 
 The rendering is built from the records, which are JSON, and never from prose.
 That is not an implementation detail. [ADR-0004](ADR-0004-journal-data-model.md)
@@ -187,12 +189,10 @@ The rest of this section settles small questions rather than leaving them:
 - Whether a reviewer should be shown *what* changed. It should not: the
   reviewer is given a snapshot, not a repository, and the question it is being
   asked is about the work, not about the document's drafting.
-- Whether the findings lane is an exception. It is not: a findings-lane task
-  has a contract — [ADR-0009](ADR-0009-research-findings-lifecycle.md) D3
-  admits a task to that lane *because* its contract declares no scope — and it
-  is amended like any other, so its reviews are handed the same rendering. What
-  does not reach it is the SHA reasoning above: a finding is bound to its
-  artifacts rather than to a candidate commit.
+- What the findings lane does with any of this is not settled here. The task
+  that carries this decision put that lane outside its scope, and a record
+  should not decide what its own contract excluded; the question is a real one
+  and belongs to whoever opens it.
 
 ## Consequences
 
