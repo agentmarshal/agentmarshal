@@ -33,11 +33,75 @@ Every proposal carries one, with the reasoning:
   proposal keeps its file. Recording why something was refused is the point of
   the journal, and it applies to incoming proposals too.
 
+A proposal that asks for several things can carry one of these with the part we
+are not taking named in parentheses, as 018 and 020 do. The disposition section
+of the file itself always says which part is which.
+
 A disposition is our judgement, not a fact about the reporter's setup. Where we
 think a finding is out of the tool's scope we say so, and where a proposal
 changed our roadmap we say that too.
 
-## Current batch
+## Tracking what happened to yours
+
+A proposal you sent carries three things you can read from here without asking
+anyone.
+
+Its **source line** is the sha256 of the file you sent, as sent, in full and in
+lowercase hex, as every other hash in this project is written. It is one-way: it
+identifies your original to you, who already hold it, and says nothing about its
+content to anyone else. Hash your outbox file, search this directory for the
+result, and you have your proposal whatever we numbered it and whatever we
+titled it.
+
+The source line begins with the batch of 2026-09-16. Proposals landed before it
+carry no hash, because the convention did not exist when they arrived; their
+reporters match them by title, and we will not retrofit hashes onto files whose
+originals may since have been edited.
+
+Its **disposition** is what we decided, with the reasoning.
+
+The **where** column of a batch table says what an accepted proposal became — a
+release, a decision record, or the piece of work that carries it. A disposition
+without that column is a promise; with it, it is a place to look.
+
+Sending a batch and then reading this file is the whole protocol today. A
+command that reads your outbox, hashes each finding and reports its state back
+to you is proposed in [023](023-upstream-outbox-has-no-transaction.md) and
+accepted for a later release.
+
+## Batch of 2026-09-16
+
+From one adopter who installed the published 0.3.0 on a new repository and ran
+the governed loop on it: the first batch this project has received from a
+from-scratch install, which is why it is dense in onboarding defects. Ten source
+files, ten proposals, all accepted — two of them in part, with the deferred half
+and its reason stated in the proposal. Nine of the ten were still true on the
+default branch when the batch was triaged; one had been fixed after the release
+and is waiting for it, which is itself the subject of proposal 016.
+
+The recurring theme is what the tool leaves to the operator without saying so:
+preconditions it never states, a command contract discoverable only from source,
+a shipped template that is structurally red, and its own feedback channel with
+no transaction behind it. Four of the ten land close to home: 017, 022 and 023
+name defects this repository has, and 020 names one it would acquire the day it
+declared a marker of its own. A fifth, 019, describes a pattern we solved
+privately and never shipped. Two moved the release plan: 016 pulled it earlier,
+and 022 put a decision record in front of it.
+
+| # | Theme | Reporter | Disposition | Where |
+|---|---|---|---|---|
+| [014](014-init-leaves-trust-preconditions-unchecked.md) | `init` leaves the trust preconditions unchecked | D | accepted | 0.4.0, onboarding |
+| [015](015-reviewer-command-contract-undocumented.md) | The reviewer command contract is only in the source | D | accepted | 0.4.0, onboarding |
+| [016](016-reviewer-prose-not-durable-in-the-published-release.md) | Reviewer prose is not durable in the published release | D | accepted *(third request met in another shape)* | 0.4.0 carries the fix |
+| [017](017-provider-template-gate-check-structurally-red.md) | The shipped template's gate check is red on every implementation PR | D | accepted | 0.4.0, onboarding |
+| [018](018-session-activity-vocabulary-and-cost.md) | No activity for a coordinating role, no place for cost | D | accepted *(cost deferred)* | 0.4.0 for the activity; the cost field with the accounting rework |
+| [019](019-journal-transactions-assume-direct-commits.md) | Journal transactions assume direct commits to the base | D | accepted | 0.4.0, templates |
+| [020](020-leak-scan-names-no-file-and-self-matches.md) | `leak-scan` names no file, and matches its own markers | D | accepted *(third part deferred)* | 0.4.0 for the first two; the third with the decision record that adds the record type |
+| [021](021-reviewer-stderr-discarded-on-success.md) | A reviewer command's stderr is discarded on success | D | accepted | 0.4.0 |
+| [022](022-amendments-invisible-to-the-reviewer.md) | Contract amendments are invisible to the reviewer | D | accepted | decision record, then 0.4.0 |
+| [023](023-upstream-outbox-has-no-transaction.md) | The outbox has a convention but no transaction | D | accepted | 0.4.0 for the documentation; the command in 0.5.0 |
+
+## Batch of 2026-08-30
 
 Landed 2026-08-30, from three adopters running 0.1.0 in production. Twenty-two
 source files digested into thirteen proposals — nine accepted, three deferred,
@@ -68,3 +132,4 @@ adopters.
 | **Adopter A** | Python web service, Git hosting provider, Linux runner, vendored wheel |
 | **Adopter B** | business-application project, Windows host, external executor |
 | **Adopter C** | business-application project, Windows host |
+| **Adopter D** | greenfield project, Linux host, Git hosting provider, agent-driven loop with three paid roles: a coordinator, an implementer and a model reviewer |
