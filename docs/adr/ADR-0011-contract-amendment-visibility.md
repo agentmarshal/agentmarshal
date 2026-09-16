@@ -17,10 +17,12 @@ A task's contract is a document. An amendment to it is a record: append-only,
 timestamped, attributed, with a mandatory reason. That split is deliberate and
 it is right.
 
-The reviewer is given the contract text and the diff. It is not given the
-amendment records, although they sit in the same task directory. A criterion
-written at open time and a criterion added after two review rounds are
-byte-identical in the review prompt.
+The reviewer is given the contract text and the diff. The prompt does not carry
+the amendment records. In an embedded journal they are inside the snapshot the
+reviewer works in — as of the reviewed commit, unsurfaced, and only if it thinks
+to go looking; in a sidecar the host snapshot holds no journal at all and they
+are not there in any form. Either way, a criterion written at open time and a
+criterion added after two review rounds are byte-identical in the prompt.
 
 An adopter reported this with measurements
 ([proposal 022](../proposals/022-amendments-invisible-to-the-reviewer.md)): six
@@ -38,10 +40,9 @@ evidence is intact: the records exist, they are append-only, each carries its
 reason. Nor, in an embedded journal, can a candidate be judged against a
 contract it has not incorporated: the gate reads the contract from the
 merge-base tree and a review is bound to the SHA it judged. A sidecar has no
-such protection, and Decision 3 says what follows from that. What is broken,
-in both placements, is that **the one party we
-deliberately keep independent is the one party not told that the document it is
-judging against has a history.** That matters most in the case that occurs most:
+such protection, and Decision 3 says what follows from that. What is broken in
+both placements is that **the one party we deliberately keep independent is the
+one party not told that the document it is judging against has a history.** That matters most in the case that occurs most:
 the text changed because the previous round objected to it.
 
 ## Decision
@@ -137,7 +138,7 @@ what its own contract excluded.
 The reviewer and the implementer are both told that the contract was amended,
 when and why, in the material they are already handed. A task with no
 amendments has nothing to render, so its prompt and its brief are what they
-were; its review records still carry the field below.
+were; the record field of Decision 4 still reaches its model reviews.
 
 `amend` gains nothing and the contract document gains nothing, so there is no
 new way for an operator to be stopped and no second copy to keep in step. The
@@ -147,6 +148,14 @@ The review record grows one optional field under a new schema number. That is
 the only part of this decision that reaches a journal which has never amended
 anything.
 
+One limit is worth stating plainly, because the decision rests on it. What is
+rendered is what was recorded. `amend` writes a record and does not touch the
+document, and nothing obliges the two to move together: a contract edited in a
+journal transaction without an amendment record is a change this decision cannot
+show, since `contract.md` is a document and the append-only rules cover records.
+The mechanism makes recorded amendments visible; it does not make every edit an
+amendment.
+
 ## Alternatives considered
 
 **A maintained history section inside the contract document.** The reporter's
@@ -155,8 +164,8 @@ clear what holding it to the records would cost: nothing could check it without
 parsing prose, which ADR-0004 D3 forbids a gate to do.
 
 **Require a review of every amendment.** Turns contract repair into a two-round
-process, and would have made each of this project's 21 amendments a paid
-transaction. The defect is invisibility, not insufficient ceremony.
+process, and would have made every amendment in this journal a paid
+transaction, including the one this task itself needed. The defect is invisibility, not insufficient ceremony.
 
 **Refuse any amendment once a review record exists.** Forbids the legitimate and
 common case: a review exposes a contradiction in the contract, and the contract
