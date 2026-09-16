@@ -35,9 +35,11 @@ against the amended text with no way to know it had changed.
 
 What is broken is narrower than it first looks, and worth stating exactly. The
 evidence is intact: the records exist, they are append-only, each carries its
-reason. Nor can a candidate be judged against a contract it has not
-incorporated — the gate reads the contract from the merge-base tree, and a
-review is bound to the SHA it judged. What is broken is that **the one party we
+reason. Nor, in an embedded journal, can a candidate be judged against a
+contract it has not incorporated: the gate reads the contract from the
+merge-base tree and a review is bound to the SHA it judged. A sidecar has no
+such protection, and Decision 3 says what follows from that. What is broken,
+in both placements, is that **the one party we
 deliberately keep independent is the one party not told that the document it is
 judging against has a history.** That matters most in the case that occurs most:
 the text changed because the previous round objected to it.
@@ -113,6 +115,13 @@ human path: `submit-review` records a verdict without a prompt, so there is no
 contract the tool handed anyone and nothing it can honestly hash. An absence is
 never a violation and never a line anywhere.
 
+Nothing reads it automatically. It is written for a reader who asks later which
+text a verdict was about — a person, a report over the journal, a measurement of
+how amendments fall relative to review rounds — and it is read from the record
+like every other field, wherever review records are read. The one machine use
+anyone has proposed for it is the sidecar question below, which is why that
+question is open rather than decided here.
+
 ## Left open
 
 Whether a sidecar gate should say anything when an approving review carries a
@@ -127,7 +136,8 @@ what its own contract excluded.
 
 The reviewer and the implementer are both told that the contract was amended,
 when and why, in the material they are already handed. A task with no
-amendments has nothing to render and nothing about it changes.
+amendments has nothing to render, so its prompt and its brief are what they
+were; its review records still carry the field below.
 
 `amend` gains nothing and the contract document gains nothing, so there is no
 new way for an operator to be stopped and no second copy to keep in step. The
