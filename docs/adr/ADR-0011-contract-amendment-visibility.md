@@ -7,6 +7,11 @@ Supersedes nothing. Builds on [ADR-0004](ADR-0004-journal-data-model.md) (a
 contract is a document, evidence is records) and
 [ADR-0006](ADR-0006-actors-and-identity.md) (a record names who wrote it).
 
+This ADR records a decision. The rendering, the record field and the reading it
+describes are **not implemented by this document**; they follow in their own
+task. The present tense below is how a decision is written, not a claim about
+shipped behaviour.
+
 ## Context
 
 A task's contract is a document. An amendment to it is a record: append-only,
@@ -23,7 +28,8 @@ An adopter reported this with measurements
 amendments across four tasks, five of them recorded after implementation had
 begun, nine reviews rendered against an already-amended contract, and none of
 the six visible to the reviewer at verdict time. This project's own journal is
-larger and no better: **21 amendment records across 18 of 91 completed tasks**,
+larger and no better: **21 amendment records across 18 of the 92 tasks
+completed when this was written**,
 including a contract amended between the second and third review round of its
 own task, after a reviewer raised a blocking finding about the wording of a
 criterion. Rounds three and four then judged the work against the amended text
@@ -53,64 +59,57 @@ under an approved candidate with no commit anywhere in the host.
 
 ## Decision
 
-### 1. `amend` maintains a visible history inside the contract document
+### 1. The history is rendered where the contract is delivered, from the records
 
-`agentmarshal amend` appends an entry to a reserved section at the end of
-`contract.md`: when, by whom, and the reason it already requires. The tool
-maintains the section; the operator does not write it by hand.
+Every path that hands a contract to a party who must act on it renders the
+task's amendment records alongside it: the review prompt and the implementer's
+brief. Each entry says when, by whom, and the reason the record already
+carries.
 
-The section answers *was this changed, when, by whom, and why*. It does not
-answer *what changed*: the document's own version history holds that, and a
-diff copied into the document would rot on the first edit.
+The rendering is built from the records, which are JSON, and never from prose.
+That is not an implementation detail. [ADR-0004](ADR-0004-journal-data-model.md)
+D3 says the record is the source of truth for machines and that **gates never
+parse prose**, and an earlier draft of this decision asked exactly that of the
+gate. Rendering records into a prompt respects the split; parsing a prose
+section in order to decide something does not.
 
-### 2. Everything that reads the contract inherits the history
+It answers *was this changed, when, by whom, and why*. It does not answer *what
+changed*: the document's own version history holds that, and the reviewer is
+handed a snapshot rather than a repository.
 
-Nothing changes in the brief, the review prompt, or the gate's contract read.
-They read the document, and the document now carries its history. That is the
-whole reason for putting the projection in the document rather than in the
-prompt: the implementer working from a brief has the same right to know that a
-criterion is three days younger than the task.
+### 2. The contract document stays what the operator writes
 
-### 3. The projection is checked against the records
+`amend` does not edit `contract.md`. There is no maintained section, no
+reserved heading, and nothing in the document that a tool has to keep in step
+with the records.
 
-`validate` and the gate compare the history section against the task's
-amendment records. In an embedded journal a disagreement is a refusal, naming
-the task. In a sidecar it is an advisory line, as every check that placement
-makes about a host candidate is: a sidecar gate reports and decides no merge
-([ADR-0008](ADR-0008-journal-placements.md) D5), and this record does not
-change what a sidecar gate is.
+This is the opposite of what an earlier draft decided, and the reason is worth
+keeping. A rendered section inside the document would be a second copy of the
+records that no rule could check without parsing prose, and an unchecked copy
+is a claim rather than evidence. An operator who wants that history in the
+document may write it; it then carries the weight of any other sentence an
+operator writes there, and nothing reads it back.
 
-A visible history that nobody checks is a claim, not evidence. The record stays
-the evidence; the section is a rendering of it that does not drift past
-`validate` or the gate unnoticed, and the two check each other.
+### 3. The gate gains no check, and its transcript does not change
 
-Sides and absence, stated so no reader has to guess:
+Nothing here adds a line to the gate, in any placement and on any lane. The
+existing rules already cover what can be covered: amendment records are
+append-only evidence, and a candidate cannot be judged against a contract it
+has not incorporated, because the gate reads the contract from the merge-base
+tree and a review is bound to the SHA it judged.
 
-- The two sides are not the same tree, and saying so matters. The gate reads
-  the contract as it reads it today: from the merge-base tree in an embedded
-  journal, from the sidecar's working tree in a sidecar. It reads the records
-  from the journal as the candidate leaves it, which in an embedded journal is
-  the candidate's own tree.
-- The gate compares them on the lane that reads a contract. The journal-only
-  lane does not read one, so the amendment transaction that writes the section
-  is checked by `validate` when it is written and by the gate on the next
-  candidate that carries a diff. That is the same shape as every other rule
-  about contract content, and it is stated here so no reader expects the
-  amendment's own transaction to be the thing that catches a bad section.
-- A contract with no amendment records needs no section, and its absence is
-  not a finding.
-- An amendment is a journal-only transaction, and the document and the record
-  it writes travel in it together; no lane sees one without the other.
-- A contract that has amendment records and no matching section is a refusal,
-  **for amendment records written after this decision ships**. Records written
-  before it are ignored by the check: a closed task is not reopened to satisfy
-  a rule it predates, and an append-only journal cannot be retrofitted.
+What this decision changes is what the deciding party is *shown*, not what the
+gate refuses. That is its honest scope, and it is why no question about
+transcripts arises.
 
 ### 4. A review record names the contract it judged
 
 A review record carries `reviewed_contract`: the sha256 of the contract text
-the reviewer was given. The field is optional; a record written before this
-decision does not have it, and its absence is never a violation.
+the reviewer was given, in the lowercase hex every other digest in this journal
+uses. It is an optional field of the review record as it already is, not a new
+schema. A record written before this decision does not carry it, and a record
+written after it may also lack it — a review of a finding is handed no contract
+— so its absence is never a violation and never a line anywhere.
 
 The field is read where every review record is read, and it is covered by the
 same append-only rule as the rest of the record: a change to it after the fact is
@@ -129,11 +128,14 @@ amendment, which changes its SHA, and no verdict about the earlier SHA speaks
 for the new one. A second refusal would cost a paid review round for a typo and
 protect nothing that is not already protected.
 
-In a sidecar, where no SHA binds the contract, the gate compares the approving
-review's `reviewed_contract` with the contract it read and reports a mismatch
-**as an advisory line**, under the notice that already says a sidecar's checks
-are advisory and decide no merge. The exposure is real there, but on this lane a
-sidecar gate advises; it does not refuse. Making this one line the exception would be a change to what a
+In a sidecar, where no SHA binds the contract, the exposure is real and this
+decision still adds no gate line. What it adds there is the evidence to see the
+problem afterwards: an approving review names the contract it judged, so a
+reader can compare that with the contract as it now stands. Whether a sidecar
+gate should say anything about a mismatch is left to the task that implements
+this, and that task has to answer the absent-field case first: almost every
+record in an existing journal carries no `reviewed_contract`, and a check that
+read absence as suspicion would refuse the whole history. Making this one line the exception would be a change to what a
 sidecar gate is, and that is not what an adopter's proposal about review prompts
 should be allowed to decide.
 
@@ -145,32 +147,36 @@ should be allowed to decide.
 - Whether a reviewer should be shown *what* changed. It should not: the
   reviewer is given a snapshot, not a repository, and the question it is being
   asked is about the work, not about the document's drafting.
-- Anything about the findings lane. A finding record is not judged against a
-  contract, and nothing here applies to it.
+- An exception for the findings lane. A findings-lane task has a contract —
+  [ADR-0009](ADR-0009-research-findings-lifecycle.md) D3 admits a task to that
+  lane *because* its contract declares no scope — and it is amended like any
+  other, so its reviews are handed the same rendering. What does not reach it
+  is the SHA reasoning above: a finding is bound to its artifacts rather than
+  to a candidate commit.
 
 ## Consequences
 
-The reviewer and the implementer both see, in the document they are given, that
-it was amended, when and why. A hand-edited history section becomes a refusal,
-which is a new way for an operator to be stopped; that is the price of the
-section being evidence rather than decoration.
+The reviewer and the implementer are both told that the contract was amended,
+when and why, in the material they are already handed. A task with no
+amendments has nothing to render, and nothing about it changes.
 
-`amend` now writes in two places instead of one, and the document it writes into
-is one an operator may also be editing. The command owns the section; an
-operator who edits it is refused by `validate` before the gate ever sees it.
+`amend` gains nothing and the contract document gains nothing, so there is no
+new way for an operator to be stopped and no second copy to keep in step. The
+prompt and the brief grow by a few lines per amendment, which is the whole cost.
 
-Old tasks are untouched, and new amendments carry the section. A journal that
-never amends anything gains no section and sees no new refusal, and the gate
-transcript for such a task is what it was. It does gain the new review-record
-field, which is the one part of this decision that reaches a journal with no
-amendments in it at all.
+The review record grows one optional field. That is the only part of this
+decision that reaches a journal which has never amended anything, and it puts
+no line in any transcript.
 
 ## Alternatives considered
 
-**Render the amendment records into the review prompt and nothing else.**
-Simplest, and it is what the reporter offered as the cheaper path. Rejected
-because it informs the reviewer alone: the implementer's brief, and every later
-reader of the contract, would still be handed a document with no history in it.
+**A maintained history section inside the contract document.** The reporter's
+preferred shape, and the first draft of this decision. Rejected once it was
+clear what holding it to the records would cost: a rendered section is a second
+copy, and nothing could check it without parsing prose, which
+[ADR-0004](ADR-0004-journal-data-model.md) D3 forbids a gate to do. An unchecked
+copy inside the document a reviewer judges against is worse than none, because
+it looks authoritative.
 
 **Require a review of every amendment.** Turns contract repair into a two-round
 process and would have made each of this project's 21 amendments a paid
