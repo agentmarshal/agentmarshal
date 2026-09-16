@@ -78,8 +78,10 @@ and is waiting for it, which is itself the subject of proposal 016.
 The recurring theme is what the tool leaves to the operator without saying so:
 preconditions it never states, a command contract discoverable only from source,
 a shipped template that is structurally red, and its own feedback channel with
-no transaction behind it. Two proposals, 020 and 022, describe defects this
-project also has in its own journal, and 022 changed the release plan.
+no transaction behind it. Four of the ten describe defects this project also has
+in its own repository — 017, 020, 022 and 023 — and a fifth, 019, describes a
+pattern we solved privately and never shipped. Two of them moved the release
+plan: 016 pulled it earlier, and 022 put a decision record in front of it.
 
 | # | Theme | Reporter | Disposition | Where |
 |---|---|---|---|---|
