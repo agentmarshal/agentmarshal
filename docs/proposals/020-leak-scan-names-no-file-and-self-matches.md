@@ -1,6 +1,6 @@
 # 020 — `leak-scan` reports a category but not the file, and a marker list matches its own declaration
 
-- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.3.0 · **Source:** `sha256:dc5f932d5e4712c56b87ee33e48bd9408b98d9c1c2f1d7d1719ced102b7491cb` · **Disposition:** accepted
+- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.3.0 · **Source:** `sha256:dc5f932d5e4712c56b87ee33e48bd9408b98d9c1c2f1d7d1719ced102b7491cb` · **Disposition:** accepted *(in part; the acknowledged-and-proceed path is deferred)*
 
 ## Finding
 
@@ -31,7 +31,7 @@ Measurements, as reported:
 - Artifacts that contained the markers: **4**, all of them captured review
   prompts quoting the same config diff.
 - Recovery cost: the transaction had to be completed outside the reporter's
-  tooling, with the reasoning written into the merge request by hand, because
+  tooling, with the reasoning written into the pull request by hand, because
   the command offers no way to record "reviewed, not a leak".
 
 ## Proposed

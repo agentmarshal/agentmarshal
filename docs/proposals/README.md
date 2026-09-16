@@ -43,11 +43,16 @@ A proposal you sent carries three things you can read from here without asking
 anyone.
 
 Its **source line** is the sha256 of the file you sent, as sent, in full and in
-lowercase hex, as every other digest in this project is written. It is a one-way
-digest: it identifies your original to you, who already hold it, and says
-nothing about its content to anyone else. Hash your outbox file and search this
-directory for the result, and you have your proposal whatever we numbered it and
-whatever we titled it.
+lowercase hex, as every other hash in this project is written. It is one-way: it
+identifies your original to you, who already hold it, and says nothing about its
+content to anyone else. Hash your outbox file, search this directory for the
+result, and you have your proposal whatever we numbered it and whatever we
+titled it.
+
+The source line begins with the batch of 2026-09-16. Proposals landed before it
+carry no hash, because the convention did not exist when they arrived; their
+reporters match them by title, and we will not retrofit hashes onto files whose
+originals may since have been edited.
 
 Its **disposition** is what we decided, with the reasoning.
 

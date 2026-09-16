@@ -1,6 +1,6 @@
 # 018 — `record-session` has no activity for a coordinating role, and no place for cost
 
-- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.3.0 · **Source:** `sha256:c0208b8f26d061716570ce9c2790d3fa7f3ec83c69050a36c83fedaea5164049` · **Disposition:** accepted
+- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.3.0 · **Source:** `sha256:c0208b8f26d061716570ce9c2790d3fa7f3ec83c69050a36c83fedaea5164049` · **Disposition:** accepted *(in part; the cost field is deferred)*
 
 ## Finding
 
