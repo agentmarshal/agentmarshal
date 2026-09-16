@@ -20,8 +20,8 @@ it is right.
 The reviewer is given the contract text and the diff. The prompt does not carry
 the amendment records. In an embedded journal they are inside the snapshot the
 reviewer works in — as of the reviewed commit, unsurfaced, and only if it thinks
-to go looking; in a sidecar the host snapshot holds no journal at all and they
-are not there in any form. Either way, a criterion written at open time and a
+to go looking; in a sidecar the snapshot is of the host, and the sidecar's
+journal is not in it, whatever journal of its own the host may carry. Either way, a criterion written at open time and a
 criterion added after two review rounds are byte-identical in the prompt.
 
 An adopter reported this with measurements
@@ -80,9 +80,10 @@ authoritative.
 
 ### 3. The gate is unchanged
 
-This decision adds no check and no line to the gate, in any placement and on
-any lane. What it changes is what the deciding party is *shown*, not what the
-gate refuses.
+This decision adds no check and no line to the gate. What it changes is what
+the deciding party is *shown*, not what the gate refuses. Whether a later task
+should add a line in a sidecar is a question this record leaves open below, not
+one it answers here.
 
 Nor does it add a refusal for an amendment recorded after a review. In an
 embedded journal that case is already covered: to be judged against an amended
@@ -115,6 +116,11 @@ The field is optional within its schema, and the case it is optional for is the
 human path: `submit-review` records a verdict without a prompt, so there is no
 contract the tool handed anyone and nothing it can honestly hash. An absence is
 never a violation and never a line anywhere.
+
+Where it earns its place is the sidecar. In an embedded journal the contract the
+reviewer saw is already fixed by `reviewed_commit`, which pins the tree the
+prompt read it from, so the hash mostly restates what the record already says;
+in a sidecar nothing else records which text was judged.
 
 Nothing reads it automatically. It is written for a reader who asks later which
 text a verdict was about — a person, a report over the journal, a measurement of
