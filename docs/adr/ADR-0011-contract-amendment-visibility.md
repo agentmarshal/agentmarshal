@@ -74,7 +74,11 @@ criterion is three days younger than the task.
 ### 3. The projection is checked against the records
 
 `validate` and the gate compare the history section against the task's
-amendment records, and refuse when they disagree, naming the task.
+amendment records. In an embedded journal a disagreement is a refusal, naming
+the task. In a sidecar it is an advisory line, as every check that placement
+makes about a host candidate is: a sidecar gate reports and decides no merge
+([ADR-0008](ADR-0008-journal-placements.md) D5), and this record does not
+change what a sidecar gate is.
 
 A visible history that nobody checks is a claim, not evidence. The record stays
 the evidence; the section is a rendering of it that does not drift past
@@ -82,9 +86,17 @@ the evidence; the section is a rendering of it that does not drift past
 
 Sides and absence, stated so no reader has to guess:
 
-- The gate reads the contract as it reads it today — from the merge-base tree
-  in an embedded journal, from the sidecar's working tree in a sidecar — and
-  the amendment records from the journal it is gating.
+- The two sides are not the same tree, and saying so matters. The gate reads
+  the contract as it reads it today: from the merge-base tree in an embedded
+  journal, from the sidecar's working tree in a sidecar. It reads the records
+  from the journal as the candidate leaves it, which in an embedded journal is
+  the candidate's own tree.
+- The gate compares them on the lane that reads a contract. The journal-only
+  lane does not read one, so the amendment transaction that writes the section
+  is checked by `validate` when it is written and by the gate on the next
+  candidate that carries a diff. That is the same shape as every other rule
+  about contract content, and it is stated here so no reader expects the
+  amendment's own transaction to be the thing that catches a bad section.
 - A contract with no amendment records needs no section, and its absence is
   not a finding.
 - An amendment is a journal-only transaction, and the document and the record
@@ -119,9 +131,9 @@ protect nothing that is not already protected.
 
 In a sidecar, where no SHA binds the contract, the gate compares the approving
 review's `reviewed_contract` with the contract it read and reports a mismatch
-**as an advisory line**, under the notice that already says every sidecar check
-is advisory. The exposure is real there, but a sidecar gate advises; it does
-not refuse. Making this one line the exception would be a change to what a
+**as an advisory line**, under the notice that already says a sidecar's checks
+are advisory and decide no merge. The exposure is real there, but on this lane a
+sidecar gate advises; it does not refuse. Making this one line the exception would be a change to what a
 sidecar gate is, and that is not what an adopter's proposal about review prompts
 should be allowed to decide.
 
@@ -147,15 +159,18 @@ section being evidence rather than decoration.
 is one an operator may also be editing. The command owns the section; an
 operator who edits it is refused by `validate` before the gate ever sees it.
 
-Old tasks are untouched. New amendments carry the section. A journal that never
-amends anything sees no change at all, and its transcripts stay byte-identical.
+Old tasks are untouched, and new amendments carry the section. A journal that
+never amends anything gains no section and sees no new refusal, and the gate
+transcript for such a task is what it was. It does gain the new review-record
+field, which is the one part of this decision that reaches a journal with no
+amendments in it at all.
 
 ## Alternatives considered
 
 **Render the amendment records into the review prompt and nothing else.**
 Simplest, and it is what the reporter offered as the cheaper path. Rejected
-because it informs exactly one consumer: the implementer's brief, and every
-future reader of the contract, would still see a document with no history.
+because it informs the reviewer alone: the implementer's brief, and every later
+reader of the contract, would still be handed a document with no history in it.
 
 **Require a review of every amendment.** Turns contract repair into a two-round
 process and would have made each of this project's 21 amendments a paid
