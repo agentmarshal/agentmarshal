@@ -1,0 +1,34 @@
+{
+  "advisory_findings": [
+    "adr0011-no-lane-sees-one-overbroad",
+    "adr0011-findings-lane-reads-a-contract",
+    "adr0011-transcript-unchanged-unsupported"
+  ],
+  "artifacts": [
+    {
+      "hash": "e81a6d63fad4081bb9b4ac758a26508b3c8bb5b06e240fc37b5e1358315de7d1",
+      "ref": ".agentmarshal/journal/tasks/CR-095/artifacts/01M2NDXTXDYKSPAKSV7GHN5SJF-review.md"
+    }
+  ],
+  "created_at": "2026-09-16T15:38:51.181779Z",
+  "findings": [
+    "adr0011-gate-parses-prose-section",
+    "adr0011-decision-only-note-missing",
+    "adr0011-sidecar-absent-reviewed-contract"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "5058d6e4080de209822c2adba722413be18c3408",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 3,
+  "source": "live",
+  "task": "CR-095",
+  "tool_version": "0.3.0",
+  "verdict": "changes_required"
+}

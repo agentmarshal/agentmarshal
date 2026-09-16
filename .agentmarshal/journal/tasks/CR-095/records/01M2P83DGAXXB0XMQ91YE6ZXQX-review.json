@@ -1,0 +1,32 @@
+{
+  "advisory_findings": [
+    "adr0011-embedded-field-redundancy-unstated",
+    "adr0011-unwrapped-lines"
+  ],
+  "artifacts": [
+    {
+      "hash": "58e1b1c6a5ecd57f4b33e901adb47c34faf0cda4be347066b7c1fd8452380c85",
+      "ref": ".agentmarshal/journal/tasks/CR-095/artifacts/01M2P83DGAXXB0XMQ91YE6ZXQX-review.md"
+    }
+  ],
+  "created_at": "2026-09-16T23:16:17.034456Z",
+  "findings": [
+    "adr0011-sidecar-host-holds-no-journal",
+    "adr0011-gate-any-placement-vs-left-open"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "2f72cb0b32e94a475b500ebf71b80c400deed815",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 3,
+  "source": "live",
+  "task": "CR-095",
+  "tool_version": "0.3.0",
+  "verdict": "changes_required"
+}

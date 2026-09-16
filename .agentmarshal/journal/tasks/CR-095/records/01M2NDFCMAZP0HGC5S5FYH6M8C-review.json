@@ -1,0 +1,33 @@
+{
+  "advisory_findings": [
+    "adr-0011-stale-completed-task-count",
+    "adr-0011-transcript-unchanged-overclaim"
+  ],
+  "artifacts": [
+    {
+      "hash": "e9a1a6bfe7a94c5f66faef5350f5885c80693350a46991e8b56916fe8f430700",
+      "ref": ".agentmarshal/journal/tasks/CR-095/artifacts/01M2NDFCMAZP0HGC5S5FYH6M8C-review.md"
+    }
+  ],
+  "created_at": "2026-09-16T15:30:57.802697Z",
+  "findings": [
+    "adr-0011-no-not-implemented-note",
+    "adr-0011-gate-parses-contract-prose",
+    "adr-0011-reviewed-contract-schema-unstated"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "5058d6e4080de209822c2adba722413be18c3408",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 3,
+  "source": "live",
+  "task": "CR-095",
+  "tool_version": "0.3.0",
+  "verdict": "changes_required"
+}

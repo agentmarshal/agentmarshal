@@ -1,0 +1,33 @@
+{
+  "advisory_findings": [
+    "decision-6-decides-what-it-titles-undecided",
+    "rendered-attribution-source-is-optional"
+  ],
+  "artifacts": [
+    {
+      "hash": "551ec5a0b95ba01f9441af492f51927977cb79c3ca57dc4414bba597fb70e7e4",
+      "ref": ".agentmarshal/journal/tasks/CR-095/artifacts/01M2NEQ3VDJG2N9PKJ0BA7FR4E-review.md"
+    }
+  ],
+  "created_at": "2026-09-16T15:52:39.533615Z",
+  "findings": [
+    "review-record-field-is-a-schema-change",
+    "amendment-records-read-side-unstated",
+    "gate-claim-broader-than-its-mechanism"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "f25bf73ba875613f11dac900662adca35aae2a2e",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 3,
+  "source": "live",
+  "task": "CR-095",
+  "tool_version": "0.3.0",
+  "verdict": "changes_required"
+}

@@ -1,0 +1,21 @@
+Разобрал ADR-0011 против контракта CR-095, трёх названных решений (ADR-0004, ADR-0006, ADR-0008) и фактического кода гейта/ревью и журнала.
+
+Что проверил по факту:
+- `gate.py:735-746` — контракт действительно читается из merge-base tree, в sidecar из рабочего дерева (`task.contract`); `review.py:347-366` — ревьюер читает контракт из снапшота reviewed commit. Утверждения Context'а точны.
+- журнал на reviewed commit: 22 amendment-записи в 19 задачах; без самой CR-095 — 21 запись в 18 задачах ✓. Завершённых задач — 92 (92 `-completed.json` в 92 разных задачах, 2 abandoned, CR-095 открыта).
+- ADR-0009 D4 действительно ограничивает исключение findings-lane, так что формулировка «every check that placement makes about a host candidate» в D3 держится.
+- Критерий 3 (что решение не решает + причины отказа у каждой альтернативы) выполнен полностью.
+
+**adr-0011-no-not-implemented-note** — `docs/adr/ADR-0011-contract-amendment-visibility.md:1-8`: у записи нет пометки «механизм не реализован этим документом», которую несут все три предшественника на той же позиции (ADR-0008:6-9, ADR-0009:6-9, ADR-0010:6-9), а весь текст написан в настоящем времени («`agentmarshal amend` appends an entry», «`validate` and the gate compare», «A review record carries `reviewed_contract`»). Сегодня `amend` (`cli.py:864-882`) пишет только запись и не трогает `contract.md`; читатель ADR получает описание несуществующего поведения как shipped. Контракт задачи сам говорит «This task lands the decision only».
+
+**adr-0011-gate-parses-contract-prose** — `docs/adr/ADR-0011-contract-amendment-visibility.md:74-85`: D3 заставляет гейт сравнивать секцию истории в теле markdown-документа с записями и отказывать при расхождении. ADR-0004 D3 (названное решение) говорит дословно: «prose renderings may accompany it for humans... **Gates never parse prose**», и его каталог отказов начинается с «a gate that parsed prose verdicts broke on a wording change». Сегодня `parse_contract_text` разбирает только TOML-заголовок, тело не читается ни гейтом, ни `validate`. ADR-0011 не признаёт это противоречие, не объявляет секцию машинно-читаемой и не говорит, кто владеет её форматом — при этом сам называет её «a rendering» (строка 84), тем же словом, которым ADR-0004 обозначает человеческий слой.
+
+**adr-0011-reviewed-contract-schema-unstated** — `docs/adr/ADR-0011-contract-amendment-visibility.md:109-117`: D4 вводит поле `reviewed_contract` в review-запись и отвечает только на обратную совместимость («its absence is never a violation»), но молчит о версии схемы. Валидатор записей fail-closed: `records.py:144` — `_SUPPORTED_SCHEMAS = frozenset({1,2,3,4})`, `records.py:224-227` — любое неизвестное поле отвергается («record has unsupported fields»). Значит запись с этим полем сегодня нечитаема целиком, а не «просто с лишним полем»; ADR-0004 в Consequences прямо описывает bump схемы как механизм, делающий такое расхождение легитимно читаемым как unsupported schema. Реализующая задача не может вывести из этого решения, при какой схеме поле пишется.
+
+**adr-0011-stale-completed-task-count** (advisory) — `docs/adr/ADR-0011-contract-amendment-visibility.md:26`: «21 amendment records across 18 of **91** completed tasks». Числа 21 и 18 на reviewed commit сходятся, а знаменатель устарел: в дереве 92 завершённые задачи (CR-094 завершена непосредственно перед открытием CR-095). Цифра перенесена из proposal 022 без пересчёта.
+
+**adr-0011-transcript-unchanged-overclaim** (advisory) — `docs/adr/ADR-0011-contract-amendment-visibility.md:162-164`: «the gate transcript for such a task is what it was» для журнала без поправок. Гейт печатает строку на каждую проверку, включая непроведённые («NOT EXAMINED: …» в `gate.py:780-783`), и ADR-0009 явно закрепляет это как конвенцию — «prints as *not examined, with the reason*». Новая проверка меняет транскрипт даже там, где сравнивать нечего; утверждение шире механизма.
+
+AGENTMARSHAL_VERDICT_BEGIN
+{"reviewed_commit": "5058d6e4080de209822c2adba722413be18c3408", "verdict": "changes_required", "findings": ["adr-0011-no-not-implemented-note", "adr-0011-gate-parses-contract-prose", "adr-0011-reviewed-contract-schema-unstated"], "advisory_findings": ["adr-0011-stale-completed-task-count", "adr-0011-transcript-unchanged-overclaim"]}
+AGENTMARSHAL_VERDICT_END

@@ -1,0 +1,32 @@
+{
+  "advisory_findings": [
+    "adr0011-schema-bump-cost-unstated",
+    "adr0011-reviewed-contract-read-side-thin"
+  ],
+  "artifacts": [
+    {
+      "hash": "8f80cd1b4e3bea5e0e108875d18a8f5791e3040713dae853cf7dffac00067ef5",
+      "ref": ".agentmarshal/journal/tasks/CR-095/artifacts/01M2NHSDV1F69FHV27EV4QMHD1-review.md"
+    }
+  ],
+  "created_at": "2026-09-16T16:46:21.025248Z",
+  "findings": [
+    "adr0011-answerable-today-overbroad",
+    "adr0011-sidecar-one-exception"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "a6b76dd83bd8a0dc46addfb902745f554506c1d1",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 3,
+  "source": "live",
+  "task": "CR-095",
+  "tool_version": "0.3.0",
+  "verdict": "changes_required"
+}
