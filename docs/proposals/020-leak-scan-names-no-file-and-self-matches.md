@@ -49,9 +49,11 @@ move is to stop reading the warning. Hits will name the file and the matched
 marker.
 
 The self-match is the better half of this finding, because it is a property of
-the design rather than of a configuration. It also lands close to home: this
-project now pins reviewer prose as journal evidence, so we have acquired exactly
-the shape the reporter describes. The scan will not report a hit whose only
+the design rather than of a configuration. It lands half-way home: this project
+now pins reviewer prose as journal evidence, which is one of the two conditions
+the reporter names, and declares no markers of its own, which is why it has not
+met the second. A repository that adds a marker to its project file acquires the
+defect the same day. The scan will not report a hit whose only
 occurrence is the declaration it was loaded from.
 
 The acknowledged-and-proceed path is deferred, and not for long. It is the right

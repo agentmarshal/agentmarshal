@@ -33,6 +33,10 @@ Every proposal carries one, with the reasoning:
   proposal keeps its file. Recording why something was refused is the point of
   the journal, and it applies to incoming proposals too.
 
+A proposal that asks for several things can carry one of these with the part we
+are not taking named in parentheses, as 018 and 020 do. The disposition section
+of the file itself always says which part is which.
+
 A disposition is our judgement, not a fact about the reporter's setup. Where we
 think a finding is out of the tool's scope we say so, and where a proposal
 changed our roadmap we say that too.
@@ -78,10 +82,11 @@ and is waiting for it, which is itself the subject of proposal 016.
 The recurring theme is what the tool leaves to the operator without saying so:
 preconditions it never states, a command contract discoverable only from source,
 a shipped template that is structurally red, and its own feedback channel with
-no transaction behind it. Four of the ten describe defects this project also has
-in its own repository — 017, 020, 022 and 023 — and a fifth, 019, describes a
-pattern we solved privately and never shipped. Two of them moved the release
-plan: 016 pulled it earlier, and 022 put a decision record in front of it.
+no transaction behind it. Four of the ten land close to home: 017, 022 and 023
+name defects this repository has, and 020 names one it would acquire the day it
+declared a marker of its own. A fifth, 019, describes a pattern we solved
+privately and never shipped. Two moved the release plan: 016 pulled it earlier,
+and 022 put a decision record in front of it.
 
 | # | Theme | Reporter | Disposition | Where |
 |---|---|---|---|---|
