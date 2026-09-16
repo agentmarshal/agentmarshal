@@ -1,0 +1,29 @@
+{
+  "advisory_findings": [
+    "ADV-014-ELAPSED-FIGURE-IMPLAUSIBLE",
+    "ADV-WRAP-EXCEEDS-EIGHTY"
+  ],
+  "artifacts": [
+    {
+      "hash": "1012a39a9973880efae5851284fcbcfe2f983a7ca93d55b75937f859d8054d55",
+      "ref": ".agentmarshal/journal/tasks/CR-094/artifacts/01M2NBTXJTXWVHDANJ6V099T4P-review.md"
+    }
+  ],
+  "created_at": "2026-09-16T15:02:18.458263Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "4d2adb0389d6efd5c7ae666f912f03cc2fe20413",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 3,
+  "source": "live",
+  "task": "CR-094",
+  "tool_version": "0.3.0",
+  "verdict": "approved"
+}
