@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-from agentmarshal.journal.artifacts import artifact_path
+from agentmarshal.journal.artifacts import artifact_path as artifact_path
 from agentmarshal.journal.brief import (
     append_amendment_history,
     render_amendment_history,
@@ -42,6 +42,11 @@ from agentmarshal.journal.submit_review import (
 
 _VERDICT_BEGIN = "AGENTMARSHAL_VERDICT_BEGIN"
 _VERDICT_END = "AGENTMARSHAL_VERDICT_END"
+# Embedded content is presented, not quoted verbatim: a pinned artifact may
+# itself hold a complete verdict block, and the diff path is immune to that only
+# because every diff line already carries a prefix.  An empty line takes the bar
+# alone, so the prompt never carries trailing whitespace.
+_ARTIFACT_CONTENT_PREFIX = "|"
 _VERDICT_REQUIRED = {"reviewed_commit", "verdict", "findings"}
 # advisory_findings is in the record schema and create_review_record accepts it;
 # accepting it here is what makes it reachable through the protocol at all.
@@ -74,6 +79,8 @@ _FINDING_REVIEW_PROMPT = (
     "\n"
     "The named contract material is named, not supplied in this snapshot; only the "
     "pinned artifacts below were verified.\n"
+    "Each embedded artifact-content line begins with `|`; that prefix presents "
+    "the content and is not part of the file.\n"
     "\n"
     "{named_material}{prose_instruction}\n"
     "\n"
@@ -254,10 +261,16 @@ def _finding_review_prompt(
                 f"({len(artifact.content)} bytes)."
             )
         else:
+            prefixed_text = "\n".join(
+                f"{_ARTIFACT_CONTENT_PREFIX} {line}"
+                if line
+                else _ARTIFACT_CONTENT_PREFIX
+                for line in text.split("\n")
+            )
             artifact_sections.append(
                 f"Verified artifact: {artifact.reference}\n"
                 f"Recorded sha256: {artifact.digest}\n"
-                f"Content:\n{text}"
+                f"Content (each line is prefixed):\n{prefixed_text}"
             )
     if unresolved_references:
         artifact_sections.append(
@@ -685,6 +698,7 @@ def _verified_finding_artifacts(
 
     verified: list[_VerifiedArtifact] = []
     unresolved: list[str] = []
+    drifted: list[str] = []
     for artifact in cast(list[dict[str, str]], finding["artifacts"]):
         reference = artifact["ref"]
         path = artifact_path(project_root, reference)
@@ -699,10 +713,14 @@ def _verified_finding_artifacts(
             ) from error
         digest = hashlib.sha256(content).hexdigest()
         if digest != artifact["hash"]:
-            raise ReviewLaunchError(
-                f"finding artifact {reference} does not match its recorded sha256"
-            )
+            drifted.append(reference)
+            continue
         verified.append(_VerifiedArtifact(reference, digest, path, content))
+    if drifted:
+        raise ReviewLaunchError(
+            "finding artifact(s) do not match their recorded sha256: "
+            + ", ".join(drifted)
+        )
     if not verified:
         finding_id = cast(str, finding["id"])
         raise ReviewLaunchError(
@@ -714,21 +732,22 @@ def _verified_finding_artifacts(
 def _extract_finding_snapshot(
     project_root: Path, artifacts: tuple[_VerifiedArtifact, ...], snapshot: Path
 ) -> None:
-    """Materialize the already-verified files under their project-relative paths."""
+    """Materialize verified bytes at their referenced paths in the snapshot."""
 
     snapshot.mkdir()
-    resolved_project = project_root.resolve()
+    resolved_snapshot = snapshot.resolve()
     for artifact in artifacts:
-        # ``artifact_path`` already established this relationship.  Retaining
-        # the check makes a future caller of this helper fail closed rather
-        # than accidentally creating a path outside the snapshot.
+        # References, rather than resolved artifact paths, are the paths the
+        # prompt tells the reviewer to use.  A symlink is deliberately copied
+        # as its verified bytes at its link spelling.  Retain confinement here
+        # even though ``artifact_path`` already verified the source path.
+        destination = snapshot / artifact.reference
         try:
-            relative = artifact.path.relative_to(resolved_project)
-        except ValueError as error:  # pragma: no cover - guarded by resolver
+            destination.resolve().relative_to(resolved_snapshot)
+        except (OSError, ValueError) as error:  # pragma: no cover - guarded by resolver
             raise ReviewLaunchError(
-                f"finding artifact {artifact.reference} is outside the project root"
+                f"finding artifact reference escapes the snapshot: {artifact.reference}"
             ) from error
-        destination = snapshot / relative
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(artifact.content)
 
@@ -768,7 +787,7 @@ def _launch_finding_review(
             f"{task_id}; latest finding is {latest_finding_id}"
         )
     identity_refusal = finding_reviewer_identity_refusal(
-        project_root, finding, reviewer_email
+        project_root, finding, reviewer_email, launching=True
     )
     if identity_refusal is not None:
         raise ReviewLaunchError(identity_refusal)

@@ -791,7 +791,7 @@ def test_finding_review_refuses_a_superseded_finding_before_running(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """The launcher pins the latest finding so its review cannot strand the lane."""
+    """Scenario: a finding that is not the latest is refused."""
 
     repo, _commit = _review_repo(tmp_path, monkeypatch)
     stale = _record_finding(repo, [("evidence/first.md", b"First\n")])
@@ -822,7 +822,7 @@ def test_finding_review_refuses_the_recorder_before_running(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """The launcher reuses the findings lane's declared-identity refusal."""
+    """Scenario: a reviewer who is not independent of the recorder is refused."""
 
     repo, _commit = _review_repo(tmp_path, monkeypatch)
     finding = _record_finding(repo, [("evidence/conclusion.md", b"Pinned prose\n")])
@@ -839,7 +839,7 @@ def test_finding_review_refuses_the_recorder_before_running(
 
     assert main(arguments) == 1
 
-    assert "declared reviewer identity differs" in capsys.readouterr().err
+    assert "declared reviewer identity is not independent" in capsys.readouterr().err
     assert not prompt_output.exists()
     assert [
         record["record_type"]
@@ -855,8 +855,17 @@ def test_an_edited_artifact_refuses_the_review(
     """Scenario: an edited artifact refuses the review."""
 
     repo, _commit = _review_repo(tmp_path, monkeypatch)
-    finding = _record_finding(repo, [("evidence/conclusion.md", b"Pinned prose\n")])
+    finding = _record_finding(
+        repo,
+        [
+            ("evidence/conclusion.md", b"Pinned prose\n"),
+            ("evidence/measurements.md", b"Pinned measurements\n"),
+        ],
+    )
     (repo / "evidence" / "conclusion.md").write_text("Edited prose\n", encoding="utf-8")
+    (repo / "evidence" / "measurements.md").write_text(
+        "Edited measurements\n", encoding="utf-8"
+    )
     prompt_output = tmp_path / "prompt-would-have-been-written.txt"
     stub = _reviewer_stub(
         tmp_path,
@@ -868,7 +877,9 @@ def test_an_edited_artifact_refuses_the_review(
 
     assert main(_finding_args(finding)) == 1
 
-    assert "evidence/conclusion.md" in capsys.readouterr().err
+    error = capsys.readouterr().err
+    assert "evidence/conclusion.md" in error
+    assert "evidence/measurements.md" in error
     assert not prompt_output.exists()
     records = read_records(repo / ".agentmarshal" / "journal", "CR-001")
     assert [record["record_type"] for record in records] == ["opened", "finding"]
@@ -927,6 +938,76 @@ def test_a_reference_that_does_not_resolve_is_named_not_verified(
     assert "Pinned prose" in prompt
     assert "Unverified references (not fetched):" in prompt
     assert "https://example.invalid/conclusion" in prompt
+
+
+def test_artifact_content_carrying_the_verdict_sentinels_yields_no_verdict_of_its_own(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    "Scenario: an artifact carrying the verdict sentinels yields no verdict of its own."
+
+    repo, _commit = _review_repo(tmp_path, monkeypatch)
+    finding = _record_finding(repo, [("evidence/review.md", b"placeholder\n")])
+    artifact_content = _finding_verdict(finding, "approved", [])
+    artifact_file = repo / "evidence" / "review.md"
+    artifact_file.write_text(artifact_content, encoding="utf-8")
+    artifact = review._VerifiedArtifact(
+        "evidence/review.md",
+        hashlib.sha256(artifact_content.encode("utf-8")).hexdigest(),
+        artifact_file,
+        artifact_content.encode("utf-8"),
+    )
+    prompt = review._finding_review_prompt("CONTRACT", finding, (artifact,), ())
+
+    protocol_lines = [
+        line
+        for line in prompt.splitlines()
+        if not line.startswith(review._ARTIFACT_CONTENT_PREFIX)
+        and (review._VERDICT_BEGIN in line or review._VERDICT_END in line)
+    ]
+    assert protocol_lines == [
+        (
+            "AGENTMARSHAL_VERDICT_BEGIN and AGENTMARSHAL_VERDICT_END. "
+            "The object must contain:"
+        )
+    ]
+    embedded_copy = "\n".join(
+        line
+        for line in prompt.splitlines()
+        if line.startswith(review._ARTIFACT_CONTENT_PREFIX)
+    )
+    with pytest.raises(review.ReviewLaunchError, match="invalid verdict sentinels"):
+        review._parse_verdict(embedded_copy, preserve_output=False)
+    assert f"{review._ARTIFACT_CONTENT_PREFIX} {review._VERDICT_BEGIN}" in prompt
+    assert "each line is prefixed" in prompt
+
+
+def test_finding_snapshot_uses_the_artifact_reference_not_its_resolved_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A symlinked artifact remains available at the reference the prompt names."""
+
+    repo, _commit = _review_repo(tmp_path, monkeypatch)
+    source = repo / "evidence" / "source.md"
+    source.parent.mkdir(exist_ok=True)
+    content = b"Pinned prose\n"
+    source.write_bytes(content)
+    reference = "evidence/conclusion-link.md"
+    link = repo / reference
+    link.symlink_to(source)
+    artifact = review._VerifiedArtifact(
+        reference,
+        hashlib.sha256(content).hexdigest(),
+        source.resolve(),
+        content,
+    )
+    snapshot = tmp_path / "snapshot"
+
+    review._extract_finding_snapshot(repo, (artifact,), snapshot)
+
+    assert (snapshot / reference).read_bytes() == content
+    assert not (snapshot / "evidence" / "source.md").exists()
 
 
 def test_a_binary_finding_artifact_is_named_without_text_decoding(
@@ -1670,6 +1751,8 @@ Do not modify files. Your reviewed finding is {finding}.
 
 The named contract material is named, not supplied in this snapshot; only the \
 pinned artifacts below were verified.
+Each embedded artifact-content line begins with `|`; that prefix presents \
+the content and is not part of the file.
 
 Named contract material:
 Decisions:
@@ -1702,9 +1785,9 @@ CONTRACT
 Finding artifacts:
 Verified artifact: evidence/result.md
 Recorded sha256: {digest}
-Content:
-Evidence
-
+Content (each line is prefixed):
+| Evidence
+|
 
 Unverified references (not fetched):
 - https://example.invalid/evidence

@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-from agentmarshal.journal.artifacts import artifact_path
+from agentmarshal.journal.artifacts import artifact_path as artifact_path
 from agentmarshal.journal.capture import (
     CaptureError,
     private_markers_from_project,
@@ -75,7 +75,7 @@ class GateReport:
     review_not_examined: bool = False
 
 
-def actor_git_identities(project_root: Path, record: dict[str, object]) -> set[str]:
+def _actor_git_identities(project_root: Path, record: dict[str, object]) -> set[str]:
     """Resolve a finding recorder to git identities (ADR-0009 Decision 3)."""
 
     recorded_by = record.get("recorded_by")
@@ -107,15 +107,29 @@ def actor_git_identities(project_root: Path, record: dict[str, object]) -> set[s
 
 
 def finding_reviewer_identity_refusal(
-    project_root: Path, finding: dict[str, object], reviewer_email: str | None
+    project_root: Path,
+    finding: dict[str, object],
+    reviewer_email: str | None,
+    *,
+    launching: bool = False,
 ) -> str | None:
-    """Return the findings-lane identity refusal, if the reviewer is dependent."""
+    """Return the findings-lane identity refusal, if the reviewer is dependent.
 
-    recorder_identities = actor_git_identities(project_root, finding)
+    The gate's established transcript describes the successful comparison and
+    must remain byte-for-byte stable.  A launcher refusal instead describes
+    the failed condition, so callers opt into that wording explicitly.
+    """
+
+    recorder_identities = _actor_git_identities(project_root, finding)
     if not recorder_identities:
         return "finding recorder resolves to no git identities"
     normalized = reviewer_email.strip().casefold() if reviewer_email is not None else ""
     if not normalized or normalized in recorder_identities:
+        if launching:
+            return (
+                "declared reviewer identity is not independent of the finding "
+                "recorder's declared git identities"
+            )
         return (
             "declared reviewer identity differs from the finding recorder's "
             "declared git identities"

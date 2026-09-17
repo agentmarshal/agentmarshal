@@ -7,8 +7,8 @@ holds when the review is read.
 ## ADDED Requirements
 
 ### Requirement: A review can be launched against a finding
-The review launcher SHALL accept a finding of the same task in place of a
-commit, and the review it records SHALL name that finding and no commit. The
+The review launcher SHALL accept the latest finding of the same task in place of
+a commit, and the review it records SHALL name that finding and no commit. The
 verdict the reviewer prints SHALL name the finding it judged, and a verdict
 naming a different finding — or a commit — SHALL be refused without a record.
 
@@ -47,6 +47,38 @@ nothing verifiable to review.
   project root
 - **THEN** the reviewer is given the verified ones, and the prompt names each
   reference that could not be verified
+
+### Requirement: The launcher refuses before it spends a reviewer run
+The launcher SHALL refuse, without running the reviewer, a finding that is not
+the task's latest and a reviewer whose declared identity is not independent of
+the finding's recorder. Both are conditions the findings lane refuses after the
+fact, and a review recorded under either cannot be withdrawn from an
+append-only journal.
+
+#### Scenario: a finding that is not the latest is refused
+- **WHEN** a review is launched against a finding of the task that a later
+  finding supersedes
+- **THEN** no reviewer is run, no review is recorded, and the refusal names the
+  latest finding
+
+#### Scenario: a reviewer who is not independent of the recorder is refused
+- **WHEN** the declared reviewer identity is one of the finding recorder's
+  declared git identities, or the recorder resolves to no git identity at all
+- **THEN** no reviewer is run, no review is recorded, and the refusal gives the
+  reason the findings lane would give
+
+### Requirement: Artifact content cannot introduce a verdict
+Artifact content the prompt carries SHALL be presented so that no line of it
+can be read as the verdict protocol's own output: the protocol's sentinels
+occur in the prompt only where the launcher put them. The prompt SHALL say how
+the content is presented, so a reviewer does not report the presentation as
+part of the content.
+
+#### Scenario: an artifact carrying the verdict sentinels yields no verdict of its own
+- **WHEN** a pinned artifact's content contains the verdict sentinels and a
+  complete verdict block at the start of a line
+- **THEN** the built prompt contains no sentinel line outside the protocol's
+  own instruction, and the embedded copy cannot be parsed as a verdict
 
 ### Requirement: The commit path is unchanged
 The prompt, the snapshot and the recorded fields of a review launched against a

@@ -73,6 +73,23 @@ that stands in for it.
   reviewer, reusing the gate's identity resolution and refusal wording, so an
   append-only review record cannot be created for evidence the lane must deny.
 
+- **Embedded artifact content is prefixed, because the diff path is immune by
+  accident and this one would not be.** Every line of a diff carries `+`, `-`
+  or a space, so a verdict sentinel copied from a source file never reaches
+  column zero. A finding's artifact is embedded as itself, and a pinned file
+  containing a complete verdict block naming the finding under review would
+  hand the reviewer one valid block to echo — an approval nobody gave. Each
+  embedded line therefore carries a fixed prefix, the prompt says so, and the
+  sentinels appear in the prompt only where the launcher writes them.
+  Withholding such content instead was the alternative; it would make exactly
+  our own review prose and measurement logs unreviewable, which is the
+  material this path exists for.
+- **The two pre-run refusals are requirements, not implementation details.**
+  The published capability said the launcher accepts a finding of the task,
+  while the code refuses two classes of them. A spec that claims more than the
+  code does is the defect this project keeps finding in its own documents, so
+  the refusals are specified and each carries a scenario.
+
 ## Risks
 
 - [A reviewer reading pinned research prose reads private material] → the
