@@ -81,8 +81,6 @@ _FINDING_REVIEW_PROMPT = (
     "Finding claim:\n"
     "{summary}\n"
     "\n"
-    "The named contract material is named, not supplied in this snapshot; only the "
-    "pinned artifacts below were verified.\n"
     "Each embedded artifact-content line begins with `{content_prefix}`; that "
     "prefix presents the content and is not part of the file.\n"
     "\n"
@@ -129,12 +127,19 @@ def _named_contract_material(
     absent_extensions: tuple[str, ...],
     *,
     absent_extensions_phrase: str,
+    preamble: str = "",
 ) -> str:
-    """Render the contract names shared by commit and finding review prompts."""
+    """Render the contract names shared by commit and finding review prompts.
+
+    ``preamble`` is said only when there is material to say it about: a
+    research task usually names none, and telling a reviewer that unsupplied
+    material exists invites a finding about its absence.
+    """
 
     if not (decisions or documents or absent_extensions):
         return ""
-    lines = ["Named contract material:"]
+    lines = [preamble] if preamble else []
+    lines.append("Named contract material:")
     if decisions:
         lines.append("Decisions:")
         lines.extend(f"- {decision}" for decision in decisions)
@@ -270,11 +275,17 @@ def _finding_review_prompt(
                 f"({len(artifact.content)} bytes)."
             )
         else:
+            # splitlines(), not split("\n"): the verdict parser reads lines
+            # the way str.splitlines() does, so content separated by a lone
+            # \r — a measurement log with progress output — would otherwise
+            # arrive as one prefixed chunk with unprefixed sentinel lines
+            # inside it. The terminators are normalised in the presentation;
+            # the recorded hash is what pins the bytes.
             prefixed_text = "\n".join(
                 f"{_ARTIFACT_CONTENT_PREFIX} {line}"
                 if line
                 else _ARTIFACT_CONTENT_PREFIX
-                for line in text.split("\n")
+                for line in text.splitlines()
             )
             artifact_sections.append(
                 artifact_heading + f"Recorded sha256: {artifact.digest}\n"
@@ -296,6 +307,10 @@ def _finding_review_prompt(
             absent_extensions,
             absent_extensions_phrase=(
                 "Extensions whose manifest is absent in the project:"
+            ),
+            preamble=(
+                "The named contract material below is named, not supplied in "
+                "this snapshot; only the pinned artifacts were verified."
             ),
         ),
         prose_instruction=_prose_instruction(),
@@ -775,8 +790,17 @@ def _extract_finding_snapshot(
             raise ReviewLaunchError(
                 f"finding artifact reference escapes the snapshot: {artifact.reference}"
             ) from error
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_bytes(artifact.content)
+        try:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(artifact.content)
+        except OSError as error:
+            # Same class as the manifest failure this task already closed: an
+            # I/O error here left `launch_review` as a bare OSError, and the
+            # CLI catches only ReviewLaunchError.
+            raise ReviewLaunchError(
+                f"finding artifact {artifact.reference} could not be placed in "
+                f"the review snapshot: {error}"
+            ) from error
 
 
 def _launch_finding_review(
