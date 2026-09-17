@@ -922,7 +922,12 @@ def test_a_closed_task_is_refused_before_running(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """a launched review on a closed task runs no reviewer."""
+    """Scenario: a launched review on a closed task runs no reviewer.
+
+    Scenario: a closed task is refused — the findings-review capability states
+    that rule for the finding binding, and this is its test. The
+    record-lifecycle scenario above states it for both bindings; one test body
+    holds both claims for the finding path."""
 
     repo, _commit = _review_repo(tmp_path, monkeypatch)
     finding = _record_finding(repo, [("evidence/conclusion.md", b"Pinned prose\n")])
@@ -951,7 +956,9 @@ def test_a_closed_commit_review_is_refused_before_running(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """a launched review on a closed task runs no reviewer."""
+    """Scenario: a launched review on a closed task runs no reviewer.
+
+    The commit binding of the same rule."""
 
     repo, commit = _review_repo(tmp_path, monkeypatch)
     assert main(["abandon", "--task", "CR-001", "--reason", "Superseded"]) == 0

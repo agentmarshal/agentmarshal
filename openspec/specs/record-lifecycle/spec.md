@@ -42,10 +42,14 @@ and every other record makes the task unreadable from then on.
   completed task
 - **THEN** each one refuses, and none of them leaves a record behind
 
-### Requirement: The launcher refuses before it spends a reviewer run
+### Requirement: A closed task costs no reviewer run
 A review launched against a closed task SHALL be refused before the configured
-reviewer is run, so a closed task costs no reviewer run to discover.
+reviewer is run, for every binding the launcher accepts. The `findings-review`
+capability already requires this of a review bound to a finding; the lifecycle
+rule is the same one and holds for a commit review too, so neither binding
+spends a run to discover a state the journal already knows.
 
 #### Scenario: a launched review on a closed task runs no reviewer
-- **WHEN** `review` is launched for a task that has completed
+- **WHEN** `review` is launched for a task that has completed or been
+  abandoned, with either binding
 - **THEN** no reviewer process is started and no record is written
