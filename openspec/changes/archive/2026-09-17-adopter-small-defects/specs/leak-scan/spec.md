@@ -1,13 +1,18 @@
 ## ADDED Requirements
 
 ### Requirement: A leak-scan hit names where it matched and what matched
-A leak-scan hit SHALL name the file it matched in and what matched: the
-signature's own identifier for a built-in signature, and the configured
-marker's position in the project's marker list for a private marker. It SHALL
-NOT print the matched text, nor the marker's value: a private marker is itself
-the sensitive string, which is why it is named by position. A path that itself
-contains a configured marker SHALL NOT be printed either, and SHALL be
-described in the same way the marker is.
+A hit from the added-content scan SHALL name the file it matched in and what
+matched: the signature's own identifier for a built-in signature, and the
+configured marker's position in the project's marker list for a private
+marker. It SHALL NOT print the matched text, nor the marker's value: a private
+marker is itself the sensitive string, which is why it is named by position. A
+path that carries a secret SHALL NOT be printed either — neither one
+containing a configured marker nor one matching a built-in signature — and
+SHALL be described the way that marker or signature is named.
+
+The scan that refuses one captured artefact reports the categories it matched
+and no location: the caller named the artefact it offered, so there is no file
+to add.
 
 #### Scenario: a built-in signature names its file and itself
 - **WHEN** the scan matches a built-in signature in an added line
@@ -23,6 +28,16 @@ described in the same way the marker is.
 - **WHEN** the file a hit matched in has a path containing a configured marker
 - **THEN** the rendering describes the path by that marker's position and the
   marker's value appears nowhere in the output
+
+#### Scenario: a path that is itself a key is described, not printed
+- **WHEN** the file a hit matched in has a path that matches a built-in
+  signature
+- **THEN** the rendering describes the path by that signature's name and the
+  characters that matched appear nowhere in the output
+
+#### Scenario: an artefact refusal reports what matched, not where
+- **WHEN** the scan refuses one captured artefact
+- **THEN** the refusal names the categories that matched and names no file
 
 #### Scenario: the merge boundary reports the same detail
 - **WHEN** the gate's added-content scan finds a hit

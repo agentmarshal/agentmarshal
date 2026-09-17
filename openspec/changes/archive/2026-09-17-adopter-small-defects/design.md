@@ -25,6 +25,26 @@ string written by `project.py` at `init`.
   command's own output is read by callers that parse it. It goes beside the
   rejected-verdict copies, outside any journal, and the path is named — the
   shape CR-097 settled for the dry run.
+- **Keeping it is best effort, so the failure is a sentence, not a refusal.**
+  The launcher carries a note rather than a path: either where the bytes were
+  kept or why they could not be. A verdict the reviewer produced and the
+  journal can hold is never discarded because a temporary file could not be
+  written.
+- **A path can be the secret in two ways, and both are described.** A path may
+  contain a configured marker, and a file may be named after the key a
+  built-in signature matches. Both are replaced by a description that names the
+  marker's position or the signature — never the characters. Naming a
+  signature discloses nothing; printing what it matched would.
+- **One spelling of the project file.** The path whose occurrences the
+  self-match rule ignores is a single constant in `project.py`. The renderer
+  was unified so the two call sites cannot drift in what they print; the
+  suppression key is unified for the same reason, so they cannot drift in what
+  they drop.
+- **Two output shapes, and the capability says so.** The added-content scan
+  returns hit records that name a file, because it was given a diff of many.
+  The artefact refusal keeps its category list: it was handed one artefact the
+  caller already names, and widening it would change a refusal message every
+  capture path depends on.
 - **The outbox README gains a sentence and a pathspec.** Proposal 023 lists
   three fixes and asks for the cheapest first; the command it also proposes is a
   release later. The sentence is what would have prevented all eight of the

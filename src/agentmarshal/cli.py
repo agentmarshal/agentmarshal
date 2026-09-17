@@ -67,6 +67,7 @@ from agentmarshal.journal.submit_review import ReviewSubmitError, submit_review
 from agentmarshal.journal.validate import validate_journal
 from agentmarshal.migrate import JournalMigrationError, migrate_journal
 from agentmarshal.project import (
+    PROJECT_CONFIG_RELPATH,
     AgentMarshalProjectError,
     AlreadyInitializedError,
     find_git_root,
@@ -671,7 +672,7 @@ def _run_review(args: argparse.Namespace, stderr: TextIO) -> int:
         if placement is None:
             return 1
         try:
-            tree, diagnostics_path = dry_run_review(placement.host_root, args.model)
+            tree, diagnostics_note = dry_run_review(placement.host_root, args.model)
         except ReviewLaunchError as error:
             print(f"dry run failed: {error}", file=stderr)
             return 1
@@ -679,8 +680,8 @@ def _run_review(args: argparse.Namespace, stderr: TextIO) -> int:
             f"dry run: the command ran against {tree}; its output has a "
             "parseable verdict; nothing was recorded"
         )
-        if diagnostics_path is not None:
-            print(f"reviewer diagnostics kept at {diagnostics_path}", file=stderr)
+        if diagnostics_note is not None:
+            print(diagnostics_note, file=stderr)
         return 0
     if args.reviewed_finding is not None:
         print(
@@ -724,8 +725,8 @@ def _run_review(args: argparse.Namespace, stderr: TextIO) -> int:
         # The record pins the reasoning; say where, on stderr, so stdout
         # stays the record path a caller can read.
         print(f"reviewer prose pinned: {submitted.artifact_ref}", file=stderr)
-    if submitted.diagnostics_path is not None:
-        print(f"reviewer diagnostics kept at {submitted.diagnostics_path}", file=stderr)
+    if submitted.diagnostics_note is not None:
+        print(submitted.diagnostics_note, file=stderr)
     print(submitted.record_path)
     return 0
 
@@ -1291,7 +1292,7 @@ def _run_leak_scan(args: argparse.Namespace, stderr: TextIO) -> int:
     hits = scan_diff_for_leaks(
         diff_text,
         markers,
-        config_path="" if sidecar_config is not None else ".agentmarshal/project.json",
+        config_path="" if sidecar_config is not None else PROJECT_CONFIG_RELPATH,
     )
     if hits:
         print(

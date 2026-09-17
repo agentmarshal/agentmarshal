@@ -37,6 +37,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from types import MappingProxyType
 
+from agentmarshal.project import PROJECT_CONFIG_RELPATH
+
 
 class CaptureError(ValueError):
     """Raised when a capture policy is malformed."""
@@ -274,9 +276,6 @@ _LEAK_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 )
 
 
-_PROJECT_CONFIG_PATH = ".agentmarshal/project.json"
-
-
 @dataclass(frozen=True, order=True)
 class LeakHit:
     """One location-safe leak-scan result.
@@ -286,9 +285,10 @@ class LeakHit:
     matched text or a marker value.
 
     Neither does ``path``: a repository can have a directory named after an
-    internal host, so a path may contain a marker, and naming the file would
-    disclose what naming the marker refused to. Such a path is replaced by
-    :func:`safe_path`, which says what it cannot say.
+    internal host, and a file can be named after the very key a signature
+    matches, so a path can be the secret. Naming such a file would disclose
+    what naming the marker or withholding the matched text refused to. Those
+    paths are replaced by :func:`safe_path`, which says what it cannot say.
     """
 
     path: str
@@ -296,11 +296,19 @@ class LeakHit:
 
 
 def safe_path(path: str, private_markers: tuple[str, ...]) -> str:
-    """Return *path*, or a description of it when it carries a marker."""
+    """Return *path*, or a description of it when it carries a secret.
+
+    A configured marker is named by position and a built-in signature by its
+    own identifier, exactly as in ``identification``: the description says
+    what the path carries and never the characters it carries.
+    """
 
     for index, marker in enumerate(private_markers, start=1):
         if marker and marker in path:
             return f"<a path containing private marker #{index}>"
+    for category, pattern in _LEAK_PATTERNS:
+        if pattern.search(path):
+            return f"<a path matching {category}>"
     return path
 
 
@@ -381,7 +389,7 @@ def scan_diff_for_leaks(
     unified_diff: str,
     private_markers: tuple[str, ...] = (),
     *,
-    config_path: str = _PROJECT_CONFIG_PATH,
+    config_path: str = PROJECT_CONFIG_RELPATH,
 ) -> list[LeakHit]:
     """Return location-safe leak hits from the *added* lines of a unified diff.
 

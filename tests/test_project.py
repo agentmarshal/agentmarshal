@@ -18,4 +18,6 @@ def test_outbox_readme_excludes_non_evidence_from_journal_staging(
     readme = (outbox / "README.md").read_text(encoding="utf-8")
     assert "not journal evidence" in readme
     assert "git add .agentmarshal/journal" in readme
-    assert ":(exclude).agentmarshal/upstream/**" in readme
+    assert "git add .agentmarshal ':(exclude).agentmarshal/upstream/**'" in readme, (
+        "the pathspec is given as a runnable command: its parentheses need quoting"
+    )

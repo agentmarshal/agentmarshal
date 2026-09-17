@@ -16,6 +16,10 @@ JsonObject = dict[str, object]
 
 PROJECT_DIR_NAME = ".agentmarshal"
 PROJECT_FILE_NAME = "project.json"
+# The project file as a repository-relative path: the one spelling every
+# caller that has to recognise it in a diff shares, so the leak scan's
+# self-match suppression cannot key on a different file than the gate does.
+PROJECT_CONFIG_RELPATH = f"{PROJECT_DIR_NAME}/{PROJECT_FILE_NAME}"
 
 
 class AgentMarshalProjectError(Exception):
@@ -232,7 +236,8 @@ sent upstream as a batch.
 
 This outbox is **not journal evidence**. Stage journal evidence with
 `git add .agentmarshal/journal`; if staging `.agentmarshal`, exclude this
-outbox with the pathspec `:(exclude).agentmarshal/upstream/**`.
+outbox: `git add .agentmarshal ':(exclude).agentmarshal/upstream/**'`. The
+quotes are part of the command — the parentheses are shell metacharacters.
 
 An adopter on a pinned release never patches the tool locally, so everything
 noticed about it has exactly one addressee. Without a place to put it, a finding

@@ -88,7 +88,7 @@ class LaunchedReview:
 
     record_path: Path
     artifact_ref: str | None
-    diagnostics_path: Path | None
+    diagnostics_note: str | None
 
 
 def _run_git(project_root: Path, arguments: list[str]) -> str:
@@ -324,25 +324,31 @@ def _preserve_reviewer_diagnostics(output: bytes) -> Path:
     return Path(name)
 
 
-def _keep_diagnostics(output: bytes) -> Path | None:
-    """Keep nonempty successful-command stderr, or leave silence silent."""
+def _keep_diagnostics(output: bytes) -> str | None:
+    """Say where nonempty successful-command stderr went, or leave silence silent.
+
+    Preservation is best effort and this is where that is decided: the note
+    says where the bytes were kept, or that they could not be kept and why.
+    A verdict the reviewer already produced is never discarded because a
+    temporary file could not be written — the operator is told instead, the
+    way :func:`_reject` degrades when it cannot keep raw output.
+    """
 
     if not output:
         return None
     try:
-        return _preserve_reviewer_diagnostics(output)
-    except OSError as error:  # pragma: no cover - preservation is best effort
-        raise ReviewLaunchError(
-            f"reviewer diagnostics could not be kept: {error}"
-        ) from error
+        kept = _preserve_reviewer_diagnostics(output)
+    except OSError as error:
+        return f"reviewer diagnostics could not be kept: {error}"
+    return f"reviewer diagnostics kept at {kept}"
 
 
-def _with_diagnostics(error: ReviewLaunchError, path: Path | None) -> ReviewLaunchError:
-    """Name kept zero-exit diagnostics on every later rejection path."""
+def _with_diagnostics(error: ReviewLaunchError, note: str | None) -> ReviewLaunchError:
+    """Carry the zero-exit diagnostics note on every later rejection path."""
 
-    if path is None:
+    if note is None:
         return error
-    return ReviewLaunchError(f"{error}; reviewer diagnostics kept at {path}")
+    return ReviewLaunchError(f"{error}; {note}")
 
 
 def _reject(
@@ -449,7 +455,7 @@ def _extract_snapshot(project_root: Path, commit: str, snapshot: Path) -> None:
 
 def dry_run_review(
     project_root: Path, reviewer_model: str | None
-) -> tuple[str, Path | None]:
+) -> tuple[str, str | None]:
     """Exercise the configured reviewer without writing to any journal.
 
     The command runs where a recorded review runs it: in a snapshot, so a
@@ -489,7 +495,7 @@ def dry_run_review(
         raw_output, raw_diagnostics = _run_reviewer(
             _reviewer_command(reviewer_model or "", prompt_file), snapshot, prompt
         )
-        diagnostics_path = _keep_diagnostics(raw_diagnostics)
+        diagnostics_note = _keep_diagnostics(raw_diagnostics)
         output = raw_output.decode("utf-8", errors="replace")
         try:
             verdict = _parse_verdict(output, preserve_output=False)
@@ -499,10 +505,12 @@ def dry_run_review(
             try:
                 kept = _preserve_output(output)
             except OSError:
-                raise ReviewLaunchError(f"reviewer output: {error}") from error
+                raise _with_diagnostics(
+                    ReviewLaunchError(f"reviewer output: {error}"), diagnostics_note
+                ) from error
             message = f"reviewer output: {error}; what the command printed is at {kept}"
             raise _with_diagnostics(
-                ReviewLaunchError(message), diagnostics_path
+                ReviewLaunchError(message), diagnostics_note
             ) from error
         # The recorded path refuses a verdict about another commit, and so does
         # this one: a command that echoes a commit of its own would pass a check
@@ -513,9 +521,9 @@ def dry_run_review(
                     "reviewer verdict names a commit the dry run did not ask about: "
                     f"{verdict[0]}"
                 ),
-                diagnostics_path,
+                diagnostics_note,
             )
-        return tree, diagnostics_path
+        return tree, diagnostics_note
 
 
 def launch_review(
@@ -603,7 +611,7 @@ def launch_review(
             snapshot,
             prompt,
         )
-        diagnostics_path = _keep_diagnostics(raw_diagnostics)
+        diagnostics_note = _keep_diagnostics(raw_diagnostics)
         # The verdict is parsed from a decoded copy; the artifact pins the
         # bytes the reviewer wrote, so nothing is normalised on the way.
         output = raw_output.decode("utf-8", errors="replace")
@@ -611,13 +619,13 @@ def launch_review(
         try:
             reviewed_commit, verdict, findings, advisory = _parse_verdict(output)
         except ReviewLaunchError as error:
-            raise _with_diagnostics(error, diagnostics_path) from error
+            raise _with_diagnostics(error, diagnostics_note) from error
         if reviewed_commit != resolved_commit:
             raise _with_diagnostics(
                 _reject(
                     output, "reviewer verdict reviewed_commit does not match commit"
                 ),
-                diagnostics_path,
+                diagnostics_note,
             )
         review_result = reviewed_commit, verdict, findings, advisory
     try:
@@ -638,17 +646,17 @@ def launch_review(
     except ReviewSubmitError as error:
         if error.artifact_ref is not None:
             raise _with_diagnostics(
-                ReviewLaunchError(str(error)), diagnostics_path
+                ReviewLaunchError(str(error)), diagnostics_note
             ) from error
         # A verdict can parse cleanly and still be refused by record validation —
         # an unknown verdict value, empty findings for a non-approving verdict,
         # duplicates, or advisory ids overlapping findings. That path discarded
         # the analysis too, and it is the one seen most often in practice.
         raise _with_diagnostics(
-            _reject(reviewer_output, str(error)), diagnostics_path
+            _reject(reviewer_output, str(error)), diagnostics_note
         ) from error
     return LaunchedReview(
         submitted.record_path,
         submitted.artifact_ref,
-        diagnostics_path,
+        diagnostics_note,
     )

@@ -238,6 +238,26 @@ def test_scan_detects_configured_private_marker() -> None:
         assert_no_leaks(text, private_markers=("coordinator.internal.example",))
 
 
+def test_an_artefact_refusal_reports_what_matched_not_where() -> None:
+    """Scenario: an artefact refusal reports what matched, not where.
+
+    This scan is handed one artefact the caller already names, so the refusal
+    stays a category list; the added-content scan is the one that was given
+    many files and has to say which."""
+
+    text = "token AKIAIOSFODNN7EXAMPLE in a captured artefact"
+
+    with pytest.raises(CaptureError) as refused:
+        assert_no_leaks(text)
+
+    message = str(refused.value)
+    assert "aws-access-key-id" in message
+    assert "AKIAIOSFODNN7EXAMPLE" not in message
+    # The added-content renderer's "file: what" shape is deliberately absent:
+    # the category stands alone.
+    assert message.endswith("(aws-access-key-id)")
+
+
 def test_scan_passes_clean_text() -> None:
     text = "The review found no blocking issues; the diff is within scope."
     assert scan_for_leaks(text) == []
@@ -350,6 +370,28 @@ def test_a_path_that_carries_a_marker_is_not_printed_either() -> None:
     rendered = render_leak_hits(hits)
     assert "internal.corp.invalid" not in rendered
     assert "private marker #1" in rendered
+
+
+def test_a_path_that_is_itself_a_key_is_described_not_printed() -> None:
+    """Scenario: a path that matches a built-in signature is described, not printed.
+
+    A file can be named after the key it holds. The rendering says which
+    signature the path matched — that name is public — and never the
+    characters that matched it."""
+
+    diff = (
+        "--- a/keys/AKIAIOSFODNN7EXAMPLE\n"
+        "+++ b/keys/AKIAIOSFODNN7EXAMPLE\n"
+        "@@ -0,0 +1 @@\n"
+        "+rotated on Tuesday AKIAIOSFODNN7EXAMPLE\n"
+    )
+
+    hits = scan_diff_for_leaks(diff)
+
+    rendered = render_leak_hits(hits)
+    assert "AKIAIOSFODNN7EXAMPLE" not in rendered
+    assert "<a path matching aws-access-key-id>" in rendered
+    assert "aws-access-key-id" in rendered
 
 
 def test_a_signature_split_across_added_lines_is_still_found() -> None:

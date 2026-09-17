@@ -45,11 +45,14 @@ from agentmarshal.journal.records import (
     validate_record_content,
 )
 from agentmarshal.journal.status import TaskStatusError, load_task_status
-from agentmarshal.project import project_file_path, read_project_file
+from agentmarshal.project import (
+    PROJECT_CONFIG_RELPATH,
+    project_file_path,
+    read_project_file,
+)
 
 _JOURNAL_PREFIX = ".agentmarshal/journal/"
 _EXTENSIONS_PREFIX = ".agentmarshal/extensions/"
-_PROJECT_FILE = ".agentmarshal/project.json"
 
 
 class GateError(Exception):
@@ -532,11 +535,13 @@ def markers_from_tree(project_root: Path, tree_ref: str) -> tuple[str, ...]:
     # `ls-tree` distinguishes an absent path (empty output, exit 0) from a
     # bad ref (non-zero -> GateError); only genuine absence returns no markers.
     listing = _run_git(
-        project_root, ["ls-tree", "--name-only", tree_ref, "--", _PROJECT_FILE]
+        project_root, ["ls-tree", "--name-only", tree_ref, "--", PROJECT_CONFIG_RELPATH]
     )
     if not listing.strip():
         return ()
-    project_json = _run_git(project_root, ["show", f"{tree_ref}:{_PROJECT_FILE}"])
+    project_json = _run_git(
+        project_root, ["show", f"{tree_ref}:{PROJECT_CONFIG_RELPATH}"]
+    )
     data = json.loads(project_json.lstrip("\ufeff"))
     if not isinstance(data, dict):
         raise ValueError("project.json is not a JSON object")
@@ -1135,7 +1140,9 @@ def run_gate(
         # the diff is the host's, so no path in the diff is it, and nothing is
         # suppressed — which is the safe direction.
         leak_hits = scan_diff_for_leaks(
-            diff_text, markers, config_path=_PROJECT_FILE if not sidecar else ""
+            diff_text,
+            markers,
+            config_path=PROJECT_CONFIG_RELPATH if not sidecar else "",
         )
     except (ValueError, CaptureError, GateError) as error:
         lines.append(f"WARN: leak-scan skipped ({error})")
