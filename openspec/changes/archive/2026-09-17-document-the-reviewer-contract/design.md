@@ -9,8 +9,15 @@ must not run in a dry run are the snapshot, the journal and the record.
 
 - **A dry run shares the parser, not the launcher.** It resolves the template,
   writes a synthetic prompt to a temporary file, runs the command, and hands the
-  output to the same verdict parser the real path uses. It does not build a
-  snapshot: there is no commit, and a synthetic prompt needs no tree.
+  output to the same verdict parser the real path uses.
+- **Departed, during review: it does build a snapshot, of `HEAD`.** This note
+  first said a synthetic prompt needs no tree. Review pointed out what that
+  costs: a recorded review runs the command inside a populated snapshot, so a
+  relative path in the template resolves there, and a dry run in an empty
+  temporary directory fails for exactly the configuration proposal 015 reports
+  adopters losing launches to. The dry run therefore extracts `HEAD` — not a
+  commit the operator names, so it still needs neither task nor commit — and
+  runs the command in it.
 - **The synthetic prompt is the real prompt over a fixed example.** Same
   structure, same verdict protocol, a placeholder contract and diff. A command
   that fails on it would have failed on a real one.

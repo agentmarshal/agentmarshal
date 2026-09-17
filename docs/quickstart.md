@@ -52,6 +52,12 @@ not against the operator's checkout. `{prompt_file}` is the path to a temporary
 file containing the complete review prompt; that same prompt is also supplied
 on standard input.
 
+`agentmarshal review --dry-run` launches the configured command against a
+synthetic prompt in a snapshot of `HEAD`, reports whether its output carries a
+parseable verdict, and records nothing — a way to exercise the contract above
+before the first real review. If the command names `{model}`, pass `--model`
+with it.
+
 The snapshot bounds **where the command starts**, not what its process may
 read. A normally launched command can still read anything its operating-system
 user can read, including paths outside the snapshot. Bounding those reads is

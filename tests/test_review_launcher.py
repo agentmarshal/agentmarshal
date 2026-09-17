@@ -371,7 +371,7 @@ def test_dry_run_reports_when_it_cannot_parse_a_verdict(
     assert main(["review", "--dry-run"]) == 1
 
     message = capsys.readouterr().err
-    assert "could not parse reviewer verdict" in message
+    assert "dry run failed: reviewer output:" in message
     assert "invalid verdict sentinels" in message
     assert _tree_contents(journal) == before
     assert _kept_any_outputs(tmp_path) == []
@@ -382,16 +382,35 @@ def test_dry_run_requires_no_task_or_commit(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Scenario: a dry run needs no task and no commit."""
+    """Scenario: a dry run needs no task and no commit.
 
-    monkeypatch.chdir(tmp_path)
+    It does need a repository, because it runs the command where a recorded
+    review runs it. No task is opened here and no journal exists."""
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "--quiet")
+    (repo / "module.py").write_text("x = 1\n", encoding="utf-8")
+    _git(repo, "add", "module.py")
+    _git(
+        repo,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.com",
+        "commit",
+        "--quiet",
+        "-m",
+        "init",
+    )
+    monkeypatch.chdir(repo)
     stub = _reviewer_stub(tmp_path, _verdict(review._DRY_RUN_COMMIT, "approved", []))
     monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
 
     assert main(["review", "--dry-run"]) == 0
 
     assert "parseable verdict" in capsys.readouterr().out
-    assert not (tmp_path / ".agentmarshal").exists()
+    assert not (repo / ".agentmarshal").exists()
 
 
 def test_review_uses_contract_from_reviewed_commit(

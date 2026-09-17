@@ -579,9 +579,9 @@ def _run_accept(args: argparse.Namespace, stderr: TextIO) -> int:
 def _run_review(args: argparse.Namespace, stderr: TextIO) -> int:
     if args.dry_run:
         try:
-            dry_run_review(args.model or "dry-run")
+            dry_run_review(Path.cwd(), args.model)
         except ReviewLaunchError as error:
-            print(f"dry run could not parse reviewer verdict: {error}", file=stderr)
+            print(f"dry run failed: {error}", file=stderr)
             return 1
         print("dry run: reviewer output has a parseable verdict; nothing was recorded")
         return 0

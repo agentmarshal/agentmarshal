@@ -208,8 +208,9 @@ def _reviewer_command(model: str, prompt_file: Path) -> list[str]:
         for element in template:
             token = _unsupported_placeholder(element, set(replacements))
             if token is not None:
+                named = token if token else "{} (an auto-numbered field)"
                 raise ReviewLaunchError(
-                    f"AGENTMARSHAL_REVIEWER_CMD has an unsupported placeholder: {token}"
+                    f"AGENTMARSHAL_REVIEWER_CMD has an unsupported placeholder: {named}"
                 )
         return [element.format(**replacements) for element in template]
     except (KeyError, IndexError, ValueError) as error:
@@ -378,18 +379,34 @@ def _extract_snapshot(project_root: Path, commit: str, snapshot: Path) -> None:
         raise ReviewLaunchError(f"snapshot extraction failed: {error}") from error
 
 
-def dry_run_review(reviewer_model: str) -> None:
-    """Exercise the configured reviewer without a snapshot or journal write."""
+def dry_run_review(project_root: Path, reviewer_model: str | None) -> None:
+    """Exercise the configured reviewer without writing to any journal.
 
+    The command runs where a recorded review runs it: in a snapshot, so a
+    relative path in the template resolves as it will in earnest. The tree is
+    the current ``HEAD`` rather than a commit the operator names, which is a
+    departure from this change's design note and is recorded there.
+    """
+
+    template = os.environ.get("AGENTMARSHAL_REVIEWER_CMD")
+    if template is not None and "{model}" in template and reviewer_model is None:
+        raise ReviewLaunchError(
+            "the configured reviewer command names a model, so a dry run needs --model"
+        )
     with tempfile.TemporaryDirectory(prefix="agentmarshal-review-dry-run-") as name:
         temporary_root = Path(name)
+        snapshot = temporary_root / "snapshot"
         prompt_file = temporary_root / "review-prompt.txt"
         prompt = _dry_run_prompt()
         prompt_file.write_text(prompt, encoding="utf-8")
+        _extract_snapshot(project_root, "HEAD", snapshot)
         output = _run_reviewer(
-            _reviewer_command(reviewer_model, prompt_file), temporary_root, prompt
+            _reviewer_command(reviewer_model or "", prompt_file), snapshot, prompt
         ).decode("utf-8", errors="replace")
-        _parse_verdict(output, preserve_output=False)
+        try:
+            _parse_verdict(output, preserve_output=False)
+        except ReviewLaunchError as error:
+            raise ReviewLaunchError(f"reviewer output: {error}") from error
 
 
 def launch_review(

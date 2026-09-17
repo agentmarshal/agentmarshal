@@ -2,7 +2,7 @@
 
 An adopter running the published release lost three review launches to
 properties of the reviewer command that appear in no documentation
-([proposal 015](../../../docs/proposals/015-reviewer-command-contract-undocumented.md)):
+([proposal 015](../../../../docs/proposals/015-reviewer-command-contract-undocumented.md)):
 the command runs in a metadata-free snapshot with no git directory, a relative
 path in it resolves inside that snapshot, and the invalid-placeholder error
 names no token. They read about 120 lines of the launcher to learn what the
