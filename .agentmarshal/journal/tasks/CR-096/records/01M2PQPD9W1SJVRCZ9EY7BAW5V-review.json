@@ -1,0 +1,33 @@
+{
+  "advisory_findings": [
+    "A-001-proposal-adr-link-broken-after-archive",
+    "A-002-recorded-by-unescaped-in-amendment-entry",
+    "A-003-schema-5-review-only-restriction-undocumented",
+    "A-004-contract-hash-pattern-duplicates-artifact-hash-pattern",
+    "A-005-contract-hash-boundary-untested-with-amendments"
+  ],
+  "artifacts": [
+    {
+      "hash": "211ff17290937f22eb37c8d2539c1af93e87bfa02188113f66fe7ff7239c7345",
+      "ref": ".agentmarshal/journal/tasks/CR-096/artifacts/01M2PQPD9W1SJVRCZ9EY7BAW5V-review.md"
+    }
+  ],
+  "created_at": "2026-09-17T03:48:48.060511Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "8ffbfaa00799905b438c77c649f910ba9a73d1cf",
+  "reviewed_contract": "0cf438f3cb032f655744c5707506db6c0a848f083f49ab8fa609471337b764dd",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-096",
+  "tool_version": "0.3.0",
+  "verdict": "approved"
+}
