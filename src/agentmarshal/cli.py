@@ -215,6 +215,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="attested pipeline SHA (defaults to AGENTMARSHAL_PIPELINE_OK_SHA)",
     )
     gate_parser.add_argument(
+        "--without-review",
+        action="store_true",
+        help=(
+            "judge what does not depend on a review: when the candidate has no "
+            "review record at all, report the review-bound checks as not "
+            "examined instead of refusing. A candidate that has a review is "
+            "judged exactly as it is without this flag"
+        ),
+    )
+    gate_parser.add_argument(
         "--attestation",
         choices=("commit", "ci-required"),
         default="commit",
@@ -727,6 +737,13 @@ def _run_validate(stderr: TextIO) -> int:
 
 
 def _run_gate(args: argparse.Namespace, stderr: TextIO) -> int:
+    if args.findings and args.without_review:
+        print(
+            "gate --without-review judges a candidate's review; the findings "
+            "lane has no candidate and already reports what it did not examine",
+            file=stderr,
+        )
+        return 1
     if args.findings and (args.commit is not None or args.base is not None):
         print(
             "gate: --findings is mutually exclusive with --commit and --base",
@@ -782,6 +799,7 @@ def _run_gate(args: argparse.Namespace, stderr: TextIO) -> int:
             pipeline_sha,
             attestation=args.attestation,
             journal_root=placement.journal_root if placement.is_sidecar else None,
+            review_required=not args.without_review,
         )
     except GateError as error:
         print(error, file=stderr)
@@ -805,8 +823,15 @@ def _run_gate(args: argparse.Namespace, stderr: TextIO) -> int:
             file=stderr,
         )
         return 1
-    if placement.is_sidecar:
+    if placement.is_sidecar and report.review_not_examined:
+        print(
+            "gate: advisory checks passed what they examined; the review was "
+            "not examined; decides no merge"
+        )
+    elif placement.is_sidecar:
         print("gate: advisory checks passed; decides no merge")
+    elif report.review_not_examined:
+        print("gate: passed what it examined; the review was not examined")
     else:
         print("gate: passed")
     return 0

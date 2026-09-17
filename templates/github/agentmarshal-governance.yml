@@ -1,9 +1,8 @@
 # AgentMarshal governance for GitHub (Variant 2: gate as a required check).
 #
 # Copy to .github/workflows/agentmarshal-governance.yml and fill every
-# <PLACEHOLDER>. In branch protection, mark the `governance` (and your
-# tests) check(s) as REQUIRED; the `gate` check is advisory until review
-# materialisation is in place — see docs/github-enforcement.md.
+# <PLACEHOLDER>. In branch protection, mark the `governance`, `gate` (and
+# your tests) check(s) as REQUIRED — see docs/github-enforcement.md.
 name: AgentMarshal governance
 
 on:
@@ -45,15 +44,16 @@ jobs:
         run: "<TEST_COMMAND>"
 
   gate:
-    # Merge authority (Variant 2). Advisory for now (continue-on-error):
-    # the review-bound lane needs the review evidence materialised from the
-    # PR approval, which is a provider-integration step (Phase C). Until
-    # then this still enforces scope, append-only, base-state and lifecycle,
-    # and the journal-only lanes (openings / completions). Make it REQUIRED
-    # once review materialisation lands. See docs/github-enforcement.md.
+    # Required check (Variant 2), not the merge authority. A head cannot carry a review
+    # of itself — a review names a commit only after that commit exists, and
+    # it lands at completion — so this run asks the gate to judge everything
+    # that does not depend on one. The transcript names what it did not
+    # examine. Scope, append-only, base-state and lifecycle are enforced here.
+    # The approved-independent-review requirement is NOT enforced by this job
+    # and nothing shipped enforces it on this provider; see
+    # docs/github-enforcement.md. Safe to mark REQUIRED for what it does check.
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -75,7 +75,7 @@ jobs:
           # Phase C: materialise the review record from the PR approval
           # (reviewer identity + verdict) before this step for the
           # review-bound lane.
-          agentmarshal gate --attestation ci-required \
+          agentmarshal gate --attestation ci-required --without-review \
             --task "$task" \
             --commit "$HEAD_SHA" \
             --base "origin/${BASE_REF}"

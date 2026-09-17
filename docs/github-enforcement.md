@@ -27,10 +27,24 @@ On the protected branch, require:
   your project's tests/lint/type checks. Both must be green.
 - (Optionally split the tests into their own required check.)
 
-The **`gate`** check is shipped **advisory** (`continue-on-error: true`)
-for now — see the open item below. Once review materialisation is in
-place, make `gate` a required check too; that is the point at which the
-gate becomes the merge authority on GitHub.
+The **`gate`** check is shipped required-ready. It runs with
+`--without-review`, because a pull-request head cannot carry a review of
+itself: a review names a commit only after that commit exists, and it
+lands at completion. The run therefore judges everything that does not
+depend on a review and names, in its own transcript, the two checks it did
+not examine. Mark it REQUIRED.
+
+The task is read from the head branch name, so **every** branch that opens a
+pull request must carry its task identifier — `CR-<n>` in the templates as
+shipped. Without one the gate job fails, and it is no longer tolerated.
+
+What that does **not** give you is the approved-independent-review
+requirement. Nothing shipped here enforces it on GitHub: a required check
+runs before the review exists, and this project ships no merge authority
+for this provider. Enforcing it needs something that runs the gate — with
+no flag — at the moment the review does exist, which is what this
+repository's own merge tooling does and what review materialisation would
+replace. See the open item below.
 
 ## Token permissions
 
@@ -61,8 +75,11 @@ Until it lands, the `gate` check:
 - fully enforces the **journal-only lanes** (openings and completions),
   and the **scope**, **append-only**, **base-state** and **lifecycle**
   checks on every candidate;
-- cannot yet enforce the **approved-independent-review** requirement in
-  CI, so it is advisory.
+- cannot enforce the **approved-independent-review** requirement, which is
+  why the CI run asks the gate to judge without it and says so in its own
+  transcript, and closes with `gate: passed what it examined` rather than
+  `gate: passed`. Nothing shipped here enforces that requirement on this
+  provider; closing it is what this section is about.
 
 This is tied to the gate's **record-provenance trust boundary** (see
 `docs/self-hosting-workflow.md`): the gate validates review *contents* and
@@ -79,8 +96,10 @@ is therefore also a step toward closing the provenance gap for public use.
 |---|---|---|
 | Merge trigger | invoked (`am-merge`) | provider merge after required checks |
 | Attestation | `--attestation commit` (explicit SHA) | `--attestation ci-required` (delegated) |
-| Review evidence | recorded into the working tree at merge | materialised from the PR approval (Phase C) |
-| Gate role | authority, invoked | authority, as a required check |
+| Review evidence | recorded into the working tree at merge | not available to the required check; see the open item |
+| Gate role | authority, invoked | required check over everything but the review |
 
 The gate logic is identical across both; only the binding differs — which
-is the vendor-neutrality claim in practice.
+is the vendor-neutrality claim in practice. What differs in strength is not
+the logic but what each binding can put in front of it: an invoked merge
+authority runs the gate when the review exists, and a required check cannot.

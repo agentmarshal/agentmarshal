@@ -229,6 +229,145 @@ def _run(
     return report.passed, "\n".join(report.lines)
 
 
+def test_a_default_run_prints_the_transcript_it_printed_before(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: the pinned transcript still matches.
+
+    The byte-for-byte comparison against the released 0.3.0 is pinned and must
+    stay as it is, so this test names the scenario and delegates to it."""
+
+    test_embedded_diff_lane_transcript_matches_published_030_byte_for_byte(
+        tmp_path, monkeypatch, capsys
+    )
+
+
+def test_the_flag_reaches_the_gate_from_the_command_line(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The flag is wired: the command prints what the mode reports."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    head = _implement(repo, "src/module.py")
+    capsys.readouterr()
+
+    code = main(
+        [
+            "gate",
+            "--task",
+            "CR-001",
+            "--commit",
+            head,
+            "--base",
+            base,
+            "--pipeline-sha",
+            head,
+            "--without-review",
+        ]
+    )
+
+    output = capsys.readouterr().out
+    assert code == 0, output
+    assert "NOT EXAMINED: latest review" in output
+    # A caller that decides a merge must tell this from a full pass without
+    # reading the transcript, which the contract's threat model asks for.
+    assert "gate: passed what it examined; the review was not examined" in output
+    assert "gate: passed\n" not in output
+
+
+def test_the_flag_is_refused_on_the_findings_lane(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A lane with no candidate has no review of one to leave unexamined."""
+
+    repo, _base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    monkeypatch.chdir(repo)
+    capsys.readouterr()
+
+    code = main(["gate", "--task", "CR-001", "--findings", "--without-review"])
+
+    assert code == 1
+    assert "has no candidate" in capsys.readouterr().err
+
+
+def _run_without_review(
+    repo: Path, commit: str, base: str, pipeline_sha: str | None
+) -> tuple[bool, str]:
+    report = run_gate(repo, "CR-001", commit, base, pipeline_sha, review_required=False)
+    return report.passed, "\n".join(report.lines)
+
+
+def test_a_candidate_with_no_review_passes_what_does_not_need_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a candidate with no review passes the checks that do not need one."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    head = _implement(repo, "src/module.py")
+
+    passed, output = _run_without_review(repo, head, base, head)
+
+    assert passed, output
+    assert "NOT EXAMINED: latest review" in output
+    assert "NOT EXAMINED: reviewer independence" in output
+    assert "FAIL" not in output
+
+
+def test_the_mode_does_not_excuse_a_candidate_that_breaks_another_rule(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: the mode does not excuse a candidate that breaks another rule."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    outside = repo / "elsewhere" / "module.py"
+    outside.parent.mkdir()
+    outside.write_text("x = 1\n", encoding="utf-8")
+    head = _commit_all(repo, "change a path outside scope")
+
+    passed, output = _run_without_review(repo, head, base, head)
+
+    assert not passed
+    assert "FAIL: paths outside contract scope: elsewhere/module.py" in output
+
+
+def test_a_non_approving_review_still_refuses_under_the_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a non-approving review still refuses."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    head = _implement(repo, "src/module.py")
+    _require_changes(repo, head, "F-001")
+
+    passed, output = _run_without_review(repo, head, base, head)
+
+    assert not passed
+    assert "NOT EXAMINED: latest review" not in output
+    assert f"FAIL: latest review of {head[:12]} is approved" in output
+
+
+def test_an_approving_review_reports_as_approving_under_the_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: an approving review is reported as approving."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    head = _implement(repo, "src/module.py")
+    _approve(repo, head)
+
+    passed, output = _run_without_review(repo, head, base, head)
+
+    assert passed, output
+    assert f"PASS: latest review of {head[:12]} is approved" in output
+    assert "NOT EXAMINED" not in output
+
+
 def test_gate_passes_a_clean_candidate(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

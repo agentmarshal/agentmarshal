@@ -63,6 +63,11 @@ class GateReport:
     lines: list[str]
     resolved_commit: str
     resolved_finding: str | None = None
+    # True when the review-bound checks were reported as not examined because
+    # the caller asked to judge without a review. It says nothing about the
+    # other lines this gate can report as not examined — a caller that needs
+    # those reads the transcript, which names each one.
+    review_not_examined: bool = False
 
 
 def _actor_git_identities(project_root: Path, record: dict[str, object]) -> set[str]:
@@ -549,8 +554,14 @@ def run_gate(
     attestation: str = "commit",
     *,
     journal_root: Path | None = None,
+    review_required: bool = True,
 ) -> GateReport:
     """Evaluate a merge candidate; fail closed on every violation.
+
+    ``review_required`` says whether the caller is in a position to have a
+    review at all. When it is false and the candidate has no review record,
+    the two review-bound checks are reported as not examined rather than
+    refused; a candidate that has one is judged by it either way.
 
     ``attestation`` selects how the pipeline-attestation check is
     satisfied. ``commit`` (the default, Variant 1) requires
@@ -590,6 +601,7 @@ def run_gate(
     except (OSError, TaskStatusError, ValueError) as error:
         raise GateError(str(error)) from error
 
+    review_not_examined = False
     resolved_commit = _resolve_commit(project_root, commit)
     base_commit = _resolve_commit(project_root, base)
     merge_base = _run_git(
@@ -929,6 +941,23 @@ def run_gate(
                 f"review's findings (outstanding: {', '.join(outstanding)}; "
                 f"accepted: {', '.join(accepted)})",
             )
+        elif latest is None and not review_required:
+            # The caller has said it cannot yet have a review — a provider's CI
+            # runs on a head that no review can name, because a review names a
+            # commit only after that commit exists. Absence is reported as
+            # absence; it is not a pass, and it is not a refusal either. A
+            # candidate that *has* a review is judged below whatever the caller
+            # asked for, so this cannot turn a refusal into a pass.
+            review_not_examined = True
+            lines.append(
+                "NOT EXAMINED: latest review "
+                f"(no review record for {resolved_commit[:12]}, and this run "
+                "was asked to judge without one)"
+            )
+            lines.append(
+                "NOT EXAMINED: reviewer independence (no review record to "
+                "compare against the candidate's writers)"
+            )
         else:
             check(
                 approved,
@@ -1111,5 +1140,8 @@ def run_gate(
             )
 
     return GateReport(
-        passed=violations == 0, lines=lines, resolved_commit=resolved_commit
+        passed=violations == 0,
+        lines=lines,
+        resolved_commit=resolved_commit,
+        review_not_examined=review_not_examined,
     )
