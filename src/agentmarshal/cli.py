@@ -383,14 +383,27 @@ def _placement(
 def _run_doctor() -> int:
     results = run_doctor()
     for result in results:
-        status = "OK" if result.ok else "FAIL"
+        if result.ok:
+            status = "OK"
+        elif result.precondition:
+            # Not a failure: something only the operator can establish, which
+            # this command reports rather than judges. Printing FAIL here would
+            # be the very habit this check exists to break.
+            status = "TODO"
+        else:
+            status = "FAIL"
         print(f"{status}: {result.name} — {result.detail}")
-    failures = [result for result in results if not result.ok]
-    if failures:
-        print(f"Summary: {len(failures)} check(s) reported unmet")
-        if any(not result.precondition for result in failures):
-            return 1
-        return 0
+    unmet = [result for result in results if not result.ok]
+    broken = [result for result in unmet if not result.precondition]
+    if unmet:
+        parts = []
+        if broken:
+            parts.append(f"{len(broken)} check(s) failed")
+        todo = len(unmet) - len(broken)
+        if todo:
+            parts.append(f"{todo} precondition(s) left to the operator")
+        print("Summary: " + ", ".join(parts))
+        return 1 if broken else 0
     print(f"Summary: all {len(results)} checks passed")
     return 0
 

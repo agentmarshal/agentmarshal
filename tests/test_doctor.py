@@ -81,9 +81,10 @@ def test_doctor_reports_unset_actor_variable(
     assert main(["doctor"]) == 0
 
     output = capsys.readouterr().out
-    assert "FAIL: recorded actor" in output
-    assert "records will resolve to the invoking git identity" in output
-    assert "Summary: 1 check(s) reported unmet" in output
+    assert "TODO: recorded actor" in output
+    assert "the invoking git identity" in output
+    assert "indistinguishable from that person" in output
+    assert "Summary: 1 precondition(s) left to the operator" in output
 
 
 def test_doctor_does_not_report_an_unset_reviewer_command_as_a_fault(
@@ -124,7 +125,7 @@ def test_doctor_reports_unresolvable_reviewer_command_without_its_value(
     assert main(["doctor"]) == 0
 
     output = capsys.readouterr().out
-    assert "FAIL: reviewer command placeholders" in output
+    assert "TODO: reviewer command placeholders" in output
     assert "a review cannot launch" in output
     assert "s3cret" not in output
 
@@ -233,8 +234,12 @@ def test_doctor_handles_git_discovery_decode_error(
     assert main(["doctor"]) == 1
 
     output = capsys.readouterr()
-    assert output.out.count("FAIL:") == 5
+    assert output.out.count("FAIL:") == 3
+    assert output.out.count("TODO:") == 2
     assert "FAIL: git repository — cannot determine git repository" in output.out
     assert "FAIL: project schema — cannot determine project location" in output.out
-    assert "Summary: 5 check(s) reported unmet" in output.out
+    assert (
+        "Summary: 3 check(s) failed, 2 precondition(s) left to the operator"
+        in output.out
+    )
     assert "Traceback" not in output.err

@@ -50,7 +50,7 @@ def test_doctor_preconditions_are_report_only(
     assert main(["doctor"]) == 0
 
     output = capsys.readouterr().out
-    assert "Summary: 2 check(s) reported unmet" in output
+    assert "Summary: 2 precondition(s) left to the operator" in output
     assert "all" not in output.splitlines()[-1]
 
 

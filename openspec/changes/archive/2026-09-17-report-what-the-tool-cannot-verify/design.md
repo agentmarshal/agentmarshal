@@ -11,6 +11,10 @@ merge UI and any wait-for-checks automation read.
 
 ## Decisions
 
+- **Departed, during review: the precondition marker lives on the check.** This
+  note first let the CLI hold the names of the precondition checks. Renaming one
+  dropped it from that list and changed the exit status, which is how the
+  duplication was proved rather than argued. `DoctorCheck` carries the flag now.
 - **New checks join the existing list.** Same shape, same summary line. The
   three added are the ones the tool can reach without a network: the actor
   variable, whether the reviewer command's placeholders resolve, and whether a

@@ -136,12 +136,15 @@ def _check_actor_variable(start: Path) -> tuple[bool, str]:
         )
     actor, source = resolved
     if source == SOURCE_GIT_IDENTITY:
+        # Correct for a person writing their own records, and wrong the moment
+        # an agent writes one here: this tool cannot tell which project it is
+        # in, so it says what will happen rather than calling it a fault.
         return (
             False,
-            "records will resolve to the invoking git identity, so an agent "
-            "cannot be told from the person whose identity it uses; declare "
-            "AGENTMARSHAL_ACTOR in the agent's harness, or map the identity in "
-            "the project's actors table",
+            f"records will name {actor}, the invoking git identity; an agent "
+            "writing records here would be indistinguishable from that person, "
+            "so declare AGENTMARSHAL_ACTOR in the agent's harness or map the "
+            "identity in the project's actors table",
         )
     return True, f"records will name {actor}, resolved from the {source}"
 
@@ -190,7 +193,10 @@ def _check_validate_ci_definition(start: Path) -> tuple[bool, str]:
             content = definition.read_text(encoding="utf-8")
         except (OSError, UnicodeError):
             continue
-        if re.search(r"\bagentmarshal\s+validate\b", content):
+        uncommented = "\n".join(
+            line for line in content.splitlines() if not line.lstrip().startswith("#")
+        )
+        if re.search(r"\bagentmarshal\s+validate\b", uncommented):
             return (
                 True,
                 "CI definition invokes agentmarshal validate: "
