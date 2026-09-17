@@ -151,6 +151,16 @@ def _review_prompt(
     )
 
 
+def _names_model(template: str) -> bool:
+    """Whether the template has a model field, however it is formatted."""
+
+    try:
+        fields = [token for _, token, _, _ in string.Formatter().parse(template)]
+    except ValueError:
+        return False
+    return "model" in fields
+
+
 def _dry_run_prompt() -> str:
     """Build the real reviewer prompt around a fixed, synthetic example."""
 
@@ -216,12 +226,19 @@ def _reviewer_command(model: str, prompt_file: Path) -> list[str]:
     except (KeyError, IndexError, ValueError) as error:
         # What reaches here is a template the scan passes and the formatter does
         # not — a bad format specification such as {model:d} — or one neither
-        # could parse, such as a brace left unclosed by a quoting accident. There
-        # is no field name to report in either case, so the refusal quotes the
-        # template: the operator needs something to search for.
+        # could parse, such as a brace left unclosed by a quoting accident.
+        # Neither has a field name to report, and the value is not echoed: a
+        # vendor template often carries a token, and this would be the one place
+        # the tool prints it. The position of the last opening brace is what the
+        # operator needs to find it, and it discloses nothing.
+        position = template_text.rfind("{")
+        where = (
+            f"; the last opening brace is at character {position}"
+            if position >= 0
+            else ""
+        )
         raise ReviewLaunchError(
-            f"AGENTMARSHAL_REVIEWER_CMD has an invalid placeholder ({error}) in: "
-            f"{template_text}"
+            f"AGENTMARSHAL_REVIEWER_CMD has an invalid placeholder ({error}){where}"
         ) from error
 
 
@@ -381,7 +398,7 @@ def _extract_snapshot(project_root: Path, commit: str, snapshot: Path) -> None:
         raise ReviewLaunchError(f"snapshot extraction failed: {error}") from error
 
 
-def dry_run_review(project_root: Path, reviewer_model: str | None) -> None:
+def dry_run_review(project_root: Path, reviewer_model: str | None) -> str:
     """Exercise the configured reviewer without writing to any journal.
 
     The command runs where a recorded review runs it: in a snapshot, so a
@@ -391,7 +408,7 @@ def dry_run_review(project_root: Path, reviewer_model: str | None) -> None:
     """
 
     template = os.environ.get("AGENTMARSHAL_REVIEWER_CMD")
-    if template is not None and "{model}" in template and reviewer_model is None:
+    if template is not None and reviewer_model is None and _names_model(template):
         raise ReviewLaunchError(
             "the configured reviewer command names a model, so a dry run needs --model"
         )
@@ -403,13 +420,21 @@ def dry_run_review(project_root: Path, reviewer_model: str | None) -> None:
         prompt_file.write_text(prompt, encoding="utf-8")
         # A project initialised in a repository with no commit has no tree to
         # copy. The command is still worth exercising; only a relative path in
-        # it cannot be, and the caller is told which of the two it got.
-        try:
-            _run_git(project_root, ["rev-parse", "--verify", "HEAD^{commit}"])
-        except ReviewLaunchError:
-            snapshot.mkdir()
-        else:
+        # it cannot be, and the caller is told which of the two it got. A git
+        # that will not run at all is a different problem and stays an error.
+        _run_git(project_root, ["rev-parse", "--git-dir"])
+        head = subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet", "HEAD^{commit}"],
+            cwd=project_root,
+            capture_output=True,
+            check=False,
+        )
+        if head.returncode == 0:
             _extract_snapshot(project_root, "HEAD", snapshot)
+            tree = "a snapshot of HEAD"
+        else:
+            snapshot.mkdir()
+            tree = "an empty tree, because this repository has no commit yet"
         output = _run_reviewer(
             _reviewer_command(reviewer_model or "", prompt_file), snapshot, prompt
         ).decode("utf-8", errors="replace")
@@ -433,6 +458,7 @@ def dry_run_review(project_root: Path, reviewer_model: str | None) -> None:
                 "reviewer verdict names a commit the dry run did not ask about: "
                 f"{verdict[0]}"
             )
+        return tree
 
 
 def launch_review(

@@ -406,18 +406,23 @@ def test_dry_run_works_in_a_repository_with_no_commit(
     assert "parseable verdict" in capsys.readouterr().out
 
 
-def test_an_unclosed_brace_is_quoted_back_to_the_operator(
+def test_an_unclosed_brace_is_located_without_echoing_the_command(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Proposal 015's own case: a quoting accident that left nothing to search for."""
+    """Proposal 015's own case: a quoting accident that left nothing to search
+    for. The refusal locates the brace and does not print the template, which
+    may carry a token."""
 
     repo, _commit = _review_repo(tmp_path, monkeypatch)
-    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", "reviewer {prompt_file -")
+    template = "reviewer --key s3cret {prompt_file -"
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", template)
 
     with pytest.raises(review.ReviewLaunchError) as caught:
         review._reviewer_command("some-model", repo / "prompt.txt")
 
-    assert "reviewer {prompt_file -" in str(caught.value)
+    message = str(caught.value)
+    assert f"character {template.rfind('{')}" in message
+    assert "s3cret" not in message
 
 
 def test_dry_run_requires_no_task_or_commit(

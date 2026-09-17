@@ -155,15 +155,37 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="exercise the configured reviewer; records nothing",
     )
-    launch_parser.add_argument("--task", help="task identifier")
+    # Every flag below is required for a recorded review and refused for a dry
+    # run, which judges the command rather than any work. argparse cannot say
+    # that, so the help does.
+    required_unless_dry_run = "required unless --dry-run"
+    launch_parser.add_argument(
+        "--task", help=f"task identifier ({required_unless_dry_run})"
+    )
     launch_binding = launch_parser.add_mutually_exclusive_group()
-    launch_binding.add_argument("--commit", help="reviewed commit SHA")
-    launch_binding.add_argument("--reviewed-finding", help="reviewed finding record id")
-    launch_parser.add_argument("--base", help="comparison base ref")
-    launch_parser.add_argument("--role", help="reviewer role")
-    launch_parser.add_argument("--vendor", help="reviewer vendor")
-    launch_parser.add_argument("--model", help="reviewer model")
-    launch_parser.add_argument("--email", help="reviewer email")
+    launch_binding.add_argument(
+        "--commit", help=f"reviewed commit SHA ({required_unless_dry_run})"
+    )
+    launch_binding.add_argument(
+        "--reviewed-finding", help="reviewed finding record id (refused by --dry-run)"
+    )
+    launch_parser.add_argument(
+        "--base", help=f"comparison base ref ({required_unless_dry_run})"
+    )
+    launch_parser.add_argument(
+        "--role", help=f"reviewer role ({required_unless_dry_run})"
+    )
+    launch_parser.add_argument(
+        "--vendor", help=f"reviewer vendor ({required_unless_dry_run})"
+    )
+    launch_parser.add_argument(
+        "--model",
+        help="reviewer model (required unless --dry-run; a dry run needs it when "
+        "the configured command names one)",
+    )
+    launch_parser.add_argument(
+        "--email", help=f"reviewer email ({required_unless_dry_run})"
+    )
     gate_parser = subparsers.add_parser(
         "gate", help="verify a merge candidate against the journal"
     )
@@ -603,11 +625,14 @@ def _run_review(args: argparse.Namespace, stderr: TextIO) -> int:
         if placement is None:
             return 1
         try:
-            dry_run_review(placement.host_root, args.model)
+            tree = dry_run_review(placement.host_root, args.model)
         except ReviewLaunchError as error:
             print(f"dry run failed: {error}", file=stderr)
             return 1
-        print("dry run: reviewer output has a parseable verdict; nothing was recorded")
+        print(
+            f"dry run: the command ran against {tree}; its output has a "
+            "parseable verdict; nothing was recorded"
+        )
         return 0
     if args.reviewed_finding is not None:
         print(
