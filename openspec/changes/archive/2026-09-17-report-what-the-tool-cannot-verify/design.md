@@ -32,9 +32,15 @@ merge UI and any wait-for-checks automation read.
   for its own SHA before running the gate, and exits neutral with a message when
   it does not. Catching the gate's refusal and reinterpreting it would swallow
   every other reason the gate refuses.
-- **`continue-on-error` goes away with it.** A job that reports neutral when it
-  has nothing to judge and fails when the gate refuses needs no blanket
-  tolerance, and the check becomes meaningful enough to require later.
+- **`continue-on-error` goes away with it.** A job that succeeds when it has
+  nothing to judge and fails when the gate refuses needs no blanket tolerance,
+  and the check becomes meaningful enough to require later.
+- **"Neutral" is not available, so the job succeeds and says so.** An earlier
+  draft of this change asked the template for a neutral result. A workflow job
+  has no such conclusion — the mechanism that once produced one was withdrawn,
+  and the Checks API path needs an app. The job therefore exits zero with a line
+  saying it judged nothing and why, which is what an operator and a
+  wait-for-checks automation can both read.
 
 ## Risks
 

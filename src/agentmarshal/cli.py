@@ -70,6 +70,10 @@ from agentmarshal.project import (
     initialize_project,
 )
 
+_DOCTOR_PRECONDITION_CHECKS = frozenset(
+    {"actor variable", "reviewer command placeholders", "CI validate definition"}
+)
+
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="agentmarshal")
@@ -343,6 +347,23 @@ def _run_init(host: Path | None, stderr: TextIO) -> int:
             f"{initialized.outbox_error}",
             file=stderr,
         )
+    print("Before the first governed task, configure these preconditions:")
+    print(
+        "- Provider: disable squash and rebase merges; either rewrites the "
+        "reviewed SHA, so review evidence no longer binds to the merged commit."
+    )
+    print(
+        "- Harness: set AGENTMARSHAL_ACTOR for each agent; without it, an "
+        "agent's records resolve to the invoking git identity."
+    )
+    print(
+        "- Reviewer: configure AGENTMARSHAL_REVIEWER_CMD when using "
+        "agentmarshal review; without it, an automated review cannot launch."
+    )
+    print(
+        "- CI: install a workflow that invokes agentmarshal validate; without "
+        "it, journal integrity is not checked before merge."
+    )
     return 0
 
 
@@ -368,10 +389,12 @@ def _run_doctor() -> int:
     for result in results:
         status = "OK" if result.ok else "FAIL"
         print(f"{status}: {result.name} — {result.detail}")
-    failures = sum(not result.ok for result in results)
+    failures = [result for result in results if not result.ok]
     if failures:
-        print(f"Summary: {failures} check(s) failed")
-        return 1
+        print(f"Summary: {len(failures)} check(s) reported unmet")
+        if any(result.name not in _DOCTOR_PRECONDITION_CHECKS for result in failures):
+            return 1
+        return 0
     print(f"Summary: all {len(results)} checks passed")
     return 0
 

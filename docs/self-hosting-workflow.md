@@ -115,6 +115,9 @@ some v1 transport:
 - Openings and completions are journal-only and take the gate's
   deterministic lane (no model review required); implementation
   candidates take the full review-bound lane.
+- The GitHub template reads the task identifier from the pull request head
+  reference. Every branch it gates, including a journal-only opening or
+  completion branch, must therefore include its `CR-<number>` identifier.
 - The gate reads the contract and the base task state from the merge-base
   / base tree, never from the candidate, so a candidate cannot widen its
   own scope or hide that its task is already closed.
