@@ -8,17 +8,15 @@ scope = [
   "src/agentmarshal/project.py",
   "tests/test_doctor.py",
   "tests/test_cli.py",
-  "templates/github/agentmarshal-governance.yml",
   "docs/self-hosting-workflow.md",
   "openspec/changes/report-what-the-tool-cannot-verify/",
   "openspec/changes/archive/",
   "openspec/specs/trust-preconditions/",
 ]
 acceptance = [
-  "every scenario in openspec/changes/report-what-the-tool-cannot-verify/specs/trust-preconditions/spec.md is demonstrated by a test whose docstring names it, except the template scenarios, which the shipped file has no harness for and whose reasoning is in design.md; the implementation follows design.md's decisions or records in design.md why it departed",
+  "every scenario in openspec/changes/report-what-the-tool-cannot-verify/specs/trust-preconditions/spec.md is demonstrated by a test whose docstring names it; the implementation follows design.md's decisions or records in design.md why it departed",
   "doctor reports on the actor variable, on whether the configured reviewer command's placeholders resolve, and on whether a CI definition invoking validate exists; no report prints the reviewer command's value, and a test asserts a secret in it does not appear",
   "an unmet precondition does not change doctor's exit status, and the summary line does not claim that all checks passed when one is unmet",
-  "the template's gate job decides neutrality by the absence of a review record for the head SHA rather than by catching the gate's refusal, says so in its output, and no longer carries continue-on-error",
   "init prints the preconditions once with what each costs to skip, configures no provider and no harness, and tasks.md's checkboxes are ticked for the work that landed",
 ]
 decisions = ["ADR-0001", "ADR-0006"]
@@ -57,10 +55,25 @@ querying a provider would give `doctor` credentials and a network.
 A check that is red by construction is worse than no check, because it teaches
 an operator that red is normal.
 
+## Amended 2026-09-17
+
+The template half leaves this contract. Its requirement was that the shipped
+job succeed without evaluating the review-bound lane; review showed that needs
+a gate which can be told to leave that lane unexamined, and the Non-Goals below
+forbid a gate change. The draft that shipped instead skipped the gate entirely,
+which drops the scope, append-only, base-state and lifecycle checks the job does
+enforce today, and its guard could never have matched: it looked for a record
+naming a commit inside the tree of that same commit.
+
+What remains here is what the tool can report about itself. The gate mode and
+the template follow in their own task.
+
 ## Non-Goals
 
 - Querying a provider for its merge methods, or configuring anything.
 - A wizard; the reporter explicitly did not ask for one.
 - Review materialisation, which is what would let a head carry its own review.
+- The shipped provider template and the gate mode it needs, moved out by the
+  amendment above.
 - The remaining adopter findings: leak-scan, the reviewer's discarded stderr and
   the journal-branch pattern are the next task.

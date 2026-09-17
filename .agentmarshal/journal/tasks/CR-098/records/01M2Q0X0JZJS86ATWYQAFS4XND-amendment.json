@@ -1,0 +1,11 @@
+{
+  "created_at": "2026-09-17T06:29:41.599088Z",
+  "reason": "the template half cannot be built inside this contract: succeeding without evaluating the review-bound lane needs a gate that can be told to leave it unexamined, and the Non-Goals forbid a gate change; skipping the whole gate instead would drop the scope, append-only, base-state and lifecycle checks it does enforce. The template and the gate mode become their own task",
+  "record_type": "amendment",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "schema": 3,
+  "source": "live",
+  "task": "CR-098",
+  "tool_version": "0.3.0"
+}
