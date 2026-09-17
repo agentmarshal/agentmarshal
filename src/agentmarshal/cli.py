@@ -578,8 +578,24 @@ def _run_accept(args: argparse.Namespace, stderr: TextIO) -> int:
 
 def _run_review(args: argparse.Namespace, stderr: TextIO) -> int:
     if args.dry_run:
+        ignored = [
+            flag
+            for flag, value in (("--task", args.task), ("--commit", args.commit))
+            if value is not None
+        ]
+        if ignored:
+            print(
+                "review --dry-run judges the configured command, not any work: "
+                + ", ".join(ignored)
+                + " does not apply",
+                file=stderr,
+            )
+            return 1
+        placement = _placement("review", stderr, require_host=True)
+        if placement is None:
+            return 1
         try:
-            dry_run_review(Path.cwd(), args.model)
+            dry_run_review(placement.host_root, args.model)
         except ReviewLaunchError as error:
             print(f"dry run failed: {error}", file=stderr)
             return 1

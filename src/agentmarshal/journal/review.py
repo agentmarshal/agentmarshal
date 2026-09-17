@@ -214,10 +214,11 @@ def _reviewer_command(model: str, prompt_file: Path) -> list[str]:
                 )
         return [element.format(**replacements) for element in template]
     except (KeyError, IndexError, ValueError) as error:
-        # Unreachable by construction: the scan above names every field the
-        # formatter would reject, and raises with that name. Kept so a template
-        # the scan has not anticipated is a refusal rather than a traceback,
-        # and deliberately without a token, which only the scan can supply.
+        # The scan above names every field the formatter would reject, so what
+        # reaches here is a template the scan passes and the formatter does not:
+        # a bad format specification such as {model:d}, or a brace the scan
+        # itself could not parse. Neither has a field name to report, which is
+        # why this refusal carries none.
         raise ReviewLaunchError(
             "AGENTMARSHAL_REVIEWER_CMD has an invalid placeholder"
         ) from error
@@ -404,9 +405,25 @@ def dry_run_review(project_root: Path, reviewer_model: str | None) -> None:
             _reviewer_command(reviewer_model or "", prompt_file), snapshot, prompt
         ).decode("utf-8", errors="replace")
         try:
-            _parse_verdict(output, preserve_output=False)
+            verdict = _parse_verdict(output, preserve_output=False)
         except ReviewLaunchError as error:
-            raise ReviewLaunchError(f"reviewer output: {error}") from error
+            # The operator is debugging this command; the output is the evidence.
+            # It goes beside the rejected-verdict copies, outside any journal.
+            try:
+                kept = _preserve_output(output)
+            except OSError:
+                raise ReviewLaunchError(f"reviewer output: {error}") from error
+            raise ReviewLaunchError(
+                f"reviewer output: {error}; what the command printed is at {kept}"
+            ) from error
+        # The recorded path refuses a verdict about another commit, and so does
+        # this one: a command that echoes a commit of its own would pass a check
+        # that only parsed.
+        if verdict[0] != _DRY_RUN_COMMIT:
+            raise ReviewLaunchError(
+                "reviewer verdict names a commit the dry run did not ask about: "
+                f"{verdict[0]}"
+            )
 
 
 def launch_review(

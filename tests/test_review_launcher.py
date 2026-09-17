@@ -374,7 +374,15 @@ def test_dry_run_reports_when_it_cannot_parse_a_verdict(
     assert "dry run failed: reviewer output:" in message
     assert "invalid verdict sentinels" in message
     assert _tree_contents(journal) == before
-    assert _kept_any_outputs(tmp_path) == []
+    # The journal gains nothing; what the command printed is kept outside it,
+    # because an operator debugging a command needs to see its output.
+    kept = _kept_any_outputs(tmp_path)
+    try:
+        assert len(kept) == 1
+        assert str(kept[0]) in message
+    finally:
+        for path in kept:
+            path.unlink(missing_ok=True)
 
 
 def test_dry_run_requires_no_task_or_commit(
@@ -404,13 +412,16 @@ def test_dry_run_requires_no_task_or_commit(
         "init",
     )
     monkeypatch.chdir(repo)
+    assert main(["init"]) == 0
     stub = _reviewer_stub(tmp_path, _verdict(review._DRY_RUN_COMMIT, "approved", []))
     monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+    capsys.readouterr()
 
     assert main(["review", "--dry-run"]) == 0
 
     assert "parseable verdict" in capsys.readouterr().out
-    assert not (repo / ".agentmarshal").exists()
+    tasks = repo / ".agentmarshal" / "journal" / "tasks"
+    assert not tasks.exists() or list(tasks.iterdir()) == []
 
 
 def test_review_uses_contract_from_reviewed_commit(
