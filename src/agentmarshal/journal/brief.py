@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -12,6 +13,44 @@ from agentmarshal.journal.extensions import (
     read_extension_manifest,
 )
 from agentmarshal.journal.status import TaskStatusError, load_task_status
+
+
+def append_amendment_history(text: str, history: str) -> str:
+    """Attach a rendered history to material that already ends in prose."""
+
+    if not history:
+        return text
+    if text.endswith("\n\n"):
+        return text + history
+    return text + ("\n" if text.endswith("\n") else "\n\n") + history
+
+
+def render_amendment_history(records: Sequence[Mapping[str, object]]) -> str:
+    """Render the record-backed amendment history shared by both briefings.
+
+    Reasons are quoted line by line. They remain the recorded text, but cannot
+    introduce a heading or delimiter that looks like part of this rendering.
+    """
+
+    amendments = [record for record in records if record["record_type"] == "amendment"]
+    if not amendments:
+        return ""
+    entries: list[str] = []
+    for amendment in amendments:
+        recorder = amendment.get("recorded_by")
+        # The actor name is recorded text like any other: a newline in it would
+        # forge an entry of its own, so it renders on one line or not at all.
+        byline = (
+            f"; recorded by {' '.join(recorder.split())}"
+            if isinstance(recorder, str)
+            else ""
+        )
+        reason = amendment["reason"]
+        if not isinstance(reason, str):  # validated on read; belt and braces
+            continue
+        quoted_reason = "\n".join(f"> {line}" for line in reason.splitlines())
+        entries.append(f"- {amendment['created_at']}{byline}:\n{quoted_reason}\n")
+    return "## Contract amendment history\n\n" + "\n".join(entries)
 
 
 def _contract_body(text: str) -> str:
@@ -294,6 +333,7 @@ def build_brief(journal_root: Path, task_id: str, host_root: Path | None = None)
         "Contract body (verbatim):\n"
         f"{body}"
     )
+    brief = append_amendment_history(brief, render_amendment_history(task.records))
     project_root = journal_root.parents[1]
     return _append_named_material(
         brief, host_root or project_root, project_root, task.contract

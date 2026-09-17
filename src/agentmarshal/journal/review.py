@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import os
@@ -12,6 +13,10 @@ import tempfile
 from pathlib import Path
 from typing import cast
 
+from agentmarshal.journal.brief import (
+    append_amendment_history,
+    render_amendment_history,
+)
 from agentmarshal.journal.contracts import parse_contract_text
 from agentmarshal.journal.extensions import (
     ExtensionManifestMissing,
@@ -22,7 +27,9 @@ from agentmarshal.journal.extensions import (
 # uses. The prompt renders that same set so it cannot drift from what the
 # record layer will accept. (Module-private today; worth making public the
 # next time records.py is opened.)
-from agentmarshal.journal.records import _REVIEW_VERDICTS as REVIEW_VERDICTS
+from agentmarshal.journal.records import (
+    _REVIEW_VERDICTS as REVIEW_VERDICTS,
+)
 from agentmarshal.journal.status import TaskStatusError, load_task_status
 from agentmarshal.journal.submit_review import (
     ReviewSubmitError,
@@ -105,6 +112,7 @@ def _review_prompt(
     decisions: tuple[str, ...] = (),
     documents: tuple[str, ...] = (),
     absent_extensions: tuple[str, ...] = (),
+    amendment_history: str = "",
 ) -> str:
     """Build the reviewer prompt with its required machine-verdict protocol."""
 
@@ -125,13 +133,14 @@ def _review_prompt(
             lines.append("Extensions whose manifest is absent in the reviewed tree:")
             lines.extend(f"- {name}" for name in absent_extensions)
         named_material = "\n".join(lines) + "\n\n"
+    contract_material = append_amendment_history(contract, amendment_history)
     return _REVIEW_PROMPT.format(
         commit=commit,
         named_material=named_material,
         verdict_begin=_VERDICT_BEGIN,
         verdict_end=_VERDICT_END,
         verdicts=verdicts,
-        contract=contract,
+        contract=contract_material,
         diff=diff,
     )
 
@@ -376,6 +385,7 @@ def launch_review(
             raise ReviewLaunchError(
                 f"cannot read task contract {source}: {error}"
             ) from error
+        amendment_history = render_amendment_history(task.records)
         try:
             header = parse_contract_text(contract, str(contract_path))
             extension_root = (
@@ -399,6 +409,7 @@ def launch_review(
             decisions=header.decisions,
             documents=tuple(dict.fromkeys(documents)),
             absent_extensions=tuple(absent),
+            amendment_history=amendment_history,
         )
         prompt_file.write_text(prompt, encoding="utf-8")
         raw_output = _run_reviewer(
@@ -429,6 +440,7 @@ def launch_review(
             review_result[2],
             review_result[3] or None,
             prose=raw_output,
+            reviewed_contract=hashlib.sha256(contract.encode("utf-8")).hexdigest(),
         )
     except ReviewSubmitError as error:
         if error.artifact_ref is not None:

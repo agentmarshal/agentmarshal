@@ -10,6 +10,7 @@ import pytest
 from agentmarshal.cli import main
 from agentmarshal.journal.brief import build_brief
 from agentmarshal.journal.contracts import JournalContractError
+from agentmarshal.journal.records import create_amendment_record, write_record
 
 
 def _repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
@@ -66,6 +67,8 @@ def test_brief_prints_complete_contract_and_governance(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    """Scenario: a task with no amendments is unchanged."""
+
     repo = _repo(tmp_path, monkeypatch)
     body = _write_contract(repo)
     capsys.readouterr()
@@ -83,6 +86,92 @@ def test_brief_prints_complete_contract_and_governance(
     assert "only these paths may change" in captured.out
     assert "the journal is not the implementer's to edit" in captured.out
     assert "they are the definition of done" in captured.out
+
+
+def _record_amendment(
+    repo: Path,
+    reason: str,
+    created_at: str,
+    record_id: str,
+    *,
+    legacy_schema: bool = False,
+) -> None:
+    amendment = create_amendment_record("CR-001", "test", reason)
+    amendment["created_at"] = created_at
+    if legacy_schema:
+        amendment["schema"] = 1
+        amendment.pop("source")
+    write_record(
+        repo / ".agentmarshal" / "journal",
+        "CR-001",
+        amendment,
+        record_id=record_id,
+    )
+
+
+def test_brief_renders_the_same_amendment_history(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: an implementer is told the same."""
+
+    repo = _repo(tmp_path, monkeypatch)
+    _write_contract(repo)
+    monkeypatch.setenv("AGENTMARSHAL_ACTOR", "contract-owner")
+    _record_amendment(
+        repo,
+        "First criterion was clarified.",
+        "2026-09-17T01:02:03Z",
+        "01J00000000000000000000001",
+    )
+    _record_amendment(
+        repo,
+        "Second criterion was added.",
+        "2026-09-17T02:03:04Z",
+        "01J00000000000000000000002",
+    )
+    capsys.readouterr()
+
+    assert main(["brief", "--task", "CR-001"]) == 0
+
+    brief = capsys.readouterr().out
+    history = "## Contract amendment history\n\n"
+    assert history in brief
+    assert brief.index("- 2026-09-17T01:02:03Z") < brief.index("- 2026-09-17T02:03:04Z")
+    assert (
+        "- 2026-09-17T01:02:03Z; recorded by contract-owner:\n"
+        "> First criterion was clarified." in brief
+    )
+    assert (
+        "- 2026-09-17T02:03:04Z; recorded by contract-owner:\n"
+        "> Second criterion was added." in brief
+    )
+
+
+def test_brief_renders_an_amendment_without_a_recorder(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: an amendment recorded without an actor still renders."""
+
+    repo = _repo(tmp_path, monkeypatch)
+    _write_contract(repo)
+    _record_amendment(
+        repo,
+        "A historical amendment had no recorder.",
+        "2026-09-17T03:04:05Z",
+        "01J00000000000000000000001",
+        legacy_schema=True,
+    )
+    capsys.readouterr()
+
+    assert main(["brief", "--task", "CR-001"]) == 0
+
+    brief = capsys.readouterr().out
+    assert "2026-09-17T03:04:05Z:\n> A historical amendment had no recorder." in brief
+    assert "recorded by" not in brief
 
 
 @pytest.mark.parametrize(("state", "reason"), [("abandoned", "superseded")])

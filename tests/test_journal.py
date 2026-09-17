@@ -353,6 +353,73 @@ def test_builders_emit_schema_3_with_live_provenance(tmp_path: Path) -> None:
     ]
 
 
+def test_reviewed_contract_uses_schema_5_only_when_present() -> None:
+    """Schema 5 is opt-in, preserving the schema-3 review record by default."""
+
+    without_contract = create_review_record(
+        "CR-001", "1.0", "a" * 40, "approved", "r", "v", "m", "r@t.i", []
+    )
+    with_contract = create_review_record(
+        "CR-001",
+        "1.0",
+        "a" * 40,
+        "approved",
+        "r",
+        "v",
+        "m",
+        "r@t.i",
+        [],
+        reviewed_contract="a" * 64,
+    )
+
+    assert without_contract["schema"] == 3
+    assert "reviewed_contract" not in without_contract
+    assert with_contract["schema"] == 5
+    assert with_contract["reviewed_contract"] == "a" * 64
+
+
+def test_reviewed_contract_requires_schema_5(tmp_path: Path) -> None:
+    """Scenario: the field requires the schema that allows it."""
+
+    record = create_review_record(
+        "CR-001",
+        "1.0",
+        "a" * 40,
+        "approved",
+        "r",
+        "v",
+        "m",
+        "r@t.i",
+        [],
+        reviewed_contract="a" * 64,
+    )
+    record["schema"] = 4
+
+    with pytest.raises(
+        JournalRecordError,
+        match=r"reviewed_contract.*schema 5",
+    ):
+        write_record(tmp_path / "journal", "CR-001", record)
+
+
+def test_earlier_review_records_continue_to_read_unchanged(tmp_path: Path) -> None:
+    """Scenario: records written before the field are read as they were."""
+
+    review = create_review_record(
+        "CR-001", "1.0", "a" * 40, "approved", "r", "v", "m", "r@t.i", []
+    )
+    write_record(
+        tmp_path / "journal",
+        "CR-001",
+        review,
+        record_id="01J00000000000000000000000",
+    )
+
+    read = read_records(tmp_path / "journal", "CR-001")[0]
+    assert read["schema"] == 3
+    assert "reviewed_contract" not in read
+
+
 @pytest.mark.parametrize("schema", [1, 2])
 def test_existing_record_schemas_remain_valid(tmp_path: Path, schema: int) -> None:
     record = create_opened_record("CR-001", "1.0")
@@ -517,6 +584,8 @@ def test_record_session_writes_usage_and_validate_accepts_mixed_shapes(
 def test_review_record_round_trip_and_status_detail(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    """Scenario: the human path records no contract."""
+
     repo = tmp_path / "repo"
     root = initialize_status_repo(repo)
     monkeypatch.chdir(repo)
@@ -550,6 +619,7 @@ def test_review_record_round_trip_and_status_detail(
     records = read_records(root, "CR-001")
     assert records[-1]["reviewed_commit"] == "a" * 40
     assert records[-1]["findings"] == ["F-001"]
+    assert "reviewed_contract" not in records[-1]
 
     capsys.readouterr()
     assert main(["status", "CR-001"]) == 0
