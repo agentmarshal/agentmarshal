@@ -373,7 +373,7 @@ def test_a_path_that_carries_a_marker_is_not_printed_either() -> None:
 
 
 def test_a_path_that_is_itself_a_key_is_described_not_printed() -> None:
-    """Scenario: a path that matches a built-in signature is described, not printed.
+    """Scenario: a path that is itself a key is described, not printed.
 
     A file can be named after the key it holds. The rendering says which
     signature the path matched — that name is public — and never the

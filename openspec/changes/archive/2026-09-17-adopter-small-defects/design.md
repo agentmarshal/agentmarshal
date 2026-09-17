@@ -21,6 +21,19 @@ string written by `project.py` at `init`.
   scan drops a private-marker hit whose only occurrence is in the project
   configuration that declares the markers. An occurrence anywhere else is
   reported, including in the same content.
+- **Departure from the contract's "sole occurrence" bound, and why.** The
+  contract's threat model bounds the narrowing to an occurrence in the
+  declaring configuration "and only when it is the sole occurrence", which
+  reads as: beside a real hit elsewhere, the declaration's own occurrence is
+  reported too. It is not. A review round found the defect in that shape —
+  printing the declaration's path beside the real one sends the operator to
+  where the marker is *defined*, which is never where it leaked, and it prints
+  that path on every change to the marker list. The rule the code implements
+  is therefore: occurrences inside the declaring configuration are never
+  reported, every occurrence outside it always is. The departure only removes
+  a line about the file the operator is already editing; the leak itself is
+  still reported, naming its own file, which is what the acceptance criterion
+  asks for.
 - **The reviewer's error stream is kept, not printed.** It can be long, and the
   command's own output is read by callers that parse it. It goes beside the
   rejected-verdict copies, outside any journal, and the path is named — the

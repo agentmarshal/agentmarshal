@@ -1,3 +1,9 @@
+## Purpose
+What the added-content leak scan reports and what it refuses to print.
+A hit has to be actionable — the file, and which signature or which configured
+marker matched — and the scan's own output must never carry the thing it is
+looking for, including in a path.
+
 ## ADDED Requirements
 
 ### Requirement: A leak-scan hit names where it matched and what matched

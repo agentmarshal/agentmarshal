@@ -1,7 +1,10 @@
 # leak-scan Specification
 
 ## Purpose
-TBD - created by archiving change adopter-small-defects. Update Purpose after archive.
+What the added-content leak scan reports and what it refuses to print.
+A hit has to be actionable — the file, and which signature or which configured
+marker matched — and the scan's own output must never carry the thing it is
+looking for, including in a path.
 
 ## Requirements
 
