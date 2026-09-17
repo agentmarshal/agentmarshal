@@ -7,6 +7,7 @@ import io
 import json
 import os
 import shlex
+import string
 import subprocess
 import tarfile
 import tempfile
@@ -43,6 +44,11 @@ _VERDICT_REQUIRED = {"reviewed_commit", "verdict", "findings"}
 # advisory_findings is in the record schema and create_review_record accepts it;
 # accepting it here is what makes it reachable through the protocol at all.
 _VERDICT_OPTIONAL = {"advisory_findings"}
+_DRY_RUN_COMMIT = "0" * 40
+_DRY_RUN_CONTRACT = (
+    "# Example task\n\nThis synthetic contract exercises the reviewer command."
+)
+_DRY_RUN_DIFF = "diff --git a/example.py b/example.py\n+print('example')\n"
 _REVIEW_PROMPT = """You are a read-only code reviewer. Review the supplied task contract
 and diff.
 Do not modify files. Your reviewed commit is {commit}.
@@ -145,6 +151,29 @@ def _review_prompt(
     )
 
 
+def _dry_run_prompt() -> str:
+    """Build the real reviewer prompt around a fixed, synthetic example."""
+
+    return _review_prompt(_DRY_RUN_CONTRACT, _DRY_RUN_DIFF, _DRY_RUN_COMMIT)
+
+
+def _unsupported_placeholder(template: str, known: set[str]) -> str | None:
+    """Return the first formatter field not accepted by the template rule."""
+
+    for _literal, token, specification, _conversion in string.Formatter().parse(
+        template
+    ):
+        if token is None:
+            continue
+        if token not in known:
+            return token
+        if specification:
+            nested = _unsupported_placeholder(specification, known)
+            if nested is not None:
+                return nested
+    return None
+
+
 def _reviewer_command(model: str, prompt_file: Path) -> list[str]:
     """Build the reviewer command from ``AGENTMARSHAL_REVIEWER_CMD``.
 
@@ -176,8 +205,18 @@ def _reviewer_command(model: str, prompt_file: Path) -> list[str]:
         raise ReviewLaunchError("AGENTMARSHAL_REVIEWER_CMD must not be empty")
     replacements = {"model": model, "prompt_file": str(prompt_file)}
     try:
+        for element in template:
+            token = _unsupported_placeholder(element, set(replacements))
+            if token is not None:
+                raise ReviewLaunchError(
+                    f"AGENTMARSHAL_REVIEWER_CMD has an unsupported placeholder: {token}"
+                )
         return [element.format(**replacements) for element in template]
-    except (KeyError, ValueError) as error:
+    except (KeyError, IndexError, ValueError) as error:
+        # Unreachable by construction: the scan above names every field the
+        # formatter would reject, and raises with that name. Kept so a template
+        # the scan has not anticipated is a refusal rather than a traceback,
+        # and deliberately without a token, which only the scan can supply.
         raise ReviewLaunchError(
             "AGENTMARSHAL_REVIEWER_CMD has an invalid placeholder"
         ) from error
@@ -237,9 +276,13 @@ def _preserve_output(output: str) -> Path:
     return Path(name)
 
 
-def _reject(output: str, reason: str) -> ReviewLaunchError:
+def _reject(
+    output: str, reason: str, *, preserve_output: bool = True
+) -> ReviewLaunchError:
     """Build a rejection that names where the reviewer's raw output was kept."""
 
+    if not preserve_output:
+        return ReviewLaunchError(reason)
     try:
         kept = _preserve_output(output)
     except OSError as error:  # pragma: no cover - preservation is best effort
@@ -247,23 +290,29 @@ def _reject(output: str, reason: str) -> ReviewLaunchError:
     return ReviewLaunchError(f"{reason}; reviewer output kept at {kept}")
 
 
-def _parse_verdict(output: str) -> tuple[str, str, list[str], list[str]]:
+def _parse_verdict(
+    output: str, *, preserve_output: bool = True
+) -> tuple[str, str, list[str], list[str]]:
+    """Parse a verdict, preserving rejected recorded-review output when asked."""
+
+    def reject(reason: str) -> ReviewLaunchError:
+        return _reject(output, reason, preserve_output=preserve_output)
+
     lines = output.splitlines()
     begins = [index for index, line in enumerate(lines) if line == _VERDICT_BEGIN]
     ends = [index for index, line in enumerate(lines) if line == _VERDICT_END]
     if len(begins) != 1 or len(ends) != 1 or begins[0] >= ends[0]:
-        raise _reject(output, "reviewer output has invalid verdict sentinels")
+        raise reject("reviewer output has invalid verdict sentinels")
     try:
         verdict_data = json.loads("\n".join(lines[begins[0] + 1 : ends[0]]))
     except json.JSONDecodeError as error:
-        raise _reject(output, f"reviewer verdict is not valid JSON: {error}") from error
+        raise reject(f"reviewer verdict is not valid JSON: {error}") from error
     if not isinstance(verdict_data, dict):
-        raise _reject(output, "reviewer verdict must be a JSON object")
+        raise reject("reviewer verdict must be a JSON object")
     keys = set(verdict_data)
     missing = _VERDICT_REQUIRED - keys
     if missing:
-        raise _reject(
-            output,
+        raise reject(
             "reviewer verdict is missing required field(s): "
             + ", ".join(sorted(missing)),
         )
@@ -272,8 +321,7 @@ def _parse_verdict(output: str) -> tuple[str, str, list[str], list[str]]:
     # failure the reviewer cannot act on.
     unknown = keys - _VERDICT_REQUIRED - _VERDICT_OPTIONAL
     if unknown:
-        raise _reject(
-            output,
+        raise reject(
             "reviewer verdict has unsupported field(s): " + ", ".join(sorted(unknown)),
         )
     reviewed_commit = verdict_data["reviewed_commit"]
@@ -281,14 +329,12 @@ def _parse_verdict(output: str) -> tuple[str, str, list[str], list[str]]:
     findings = verdict_data["findings"]
     advisory = verdict_data.get("advisory_findings", [])
     if not isinstance(reviewed_commit, str) or not isinstance(verdict, str):
-        raise _reject(output, "reviewer verdict fields must be strings")
+        raise reject("reviewer verdict fields must be strings")
     for name, value in (("findings", findings), ("advisory_findings", advisory)):
         if not isinstance(value, list) or not all(
             isinstance(item, str) for item in value
         ):
-            raise _reject(
-                output, f"reviewer verdict {name} must be an array of strings"
-            )
+            raise reject(f"reviewer verdict {name} must be an array of strings")
     return (
         reviewed_commit,
         verdict,
@@ -330,6 +376,20 @@ def _extract_snapshot(project_root: Path, commit: str, snapshot: Path) -> None:
         if not _run_git(project_root, ["ls-tree", commit]).strip():
             return
         raise ReviewLaunchError(f"snapshot extraction failed: {error}") from error
+
+
+def dry_run_review(reviewer_model: str) -> None:
+    """Exercise the configured reviewer without a snapshot or journal write."""
+
+    with tempfile.TemporaryDirectory(prefix="agentmarshal-review-dry-run-") as name:
+        temporary_root = Path(name)
+        prompt_file = temporary_root / "review-prompt.txt"
+        prompt = _dry_run_prompt()
+        prompt_file.write_text(prompt, encoding="utf-8")
+        output = _run_reviewer(
+            _reviewer_command(reviewer_model, prompt_file), temporary_root, prompt
+        ).decode("utf-8", errors="replace")
+        _parse_verdict(output, preserve_output=False)
 
 
 def launch_review(

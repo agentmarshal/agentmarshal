@@ -143,6 +143,15 @@ def _kept_any_outputs(tmp_path: Path) -> list[Path]:
     return list(tmp_path.glob("agentmarshal-*.txt"))
 
 
+def _tree_contents(root: Path) -> dict[Path, bytes | None]:
+    """Capture every journal entry without changing its metadata."""
+
+    return {
+        path.relative_to(root): None if path.is_dir() else path.read_bytes()
+        for path in root.rglob("*")
+    }
+
+
 def _run_review(commit: str) -> int:
     return main(
         [
@@ -301,6 +310,88 @@ def test_reviewer_command_requires_explicit_command_no_bundled_vendor(
         "test-model",
         "-",
     ]
+
+
+@pytest.mark.parametrize("token", ("unsupported", "0"))
+def test_unsupported_placeholder_is_named_in_the_refusal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, token: str
+) -> None:
+    """Scenario: an unsupported placeholder is named in the refusal."""
+
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", f"reviewer {{{token}}}")
+
+    with pytest.raises(review.ReviewLaunchError) as raised:
+        review._reviewer_command("test-model", tmp_path / "review-prompt.txt")
+
+    assert token in str(raised.value)
+
+
+def test_dry_run_reports_a_parseable_verdict_without_changing_the_journal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a working command is reported as working."""
+
+    repo, _commit = _review_repo(tmp_path, monkeypatch)
+    prompt_output = tmp_path / "dry-run-prompt.txt"
+    stub = _reviewer_stub(
+        tmp_path,
+        _verdict(review._DRY_RUN_COMMIT, "approved", []),
+        prompt_output=prompt_output,
+    )
+    journal = repo / ".agentmarshal" / "journal"
+    before = _tree_contents(journal)
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert main(["review", "--dry-run"]) == 0
+
+    captured = capsys.readouterr()
+    assert "parseable verdict" in captured.out
+    assert "nothing was recorded" in captured.out
+    assert _tree_contents(journal) == before
+    assert prompt_output.read_text(encoding="utf-8") == review._review_prompt(
+        review._DRY_RUN_CONTRACT, review._DRY_RUN_DIFF, review._DRY_RUN_COMMIT
+    )
+
+
+def test_dry_run_reports_when_it_cannot_parse_a_verdict(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a command that yields no verdict is reported as such."""
+
+    repo, _commit = _review_repo(tmp_path, monkeypatch)
+    stub = _reviewer_stub(tmp_path, "reviewer prose only\n")
+    journal = repo / ".agentmarshal" / "journal"
+    before = _tree_contents(journal)
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert main(["review", "--dry-run"]) == 1
+
+    message = capsys.readouterr().err
+    assert "could not parse reviewer verdict" in message
+    assert "invalid verdict sentinels" in message
+    assert _tree_contents(journal) == before
+    assert _kept_any_outputs(tmp_path) == []
+
+
+def test_dry_run_requires_no_task_or_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a dry run needs no task and no commit."""
+
+    monkeypatch.chdir(tmp_path)
+    stub = _reviewer_stub(tmp_path, _verdict(review._DRY_RUN_COMMIT, "approved", []))
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert main(["review", "--dry-run"]) == 0
+
+    assert "parseable verdict" in capsys.readouterr().out
+    assert not (tmp_path / ".agentmarshal").exists()
 
 
 def test_review_uses_contract_from_reviewed_commit(
