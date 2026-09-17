@@ -1284,7 +1284,15 @@ def _run_leak_scan(args: argparse.Namespace, stderr: TextIO) -> int:
     except _LeakScanGitError as error:
         print(f"leak-scan: git diff failed: {error}", file=stderr)
         return 1
-    hits = scan_diff_for_leaks(diff_text, markers)
+    # The same reasoning the gate applies: the declaration a marker may match
+    # is the project file the markers were read from. Here that file is the
+    # sidecar's whenever one supplied the markers, and the diff is the host's,
+    # so no path in it is that file and nothing is suppressed.
+    hits = scan_diff_for_leaks(
+        diff_text,
+        markers,
+        config_path="" if sidecar_config is not None else ".agentmarshal/project.json",
+    )
     if hits:
         print(
             "leak-scan: possible leaks in added content "

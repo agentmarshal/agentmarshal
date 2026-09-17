@@ -332,8 +332,10 @@ def test_a_built_in_signature_names_its_file_and_itself() -> None:
 
 
 def test_a_path_that_carries_a_marker_is_not_printed_either() -> None:
-    """A repository can name a directory after an internal host, and then the
-    path is the secret; naming the file would disclose what naming the marker
+    """Scenario: a path that carries a marker is described, not printed.
+
+    A repository can name a directory after an internal host, and then the path
+    is the secret; naming the file would disclose what naming the marker
     refused to."""
 
     diff = (
