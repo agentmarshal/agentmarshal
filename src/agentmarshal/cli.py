@@ -160,23 +160,30 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="exercise the configured reviewer; records nothing",
     )
-    # Every flag below is required for a recorded review and refused for a dry
-    # run, which judges the command rather than any work. argparse cannot say
-    # that, so the help does.
+    # The shared review metadata is required for a recorded review and refused
+    # for a dry run. The selected binding decides whether --commit/--base apply.
     required_unless_dry_run = "required unless --dry-run"
     launch_parser.add_argument(
         "--task", help=f"task identifier ({required_unless_dry_run})"
     )
     launch_binding = launch_parser.add_mutually_exclusive_group()
     launch_binding.add_argument(
-        "--commit", help=f"reviewed commit SHA ({required_unless_dry_run})"
+        "--commit",
+        help=(
+            "reviewed commit SHA (required for a commit review; does not apply to "
+            "--dry-run)"
+        ),
     )
     launch_binding.add_argument(
         "--reviewed-finding",
         help="reviewed finding record id (does not apply to --dry-run)",
     )
     launch_parser.add_argument(
-        "--base", help=f"comparison base ref ({required_unless_dry_run})"
+        "--base",
+        help=(
+            "comparison base ref (required for a commit review; refused with "
+            "--reviewed-finding)"
+        ),
     )
     launch_parser.add_argument(
         "--role", help=f"reviewer role ({required_unless_dry_run})"
@@ -700,7 +707,7 @@ def _run_review(args: argparse.Namespace, stderr: TextIO) -> int:
     if missing:
         print("review: required unless --dry-run: " + ", ".join(missing), file=stderr)
         return 1
-    placement = _placement("review", stderr, require_host=True)
+    placement = _placement("review", stderr, require_host=args.reviewed_finding is None)
     if placement is None:
         return 1
     try:

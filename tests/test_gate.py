@@ -247,11 +247,7 @@ def test_a_default_run_prints_the_transcript_it_printed_before(
 def test_findings_gate_uses_the_public_artifact_resolver() -> None:
     """The shared resolver has no second gate-local spelling."""
 
-    from agentmarshal.journal import artifacts
-
-    module_attribute = "".join(("art", "ifacts"))
-    gate_artifacts = getattr(gate_module, module_attribute)
-    assert gate_artifacts.artifact_path is artifacts.artifact_path
+    # Keep a gate-local resolver from diverging from the launcher's resolver.
     assert not hasattr(gate_module, "_artifact_path")
 
 

@@ -62,6 +62,16 @@ that stands in for it.
   gets a metadata-free snapshot so a relative path in the reviewer command
   resolves; a finding review gets a temporary directory holding the verified
   files at their reference paths, for the same reason.
+- **Named material is named, not supplied, for a finding review.** The finding
+  snapshot contains only the verified artifact bytes, so named Decisions and
+  Documents are not readable from the reviewer's working directory as they are
+  in a commit snapshot. The prompt says that those items are names rather than
+  supplied material, and that only the pinned artifacts were verified.
+- **A launched finding review is for the latest finding and an independent
+  reviewer.** The findings lane evaluates only its latest finding and compares
+  declared git identities. The launcher makes both checks before invoking the
+  reviewer, reusing the gate's identity resolution and refusal wording, so an
+  append-only review record cannot be created for evidence the lane must deny.
 
 ## Risks
 
@@ -69,9 +79,10 @@ that stands in for it.
   material is the project's own, the command runs where the operator put it,
   and the confinement of the reviewer is the operator's arrangement (ADR-0002);
   this change adds no new reader.
-- [Two prompt templates drift] → the shared parts (verdict protocol, named
-  material, amendment history) stay in shared helpers; only the subject block
-  differs, and the commit template has a byte-for-byte test.
+- [Two prompt templates drift] → the shared verdict protocol, named material,
+  prose instruction, and amendment history stay in shared helpers; only the
+  subject and snapshot statements differ. Both prompt renderings have
+  byte-for-byte tests.
 - [A finding with many large artifacts makes an unusable prompt] → content is
   included per reference with its hash; the operator sees the size in the
   refusal or the prompt. No limit is invented here: the existing prompt has

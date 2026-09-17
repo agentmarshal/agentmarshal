@@ -25,6 +25,7 @@ from agentmarshal.journal.extensions import (
     ExtensionManifestMissing,
     read_extension_manifest,
 )
+from agentmarshal.journal.gate import finding_reviewer_identity_refusal
 
 # The allowed verdicts have one definition, in records.py, which validation
 # uses. The prompt renders that same set so it cannot drift from what the
@@ -54,20 +55,9 @@ _REVIEW_PROMPT = """You are a read-only code reviewer. Review the supplied task 
 and diff.
 Do not modify files. Your reviewed commit is {commit}.
 
-{named_material}For each blocking or advisory finding id you report, print one line of \
-prose
-before the verdict block, naming what is wrong and where. The ids are labels
-for the machine; the prose is what a human will read.
+{named_material}{prose_instruction}
 
-At the end, print exactly one JSON object between lines containing exactly
-{verdict_begin} and {verdict_end}. The object must contain:
-- reviewed_commit: the exact reviewed commit SHA
-- verdict: exactly one of: {verdicts}
-- findings: an array of unique finding-id strings; empty only for "approved",
-  and non-empty for every other verdict
-and may additionally contain:
-- advisory_findings: an array of unique non-blocking finding-id strings,
-  disjoint from findings; allowed with any verdict, including "approved"
+{verdict_protocol}
 
 No other key is accepted.
 
@@ -77,34 +67,26 @@ Task contract:
 Diff:
 {diff}
 """
-_FINDING_REVIEW_PROMPT = """You are a read-only reviewer. Review the supplied
-task contract
-and verified finding artifacts.
-Do not modify files. Your reviewed finding is {finding}.
-
-{named_material}For each blocking or advisory finding id you report, print one
-line of prose
-before the verdict block, naming what is wrong and where. The ids are labels
-for the machine; the prose is what a human will read.
-
-At the end, print exactly one JSON object between lines containing exactly
-{verdict_begin} and {verdict_end}. The object must contain:
-- reviewed_finding: the exact reviewed finding id
-- verdict: exactly one of: {verdicts}
-- findings: an array of unique finding-id strings; empty only for "approved",
-  and non-empty for every other verdict
-and may additionally contain:
-- advisory_findings: an array of unique non-blocking finding-id strings,
-  disjoint from findings; allowed with any verdict, including "approved"
-
-No other key is accepted.
-
-Task contract:
-{contract}
-
-Finding artifacts:
-{artifacts}
-"""
+_FINDING_REVIEW_PROMPT = (
+    "You are a read-only reviewer. Review the supplied task contract\n"
+    "and verified finding artifacts.\n"
+    "Do not modify files. Your reviewed finding is {finding}.\n"
+    "\n"
+    "The named contract material is named, not supplied in this snapshot; only the "
+    "pinned artifacts below were verified.\n"
+    "\n"
+    "{named_material}{prose_instruction}\n"
+    "\n"
+    "{verdict_protocol}\n"
+    "\n"
+    "No other key is accepted.\n"
+    "\n"
+    "Task contract:\n"
+    "{contract}\n"
+    "\n"
+    "Finding artifacts:\n"
+    "{artifacts}\n"
+)
 
 
 class ReviewLaunchError(Exception):
@@ -128,6 +110,63 @@ class _VerifiedArtifact:
     digest: str
     path: Path
     content: bytes
+
+
+def _named_contract_material(
+    decisions: tuple[str, ...],
+    documents: tuple[str, ...],
+    absent_extensions: tuple[str, ...],
+    *,
+    absent_extensions_phrase: str,
+) -> str:
+    """Render the contract names shared by commit and finding review prompts."""
+
+    if not (decisions or documents or absent_extensions):
+        return ""
+    lines = ["Named contract material:"]
+    if decisions:
+        lines.append("Decisions:")
+        lines.extend(f"- {decision}" for decision in decisions)
+        lines.append("A finding may cite a contradiction with a named decision.")
+    if documents:
+        lines.append("Documents:")
+        lines.extend(f"- {document}" for document in documents)
+    if absent_extensions:
+        # A removal candidate deletes its manifest (ADR-0010 D5); the review
+        # still launches, and the reviewer is told what is absent.
+        lines.append(absent_extensions_phrase)
+        lines.extend(f"- {name}" for name in absent_extensions)
+    return "\n".join(lines) + "\n\n"
+
+
+def _prose_instruction() -> str:
+    """Return the shared request for human-readable finding explanations."""
+
+    return (
+        "For each blocking or advisory finding id you report, print one line of "
+        "prose\n"
+        "before the verdict block, naming what is wrong and where. The ids are labels\n"
+        "for the machine; the prose is what a human will read."
+    )
+
+
+def _verdict_protocol(subject_field: str, subject_description: str) -> str:
+    """Render the shared machine-verdict protocol for one review binding."""
+
+    verdicts = ", ".join(sorted(REVIEW_VERDICTS))
+    return (
+        "At the end, print exactly one JSON object between lines containing "
+        "exactly\n"
+        f"{_VERDICT_BEGIN} and {_VERDICT_END}. The object must contain:\n"
+        f"- {subject_field}: {subject_description}\n"
+        f"- verdict: exactly one of: {verdicts}\n"
+        "- findings: an array of unique finding-id strings; empty only for "
+        '"approved",\n'
+        "  and non-empty for every other verdict\n"
+        "and may additionally contain:\n"
+        "- advisory_findings: an array of unique non-blocking finding-id strings,\n"
+        '  disjoint from findings; allowed with any verdict, including "approved"'
+    )
 
 
 def _run_git(project_root: Path, arguments: list[str]) -> str:
@@ -170,30 +209,21 @@ def _review_prompt(
 ) -> str:
     """Build the reviewer prompt with its required machine-verdict protocol."""
 
-    verdicts = ", ".join(sorted(REVIEW_VERDICTS))
-    named_material = ""
-    if decisions or documents or absent_extensions:
-        lines = ["Named contract material:"]
-        if decisions:
-            lines.append("Decisions:")
-            lines.extend(f"- {decision}" for decision in decisions)
-            lines.append("A finding may cite a contradiction with a named decision.")
-        if documents:
-            lines.append("Documents:")
-            lines.extend(f"- {document}" for document in documents)
-        if absent_extensions:
-            # A removal candidate deletes its manifest (ADR-0010 D5); the
-            # review still launches, and the reviewer is told what is absent.
-            lines.append("Extensions whose manifest is absent in the reviewed tree:")
-            lines.extend(f"- {name}" for name in absent_extensions)
-        named_material = "\n".join(lines) + "\n\n"
     contract_material = append_amendment_history(contract, amendment_history)
     return _REVIEW_PROMPT.format(
         commit=commit,
-        named_material=named_material,
-        verdict_begin=_VERDICT_BEGIN,
-        verdict_end=_VERDICT_END,
-        verdicts=verdicts,
+        named_material=_named_contract_material(
+            decisions,
+            documents,
+            absent_extensions,
+            absent_extensions_phrase=(
+                "Extensions whose manifest is absent in the reviewed tree:"
+            ),
+        ),
+        prose_instruction=_prose_instruction(),
+        verdict_protocol=_verdict_protocol(
+            "reviewed_commit", "the exact reviewed commit SHA"
+        ),
         contract=contract_material,
         diff=diff,
     )
@@ -211,22 +241,6 @@ def _finding_review_prompt(
     amendment_history: str = "",
 ) -> str:
     """Build the distinct reviewer prompt for a hash-pinned finding."""
-
-    verdicts = ", ".join(sorted(REVIEW_VERDICTS))
-    named_material = ""
-    if decisions or documents or absent_extensions:
-        lines = ["Named contract material:"]
-        if decisions:
-            lines.append("Decisions:")
-            lines.extend(f"- {decision}" for decision in decisions)
-            lines.append("A finding may cite a contradiction with a named decision.")
-        if documents:
-            lines.append("Documents:")
-            lines.extend(f"- {document}" for document in documents)
-        if absent_extensions:
-            lines.append("Extensions whose manifest is absent in the project:")
-            lines.extend(f"- {name}" for name in absent_extensions)
-        named_material = "\n".join(lines) + "\n\n"
 
     artifact_sections: list[str] = []
     for artifact in artifacts:
@@ -253,10 +267,18 @@ def _finding_review_prompt(
 
     return _FINDING_REVIEW_PROMPT.format(
         finding=finding,
-        named_material=named_material,
-        verdict_begin=_VERDICT_BEGIN,
-        verdict_end=_VERDICT_END,
-        verdicts=verdicts,
+        named_material=_named_contract_material(
+            decisions,
+            documents,
+            absent_extensions,
+            absent_extensions_phrase=(
+                "Extensions whose manifest is absent in the project:"
+            ),
+        ),
+        prose_instruction=_prose_instruction(),
+        verdict_protocol=_verdict_protocol(
+            "reviewed_finding", "the exact reviewed finding id"
+        ),
         contract=append_amendment_history(contract, amendment_history),
         artifacts="\n\n".join(artifact_sections),
     )
@@ -474,9 +496,12 @@ def _reject(
 
 
 def _parse_verdict(
-    output: str, *, preserve_output: bool = True
-) -> tuple[str, str, list[str], list[str]]:
-    """Parse a verdict, preserving rejected recorded-review output when asked."""
+    output: str,
+    *,
+    subject_fields: frozenset[str] = frozenset({"reviewed_commit"}),
+    preserve_output: bool = True,
+) -> tuple[str, str, str, list[str], list[str]]:
+    """Parse a verdict for one of the accepted review-subject field sets."""
 
     def reject(reason: str) -> ReviewLaunchError:
         return _reject(output, reason, preserve_output=preserve_output)
@@ -493,66 +518,11 @@ def _parse_verdict(
     if not isinstance(verdict_data, dict):
         raise reject("reviewer verdict must be a JSON object")
     keys = set(verdict_data)
-    missing = _VERDICT_REQUIRED - keys
-    if missing:
-        raise reject(
-            "reviewer verdict is missing required field(s): "
-            + ", ".join(sorted(missing)),
-        )
-    # An unknown key is still refused — a verdict we do not understand must not
-    # be recorded — but the message names it, instead of reporting a shape
-    # failure the reviewer cannot act on.
-    unknown = keys - _VERDICT_REQUIRED - _VERDICT_OPTIONAL
-    if unknown:
-        raise reject(
-            "reviewer verdict has unsupported field(s): " + ", ".join(sorted(unknown)),
-        )
-    reviewed_commit = verdict_data["reviewed_commit"]
-    verdict = verdict_data["verdict"]
-    findings = verdict_data["findings"]
-    advisory = verdict_data.get("advisory_findings", [])
-    if not isinstance(reviewed_commit, str) or not isinstance(verdict, str):
-        raise reject("reviewer verdict fields must be strings")
-    for name, value in (("findings", findings), ("advisory_findings", advisory)):
-        if not isinstance(value, list) or not all(
-            isinstance(item, str) for item in value
-        ):
-            raise reject(f"reviewer verdict {name} must be an array of strings")
-    return (
-        reviewed_commit,
-        verdict,
-        cast(list[str], findings),
-        cast(list[str], advisory),
+    required = (
+        _VERDICT_REQUIRED - {"reviewed_commit"}
+        if "reviewed_finding" in subject_fields
+        else _VERDICT_REQUIRED
     )
-
-
-def _parse_finding_verdict(
-    output: str,
-) -> tuple[str, str, str, list[str], list[str]]:
-    """Parse a verdict that may name either review subject shape.
-
-    A finding launch accepts a commit-shaped verdict far enough to name it in
-    the refusal.  It never records that verdict: exactly one binding is still
-    required, and only ``reviewed_finding`` can match the requested subject.
-    """
-
-    def reject(reason: str) -> ReviewLaunchError:
-        return _reject(output, reason)
-
-    lines = output.splitlines()
-    begins = [index for index, line in enumerate(lines) if line == _VERDICT_BEGIN]
-    ends = [index for index, line in enumerate(lines) if line == _VERDICT_END]
-    if len(begins) != 1 or len(ends) != 1 or begins[0] >= ends[0]:
-        raise reject("reviewer output has invalid verdict sentinels")
-    try:
-        verdict_data = json.loads("\n".join(lines[begins[0] + 1 : ends[0]]))
-    except json.JSONDecodeError as error:
-        raise reject(f"reviewer verdict is not valid JSON: {error}") from error
-    if not isinstance(verdict_data, dict):
-        raise reject("reviewer verdict must be a JSON object")
-    subject_fields = {"reviewed_commit", "reviewed_finding"}
-    required = {"verdict", "findings"}
-    keys = set(verdict_data)
     missing = required - keys
     if missing:
         raise reject(
@@ -562,13 +532,16 @@ def _parse_finding_verdict(
     bindings = keys & subject_fields
     if len(bindings) != 1:
         raise reject(
-            "reviewer verdict must name exactly one of reviewed_commit or "
-            "reviewed_finding"
+            "reviewer verdict must name exactly one of "
+            + " or ".join(sorted(subject_fields))
         )
+    # An unknown key is still refused — a verdict we do not understand must not
+    # be recorded — but the message names it, instead of reporting a shape
+    # failure the reviewer cannot act on.
     unknown = keys - required - subject_fields - _VERDICT_OPTIONAL
     if unknown:
         raise reject(
-            "reviewer verdict has unsupported field(s): " + ", ".join(sorted(unknown))
+            "reviewer verdict has unsupported field(s): " + ", ".join(sorted(unknown)),
         )
     subject_field = bindings.pop()
     subject = verdict_data[subject_field]
@@ -671,7 +644,13 @@ def dry_run_review(
         diagnostics_note = _keep_diagnostics(raw_diagnostics)
         output = raw_output.decode("utf-8", errors="replace")
         try:
-            verdict = _parse_verdict(output, preserve_output=False)
+            (
+                _subject_field,
+                reviewed_commit,
+                _verdict,
+                _findings,
+                _advisory,
+            ) = _parse_verdict(output, preserve_output=False)
         except ReviewLaunchError as error:
             # The operator is debugging this command; the output is the evidence.
             # It goes beside the rejected-verdict copies, outside any journal.
@@ -688,11 +667,11 @@ def dry_run_review(
         # The recorded path refuses a verdict about another commit, and so does
         # this one: a command that echoes a commit of its own would pass a check
         # that only parsed.
-        if verdict[0] != _DRY_RUN_COMMIT:
+        if reviewed_commit != _DRY_RUN_COMMIT:
             raise _with_diagnostics(
                 ReviewLaunchError(
                     "reviewer verdict names a commit the dry run did not ask about: "
-                    f"{verdict[0]}"
+                    f"{reviewed_commit}"
                 ),
                 diagnostics_note,
             )
@@ -770,19 +749,29 @@ def _launch_finding_review(
         task = load_task_status(journal_root, task_id)
     except (OSError, TaskStatusError, ValueError) as error:
         raise ReviewLaunchError(str(error)) from error
+    task_findings = [
+        record for record in task.records if record["record_type"] == "finding"
+    ]
     finding = next(
-        (
-            record
-            for record in task.records
-            if record["record_type"] == "finding"
-            and record.get("id") == reviewed_finding
-        ),
+        (record for record in task_findings if record.get("id") == reviewed_finding),
         None,
     )
     if finding is None:
         raise ReviewLaunchError(
             f"reviewed finding {reviewed_finding} is not a finding of task {task_id}"
         )
+    latest_finding = task_findings[-1]
+    latest_finding_id = cast(str, latest_finding["id"])
+    if reviewed_finding != latest_finding_id:
+        raise ReviewLaunchError(
+            f"reviewed finding {reviewed_finding} is not the latest finding of task "
+            f"{task_id}; latest finding is {latest_finding_id}"
+        )
+    identity_refusal = finding_reviewer_identity_refusal(
+        project_root, finding, reviewer_email
+    )
+    if identity_refusal is not None:
+        raise ReviewLaunchError(identity_refusal)
 
     verified, unresolved = _verified_finding_artifacts(project_root, finding)
     contract_path = journal_root / "tasks" / task.task_id / "contract.md"
@@ -830,8 +819,15 @@ def _launch_finding_review(
         diagnostics_note = _keep_diagnostics(raw_diagnostics)
         reviewer_output = raw_output.decode("utf-8", errors="replace")
         try:
-            subject_field, subject, verdict, findings, advisory = (
-                _parse_finding_verdict(reviewer_output)
+            (
+                subject_field,
+                subject,
+                verdict,
+                blocking_findings,
+                advisory,
+            ) = _parse_verdict(
+                reviewer_output,
+                subject_fields=frozenset({"reviewed_commit", "reviewed_finding"}),
             )
         except ReviewLaunchError as error:
             raise _with_diagnostics(error, diagnostics_note) from error
@@ -854,7 +850,7 @@ def _launch_finding_review(
             reviewer_vendor,
             reviewer_model,
             reviewer_email,
-            findings,
+            blocking_findings,
             advisory or None,
             prose=raw_output,
             reviewed_finding=reviewed_finding,
@@ -980,7 +976,13 @@ def launch_review(
         output = raw_output.decode("utf-8", errors="replace")
         reviewer_output = output
         try:
-            reviewed_commit, verdict, findings, advisory = _parse_verdict(output)
+            (
+                _subject_field,
+                reviewed_commit,
+                verdict,
+                findings,
+                advisory,
+            ) = _parse_verdict(output)
         except ReviewLaunchError as error:
             raise _with_diagnostics(error, diagnostics_note) from error
         if reviewed_commit != resolved_commit:

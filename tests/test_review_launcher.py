@@ -42,6 +42,7 @@ def _review_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path,
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init", "--quiet")
+    monkeypatch.delenv("AGENTMARSHAL_ACTOR", raising=False)
     _git(
         repo,
         "-c",
@@ -765,6 +766,87 @@ def test_a_verdict_about_another_subject_is_refused(
         path.unlink()
 
 
+def test_finding_verdict_parser_uses_the_shared_required_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A new shared required field also applies to finding-shaped verdicts."""
+
+    monkeypatch.setattr(
+        review,
+        "_VERDICT_REQUIRED",
+        {"reviewed_commit", "verdict", "findings", "new_required_field"},
+    )
+    output = _finding_verdict("01ARZ3NDEKTSV4RRFFQ69G5FAV", "approved", [])
+
+    with pytest.raises(review.ReviewLaunchError, match="new_required_field"):
+        review._parse_verdict(
+            output,
+            subject_fields=frozenset({"reviewed_commit", "reviewed_finding"}),
+            preserve_output=False,
+        )
+
+
+def test_finding_review_refuses_a_superseded_finding_before_running(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The launcher pins the latest finding so its review cannot strand the lane."""
+
+    repo, _commit = _review_repo(tmp_path, monkeypatch)
+    stale = _record_finding(repo, [("evidence/first.md", b"First\n")])
+    latest = _record_finding(repo, [("evidence/latest.md", b"Latest\n")])
+    prompt_output = tmp_path / "prompt-would-have-been-written.txt"
+    stub = _reviewer_stub(
+        tmp_path,
+        _finding_verdict(stale, "approved", []),
+        prompt_output=prompt_output,
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+    capsys.readouterr()
+
+    assert main(_finding_args(stale)) == 1
+
+    error = capsys.readouterr().err
+    assert stale in error
+    assert latest in error
+    assert not prompt_output.exists()
+    assert [
+        record["record_type"]
+        for record in read_records(repo / ".agentmarshal" / "journal", "CR-001")
+    ] == ["opened", "finding", "finding"]
+
+
+def test_finding_review_refuses_the_recorder_before_running(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The launcher reuses the findings lane's declared-identity refusal."""
+
+    repo, _commit = _review_repo(tmp_path, monkeypatch)
+    finding = _record_finding(repo, [("evidence/conclusion.md", b"Pinned prose\n")])
+    prompt_output = tmp_path / "prompt-would-have-been-written.txt"
+    stub = _reviewer_stub(
+        tmp_path,
+        _finding_verdict(finding, "approved", []),
+        prompt_output=prompt_output,
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+    arguments = _finding_args(finding)
+    arguments[arguments.index("reviewer@example.invalid")] = "test@example.com"
+    capsys.readouterr()
+
+    assert main(arguments) == 1
+
+    assert "declared reviewer identity differs" in capsys.readouterr().err
+    assert not prompt_output.exists()
+    assert [
+        record["record_type"]
+        for record in read_records(repo / ".agentmarshal" / "journal", "CR-001")
+    ] == ["opened", "finding"]
+
+
 def test_an_edited_artifact_refuses_the_review(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -886,6 +968,43 @@ def test_review_dry_run_still_refuses_a_reviewed_finding(
     assert main(["review", "--dry-run", "--reviewed-finding", "F-001"]) == 1
 
     assert "--reviewed-finding does not apply" in capsys.readouterr().err
+
+
+def test_finding_review_refuses_a_base_argument(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A finding review has no comparison base to accept."""
+
+    repo, _commit = _review_repo(tmp_path, monkeypatch)
+    finding = _record_finding(repo, [("evidence/conclusion.md", b"Pinned prose\n")])
+    capsys.readouterr()
+
+    assert main([*_finding_args(finding), "--base", "HEAD"]) == 1
+
+    assert "review --base applies only to --commit" in capsys.readouterr().err
+
+
+def test_finding_review_needs_no_reachable_sidecar_host(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A finding review decides sidecar evidence without consulting its host."""
+
+    repo, _commit = _review_repo(tmp_path, monkeypatch)
+    finding = _record_finding(repo, [("evidence/conclusion.md", b"Pinned prose\n")])
+    project_path = repo / ".agentmarshal" / "project.json"
+    project = json.loads(project_path.read_text(encoding="utf-8"))
+    project.update({"placement": "sidecar", "host": str(tmp_path / "missing-host")})
+    project_path.write_text(json.dumps(project), encoding="utf-8")
+    stub = _reviewer_stub(tmp_path, _finding_verdict(finding, "approved", []))
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert main(_finding_args(finding)) == 0
+
+    record = read_records(repo / ".agentmarshal" / "journal", "CR-001")[-1]
+    assert record["reviewed_finding"] == finding
 
 
 def test_a_warning_from_a_wrapper_reaches_the_operator(
@@ -1532,6 +1651,77 @@ DIFF
 """
 
     assert review._review_prompt("CONTRACT", "DIFF", commit) == expected
+
+
+def test_finding_prompt_is_pinned_byte_for_byte() -> None:
+    """The finding prompt is pinned so its shared protocol cannot silently drift."""
+
+    from agentmarshal.journal.records import _REVIEW_VERDICTS
+
+    finding = "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+    digest = "a" * 64
+    verdicts = ", ".join(sorted(_REVIEW_VERDICTS))
+    artifact = review._VerifiedArtifact(
+        "evidence/result.md", digest, Path("/unused"), b"Evidence\n"
+    )
+    expected = f"""You are a read-only reviewer. Review the supplied task contract
+and verified finding artifacts.
+Do not modify files. Your reviewed finding is {finding}.
+
+The named contract material is named, not supplied in this snapshot; only the \
+pinned artifacts below were verified.
+
+Named contract material:
+Decisions:
+- ADR-0009
+A finding may cite a contradiction with a named decision.
+Documents:
+- docs/guide.md
+Extensions whose manifest is absent in the project:
+- openspec
+
+For each blocking or advisory finding id you report, print one line of prose
+before the verdict block, naming what is wrong and where. The ids are labels
+for the machine; the prose is what a human will read.
+
+At the end, print exactly one JSON object between lines containing exactly
+{review._VERDICT_BEGIN} and {review._VERDICT_END}. The object must contain:
+- reviewed_finding: the exact reviewed finding id
+- verdict: exactly one of: {verdicts}
+- findings: an array of unique finding-id strings; empty only for "approved",
+  and non-empty for every other verdict
+and may additionally contain:
+- advisory_findings: an array of unique non-blocking finding-id strings,
+  disjoint from findings; allowed with any verdict, including "approved"
+
+No other key is accepted.
+
+Task contract:
+CONTRACT
+
+Finding artifacts:
+Verified artifact: evidence/result.md
+Recorded sha256: {digest}
+Content:
+Evidence
+
+
+Unverified references (not fetched):
+- https://example.invalid/evidence
+"""
+
+    assert (
+        review._finding_review_prompt(
+            "CONTRACT",
+            finding,
+            (artifact,),
+            ("https://example.invalid/evidence",),
+            decisions=("ADR-0009",),
+            documents=("docs/guide.md",),
+            absent_extensions=("openspec",),
+        )
+        == expected
+    )
 
 
 def test_review_launches_when_a_named_manifest_is_absent_from_the_reviewed_tree(
