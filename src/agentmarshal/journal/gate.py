@@ -1125,20 +1125,20 @@ def run_gate(
         # differ" and the added content is never scanned); --no-textconv /
         # --no-ext-diff stop the repo's own diff drivers from rewriting or
         # redacting what the scanner sees, which could hide a secret. The
-        # three -c pins keep the destination prefix the parser strips ("b/")
-        # and leave non-ASCII paths unquoted: with diff.mnemonicPrefix the
-        # header reads "+++ c/…", and the suppression key would stop matching
-        # the project file silently.
+        # prefix flags fix the destination prefix the parser strips ("b/"):
+        # with diff.mnemonicPrefix the header reads "+++ c/…" and with
+        # diff.dstPrefix anything at all, and the suppression key would stop
+        # matching the project file silently. The flags win over all four
+        # config knobs (noprefix, mnemonicPrefix, srcPrefix, dstPrefix), which
+        # "-c diff.noprefix=false" alone does not. core.quotePath is left
+        # alone on purpose: unquoted output puts raw non-UTF-8 path bytes
+        # through a strict decode and skips the whole scan.
         diff_text = _run_git(
             project_root,
             [
-                "-c",
-                "diff.noprefix=false",
-                "-c",
-                "diff.mnemonicPrefix=false",
-                "-c",
-                "core.quotePath=false",
                 "diff",
+                "--src-prefix=a/",
+                "--dst-prefix=b/",
                 "--text",
                 "--no-textconv",
                 "--no-ext-diff",

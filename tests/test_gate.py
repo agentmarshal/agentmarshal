@@ -1824,6 +1824,30 @@ def test_gate_leak_scan_uses_configured_private_markers(
     assert "private-marker" in output
 
 
+def test_gate_leak_scan_names_the_file_whatever_prefix_the_repo_configures(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A repository's own diff prefix does not reach the scan's path parsing.
+
+    The parser strips "b/", and diff.dstPrefix can make git emit anything;
+    "-c diff.noprefix=false" does not override it, so the callers fix the
+    prefix with --src-prefix/--dst-prefix instead."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    # Repository configuration, not content: it changes what git's own diff
+    # headers look like for every caller that does not override it.
+    _git(repo, "config", "diff.dstPrefix", "candidate/")
+    _git(repo, "config", "diff.srcPrefix", "baseline/")
+    head = _implement(repo, "src/keys.py", "KEY = 'AKIAIOSFODNN7EXAMPLE'\n")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    assert passed, output
+    assert "src/keys.py: aws-access-key-id" in output
+    assert "candidate/src/keys.py" not in output
+
+
 def test_gate_leak_scan_reads_markers_from_base_not_candidate(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

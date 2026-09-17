@@ -41,6 +41,22 @@ string written by `project.py` at `init`.
   whole path collapsed two leaking files under one marker-named directory into
   a single hit, because the hits are a set and both rendered identically: the
   scan lost the "where" it was built to add.
+- **The diff is read with the prefix fixed and the quoting left alone.** Both
+  callers pass `--src-prefix=a/ --dst-prefix=b/`, which wins over all four
+  config knobs a repository can set (`diff.noprefix`, `diff.mnemonicPrefix`,
+  `diff.srcPrefix`, `diff.dstPrefix`) — `-c diff.noprefix=false` alone does
+  not, as `git 2.47` shows with `diff.dstPrefix` still in force.
+  `core.quotePath` is deliberately *not* pinned off: unquoted output sends raw
+  non-UTF-8 path bytes into a strict decode, which turns the whole advisory
+  scan into a skip. A C-quoted non-ASCII path in a warning is noise; an
+  unscanned diff is a hole.
+- **Kept diagnostics are not cleaned up, like every other kept output.** A
+  zero-exit run whose reviewer wrote to stderr leaves one temp file, and
+  nothing deletes it — the same policy `_preserve_output` has had since
+  CR-097. It is now on the success path, so the files accumulate wherever many
+  reviews run. A retention rule for everything this tool leaves in the
+  system's temporary directory is one decision, not two, and it is in the
+  backlog rather than invented here.
 - **The rendered line is bounded.** A marker in two hundred files was one
   category token before this change and is two hundred records after it. The
   renderer shows the first twenty and counts the rest, because the merge

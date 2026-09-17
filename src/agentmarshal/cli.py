@@ -1271,19 +1271,15 @@ def _run_leak_scan(args: argparse.Namespace, stderr: TextIO) -> int:
     # marks binary/non-diffable (otherwise git emits "Binary files differ"
     # and the added content is never scanned); --no-textconv / --no-ext-diff
     # stop the repo's own diff drivers from rewriting what the scanner sees.
-    # The -c pins are the gate's, for the gate's reason: the parser strips a
-    # "b/" prefix, and a repository can configure another one.
+    # The prefix flags are the gate's, for the gate's reason: the parser
+    # strips a "b/" prefix, and a repository can configure another one.
     try:
         diff_text = _leak_scan_git(
             scan_root,
             [
-                "-c",
-                "diff.noprefix=false",
-                "-c",
-                "diff.mnemonicPrefix=false",
-                "-c",
-                "core.quotePath=false",
                 "diff",
+                "--src-prefix=a/",
+                "--dst-prefix=b/",
                 "--text",
                 "--no-textconv",
                 "--no-ext-diff",

@@ -380,11 +380,11 @@ def _diff_path(header: str) -> str | None:
     path = header[4:]
     if path == "/dev/null":
         return None
-    # git's default destination prefix. Both callers pin diff.noprefix,
-    # diff.mnemonicPrefix and core.quotePath off for exactly this reason. A
-    # diff from anywhere else may still arrive with another prefix, and the
-    # path is then taken as given: a wrong-looking path in a warning is a
-    # smaller fault than a stripped first character.
+    # git's default destination prefix. Both callers pass --dst-prefix=b/ for
+    # exactly this reason. A diff from anywhere else may still arrive with
+    # another prefix, or C-quoted for a non-ASCII path, and the path is then
+    # taken as given: a wrong-looking path in a warning is a smaller fault
+    # than a stripped first character.
     return path[2:] if path.startswith("b/") else path
 
 
@@ -468,9 +468,10 @@ def scan_diff_for_leaks(
                 # A context line (leading space) belongs to both sides.
                 old_remaining -= 1
                 new_remaining -= 1
-    # A declaration only self-matches when it is the marker's sole occurrence
-    # in the scanned additions.  Any second occurrence, including one in the
-    # same candidate diff, leaves every hit reportable.
+    # Occurrences inside the file that declares the markers are not reported;
+    # every occurrence outside it is. design.md records this as a departure
+    # from the contract's "sole occurrence" wording: the declaration's path is
+    # where a marker is defined, never where it leaked.
     for path, added_lines in added_by_path.items():
         added_text = "\n".join(added_lines)
         hits.update(_signature_hits(added_text, safe_path(path, private_markers)))
