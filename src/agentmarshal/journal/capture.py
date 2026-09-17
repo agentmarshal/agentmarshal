@@ -37,6 +37,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from types import MappingProxyType
 
+from agentmarshal.project import PROJECT_CONFIG_RELPATH
+
 
 class CaptureError(ValueError):
     """Raised when a capture policy is malformed."""
@@ -274,6 +276,70 @@ _LEAK_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 )
 
 
+@dataclass(frozen=True, order=True)
+class LeakHit:
+    """One location-safe leak-scan result.
+
+    ``identification`` is either a public built-in signature name or a private
+    marker's one-based configured position.  It deliberately never holds the
+    matched text or a marker value.
+
+    Neither does ``path``: a repository can have a directory named after an
+    internal host, and a file can be named after the very key a signature
+    matches, so a path can be the secret. Naming such a file would disclose
+    what naming the marker or withholding the matched text refused to. In
+    those paths :func:`safe_path` replaces the offending span with a
+    description of it, and the rest of the path still says where.
+    """
+
+    path: str
+    identification: str
+
+
+def safe_path(path: str, private_markers: tuple[str, ...]) -> str:
+    """Return *path* with anything secret in it replaced by a description.
+
+    A configured marker is named by position and a built-in signature by its
+    own identifier, exactly as in ``identification``: the description says
+    what the path carries and never the characters it carries.
+
+    Only the offending span is replaced, so the rest of the path still says
+    where. Describing the whole path instead made two leaking files under one
+    marker-named directory render identically and collapse into one hit —
+    losing the "where" this scan exists to give.
+    """
+
+    safe = path
+    for index, marker in enumerate(private_markers, start=1):
+        if marker and marker in safe:
+            safe = safe.replace(marker, f"<private marker #{index}>")
+    for category, pattern in _LEAK_PATTERNS:
+        safe = pattern.sub(f"<{category}>", safe)
+    return safe
+
+
+# A marker present in two hundred files used to render as one category token;
+# it now renders as two hundred records, and the merge transcript is a document
+# people read. Enough hits to act on are shown and the rest are counted.
+_RENDER_LIMIT = 20
+
+
+def render_leak_hits(hits: list[LeakHit]) -> str:
+    """Render hit records without exposing matched content.
+
+    The standalone command and merge gate both use this one renderer: warning
+    detail therefore cannot silently diverge between their two call sites.
+    """
+
+    rendered = ", ".join(
+        f"{hit.path}: {hit.identification}" for hit in hits[:_RENDER_LIMIT]
+    )
+    remaining = len(hits) - _RENDER_LIMIT
+    if remaining > 0:
+        return f"{rendered}, and {remaining} more not shown"
+    return rendered
+
+
 def scan_for_leaks(text: str, private_markers: tuple[str, ...] = ()) -> list[str]:
     """Return the sorted leak categories found in *text*.
 
@@ -306,10 +372,44 @@ def assert_no_leaks(text: str, private_markers: tuple[str, ...] = ()) -> None:
 _HUNK_HEADER = re.compile(r"^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@")
 
 
+def _diff_path(header: str) -> str | None:
+    """Return the destination path from a unified-diff ``+++`` header."""
+
+    if not header.startswith("+++ "):
+        return None
+    path = header[4:]
+    if path == "/dev/null":
+        return None
+    # git's default destination prefix. Both callers pass --dst-prefix=b/ for
+    # exactly this reason. A diff from anywhere else may still arrive with
+    # another prefix, or C-quoted for a non-ASCII path, and the path is then
+    # taken as given: a wrong-looking path in a warning is a smaller fault
+    # than a stripped first character.
+    return path[2:] if path.startswith("b/") else path
+
+
+def _signature_hits(added_text: str, path: str) -> set[LeakHit]:
+    """Return built-in-signature hits over one file's added text.
+
+    Whole text rather than line by line: a signature may span a wrapped header,
+    and an earlier draft of this change narrowed those by matching each line on
+    its own.
+    """
+
+    return {
+        LeakHit(path, signature)
+        for signature, pattern in _LEAK_PATTERNS
+        if pattern.search(added_text)
+    }
+
+
 def scan_diff_for_leaks(
-    unified_diff: str, private_markers: tuple[str, ...] = ()
-) -> list[str]:
-    """Return leak categories found in the *added* lines of a unified diff.
+    unified_diff: str,
+    private_markers: tuple[str, ...] = (),
+    *,
+    config_path: str = PROJECT_CONFIG_RELPATH,
+) -> list[LeakHit]:
+    """Return location-safe leak hits from the *added* lines of a unified diff.
 
     Only lines the diff introduces are scanned, so this is forward-only leak
     prevention: content already in the tree (including consciously accepted
@@ -327,12 +427,27 @@ def scan_diff_for_leaks(
     empty result is not proof of safety.
     """
 
-    added: list[str] = []
+    hits: set[LeakHit] = set()
+    marker_occurrences: dict[int, list[str]] = {
+        index: [] for index, marker in enumerate(private_markers, start=1) if marker
+    }
+    # A real git diff always names the destination before a hunk.  Retaining a
+    # safe placeholder lets the pure parser still report a hand-written hunk
+    # used by callers/tests rather than silently omitting a detected signature.
+    # The same placeholder covers a destination of /dev/null: a scanner that
+    # stopped scanning because it had no name for the file would fail open.
+    current_path = "(unknown file)"
+    # Added lines are collected per file and matched together: a signature may
+    # span more than one line, and attribution still needs the file.
+    added_by_path: dict[str, list[str]] = {}
     lines = unified_diff.splitlines()
     index = 0
     total = len(lines)
     while index < total:
-        header = _HUNK_HEADER.match(lines[index])
+        line = lines[index]
+        if line.startswith("+++ "):
+            current_path = _diff_path(line) or "(unknown file)"
+        header = _HUNK_HEADER.match(line)
         index += 1
         if header is None:
             continue
@@ -345,7 +460,7 @@ def scan_diff_for_leaks(
                 # "\ No newline at end of file" — not a content line.
                 continue
             if body.startswith("+"):
-                added.append(body[1:])
+                added_by_path.setdefault(current_path, []).append(body[1:])
                 new_remaining -= 1
             elif body.startswith("-"):
                 old_remaining -= 1
@@ -353,7 +468,32 @@ def scan_diff_for_leaks(
                 # A context line (leading space) belongs to both sides.
                 old_remaining -= 1
                 new_remaining -= 1
-    return scan_for_leaks("\n".join(added), private_markers)
+    # Occurrences inside the file that declares the markers are not reported;
+    # every occurrence outside it is. design.md records this as a departure
+    # from the contract's "sole occurrence" wording: the declaration's path is
+    # where a marker is defined, never where it leaked.
+    for path, added_lines in added_by_path.items():
+        added_text = "\n".join(added_lines)
+        hits.update(_signature_hits(added_text, safe_path(path, private_markers)))
+        for marker_index, marker in enumerate(private_markers, start=1):
+            if marker and marker in added_text:
+                marker_occurrences[marker_index].append(path)
+    for marker_index, occurrences in marker_occurrences.items():
+        elsewhere = {path for path in occurrences if path != config_path}
+        if not elsewhere:
+            # Every occurrence is in the configuration that declares the
+            # marker. That is the declaration matching itself, which is what
+            # this rule exists to drop.
+            continue
+        # The declaration's own path is not reported beside a real occurrence:
+        # it is where the marker is defined, not where it leaked.
+        for path in elsewhere:
+            hits.add(
+                LeakHit(
+                    safe_path(path, private_markers), f"private-marker #{marker_index}"
+                )
+            )
+    return sorted(hits)
 
 
 def private_markers_from_project(

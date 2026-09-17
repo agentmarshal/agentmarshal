@@ -9,9 +9,11 @@ from agentmarshal.journal.capture import (
     CaptureError,
     CaptureLevel,
     CapturePolicy,
+    LeakHit,
     assert_no_leaks,
     capture_policy_from_project,
     private_markers_from_project,
+    render_leak_hits,
     scan_diff_for_leaks,
     scan_for_leaks,
 )
@@ -236,6 +238,26 @@ def test_scan_detects_configured_private_marker() -> None:
         assert_no_leaks(text, private_markers=("coordinator.internal.example",))
 
 
+def test_an_artefact_refusal_reports_what_matched_not_where() -> None:
+    """Scenario: an artefact refusal reports what matched, not where.
+
+    This scan is handed one artefact the caller already names, so the refusal
+    stays a category list; the added-content scan is the one that was given
+    many files and has to say which."""
+
+    text = "token AKIAIOSFODNN7EXAMPLE in a captured artefact"
+
+    with pytest.raises(CaptureError) as refused:
+        assert_no_leaks(text)
+
+    message = str(refused.value)
+    assert "aws-access-key-id" in message
+    assert "AKIAIOSFODNN7EXAMPLE" not in message
+    # The added-content renderer's "file: what" shape is deliberately absent:
+    # the category stands alone.
+    assert message.endswith("(aws-access-key-id)")
+
+
 def test_scan_passes_clean_text() -> None:
     text = "The review found no blocking issues; the diff is within scope."
     assert scan_for_leaks(text) == []
@@ -253,7 +275,7 @@ def test_scan_diff_scans_only_added_lines() -> None:
         "+added token AKIAIOSFODNN7EXAMPLE now present\n"
     )
     # Only the '+' line (not the '+++' header, not context, not '-') is scanned.
-    assert scan_diff_for_leaks(diff) == ["aws-access-key-id"]
+    assert scan_diff_for_leaks(diff) == [LeakHit("f", "aws-access-key-id")]
 
 
 def test_scan_diff_ignores_file_header_plus_plus_plus() -> None:
@@ -273,13 +295,13 @@ def test_scan_diff_catches_added_line_starting_with_plus() -> None:
         "@@ -0,0 +1 @@\n"
         "+++AKIAIOSFODNN7EXAMPLE trailing\n"
     )
-    assert scan_diff_for_leaks(diff) == ["aws-access-key-id"]
+    assert scan_diff_for_leaks(diff) == [LeakHit("f", "aws-access-key-id")]
 
 
 def test_scan_diff_honours_private_markers() -> None:
     diff = "+++ b/f\n@@ -0,0 +1 @@\n+HOST = internal.example.invalid\n"
     assert scan_diff_for_leaks(diff, ("internal.example.invalid",)) == [
-        "private-marker"
+        LeakHit("f", "private-marker #1")
     ]
 
 
@@ -308,7 +330,211 @@ def test_scan_diff_counts_added_line_that_looks_like_a_hunk_header() -> None:
         "+@@ not a real header AKIAIOSFODNN7EXAMPLE\n"
         "+second added line\n"
     )
-    assert scan_diff_for_leaks(diff) == ["aws-access-key-id"]
+    assert scan_diff_for_leaks(diff) == [LeakHit("(unknown file)", "aws-access-key-id")]
+
+
+def test_a_built_in_signature_names_its_file_and_itself() -> None:
+    """Scenario: a built-in signature names its file and itself."""
+
+    secret = "AKIAIOSFODNN7EXAMPLE"
+    diff = (
+        "diff --git a/src/keys.py b/src/keys.py\n"
+        "--- a/src/keys.py\n"
+        "+++ b/src/keys.py\n"
+        "@@ -0,0 +1 @@\n"
+        f"+KEY = '{secret}'\n"
+    )
+
+    rendered = render_leak_hits(scan_diff_for_leaks(diff))
+
+    assert rendered == "src/keys.py: aws-access-key-id"
+    assert secret not in rendered
+
+
+def test_a_path_that_carries_a_marker_is_not_printed_either() -> None:
+    """Scenario: a path that carries a marker is described, not printed.
+
+    A repository can name a directory after an internal host, and then the path
+    is the secret; naming the file would disclose what naming the marker
+    refused to."""
+
+    diff = (
+        "--- a/configs/internal.corp.invalid/app.json\n"
+        "+++ b/configs/internal.corp.invalid/app.json\n"
+        "@@ -0,0 +1 @@\n"
+        '+{"host": "internal.corp.invalid"}\n'
+    )
+
+    hits = scan_diff_for_leaks(diff, ("internal.corp.invalid",))
+
+    rendered = render_leak_hits(hits)
+    assert "internal.corp.invalid" not in rendered
+    assert "private marker #1" in rendered
+
+
+def test_a_path_that_is_itself_a_key_is_described_not_printed() -> None:
+    """Scenario: a path that is itself a key is described, not printed.
+
+    A file can be named after the key it holds. The rendering says which
+    signature the path matched — that name is public — and never the
+    characters that matched it."""
+
+    diff = (
+        "--- a/keys/AKIAIOSFODNN7EXAMPLE\n"
+        "+++ b/keys/AKIAIOSFODNN7EXAMPLE\n"
+        "@@ -0,0 +1 @@\n"
+        "+rotated on Tuesday AKIAIOSFODNN7EXAMPLE\n"
+    )
+
+    hits = scan_diff_for_leaks(diff)
+
+    rendered = render_leak_hits(hits)
+    assert "AKIAIOSFODNN7EXAMPLE" not in rendered
+    # Only the span that is the key is replaced; the directory still says where.
+    assert "keys/<aws-access-key-id>: aws-access-key-id" in rendered
+
+
+def test_two_leaking_files_under_one_marker_directory_stay_two_hits() -> None:
+    """A masked path keeps what is not the secret, so files stay distinct.
+
+    Describing the whole path made both files render identically, and the hits
+    are a set: the operator saw one place to look instead of two."""
+
+    diff = (
+        "--- a/configs/internal.corp.invalid/one.json\n"
+        "+++ b/configs/internal.corp.invalid/one.json\n"
+        "@@ -0,0 +1 @@\n"
+        '+{"host": "internal.corp.invalid"}\n'
+        "--- a/configs/internal.corp.invalid/two.json\n"
+        "+++ b/configs/internal.corp.invalid/two.json\n"
+        "@@ -0,0 +1 @@\n"
+        '+{"host": "internal.corp.invalid"}\n'
+    )
+
+    hits = scan_diff_for_leaks(diff, ("internal.corp.invalid",))
+
+    rendered = render_leak_hits(hits)
+    assert "internal.corp.invalid" not in rendered
+    assert len(hits) == 2
+    assert "configs/<private marker #1>/one.json" in rendered
+    assert "configs/<private marker #1>/two.json" in rendered
+
+
+def test_added_lines_of_a_dev_null_destination_are_still_scanned() -> None:
+    """A scanner with no name for the file must not stop scanning.
+
+    A destination of /dev/null left no path, and the added lines of that hunk
+    were dropped — fail-open in the one direction that matters."""
+
+    diff = "--- a/gone\n+++ /dev/null\n@@ -0,0 +1 @@\n+AKIAIOSFODNN7EXAMPLE\n"
+
+    hits = scan_diff_for_leaks(diff)
+
+    assert hits == [LeakHit("(unknown file)", "aws-access-key-id")]
+
+
+def test_a_rendered_warning_is_bounded_and_counts_the_rest() -> None:
+    """The merge transcript is read by people; the line cannot be unbounded."""
+
+    hits = [LeakHit(f"file{index:03d}", "aws-access-key-id") for index in range(25)]
+
+    rendered = render_leak_hits(hits)
+
+    assert rendered.count("aws-access-key-id") == 20
+    assert rendered.endswith(", and 5 more not shown")
+
+
+def test_a_signature_split_across_added_lines_is_still_found() -> None:
+    """A signature may span a wrapped header; matching line by line lost it."""
+
+    # The authorization-header signature allows whitespace between the header
+    # and its value, so a wrapped header matches the file's added text and not
+    # either line alone.
+    diff = (
+        "--- a/src/client.py\n"
+        "+++ b/src/client.py\n"
+        "@@ -0,0 +1,2 @@\n"
+        "+Authorization:\n"
+        "+  Bearer abcdefghijklmnopqrstuvwxyz0123456789\n"
+    )
+
+    hits = scan_diff_for_leaks(diff)
+
+    assert [hit.identification for hit in hits] == ["authorization-header"]
+
+
+def test_the_declaration_path_is_not_reported_beside_a_real_occurrence() -> None:
+    """Where a marker is defined is not where it leaked."""
+
+    diff = (
+        "--- a/.agentmarshal/project.json\n"
+        "+++ b/.agentmarshal/project.json\n"
+        "@@ -0,0 +1 @@\n"
+        '+{"leak_scan": {"private_markers": ["acme-internal"]}}\n'
+        "--- a/src/app.py\n"
+        "+++ b/src/app.py\n"
+        "@@ -0,0 +1 @@\n"
+        '+HOST = "acme-internal"\n'
+    )
+
+    hits = scan_diff_for_leaks(diff, ("acme-internal",))
+
+    assert [hit.path for hit in hits] == ["src/app.py"]
+
+
+def test_a_private_marker_is_named_by_position_not_by_value() -> None:
+    """Scenario: a private marker is named by position, not by value."""
+
+    marker = "private-coordinator.example.invalid"
+    diff = (
+        "diff --git a/src/config.py b/src/config.py\n"
+        "--- a/src/config.py\n"
+        "+++ b/src/config.py\n"
+        "@@ -0,0 +1 @@\n"
+        f"+HOST = '{marker}'\n"
+    )
+
+    rendered = render_leak_hits(scan_diff_for_leaks(diff, (marker,)))
+
+    assert rendered == "src/config.py: private-marker #1"
+    assert marker not in rendered
+
+
+def test_a_change_to_the_marker_list_does_not_trip_on_itself() -> None:
+    """Scenario: a change to the marker list does not trip on itself."""
+
+    marker = "private-coordinator.example.invalid"
+    diff = (
+        "diff --git a/.agentmarshal/project.json b/.agentmarshal/project.json\n"
+        "--- a/.agentmarshal/project.json\n"
+        "+++ b/.agentmarshal/project.json\n"
+        "@@ -0,0 +1 @@\n"
+        f'+{{"leak_scan": {{"private_markers": ["{marker}"]}}}}\n'
+    )
+
+    assert scan_diff_for_leaks(diff, (marker,)) == []
+
+
+def test_a_marker_elsewhere_in_the_same_content_is_still_reported() -> None:
+    """Scenario: a marker elsewhere in the same content is still reported."""
+
+    marker = "private-coordinator.example.invalid"
+    diff = (
+        "diff --git a/.agentmarshal/project.json b/.agentmarshal/project.json\n"
+        "--- a/.agentmarshal/project.json\n"
+        "+++ b/.agentmarshal/project.json\n"
+        "@@ -0,0 +1 @@\n"
+        f'+{{"leak_scan": {{"private_markers": ["{marker}"]}}}}\n'
+        "diff --git a/src/config.py b/src/config.py\n"
+        "--- a/src/config.py\n"
+        "+++ b/src/config.py\n"
+        "@@ -0,0 +1 @@\n"
+        f"+HOST = '{marker}'\n"
+    )
+
+    hits = scan_diff_for_leaks(diff, (marker,))
+
+    assert LeakHit("src/config.py", "private-marker #1") in hits
 
 
 def test_private_markers_absent_section_is_empty() -> None:

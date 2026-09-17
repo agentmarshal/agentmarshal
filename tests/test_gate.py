@@ -1758,6 +1758,38 @@ def test_gate_warns_on_leak_without_blocking(
     assert "aws-access-key-id" in output
 
 
+def test_the_merge_boundary_reports_the_same_detail(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: the merge boundary reports the same detail."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    secret = "AKIAIOSFODNN7EXAMPLE"
+    head = _implement(repo, "src/module.py", f"key = '{secret}'\n")
+    _approve(repo, head)
+
+    passed, gate_output = _run(repo, head, base, head)
+    capsys.readouterr()
+    assert main(["leak-scan", "--base", base, "--commit", head]) == 1
+    standalone = capsys.readouterr()
+
+    detail = "src/module.py: aws-access-key-id"
+    gate_line = next(
+        line for line in gate_output.splitlines() if line.startswith("WARN:")
+    )
+    assert passed, gate_output
+    assert gate_line == (
+        f"WARN: possible leak in candidate additions (advisory, not blocking): {detail}"
+    )
+    assert standalone.out == (
+        f"leak-scan: possible leaks in added content (file: what matched): {detail}\n"
+    )
+    assert secret not in gate_output
+    assert secret not in standalone.out
+
+
 def test_gate_leak_scan_is_clean_for_benign_additions(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1790,6 +1822,30 @@ def test_gate_leak_scan_uses_configured_private_markers(
     assert passed, output
     assert "WARN: possible leak in candidate additions" in output
     assert "private-marker" in output
+
+
+def test_gate_leak_scan_names_the_file_whatever_prefix_the_repo_configures(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A repository's own diff prefix does not reach the scan's path parsing.
+
+    The parser strips "b/", and diff.dstPrefix can make git emit anything;
+    "-c diff.noprefix=false" does not override it, so the callers fix the
+    prefix with --src-prefix/--dst-prefix instead."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    # Repository configuration, not content: it changes what git's own diff
+    # headers look like for every caller that does not override it.
+    _git(repo, "config", "diff.dstPrefix", "candidate/")
+    _git(repo, "config", "diff.srcPrefix", "baseline/")
+    head = _implement(repo, "src/keys.py", "KEY = 'AKIAIOSFODNN7EXAMPLE'\n")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    assert passed, output
+    assert "src/keys.py: aws-access-key-id" in output
+    assert "candidate/src/keys.py" not in output
 
 
 def test_gate_leak_scan_reads_markers_from_base_not_candidate(

@@ -77,6 +77,7 @@ def _reviewer_stub(
     output: str,
     exit_code: int = 0,
     prompt_output: Path | None = None,
+    error_output: str = "",
 ) -> Path:
     stub = tmp_path / "reviewer.py"
     capture_prompt = (
@@ -90,6 +91,7 @@ def _reviewer_stub(
         "import sys\n"
         f"{capture_prompt}"
         f"sys.stdout.write({output!r})\n"
+        f"sys.stderr.write({error_output!r})\n"
         f"raise SystemExit({exit_code})\n",
         encoding="utf-8",
     )
@@ -647,6 +649,95 @@ def test_review_records_stub_verdict(
     assert main(["status", "CR-001"]) == 0
     assert "reviewed_commit=" in main_output(capsys)
     _assert_no_snapshot(repo, tmp_path)
+
+
+def test_a_warning_from_a_wrapper_reaches_the_operator(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a warning from a wrapper reaches the operator."""
+
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    diagnostic = "wrapper used a fallback\n"
+    stub = _reviewer_stub(
+        tmp_path,
+        _verdict(commit, "approved", []),
+        error_output=diagnostic,
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+    capsys.readouterr()
+
+    assert main(_review_args(commit)) == 0
+
+    captured = capsys.readouterr()
+    kept = list(tmp_path.glob("agentmarshal-reviewer-stderr-*.txt"))
+    try:
+        assert len(read_records(repo / ".agentmarshal" / "journal", "CR-001")) == 2
+        assert len(kept) == 1
+        assert kept[0].read_text(encoding="utf-8") == diagnostic
+        assert not kept[0].is_relative_to(repo / ".agentmarshal" / "journal")
+        assert str(kept[0]) in captured.err
+    finally:
+        for path in kept:
+            path.unlink(missing_ok=True)
+
+
+def test_a_verdict_survives_a_failure_to_keep_the_warning(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Preservation is best effort: the review is recorded, the loss is said.
+
+    A wrapper's warning is a convenience beside the record. A temporary file
+    that cannot be written must not throw away a verdict the reviewer already
+    produced and the journal can hold."""
+
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    stub = _reviewer_stub(
+        tmp_path,
+        _verdict(commit, "approved", []),
+        error_output="wrapper used a fallback\n",
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    def _refuse(output: bytes) -> Path:
+        raise OSError("no space left on device")
+
+    monkeypatch.setattr(review, "_preserve_reviewer_diagnostics", _refuse)
+    capsys.readouterr()
+
+    assert main(_review_args(commit)) == 0
+
+    captured = capsys.readouterr()
+    assert len(read_records(repo / ".agentmarshal" / "journal", "CR-001")) == 2
+    assert "reviewer diagnostics could not be kept" in captured.err
+    assert "no space left on device" in captured.err
+    # The file was the way to keep a long warning out of parseable output;
+    # without it the note carries the warning rather than losing it.
+    assert "wrapper used a fallback" in captured.err
+    assert list(tmp_path.glob("agentmarshal-reviewer-stderr-*.txt")) == []
+
+
+def test_a_silent_command_says_nothing_about_its_silence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a silent command says nothing about its silence."""
+
+    _repo, commit = _review_repo(tmp_path, monkeypatch)
+    stub = _reviewer_stub(tmp_path, _verdict(commit, "approved", []))
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+    capsys.readouterr()
+
+    assert main(_review_args(commit)) == 0
+
+    captured = capsys.readouterr()
+    assert "reviewer diagnostics kept at" not in captured.out
+    assert "reviewer diagnostics kept at" not in captured.err
+    assert list(tmp_path.glob("agentmarshal-reviewer-stderr-*.txt")) == []
 
 
 def main_output(capsys: pytest.CaptureFixture[str]) -> str:

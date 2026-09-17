@@ -14,7 +14,11 @@ from agentmarshal import __version__
 from agentmarshal.doctor import run_doctor
 from agentmarshal.journal.acceptance import AcceptanceError, accept_findings
 from agentmarshal.journal.brief import build_brief
-from agentmarshal.journal.capture import CaptureError, scan_diff_for_leaks
+from agentmarshal.journal.capture import (
+    CaptureError,
+    render_leak_hits,
+    scan_diff_for_leaks,
+)
 from agentmarshal.journal.complete import (
     LifecycleError,
     abandon_task,
@@ -63,6 +67,7 @@ from agentmarshal.journal.submit_review import ReviewSubmitError, submit_review
 from agentmarshal.journal.validate import validate_journal
 from agentmarshal.migrate import JournalMigrationError, migrate_journal
 from agentmarshal.project import (
+    PROJECT_CONFIG_RELPATH,
     AgentMarshalProjectError,
     AlreadyInitializedError,
     find_git_root,
@@ -667,7 +672,7 @@ def _run_review(args: argparse.Namespace, stderr: TextIO) -> int:
         if placement is None:
             return 1
         try:
-            tree = dry_run_review(placement.host_root, args.model)
+            tree, diagnostics_note = dry_run_review(placement.host_root, args.model)
         except ReviewLaunchError as error:
             print(f"dry run failed: {error}", file=stderr)
             return 1
@@ -675,6 +680,8 @@ def _run_review(args: argparse.Namespace, stderr: TextIO) -> int:
             f"dry run: the command ran against {tree}; its output has a "
             "parseable verdict; nothing was recorded"
         )
+        if diagnostics_note is not None:
+            print(diagnostics_note, file=stderr)
         return 0
     if args.reviewed_finding is not None:
         print(
@@ -718,6 +725,8 @@ def _run_review(args: argparse.Namespace, stderr: TextIO) -> int:
         # The record pins the reasoning; say where, on stderr, so stdout
         # stays the record path a caller can read.
         print(f"reviewer prose pinned: {submitted.artifact_ref}", file=stderr)
+    if submitted.diagnostics_note is not None:
+        print(submitted.diagnostics_note, file=stderr)
     print(submitted.record_path)
     return 0
 
@@ -1262,11 +1271,15 @@ def _run_leak_scan(args: argparse.Namespace, stderr: TextIO) -> int:
     # marks binary/non-diffable (otherwise git emits "Binary files differ"
     # and the added content is never scanned); --no-textconv / --no-ext-diff
     # stop the repo's own diff drivers from rewriting what the scanner sees.
+    # The prefix flags are the gate's, for the gate's reason: the parser
+    # strips a "b/" prefix, and a repository can configure another one.
     try:
         diff_text = _leak_scan_git(
             scan_root,
             [
                 "diff",
+                "--src-prefix=a/",
+                "--dst-prefix=b/",
                 "--text",
                 "--no-textconv",
                 "--no-ext-diff",
@@ -1276,10 +1289,19 @@ def _run_leak_scan(args: argparse.Namespace, stderr: TextIO) -> int:
     except _LeakScanGitError as error:
         print(f"leak-scan: git diff failed: {error}", file=stderr)
         return 1
-    hits = scan_diff_for_leaks(diff_text, markers)
+    # The same reasoning the gate applies: the declaration a marker may match
+    # is the project file the markers were read from. Here that file is the
+    # sidecar's whenever one supplied the markers, and the diff is the host's,
+    # so no path in it is that file and nothing is suppressed.
+    hits = scan_diff_for_leaks(
+        diff_text,
+        markers,
+        config_path="" if sidecar_config is not None else PROJECT_CONFIG_RELPATH,
+    )
     if hits:
         print(
-            "leak-scan: possible leak categories in added content: " + ", ".join(hits)
+            "leak-scan: possible leaks in added content "
+            "(file: what matched): " + render_leak_hits(hits)
         )
         print(
             "(best-effort: a hit is not proof of a leak and a clean run is not "

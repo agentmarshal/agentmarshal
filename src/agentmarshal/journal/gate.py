@@ -23,6 +23,7 @@ from typing import cast
 from agentmarshal.journal.capture import (
     CaptureError,
     private_markers_from_project,
+    render_leak_hits,
     scan_diff_for_leaks,
 )
 from agentmarshal.journal.contracts import (
@@ -44,11 +45,14 @@ from agentmarshal.journal.records import (
     validate_record_content,
 )
 from agentmarshal.journal.status import TaskStatusError, load_task_status
-from agentmarshal.project import project_file_path, read_project_file
+from agentmarshal.project import (
+    PROJECT_CONFIG_RELPATH,
+    project_file_path,
+    read_project_file,
+)
 
 _JOURNAL_PREFIX = ".agentmarshal/journal/"
 _EXTENSIONS_PREFIX = ".agentmarshal/extensions/"
-_PROJECT_FILE = ".agentmarshal/project.json"
 
 
 class GateError(Exception):
@@ -531,11 +535,13 @@ def markers_from_tree(project_root: Path, tree_ref: str) -> tuple[str, ...]:
     # `ls-tree` distinguishes an absent path (empty output, exit 0) from a
     # bad ref (non-zero -> GateError); only genuine absence returns no markers.
     listing = _run_git(
-        project_root, ["ls-tree", "--name-only", tree_ref, "--", _PROJECT_FILE]
+        project_root, ["ls-tree", "--name-only", tree_ref, "--", PROJECT_CONFIG_RELPATH]
     )
     if not listing.strip():
         return ()
-    project_json = _run_git(project_root, ["show", f"{tree_ref}:{_PROJECT_FILE}"])
+    project_json = _run_git(
+        project_root, ["show", f"{tree_ref}:{PROJECT_CONFIG_RELPATH}"]
+    )
     data = json.loads(project_json.lstrip("\ufeff"))
     if not isinstance(data, dict):
         raise ValueError("project.json is not a JSON object")
@@ -1118,25 +1124,43 @@ def run_gate(
         # repo marks binary/non-diffable (otherwise git emits "Binary files
         # differ" and the added content is never scanned); --no-textconv /
         # --no-ext-diff stop the repo's own diff drivers from rewriting or
-        # redacting what the scanner sees, which could hide a secret.
+        # redacting what the scanner sees, which could hide a secret. The
+        # prefix flags fix the destination prefix the parser strips ("b/"):
+        # with diff.mnemonicPrefix the header reads "+++ c/…" and with
+        # diff.dstPrefix anything at all, and the suppression key would stop
+        # matching the project file silently. The flags win over all four
+        # config knobs (noprefix, mnemonicPrefix, srcPrefix, dstPrefix), which
+        # "-c diff.noprefix=false" alone does not. core.quotePath is left
+        # alone on purpose: unquoted output puts raw non-UTF-8 path bytes
+        # through a strict decode and skips the whole scan.
         diff_text = _run_git(
             project_root,
             [
                 "diff",
+                "--src-prefix=a/",
+                "--dst-prefix=b/",
                 "--text",
                 "--no-textconv",
                 "--no-ext-diff",
                 f"{merge_base}..{resolved_commit}",
             ],
         )
-        leak_hits = scan_diff_for_leaks(diff_text, markers)
+        # The declaration that a marker may match is the project file the
+        # markers were read from. In a sidecar that file is the sidecar's and
+        # the diff is the host's, so no path in the diff is it, and nothing is
+        # suppressed — which is the safe direction.
+        leak_hits = scan_diff_for_leaks(
+            diff_text,
+            markers,
+            config_path=PROJECT_CONFIG_RELPATH if not sidecar else "",
+        )
     except (ValueError, CaptureError, GateError) as error:
         lines.append(f"WARN: leak-scan skipped ({error})")
     else:
         if leak_hits:
             lines.append(
                 "WARN: possible leak in candidate additions "
-                f"(advisory, not blocking): {', '.join(leak_hits)}"
+                f"(advisory, not blocking): {render_leak_hits(leak_hits)}"
             )
 
     return GateReport(
