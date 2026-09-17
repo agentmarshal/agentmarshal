@@ -96,8 +96,10 @@ is therefore also a step toward closing the provenance gap for public use.
 |---|---|---|
 | Merge trigger | invoked (`am-merge`) | provider merge after required checks |
 | Attestation | `--attestation commit` (explicit SHA) | `--attestation ci-required` (delegated) |
-| Review evidence | recorded into the working tree at merge | materialised from the PR approval (Phase C) |
-| Gate role | authority, invoked | authority, as a required check |
+| Review evidence | recorded into the working tree at merge | not available to the required check; see the open item |
+| Gate role | authority, invoked | required check over everything but the review |
 
 The gate logic is identical across both; only the binding differs — which
-is the vendor-neutrality claim in practice.
+is the vendor-neutrality claim in practice. What differs in strength is not
+the logic but what each binding can put in front of it: an invoked merge
+authority runs the gate when the review exists, and a required check cannot.

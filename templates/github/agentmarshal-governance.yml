@@ -44,7 +44,7 @@ jobs:
         run: "<TEST_COMMAND>"
 
   gate:
-    # Merge authority (Variant 2). A pull-request head cannot carry a review
+    # Required check (Variant 2), not the merge authority. A head cannot carry a review
     # of itself — a review names a commit only after that commit exists, and
     # it lands at completion — so this run asks the gate to judge everything
     # that does not depend on one. The transcript names what it did not
