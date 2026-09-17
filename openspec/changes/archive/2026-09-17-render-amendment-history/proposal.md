@@ -1,6 +1,6 @@
 ## Why
 
-[ADR-0011](../../../docs/adr/ADR-0011-contract-amendment-visibility.md) decided
+[ADR-0011](../../../../docs/adr/ADR-0011-contract-amendment-visibility.md) decided
 that the party asked for an independent judgement should be told that the
 document it judges against has a history. The decision is landed; nothing
 implements it.

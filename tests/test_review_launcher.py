@@ -381,6 +381,32 @@ def test_review_prompt_renders_the_amendment_history(
     assert "> Second criterion was added." in prompt
 
 
+def test_the_contract_digest_covers_the_contract_and_not_its_history(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The hash is of the contract text the reviewer was handed, and the
+    amendment block rendered after it is not part of that text."""
+
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    root = repo / ".agentmarshal" / "journal"
+    contract_text = (root / "tasks" / "CR-001" / "contract.md").read_text(
+        encoding="utf-8"
+    )
+    assert main(["amend", "--task", "CR-001", "--reason", "a recorded reason"]) == 0
+    stub = _reviewer_stub(tmp_path, _verdict(commit, "approved", []))
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert _run_review(commit) == 0
+
+    record = [
+        item for item in read_records(root, "CR-001") if item["record_type"] == "review"
+    ][-1]
+    assert (
+        record["reviewed_contract"]
+        == hashlib.sha256(contract_text.encode("utf-8")).hexdigest()
+    )
+
+
 def test_review_reads_amendments_from_the_active_journal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

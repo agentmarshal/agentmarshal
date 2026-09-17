@@ -28,7 +28,13 @@ def render_amendment_history(records: list[dict[str, object]]) -> str:
     entries: list[str] = []
     for amendment in amendments:
         recorder = amendment.get("recorded_by")
-        byline = f"; recorded by {recorder}" if isinstance(recorder, str) else ""
+        # The actor name is recorded text like any other: a newline in it would
+        # forge an entry of its own, so it renders on one line or not at all.
+        byline = (
+            f"; recorded by {' '.join(recorder.split())}"
+            if isinstance(recorder, str)
+            else ""
+        )
         reason = amendment["reason"]
         assert isinstance(reason, str)  # validated by read_records
         quoted_reason = "\n".join(f"> {line}" for line in reason.splitlines())

@@ -146,8 +146,7 @@ _SCHEMA_4_FIELDS = frozenset(
     {"reviewed_finding", "accepted_finding", "completed_finding"}
 )
 _SCHEMA_5_FIELDS = frozenset({"reviewed_contract"})
-_ARTIFACT_HASH_PATTERN = re.compile(r"[0-9a-f]{64}$")
-_CONTRACT_HASH_PATTERN = re.compile(r"[0-9a-f]{64}$")
+_SHA256_HEX_PATTERN = re.compile(r"[0-9a-f]{64}$")
 _REVIEWED_COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}$")
 _REVIEW_VERDICTS = frozenset({"approved", "changes_required", "blocked", "rejected"})
 _SESSION_ACTIVITIES = frozenset({"implementation", "review", "other"})
@@ -321,10 +320,7 @@ def _validate_provenance(data: Mapping[str, object]) -> None:
         if not isinstance(ref, str) or not ref:
             raise JournalRecordError("artifact field 'ref' must be a non-empty string")
         digest = artifact["hash"]
-        if (
-            not isinstance(digest, str)
-            or _ARTIFACT_HASH_PATTERN.fullmatch(digest) is None
-        ):
+        if not isinstance(digest, str) or _SHA256_HEX_PATTERN.fullmatch(digest) is None:
             raise JournalRecordError(
                 "artifact field 'hash' must be exactly 64 lowercase hex characters"
             )
@@ -399,7 +395,7 @@ def _validate_review_record(data: Mapping[str, object]) -> None:
         reviewed_contract = data["reviewed_contract"]
         if (
             not isinstance(reviewed_contract, str)
-            or _CONTRACT_HASH_PATTERN.fullmatch(reviewed_contract) is None
+            or _SHA256_HEX_PATTERN.fullmatch(reviewed_contract) is None
         ):
             raise JournalRecordError(
                 "review record field 'reviewed_contract' must be exactly 64 "
