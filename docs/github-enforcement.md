@@ -27,10 +27,17 @@ On the protected branch, require:
   your project's tests/lint/type checks. Both must be green.
 - (Optionally split the tests into their own required check.)
 
-The **`gate`** check is shipped **advisory** (`continue-on-error: true`)
-for now — see the open item below. Once review materialisation is in
-place, make `gate` a required check too; that is the point at which the
-gate becomes the merge authority on GitHub.
+The **`gate`** check is shipped required-ready. It runs with
+`--without-review`, because a pull-request head cannot carry a review of
+itself: a review names a commit only after that commit exists, and it
+lands at completion. The run therefore judges everything that does not
+depend on a review and names, in its own transcript, the two checks it did
+not examine. Mark it REQUIRED.
+
+What that does **not** give you is the approved-independent-review
+requirement in CI. The merge authority enforces it by running the gate
+again, without the flag, at the moment the review exists — see the open
+item below.
 
 ## Token permissions
 
@@ -62,7 +69,8 @@ Until it lands, the `gate` check:
   and the **scope**, **append-only**, **base-state** and **lifecycle**
   checks on every candidate;
 - cannot yet enforce the **approved-independent-review** requirement in
-  CI, so it is advisory.
+  CI, which is why the CI run asks the gate to judge without it and says
+  so, and why the merge authority runs the gate again without the flag.
 
 This is tied to the gate's **record-provenance trust boundary** (see
 `docs/self-hosting-workflow.md`): the gate validates review *contents* and

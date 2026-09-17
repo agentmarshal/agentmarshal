@@ -229,6 +229,101 @@ def _run(
     return report.passed, "\n".join(report.lines)
 
 
+def _run_without_review(
+    repo: Path, commit: str, base: str, pipeline_sha: str | None
+) -> tuple[bool, str]:
+    report = run_gate(repo, "CR-001", commit, base, pipeline_sha, review_required=False)
+    return report.passed, "\n".join(report.lines)
+
+
+def test_a_candidate_with_no_review_passes_what_does_not_need_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a candidate with no review passes the checks that do not need one."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    head = _implement(repo, "src/module.py")
+
+    passed, output = _run_without_review(repo, head, base, head)
+
+    assert passed, output
+    assert "NOT EXAMINED: latest review" in output
+    assert "NOT EXAMINED: reviewer independence" in output
+    assert "FAIL" not in output
+
+
+def test_the_mode_does_not_excuse_a_candidate_that_breaks_another_rule(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: the mode does not excuse a candidate that breaks another rule."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    outside = repo / "elsewhere" / "module.py"
+    outside.parent.mkdir()
+    outside.write_text("x = 1\n", encoding="utf-8")
+    head = _commit_all(repo, "change a path outside scope")
+
+    passed, output = _run_without_review(repo, head, base, head)
+
+    assert not passed
+    assert "FAIL: paths outside contract scope: elsewhere/module.py" in output
+
+
+def test_a_non_approving_review_still_refuses_under_the_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a non-approving review still refuses."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    head = _implement(repo, "src/module.py")
+    assert (
+        main(
+            [
+                "submit-review",
+                "--task",
+                "CR-001",
+                "--commit",
+                head,
+                "--verdict",
+                "changes_required",
+                "--finding",
+                "F-001",
+                "--role",
+                "qa",
+                "--vendor",
+                "test",
+                "--model",
+                "test-model",
+                "--email",
+                _REVIEWER_EMAIL,
+            ]
+        )
+        == 0
+    )
+
+    passed, output = _run_without_review(repo, head, base, head)
+
+    assert not passed
+    assert "NOT EXAMINED: latest review" not in output
+    assert f"FAIL: latest review of {head[:12]} is approved" in output
+
+
+def test_an_approving_review_reports_as_approving_under_the_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: an approving review is reported as approving."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    head = _implement(repo, "src/module.py")
+    _approve(repo, head)
+
+    passed, output = _run_without_review(repo, head, base, head)
+
+    assert passed, output
+    assert f"PASS: latest review of {head[:12]} is approved" in output
+    assert "NOT EXAMINED" not in output
+
+
 def test_gate_passes_a_clean_candidate(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

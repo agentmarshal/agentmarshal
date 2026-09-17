@@ -215,6 +215,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="attested pipeline SHA (defaults to AGENTMARSHAL_PIPELINE_OK_SHA)",
     )
     gate_parser.add_argument(
+        "--without-review",
+        action="store_true",
+        help=(
+            "judge what does not depend on a review: when the candidate has no "
+            "review record at all, report the review-bound checks as not "
+            "examined instead of refusing. A candidate that has a review is "
+            "judged exactly as it is without this flag"
+        ),
+    )
+    gate_parser.add_argument(
         "--attestation",
         choices=("commit", "ci-required"),
         default="commit",
@@ -782,6 +792,7 @@ def _run_gate(args: argparse.Namespace, stderr: TextIO) -> int:
             pipeline_sha,
             attestation=args.attestation,
             journal_root=placement.journal_root if placement.is_sidecar else None,
+            review_required=not args.without_review,
         )
     except GateError as error:
         print(error, file=stderr)

@@ -549,6 +549,7 @@ def run_gate(
     attestation: str = "commit",
     *,
     journal_root: Path | None = None,
+    review_required: bool = True,
 ) -> GateReport:
     """Evaluate a merge candidate; fail closed on every violation.
 
@@ -928,6 +929,22 @@ def run_gate(
                 f"acceptance of {resolved_commit[:12]} does not cover the latest "
                 f"review's findings (outstanding: {', '.join(outstanding)}; "
                 f"accepted: {', '.join(accepted)})",
+            )
+        elif latest is None and not review_required:
+            # The caller has said it cannot yet have a review — a provider's CI
+            # runs on a head that no review can name, because a review names a
+            # commit only after that commit exists. Absence is reported as
+            # absence; it is not a pass, and it is not a refusal either. A
+            # candidate that *has* a review is judged below whatever the caller
+            # asked for, so this cannot turn a refusal into a pass.
+            lines.append(
+                "NOT EXAMINED: latest review "
+                f"(no review record for {resolved_commit[:12]}, and this run "
+                "was asked to judge without one)"
+            )
+            lines.append(
+                "NOT EXAMINED: reviewer independence (no review record to "
+                "compare against the candidate's writers)"
             )
         else:
             check(
