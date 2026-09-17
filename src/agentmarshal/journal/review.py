@@ -82,8 +82,8 @@ _FINDING_REVIEW_PROMPT = (
     "\n"
     "The named contract material is named, not supplied in this snapshot; only the "
     "pinned artifacts below were verified.\n"
-    "Each embedded artifact-content line begins with `|`; that prefix presents "
-    "the content and is not part of the file.\n"
+    "Each embedded artifact-content line begins with `{content_prefix}`; that "
+    "prefix presents the content and is not part of the file.\n"
     "\n"
     "{named_material}{prose_instruction}\n"
     "\n"
@@ -286,6 +286,7 @@ def _finding_review_prompt(
         )
 
     return _FINDING_REVIEW_PROMPT.format(
+        content_prefix=_ARTIFACT_CONTENT_PREFIX,
         finding=finding,
         summary=summary,
         named_material=_named_contract_material(
@@ -825,17 +826,16 @@ def _launch_finding_review(
         raise ReviewLaunchError(
             f"cannot read task contract for review: {error}"
         ) from error
-    try:
-        header = parse_contract_text(contract, str(contract_path))
-        documents = list(header.documents)
-        absent: list[str] = []
-        for name in header.extensions:
-            try:
-                documents.extend(read_extension_manifest(project_root, name).documents)
-            except ExtensionManifestMissing:
-                absent.append(name)
-    except ValueError as error:
-        raise ReviewLaunchError(str(error)) from error
+    # The status projection parsed this same file; the commit path parses a
+    # second time only because its contract comes from the reviewed snapshot.
+    header = task.contract
+    documents = list(header.documents)
+    absent: list[str] = []
+    for name in header.extensions:
+        try:
+            documents.extend(read_extension_manifest(project_root, name).documents)
+        except ExtensionManifestMissing:
+            absent.append(name)
 
     prompt = _finding_review_prompt(
         contract,

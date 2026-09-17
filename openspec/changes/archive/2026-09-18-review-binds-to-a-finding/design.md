@@ -48,16 +48,23 @@ that stands in for it.
   verified reference with its recorded hash and includes its text; references
   that did not resolve are listed as unverified. There is no base, so there is
   nothing to diff against, and a "diff" of a conclusion would be an invention.
-- **Binary and oversized artifacts are named, not embedded.** An artifact that
-  is not valid UTF-8 is named with its hash and size and its content is left
-  out; the reviewer is told why. A conclusion pinned as a PDF is still
+- **A binary artifact is named, not embedded.** An artifact that is not valid
+  UTF-8 is named with its hash and size and its content is left out; the
+  reviewer is told why. Size is deliberately not a criterion: no threshold
+  exists anywhere in this path, the Non-Goals below say why one is not
+  invented here, and an earlier draft of this decision said "binary and
+  oversized", which claimed a limit the code does not have. A conclusion pinned as a PDF is still
   reviewable by a human, and this path must not turn a byte sequence into
   mojibake inside a prompt.
 - **The verdict protocol mirrors the commit one.** The block carries
   `reviewed_finding` instead of `reviewed_commit`; the parser accepts exactly
   one of the two and the launcher refuses a verdict whose subject is not what
-  was asked. The commit prompt template is untouched; the finding prompt is its
-  own template, because editing the shared one would change the pinned bytes.
+  was asked. The commit prompt keeps its own template and, more to the point,
+  its rendered bytes: the two templates share the verdict protocol, the prose
+  instruction and the named-material block through helpers, and the pinned test
+  proves the commit prompt still renders byte for byte as it did. The template
+  text itself was edited to call those helpers — what is untouched is the
+  output, not the source.
 - **The snapshot is the verified artifacts, not the tree.** A commit review
   gets a metadata-free snapshot so a relative path in the reviewer command
   resolves; a finding review gets a temporary directory holding the verified
