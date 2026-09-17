@@ -23,6 +23,7 @@ from typing import cast
 from agentmarshal.journal.capture import (
     CaptureError,
     private_markers_from_project,
+    render_leak_hits,
     scan_diff_for_leaks,
 )
 from agentmarshal.journal.contracts import (
@@ -1136,7 +1137,7 @@ def run_gate(
         if leak_hits:
             lines.append(
                 "WARN: possible leak in candidate additions "
-                f"(advisory, not blocking): {', '.join(leak_hits)}"
+                f"(advisory, not blocking): {render_leak_hits(leak_hits)}"
             )
 
     return GateReport(

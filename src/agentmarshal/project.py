@@ -230,6 +230,10 @@ _OUTBOX_README = """# Upstream outbox
 Findings about **AgentMarshal itself** go here — one file per finding — and are
 sent upstream as a batch.
 
+This outbox is **not journal evidence**. Stage journal evidence with
+`git add .agentmarshal/journal`; if staging `.agentmarshal`, exclude this
+outbox with the pathspec `:(exclude).agentmarshal/upstream/**`.
+
 An adopter on a pinned release never patches the tool locally, so everything
 noticed about it has exactly one addressee. Without a place to put it, a finding
 settles in a chat log or a commit message and never arrives.

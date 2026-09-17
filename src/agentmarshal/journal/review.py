@@ -11,6 +11,7 @@ import string
 import subprocess
 import tarfile
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
@@ -34,7 +35,6 @@ from agentmarshal.journal.records import (
 from agentmarshal.journal.status import TaskStatusError, load_task_status
 from agentmarshal.journal.submit_review import (
     ReviewSubmitError,
-    SubmittedReview,
     submit_review,
 )
 
@@ -80,6 +80,15 @@ Diff:
 
 class ReviewLaunchError(Exception):
     """Raised when a read-only review cannot be launched or recorded."""
+
+
+@dataclass(frozen=True)
+class LaunchedReview:
+    """A recorded review plus any successful-command diagnostics kept locally."""
+
+    record_path: Path
+    artifact_ref: str | None
+    diagnostics_path: Path | None
 
 
 def _run_git(project_root: Path, arguments: list[str]) -> str:
@@ -242,7 +251,9 @@ def _reviewer_command(model: str, prompt_file: Path) -> list[str]:
         ) from error
 
 
-def _run_reviewer(command: list[str], snapshot: Path, prompt: str) -> bytes:
+def _run_reviewer(
+    command: list[str], snapshot: Path, prompt: str
+) -> tuple[bytes, bytes]:
     """Execute the reviewer adapter against the metadata-free snapshot.
 
     Process-level isolation belongs to the reviewer command's own vendor
@@ -276,7 +287,7 @@ def _run_reviewer(command: list[str], snapshot: Path, prompt: str) -> bytes:
         if detail:
             message = f"{message}: {detail}"
         raise ReviewLaunchError(message)
-    return result.stdout
+    return result.stdout, result.stderr
 
 
 def _preserve_output(output: str) -> Path:
@@ -294,6 +305,44 @@ def _preserve_output(output: str) -> Path:
     with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
         handle.write(output)
     return Path(name)
+
+
+def _preserve_reviewer_diagnostics(output: bytes) -> Path:
+    """Keep successful reviewer stderr beside rejected-verdict copies.
+
+    Diagnostics are deliberately a local temporary artifact, not journal
+    evidence.  A wrapper may use stderr for a warning despite returning zero;
+    naming the path tells the operator without mixing that output into the
+    command's parseable stdout.
+    """
+
+    descriptor, name = tempfile.mkstemp(
+        prefix="agentmarshal-reviewer-stderr-", suffix=".txt"
+    )
+    with os.fdopen(descriptor, "wb") as handle:
+        handle.write(output)
+    return Path(name)
+
+
+def _keep_diagnostics(output: bytes) -> Path | None:
+    """Keep nonempty successful-command stderr, or leave silence silent."""
+
+    if not output:
+        return None
+    try:
+        return _preserve_reviewer_diagnostics(output)
+    except OSError as error:  # pragma: no cover - preservation is best effort
+        raise ReviewLaunchError(
+            f"reviewer diagnostics could not be kept: {error}"
+        ) from error
+
+
+def _with_diagnostics(error: ReviewLaunchError, path: Path | None) -> ReviewLaunchError:
+    """Name kept zero-exit diagnostics on every later rejection path."""
+
+    if path is None:
+        return error
+    return ReviewLaunchError(f"{error}; reviewer diagnostics kept at {path}")
 
 
 def _reject(
@@ -398,7 +447,9 @@ def _extract_snapshot(project_root: Path, commit: str, snapshot: Path) -> None:
         raise ReviewLaunchError(f"snapshot extraction failed: {error}") from error
 
 
-def dry_run_review(project_root: Path, reviewer_model: str | None) -> str:
+def dry_run_review(
+    project_root: Path, reviewer_model: str | None
+) -> tuple[str, Path | None]:
     """Exercise the configured reviewer without writing to any journal.
 
     The command runs where a recorded review runs it: in a snapshot, so a
@@ -435,9 +486,11 @@ def dry_run_review(project_root: Path, reviewer_model: str | None) -> str:
         else:
             snapshot.mkdir()
             tree = "an empty tree, because this repository has no commit yet"
-        output = _run_reviewer(
+        raw_output, raw_diagnostics = _run_reviewer(
             _reviewer_command(reviewer_model or "", prompt_file), snapshot, prompt
-        ).decode("utf-8", errors="replace")
+        )
+        diagnostics_path = _keep_diagnostics(raw_diagnostics)
+        output = raw_output.decode("utf-8", errors="replace")
         try:
             verdict = _parse_verdict(output, preserve_output=False)
         except ReviewLaunchError as error:
@@ -447,18 +500,22 @@ def dry_run_review(project_root: Path, reviewer_model: str | None) -> str:
                 kept = _preserve_output(output)
             except OSError:
                 raise ReviewLaunchError(f"reviewer output: {error}") from error
-            raise ReviewLaunchError(
-                f"reviewer output: {error}; what the command printed is at {kept}"
+            message = f"reviewer output: {error}; what the command printed is at {kept}"
+            raise _with_diagnostics(
+                ReviewLaunchError(message), diagnostics_path
             ) from error
         # The recorded path refuses a verdict about another commit, and so does
         # this one: a command that echoes a commit of its own would pass a check
         # that only parsed.
         if verdict[0] != _DRY_RUN_COMMIT:
-            raise ReviewLaunchError(
-                "reviewer verdict names a commit the dry run did not ask about: "
-                f"{verdict[0]}"
+            raise _with_diagnostics(
+                ReviewLaunchError(
+                    "reviewer verdict names a commit the dry run did not ask about: "
+                    f"{verdict[0]}"
+                ),
+                diagnostics_path,
             )
-        return tree
+        return tree, diagnostics_path
 
 
 def launch_review(
@@ -472,7 +529,7 @@ def launch_review(
     reviewer_email: str,
     *,
     journal_root: Path | None = None,
-) -> SubmittedReview:
+) -> LaunchedReview:
     """Review an exact commit in a temporary metadata-free snapshot and record it."""
 
     sidecar_journal = journal_root
@@ -541,19 +598,26 @@ def launch_review(
             amendment_history=amendment_history,
         )
         prompt_file.write_text(prompt, encoding="utf-8")
-        raw_output = _run_reviewer(
+        raw_output, raw_diagnostics = _run_reviewer(
             _reviewer_command(reviewer_model, prompt_file),
             snapshot,
             prompt,
         )
+        diagnostics_path = _keep_diagnostics(raw_diagnostics)
         # The verdict is parsed from a decoded copy; the artifact pins the
         # bytes the reviewer wrote, so nothing is normalised on the way.
         output = raw_output.decode("utf-8", errors="replace")
         reviewer_output = output
-        reviewed_commit, verdict, findings, advisory = _parse_verdict(output)
+        try:
+            reviewed_commit, verdict, findings, advisory = _parse_verdict(output)
+        except ReviewLaunchError as error:
+            raise _with_diagnostics(error, diagnostics_path) from error
         if reviewed_commit != resolved_commit:
-            raise _reject(
-                output, "reviewer verdict reviewed_commit does not match commit"
+            raise _with_diagnostics(
+                _reject(
+                    output, "reviewer verdict reviewed_commit does not match commit"
+                ),
+                diagnostics_path,
             )
         review_result = reviewed_commit, verdict, findings, advisory
     try:
@@ -573,10 +637,18 @@ def launch_review(
         )
     except ReviewSubmitError as error:
         if error.artifact_ref is not None:
-            raise ReviewLaunchError(str(error)) from error
+            raise _with_diagnostics(
+                ReviewLaunchError(str(error)), diagnostics_path
+            ) from error
         # A verdict can parse cleanly and still be refused by record validation —
         # an unknown verdict value, empty findings for a non-approving verdict,
         # duplicates, or advisory ids overlapping findings. That path discarded
         # the analysis too, and it is the one seen most often in practice.
-        raise _reject(reviewer_output, str(error)) from error
-    return submitted
+        raise _with_diagnostics(
+            _reject(reviewer_output, str(error)), diagnostics_path
+        ) from error
+    return LaunchedReview(
+        submitted.record_path,
+        submitted.artifact_ref,
+        diagnostics_path,
+    )

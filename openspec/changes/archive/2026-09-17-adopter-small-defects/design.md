@@ -30,6 +30,12 @@ string written by `project.py` at `init`.
   release later. The sentence is what would have prevented all eight of the
   reported cases.
 
+- **The outbox sentence ships without a requirement of its own.** It is text
+  this tool writes at `init`, not behaviour a scenario can name, so it lives in
+  the task list and in this note rather than in a capability. The command
+  proposal 023 also asks for is a release later, and that one will carry
+  requirements.
+
 ## Risks
 
 - [A hit that names a file makes an operator trust the scan] → the existing

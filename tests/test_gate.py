@@ -1758,6 +1758,38 @@ def test_gate_warns_on_leak_without_blocking(
     assert "aws-access-key-id" in output
 
 
+def test_the_merge_boundary_reports_the_same_detail(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: the merge boundary reports the same detail."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    secret = "AKIAIOSFODNN7EXAMPLE"
+    head = _implement(repo, "src/module.py", f"key = '{secret}'\n")
+    _approve(repo, head)
+
+    passed, gate_output = _run(repo, head, base, head)
+    capsys.readouterr()
+    assert main(["leak-scan", "--base", base, "--commit", head]) == 1
+    standalone = capsys.readouterr()
+
+    detail = "src/module.py: aws-access-key-id"
+    gate_line = next(
+        line for line in gate_output.splitlines() if line.startswith("WARN:")
+    )
+    assert passed, gate_output
+    assert gate_line == (
+        f"WARN: possible leak in candidate additions (advisory, not blocking): {detail}"
+    )
+    assert standalone.out == (
+        f"leak-scan: possible leak categories in added content: {detail}\n"
+    )
+    assert secret not in gate_output
+    assert secret not in standalone.out
+
+
 def test_gate_leak_scan_is_clean_for_benign_additions(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

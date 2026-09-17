@@ -14,7 +14,11 @@ from agentmarshal import __version__
 from agentmarshal.doctor import run_doctor
 from agentmarshal.journal.acceptance import AcceptanceError, accept_findings
 from agentmarshal.journal.brief import build_brief
-from agentmarshal.journal.capture import CaptureError, scan_diff_for_leaks
+from agentmarshal.journal.capture import (
+    CaptureError,
+    render_leak_hits,
+    scan_diff_for_leaks,
+)
 from agentmarshal.journal.complete import (
     LifecycleError,
     abandon_task,
@@ -667,7 +671,7 @@ def _run_review(args: argparse.Namespace, stderr: TextIO) -> int:
         if placement is None:
             return 1
         try:
-            tree = dry_run_review(placement.host_root, args.model)
+            tree, diagnostics_path = dry_run_review(placement.host_root, args.model)
         except ReviewLaunchError as error:
             print(f"dry run failed: {error}", file=stderr)
             return 1
@@ -675,6 +679,8 @@ def _run_review(args: argparse.Namespace, stderr: TextIO) -> int:
             f"dry run: the command ran against {tree}; its output has a "
             "parseable verdict; nothing was recorded"
         )
+        if diagnostics_path is not None:
+            print(f"reviewer diagnostics kept at {diagnostics_path}", file=stderr)
         return 0
     if args.reviewed_finding is not None:
         print(
@@ -718,6 +724,8 @@ def _run_review(args: argparse.Namespace, stderr: TextIO) -> int:
         # The record pins the reasoning; say where, on stderr, so stdout
         # stays the record path a caller can read.
         print(f"reviewer prose pinned: {submitted.artifact_ref}", file=stderr)
+    if submitted.diagnostics_path is not None:
+        print(f"reviewer diagnostics kept at {submitted.diagnostics_path}", file=stderr)
     print(submitted.record_path)
     return 0
 
@@ -1279,7 +1287,8 @@ def _run_leak_scan(args: argparse.Namespace, stderr: TextIO) -> int:
     hits = scan_diff_for_leaks(diff_text, markers)
     if hits:
         print(
-            "leak-scan: possible leak categories in added content: " + ", ".join(hits)
+            "leak-scan: possible leak categories in added content: "
+            + render_leak_hits(hits)
         )
         print(
             "(best-effort: a hit is not proof of a leak and a clean run is not "

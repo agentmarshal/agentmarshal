@@ -274,6 +274,32 @@ _LEAK_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 )
 
 
+_PROJECT_CONFIG_PATH = ".agentmarshal/project.json"
+
+
+@dataclass(frozen=True, order=True)
+class LeakHit:
+    """One location-safe leak-scan result.
+
+    ``identification`` is either a public built-in signature name or a private
+    marker's one-based configured position.  It deliberately never holds the
+    matched text or a marker value.
+    """
+
+    path: str
+    identification: str
+
+
+def render_leak_hits(hits: list[LeakHit]) -> str:
+    """Render hit records without exposing matched content.
+
+    The standalone command and merge gate both use this one renderer: warning
+    detail therefore cannot silently diverge between their two call sites.
+    """
+
+    return ", ".join(f"{hit.path}: {hit.identification}" for hit in hits)
+
+
 def scan_for_leaks(text: str, private_markers: tuple[str, ...] = ()) -> list[str]:
     """Return the sorted leak categories found in *text*.
 
@@ -306,10 +332,31 @@ def assert_no_leaks(text: str, private_markers: tuple[str, ...] = ()) -> None:
 _HUNK_HEADER = re.compile(r"^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@")
 
 
+def _diff_path(header: str) -> str | None:
+    """Return the destination path from a unified-diff ``+++`` header."""
+
+    if not header.startswith("+++ "):
+        return None
+    path = header[4:]
+    if path == "/dev/null":
+        return None
+    return path[2:] if path.startswith("b/") else path
+
+
+def _line_hits(line: str, path: str) -> set[LeakHit]:
+    """Return built-in-signature hits for a single added line."""
+
+    return {
+        LeakHit(path, signature)
+        for signature, pattern in _LEAK_PATTERNS
+        if pattern.search(line)
+    }
+
+
 def scan_diff_for_leaks(
     unified_diff: str, private_markers: tuple[str, ...] = ()
-) -> list[str]:
-    """Return leak categories found in the *added* lines of a unified diff.
+) -> list[LeakHit]:
+    """Return location-safe leak hits from the *added* lines of a unified diff.
 
     Only lines the diff introduces are scanned, so this is forward-only leak
     prevention: content already in the tree (including consciously accepted
@@ -327,12 +374,22 @@ def scan_diff_for_leaks(
     empty result is not proof of safety.
     """
 
-    added: list[str] = []
+    hits: set[LeakHit] = set()
+    marker_occurrences: dict[int, list[str]] = {
+        index: [] for index, marker in enumerate(private_markers, start=1) if marker
+    }
+    # A real git diff always names the destination before a hunk.  Retaining a
+    # safe placeholder lets the pure parser still report a hand-written hunk
+    # used by callers/tests rather than silently omitting a detected signature.
+    current_path: str | None = "(unknown file)"
     lines = unified_diff.splitlines()
     index = 0
     total = len(lines)
     while index < total:
-        header = _HUNK_HEADER.match(lines[index])
+        line = lines[index]
+        if line.startswith("+++ "):
+            current_path = _diff_path(line)
+        header = _HUNK_HEADER.match(line)
         index += 1
         if header is None:
             continue
@@ -345,7 +402,14 @@ def scan_diff_for_leaks(
                 # "\ No newline at end of file" — not a content line.
                 continue
             if body.startswith("+"):
-                added.append(body[1:])
+                added_line = body[1:]
+                if current_path is not None:
+                    hits.update(_line_hits(added_line, current_path))
+                    for marker_index, marker in enumerate(private_markers, start=1):
+                        if marker:
+                            marker_occurrences[marker_index].extend(
+                                [current_path] * added_line.count(marker)
+                            )
                 new_remaining -= 1
             elif body.startswith("-"):
                 old_remaining -= 1
@@ -353,7 +417,15 @@ def scan_diff_for_leaks(
                 # A context line (leading space) belongs to both sides.
                 old_remaining -= 1
                 new_remaining -= 1
-    return scan_for_leaks("\n".join(added), private_markers)
+    # A declaration only self-matches when it is the marker's sole occurrence
+    # in the scanned additions.  Any second occurrence, including one in the
+    # same candidate diff, leaves every hit reportable.
+    for marker_index, occurrences in marker_occurrences.items():
+        if len(occurrences) == 1 and occurrences[0] == _PROJECT_CONFIG_PATH:
+            continue
+        for path in set(occurrences):
+            hits.add(LeakHit(path, f"private-marker #{marker_index}"))
+    return sorted(hits)
 
 
 def private_markers_from_project(

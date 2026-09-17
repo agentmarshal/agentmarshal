@@ -9,9 +9,11 @@ from agentmarshal.journal.capture import (
     CaptureError,
     CaptureLevel,
     CapturePolicy,
+    LeakHit,
     assert_no_leaks,
     capture_policy_from_project,
     private_markers_from_project,
+    render_leak_hits,
     scan_diff_for_leaks,
     scan_for_leaks,
 )
@@ -253,7 +255,7 @@ def test_scan_diff_scans_only_added_lines() -> None:
         "+added token AKIAIOSFODNN7EXAMPLE now present\n"
     )
     # Only the '+' line (not the '+++' header, not context, not '-') is scanned.
-    assert scan_diff_for_leaks(diff) == ["aws-access-key-id"]
+    assert scan_diff_for_leaks(diff) == [LeakHit("f", "aws-access-key-id")]
 
 
 def test_scan_diff_ignores_file_header_plus_plus_plus() -> None:
@@ -273,13 +275,13 @@ def test_scan_diff_catches_added_line_starting_with_plus() -> None:
         "@@ -0,0 +1 @@\n"
         "+++AKIAIOSFODNN7EXAMPLE trailing\n"
     )
-    assert scan_diff_for_leaks(diff) == ["aws-access-key-id"]
+    assert scan_diff_for_leaks(diff) == [LeakHit("f", "aws-access-key-id")]
 
 
 def test_scan_diff_honours_private_markers() -> None:
     diff = "+++ b/f\n@@ -0,0 +1 @@\n+HOST = internal.example.invalid\n"
     assert scan_diff_for_leaks(diff, ("internal.example.invalid",)) == [
-        "private-marker"
+        LeakHit("f", "private-marker #1")
     ]
 
 
@@ -308,7 +310,80 @@ def test_scan_diff_counts_added_line_that_looks_like_a_hunk_header() -> None:
         "+@@ not a real header AKIAIOSFODNN7EXAMPLE\n"
         "+second added line\n"
     )
-    assert scan_diff_for_leaks(diff) == ["aws-access-key-id"]
+    assert scan_diff_for_leaks(diff) == [LeakHit("(unknown file)", "aws-access-key-id")]
+
+
+def test_a_built_in_signature_names_its_file_and_itself() -> None:
+    """Scenario: a built-in signature names its file and itself."""
+
+    secret = "AKIAIOSFODNN7EXAMPLE"
+    diff = (
+        "diff --git a/src/keys.py b/src/keys.py\n"
+        "--- a/src/keys.py\n"
+        "+++ b/src/keys.py\n"
+        "@@ -0,0 +1 @@\n"
+        f"+KEY = '{secret}'\n"
+    )
+
+    rendered = render_leak_hits(scan_diff_for_leaks(diff))
+
+    assert rendered == "src/keys.py: aws-access-key-id"
+    assert secret not in rendered
+
+
+def test_a_private_marker_is_named_by_position_not_by_value() -> None:
+    """Scenario: a private marker is named by position, not by value."""
+
+    marker = "private-coordinator.example.invalid"
+    diff = (
+        "diff --git a/src/config.py b/src/config.py\n"
+        "--- a/src/config.py\n"
+        "+++ b/src/config.py\n"
+        "@@ -0,0 +1 @@\n"
+        f"+HOST = '{marker}'\n"
+    )
+
+    rendered = render_leak_hits(scan_diff_for_leaks(diff, (marker,)))
+
+    assert rendered == "src/config.py: private-marker #1"
+    assert marker not in rendered
+
+
+def test_a_change_to_the_marker_list_does_not_trip_on_itself() -> None:
+    """Scenario: a change to the marker list does not trip on itself."""
+
+    marker = "private-coordinator.example.invalid"
+    diff = (
+        "diff --git a/.agentmarshal/project.json b/.agentmarshal/project.json\n"
+        "--- a/.agentmarshal/project.json\n"
+        "+++ b/.agentmarshal/project.json\n"
+        "@@ -0,0 +1 @@\n"
+        f'+{{"leak_scan": {{"private_markers": ["{marker}"]}}}}\n'
+    )
+
+    assert scan_diff_for_leaks(diff, (marker,)) == []
+
+
+def test_a_marker_elsewhere_in_the_same_content_is_still_reported() -> None:
+    """Scenario: a marker elsewhere in the same content is still reported."""
+
+    marker = "private-coordinator.example.invalid"
+    diff = (
+        "diff --git a/.agentmarshal/project.json b/.agentmarshal/project.json\n"
+        "--- a/.agentmarshal/project.json\n"
+        "+++ b/.agentmarshal/project.json\n"
+        "@@ -0,0 +1 @@\n"
+        f'+{{"leak_scan": {{"private_markers": ["{marker}"]}}}}\n'
+        "diff --git a/src/config.py b/src/config.py\n"
+        "--- a/src/config.py\n"
+        "+++ b/src/config.py\n"
+        "@@ -0,0 +1 @@\n"
+        f"+HOST = '{marker}'\n"
+    )
+
+    hits = scan_diff_for_leaks(diff, (marker,))
+
+    assert LeakHit("src/config.py", "private-marker #1") in hits
 
 
 def test_private_markers_absent_section_is_empty() -> None:
