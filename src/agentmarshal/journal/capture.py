@@ -287,8 +287,9 @@ class LeakHit:
     Neither does ``path``: a repository can have a directory named after an
     internal host, and a file can be named after the very key a signature
     matches, so a path can be the secret. Naming such a file would disclose
-    what naming the marker or withholding the matched text refused to. Those
-    paths are replaced by :func:`safe_path`, which says what it cannot say.
+    what naming the marker or withholding the matched text refused to. In
+    those paths :func:`safe_path` replaces the offending span with a
+    description of it, and the rest of the path still says where.
     """
 
     path: str
@@ -296,20 +297,31 @@ class LeakHit:
 
 
 def safe_path(path: str, private_markers: tuple[str, ...]) -> str:
-    """Return *path*, or a description of it when it carries a secret.
+    """Return *path* with anything secret in it replaced by a description.
 
     A configured marker is named by position and a built-in signature by its
     own identifier, exactly as in ``identification``: the description says
     what the path carries and never the characters it carries.
+
+    Only the offending span is replaced, so the rest of the path still says
+    where. Describing the whole path instead made two leaking files under one
+    marker-named directory render identically and collapse into one hit —
+    losing the "where" this scan exists to give.
     """
 
+    safe = path
     for index, marker in enumerate(private_markers, start=1):
-        if marker and marker in path:
-            return f"<a path containing private marker #{index}>"
+        if marker and marker in safe:
+            safe = safe.replace(marker, f"<private marker #{index}>")
     for category, pattern in _LEAK_PATTERNS:
-        if pattern.search(path):
-            return f"<a path matching {category}>"
-    return path
+        safe = pattern.sub(f"<{category}>", safe)
+    return safe
+
+
+# A marker present in two hundred files used to render as one category token;
+# it now renders as two hundred records, and the merge transcript is a document
+# people read. Enough hits to act on are shown and the rest are counted.
+_RENDER_LIMIT = 20
 
 
 def render_leak_hits(hits: list[LeakHit]) -> str:
@@ -319,7 +331,13 @@ def render_leak_hits(hits: list[LeakHit]) -> str:
     detail therefore cannot silently diverge between their two call sites.
     """
 
-    return ", ".join(f"{hit.path}: {hit.identification}" for hit in hits)
+    rendered = ", ".join(
+        f"{hit.path}: {hit.identification}" for hit in hits[:_RENDER_LIMIT]
+    )
+    remaining = len(hits) - _RENDER_LIMIT
+    if remaining > 0:
+        return f"{rendered}, and {remaining} more not shown"
+    return rendered
 
 
 def scan_for_leaks(text: str, private_markers: tuple[str, ...] = ()) -> list[str]:
@@ -362,11 +380,11 @@ def _diff_path(header: str) -> str | None:
     path = header[4:]
     if path == "/dev/null":
         return None
-    # git's default destination prefix. A repository configured with
-    # diff.noprefix or diff.mnemonicPrefix emits something else, and the path
-    # is then taken as given: a wrong-looking path in a warning is a smaller
-    # fault than a stripped first character, and callers here build the diff
-    # themselves.
+    # git's default destination prefix. Both callers pin diff.noprefix,
+    # diff.mnemonicPrefix and core.quotePath off for exactly this reason. A
+    # diff from anywhere else may still arrive with another prefix, and the
+    # path is then taken as given: a wrong-looking path in a warning is a
+    # smaller fault than a stripped first character.
     return path[2:] if path.startswith("b/") else path
 
 
@@ -416,7 +434,9 @@ def scan_diff_for_leaks(
     # A real git diff always names the destination before a hunk.  Retaining a
     # safe placeholder lets the pure parser still report a hand-written hunk
     # used by callers/tests rather than silently omitting a detected signature.
-    current_path: str | None = "(unknown file)"
+    # The same placeholder covers a destination of /dev/null: a scanner that
+    # stopped scanning because it had no name for the file would fail open.
+    current_path = "(unknown file)"
     # Added lines are collected per file and matched together: a signature may
     # span more than one line, and attribution still needs the file.
     added_by_path: dict[str, list[str]] = {}
@@ -426,7 +446,7 @@ def scan_diff_for_leaks(
     while index < total:
         line = lines[index]
         if line.startswith("+++ "):
-            current_path = _diff_path(line)
+            current_path = _diff_path(line) or "(unknown file)"
         header = _HUNK_HEADER.match(line)
         index += 1
         if header is None:
@@ -440,9 +460,7 @@ def scan_diff_for_leaks(
                 # "\ No newline at end of file" — not a content line.
                 continue
             if body.startswith("+"):
-                added_line = body[1:]
-                if current_path is not None:
-                    added_by_path.setdefault(current_path, []).append(added_line)
+                added_by_path.setdefault(current_path, []).append(body[1:])
                 new_remaining -= 1
             elif body.startswith("-"):
                 old_remaining -= 1

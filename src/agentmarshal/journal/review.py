@@ -339,7 +339,13 @@ def _keep_diagnostics(output: bytes) -> str | None:
     try:
         kept = _preserve_reviewer_diagnostics(output)
     except OSError as error:
-        return f"reviewer diagnostics could not be kept: {error}"
+        # The file was the way to keep a long warning out of the caller's
+        # parseable output. Without it the note itself carries the bytes:
+        # losing the warning is the defect proposal 021 reported.
+        detail = output.decode("utf-8", errors="replace")
+        return (
+            f"reviewer diagnostics could not be kept ({error}); they follow:\n{detail}"
+        )
     return f"reviewer diagnostics kept at {kept}"
 
 

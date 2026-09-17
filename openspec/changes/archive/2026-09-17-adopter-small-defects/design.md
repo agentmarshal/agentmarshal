@@ -33,7 +33,19 @@ string written by `project.py` at `init`.
   reported, every occurrence outside it always is. The departure only removes
   a line about the file the operator is already editing; the leak itself is
   still reported, naming its own file, which is what the acceptance criterion
-  asks for.
+  asks for. It follows that *how many times* a marker occurs inside that one
+  file does not matter either — the rule counts locations, not occurrences —
+  and a marker's value living in the file that declares it is deliberate.
+- **A masked path keeps everything that is not the secret.** Only the marker's
+  or the signature's own span is replaced by its description. Describing the
+  whole path collapsed two leaking files under one marker-named directory into
+  a single hit, because the hits are a set and both rendered identically: the
+  scan lost the "where" it was built to add.
+- **The rendered line is bounded.** A marker in two hundred files was one
+  category token before this change and is two hundred records after it. The
+  renderer shows the first twenty and counts the rest, because the merge
+  transcript is a document people read and an advisory warning must not push
+  the refusal that matters off the screen.
 - **The reviewer's error stream is kept, not printed.** It can be long, and the
   command's own output is read by callers that parse it. It goes beside the
   rejected-verdict copies, outside any journal, and the path is named — the

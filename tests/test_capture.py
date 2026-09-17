@@ -390,8 +390,58 @@ def test_a_path_that_is_itself_a_key_is_described_not_printed() -> None:
 
     rendered = render_leak_hits(hits)
     assert "AKIAIOSFODNN7EXAMPLE" not in rendered
-    assert "<a path matching aws-access-key-id>" in rendered
-    assert "aws-access-key-id" in rendered
+    # Only the span that is the key is replaced; the directory still says where.
+    assert "keys/<aws-access-key-id>: aws-access-key-id" in rendered
+
+
+def test_two_leaking_files_under_one_marker_directory_stay_two_hits() -> None:
+    """A masked path keeps what is not the secret, so files stay distinct.
+
+    Describing the whole path made both files render identically, and the hits
+    are a set: the operator saw one place to look instead of two."""
+
+    diff = (
+        "--- a/configs/internal.corp.invalid/one.json\n"
+        "+++ b/configs/internal.corp.invalid/one.json\n"
+        "@@ -0,0 +1 @@\n"
+        '+{"host": "internal.corp.invalid"}\n'
+        "--- a/configs/internal.corp.invalid/two.json\n"
+        "+++ b/configs/internal.corp.invalid/two.json\n"
+        "@@ -0,0 +1 @@\n"
+        '+{"host": "internal.corp.invalid"}\n'
+    )
+
+    hits = scan_diff_for_leaks(diff, ("internal.corp.invalid",))
+
+    rendered = render_leak_hits(hits)
+    assert "internal.corp.invalid" not in rendered
+    assert len(hits) == 2
+    assert "configs/<private marker #1>/one.json" in rendered
+    assert "configs/<private marker #1>/two.json" in rendered
+
+
+def test_added_lines_of_a_dev_null_destination_are_still_scanned() -> None:
+    """A scanner with no name for the file must not stop scanning.
+
+    A destination of /dev/null left no path, and the added lines of that hunk
+    were dropped — fail-open in the one direction that matters."""
+
+    diff = "--- a/gone\n+++ /dev/null\n@@ -0,0 +1 @@\n+AKIAIOSFODNN7EXAMPLE\n"
+
+    hits = scan_diff_for_leaks(diff)
+
+    assert hits == [LeakHit("(unknown file)", "aws-access-key-id")]
+
+
+def test_a_rendered_warning_is_bounded_and_counts_the_rest() -> None:
+    """The merge transcript is read by people; the line cannot be unbounded."""
+
+    hits = [LeakHit(f"file{index:03d}", "aws-access-key-id") for index in range(25)]
+
+    rendered = render_leak_hits(hits)
+
+    assert rendered.count("aws-access-key-id") == 20
+    assert rendered.endswith(", and 5 more not shown")
 
 
 def test_a_signature_split_across_added_lines_is_still_found() -> None:

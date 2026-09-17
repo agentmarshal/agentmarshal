@@ -714,6 +714,9 @@ def test_a_verdict_survives_a_failure_to_keep_the_warning(
     assert len(read_records(repo / ".agentmarshal" / "journal", "CR-001")) == 2
     assert "reviewer diagnostics could not be kept" in captured.err
     assert "no space left on device" in captured.err
+    # The file was the way to keep a long warning out of parseable output;
+    # without it the note carries the warning rather than losing it.
+    assert "wrapper used a fallback" in captured.err
     assert list(tmp_path.glob("agentmarshal-reviewer-stderr-*.txt")) == []
 
 

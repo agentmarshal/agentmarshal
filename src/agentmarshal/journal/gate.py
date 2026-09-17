@@ -1124,10 +1124,20 @@ def run_gate(
         # repo marks binary/non-diffable (otherwise git emits "Binary files
         # differ" and the added content is never scanned); --no-textconv /
         # --no-ext-diff stop the repo's own diff drivers from rewriting or
-        # redacting what the scanner sees, which could hide a secret.
+        # redacting what the scanner sees, which could hide a secret. The
+        # three -c pins keep the destination prefix the parser strips ("b/")
+        # and leave non-ASCII paths unquoted: with diff.mnemonicPrefix the
+        # header reads "+++ c/…", and the suppression key would stop matching
+        # the project file silently.
         diff_text = _run_git(
             project_root,
             [
+                "-c",
+                "diff.noprefix=false",
+                "-c",
+                "diff.mnemonicPrefix=false",
+                "-c",
+                "core.quotePath=false",
                 "diff",
                 "--text",
                 "--no-textconv",
