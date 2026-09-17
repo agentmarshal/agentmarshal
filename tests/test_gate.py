@@ -273,6 +273,10 @@ def test_the_flag_reaches_the_gate_from_the_command_line(
     output = capsys.readouterr().out
     assert code == 0, output
     assert "NOT EXAMINED: latest review" in output
+    # A caller that decides a merge must tell this from a full pass without
+    # reading the transcript, which the contract's threat model asks for.
+    assert "gate: passed what it examined; the review was not examined" in output
+    assert "gate: passed\n" not in output
 
 
 def test_the_flag_is_refused_on_the_findings_lane(
@@ -339,30 +343,7 @@ def test_a_non_approving_review_still_refuses_under_the_mode(
 
     repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
     head = _implement(repo, "src/module.py")
-    assert (
-        main(
-            [
-                "submit-review",
-                "--task",
-                "CR-001",
-                "--commit",
-                head,
-                "--verdict",
-                "changes_required",
-                "--finding",
-                "F-001",
-                "--role",
-                "qa",
-                "--vendor",
-                "test",
-                "--model",
-                "test-model",
-                "--email",
-                _REVIEWER_EMAIL,
-            ]
-        )
-        == 0
-    )
+    _require_changes(repo, head, "F-001")
 
     passed, output = _run_without_review(repo, head, base, head)
 

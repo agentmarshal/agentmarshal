@@ -34,6 +34,10 @@ lands at completion. The run therefore judges everything that does not
 depend on a review and names, in its own transcript, the two checks it did
 not examine. Mark it REQUIRED.
 
+The task is read from the head branch name, so **every** branch that opens a
+pull request must carry its task identifier — `CR-<n>` in the templates as
+shipped. Without one the gate job fails, and it is no longer tolerated.
+
 What that does **not** give you is the approved-independent-review
 requirement. Nothing shipped here enforces it on GitHub: a required check
 runs before the review exists, and this project ships no merge authority
@@ -71,9 +75,10 @@ Until it lands, the `gate` check:
 - fully enforces the **journal-only lanes** (openings and completions),
   and the **scope**, **append-only**, **base-state** and **lifecycle**
   checks on every candidate;
-- cannot yet enforce the **approved-independent-review** requirement in
-  CI, which is why the CI run asks the gate to judge without it and says
-  so, and why the merge authority runs the gate again without the flag.
+- cannot enforce the **approved-independent-review** requirement, which is
+  why the CI run asks the gate to judge without it and says so in its own
+  transcript. Nothing shipped here enforces that requirement on this
+  provider; see the open item below.
 
 This is tied to the gate's **record-provenance trust boundary** (see
 `docs/self-hosting-workflow.md`): the gate validates review *contents* and

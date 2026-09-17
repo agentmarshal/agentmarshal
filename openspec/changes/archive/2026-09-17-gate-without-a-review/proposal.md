@@ -5,7 +5,7 @@ carry its own review record: a review is recorded against a commit after that
 commit exists, and lands at completion. The gate therefore refuses every
 implementation pull request, the job is marked tolerated, and the check-run is
 red on every one of them
-([proposal 017](../../../docs/proposals/017-provider-template-gate-check-structurally-red.md)).
+([proposal 017](../../../../docs/proposals/017-provider-template-gate-check-structurally-red.md)).
 
 A check that is red by construction teaches an operator that red is normal. The
 previous attempt to fix this in the template alone was refused in review: the

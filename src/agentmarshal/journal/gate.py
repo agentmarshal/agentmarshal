@@ -63,6 +63,10 @@ class GateReport:
     lines: list[str]
     resolved_commit: str
     resolved_finding: str | None = None
+    # True when a check was reported as not examined rather than evaluated. A
+    # caller that decides a merge has to tell a full pass from a partial one
+    # without reading the whole transcript.
+    partial: bool = False
 
 
 def _actor_git_identities(project_root: Path, record: dict[str, object]) -> set[str]:
@@ -596,6 +600,7 @@ def run_gate(
     except (OSError, TaskStatusError, ValueError) as error:
         raise GateError(str(error)) from error
 
+    review_not_examined = False
     resolved_commit = _resolve_commit(project_root, commit)
     base_commit = _resolve_commit(project_root, base)
     merge_base = _run_git(
@@ -942,6 +947,7 @@ def run_gate(
             # absence; it is not a pass, and it is not a refusal either. A
             # candidate that *has* a review is judged below whatever the caller
             # asked for, so this cannot turn a refusal into a pass.
+            review_not_examined = True
             lines.append(
                 "NOT EXAMINED: latest review "
                 f"(no review record for {resolved_commit[:12]}, and this run "
@@ -1133,5 +1139,8 @@ def run_gate(
             )
 
     return GateReport(
-        passed=violations == 0, lines=lines, resolved_commit=resolved_commit
+        passed=violations == 0,
+        lines=lines,
+        resolved_commit=resolved_commit,
+        partial=review_not_examined,
     )
