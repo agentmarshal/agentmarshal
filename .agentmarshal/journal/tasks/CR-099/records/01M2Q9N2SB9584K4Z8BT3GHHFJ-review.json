@@ -1,0 +1,32 @@
+{
+  "advisory_findings": [
+    "docs-merge-authority-that-does-not-exist",
+    "required-gate-hard-fails-an-unnamed-branch",
+    "own-workflow-contradicts-the-shipped-template",
+    "test-duplicates-require-changes-helper"
+  ],
+  "artifacts": [
+    {
+      "hash": "cd3d2ed8ee6a5312b9a7a0b3d060a3dbb0e5225b33f7180ad28b0eb2704f360c",
+      "ref": ".agentmarshal/journal/tasks/CR-099/artifacts/01M2Q9N2SB9584K4Z8BT3GHHFJ-review.md"
+    }
+  ],
+  "created_at": "2026-09-17T09:02:38.891285Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "ed2556aa01e7ebfeea2f211407fbdf45a720e292",
+  "reviewed_contract": "c7456a1c52b9af92cf06522fa9995e344ab4af6b0ce153a6e8ad830e0270e628",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-099",
+  "tool_version": "0.3.0",
+  "verdict": "approved"
+}
