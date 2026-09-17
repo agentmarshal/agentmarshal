@@ -1,0 +1,11 @@
+{
+  "created_at": "2026-09-17T10:46:41.689790Z",
+  "reason": "renaming the standalone command's headline broke an assertion in tests/test_placement.py, which the scope did not name; the file joins the scope because the headline is what this task changes and the test asserts it",
+  "record_type": "amendment",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "schema": 3,
+  "source": "live",
+  "task": "CR-100",
+  "tool_version": "0.3.0"
+}
