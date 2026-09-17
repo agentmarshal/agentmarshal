@@ -130,6 +130,30 @@ def test_finding_lane_passes_and_completion_uses_schema_4_binding(
     assert "completed_commit" not in completed
 
 
+def test_completion_through_findings_refuses_a_closed_task(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: every writing command refuses a closed task — the findings lane.
+
+    `complete --findings` reaches the guard by its own call, and the
+    parametrised command test exercises only the commit form."""
+
+    repo, journal = _repo(tmp_path, monkeypatch)
+    finding = _finding(repo)
+    _review(finding)
+    assert main(["complete", "--task", "CR-001", "--findings"]) == 0
+    before = read_records(journal, "CR-001")
+    capsys.readouterr()
+
+    assert main(["complete", "--task", "CR-001", "--findings"]) == 1
+
+    assert "state: done" in capsys.readouterr().err
+    assert read_records(journal, "CR-001") == before
+    assert main(["validate"]) == 0
+
+
 def test_findings_lane_refuses_drift_unresolved_and_nothing_verified(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
