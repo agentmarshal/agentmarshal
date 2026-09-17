@@ -19,6 +19,11 @@ def write_project_file(repo: Path, content: str) -> None:
 def init_git_repo(repo: Path) -> None:
     repo.mkdir()
     subprocess.run(["git", "init", "--quiet"], cwd=repo, check=True)
+    # Give the repository an identity of its own. Without one these tests read
+    # whatever the machine has configured: locally a developer's, on a runner
+    # none at all, and the actor check reports a different case in each.
+    for key, value in (("user.name", "Test"), ("user.email", "test@example.invalid")):
+        subprocess.run(["git", "config", key, value], cwd=repo, check=True)
 
 
 @pytest.fixture(autouse=True)
