@@ -1,0 +1,31 @@
+{
+  "advisory_findings": [
+    "launch-review-ignores-commit-binding-silently"
+  ],
+  "artifacts": [
+    {
+      "hash": "095360cbf8dd598309dcd40803c7d6b0cb94e884124238a6d4f1383416d9fa66",
+      "ref": ".agentmarshal/journal/tasks/CR-101/artifacts/01M2RGS212TGH9Z82A6B4CEX47-review.md"
+    }
+  ],
+  "created_at": "2026-09-17T20:26:23.650487Z",
+  "findings": [
+    "extension-manifest-error-crashes-finding-launch"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "717bae28d78129ed85e385b020d65c4544872039",
+  "reviewed_contract": "7b63c71e53fb2b58f461fc6308ccb1279da3f9f47d60bafae00a770200169124",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-101",
+  "tool_version": "0.3.0",
+  "verdict": "changes_required"
+}

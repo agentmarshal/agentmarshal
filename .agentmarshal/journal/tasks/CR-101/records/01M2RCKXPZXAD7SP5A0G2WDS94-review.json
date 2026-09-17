@@ -1,0 +1,36 @@
+{
+  "advisory_findings": [
+    "extract-snapshot-unused-project-root",
+    "resolver-test-asserts-absent-name",
+    "finding-summary-absent-from-prompt",
+    "reviewed-contract-decision-unrecorded",
+    "scoped-task-not-refused-before-run"
+  ],
+  "artifacts": [
+    {
+      "hash": "d625b062167f3158f14bd2b0966d11dad922a9e369a18e2926301608fb56601c",
+      "ref": ".agentmarshal/journal/tasks/CR-101/artifacts/01M2RCKXPZXAD7SP5A0G2WDS94-review.md"
+    }
+  ],
+  "created_at": "2026-09-17T19:13:41.087671Z",
+  "findings": [
+    "doc-runbook-keeps-human-path-inline",
+    "absolute-artifact-ref-refused-by-snapshot-guard"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "c9c7d0effa9ef5418084e672c86bdd4ebd97b8fe",
+  "reviewed_contract": "9257cb58da927aef0b84814ff9f40dbb20774574b9c5eaffedfbf065e8f72633",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-101",
+  "tool_version": "0.3.0",
+  "verdict": "changes_required"
+}

@@ -1,0 +1,11 @@
+Проверил диф против контракта CR-101, спеки `findings-review`/`reviewer-adapter`, design.md архивной change и ADR-0009. Реализация закрывает все сценарии, commit-путь промпта действительно рендерится байт-в-байт (шаблон разобран на `_prose_instruction`/`_verdict_protocol` без изменения вывода), резолвер `artifact_path` существует в одном месте (`artifacts.py:17`) и переэкспортируется в `gate.py:23` и `review.py:18`, рефакторинг `finding_reviewer_identity_refusal` сохраняет формулировки gate-транскрипта (`gate.py:233-238` даёт ту же строку, что и прежняя ветка). Отказы до запуска ревьюера на месте и записи не пишут.
+
+Нашёл одно блокирующее и одно совещательное.
+
+**extension-manifest-error-crashes-finding-launch** — `src/agentmarshal/journal/review.py:834-838`: цикл по `header.extensions` ловит только `ExtensionManifestMissing`, тогда как `read_extension_manifest` бросает и `ExtensionManifestError` (её подкласс-родитель, `extensions.py:18`) на битом TOML, отсутствующем `documents`, симлинке или не-UTF-8. Commit-путь в том же файле оборачивает этот же цикл в `except ValueError` (`review.py:987-1002`) и превращает ошибку в `ReviewLaunchError`; `brief.py:238` и `gate.py:804` тоже её обрабатывают. На finding-пути исключение уходит мимо `except ReviewLaunchError` в `cli.py:724-726` и мимо `main`, у которого верхнего обработчика нет — оператор получает traceback вместо отказа и кода 1.
+
+**launch-review-ignores-commit-binding-silently** (advisory) — `src/agentmarshal/journal/review.py:934-948`: при заданном `reviewed_finding` функция уходит в finding-путь, не взглянув на `commit`/`base`. На CLI пара `--commit`/`--reviewed-finding` взаимоисключающая, а `--base` отвергается в `cli.py:701-703`, но `launch_review` — публичный экспорт (`journal/__init__.py:25`), и вызов с обоими биндингами молча судит finding. `records.py:925-929` в этом же проекте отказывает записи, называющей оба биндинга; у лаунчера такой же проверки нет.
+
+AGENTMARSHAL_VERDICT_BEGIN
+{"reviewed_commit": "717bae28d78129ed85e385b020d65c4544872039", "verdict": "changes_required", "findings": ["extension-manifest-error-crashes-finding-launch"], "advisory_findings": ["launch-review-ignores-commit-binding-silently"]}
+AGENTMARSHAL_VERDICT_END
