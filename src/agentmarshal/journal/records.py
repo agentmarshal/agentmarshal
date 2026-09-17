@@ -210,8 +210,6 @@ def _validate_record(record: Mapping[str, object]) -> dict[str, object]:
     record_type = data.get("record_type")
     if not isinstance(record_type, str) or record_type not in _RECORD_FIELDS:
         raise JournalRecordError("record has an unknown or missing record type")
-    if schema >= 5 and record_type != "review":
-        raise JournalRecordError("record schema 5 is only supported for review records")
     # Every accepted record type must be projectable to an in-toto
     # Statement; a type without a registered predicateType could not be,
     # so reject it fail-closed (ADR-0005 Decision 5).

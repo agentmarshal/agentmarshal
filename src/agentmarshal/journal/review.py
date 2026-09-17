@@ -13,7 +13,10 @@ import tempfile
 from pathlib import Path
 from typing import cast
 
-from agentmarshal.journal.brief import render_amendment_history
+from agentmarshal.journal.brief import (
+    append_amendment_history,
+    render_amendment_history,
+)
 from agentmarshal.journal.contracts import parse_contract_text
 from agentmarshal.journal.extensions import (
     ExtensionManifestMissing,
@@ -26,9 +29,6 @@ from agentmarshal.journal.extensions import (
 # next time records.py is opened.)
 from agentmarshal.journal.records import (
     _REVIEW_VERDICTS as REVIEW_VERDICTS,
-)
-from agentmarshal.journal.records import (
-    read_records,
 )
 from agentmarshal.journal.status import TaskStatusError, load_task_status
 from agentmarshal.journal.submit_review import (
@@ -133,16 +133,7 @@ def _review_prompt(
             lines.append("Extensions whose manifest is absent in the reviewed tree:")
             lines.extend(f"- {name}" for name in absent_extensions)
         named_material = "\n".join(lines) + "\n\n"
-    contract_material = contract
-    if amendment_history:
-        separator = (
-            ""
-            if contract.endswith("\n\n")
-            else "\n"
-            if contract.endswith("\n")
-            else "\n\n"
-        )
-        contract_material += separator + amendment_history
+    contract_material = append_amendment_history(contract, amendment_history)
     return _REVIEW_PROMPT.format(
         commit=commit,
         named_material=named_material,
@@ -394,12 +385,7 @@ def launch_review(
             raise ReviewLaunchError(
                 f"cannot read task contract {source}: {error}"
             ) from error
-        try:
-            amendment_history = render_amendment_history(
-                read_records(journal_root, task.task_id)
-            )
-        except (OSError, ValueError) as error:
-            raise ReviewLaunchError(str(error)) from error
+        amendment_history = render_amendment_history(task.records)
         try:
             header = parse_contract_text(contract, str(contract_path))
             extension_root = (

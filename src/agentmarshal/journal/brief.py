@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -11,11 +12,20 @@ from agentmarshal.journal.extensions import (
     ExtensionManifestMissing,
     read_extension_manifest,
 )
-from agentmarshal.journal.records import read_records
 from agentmarshal.journal.status import TaskStatusError, load_task_status
 
 
-def render_amendment_history(records: list[dict[str, object]]) -> str:
+def append_amendment_history(text: str, history: str) -> str:
+    """Attach a rendered history to material that already ends in prose."""
+
+    if not history:
+        return text
+    if text.endswith("\n\n"):
+        return text + history
+    return text + ("\n" if text.endswith("\n") else "\n\n") + history
+
+
+def render_amendment_history(records: Sequence[Mapping[str, object]]) -> str:
     """Render the record-backed amendment history shared by both briefings.
 
     Reasons are quoted line by line. They remain the recorded text, but cannot
@@ -36,7 +46,8 @@ def render_amendment_history(records: list[dict[str, object]]) -> str:
             else ""
         )
         reason = amendment["reason"]
-        assert isinstance(reason, str)  # validated by read_records
+        if not isinstance(reason, str):  # validated on read; belt and braces
+            continue
         quoted_reason = "\n".join(f"> {line}" for line in reason.splitlines())
         entries.append(f"- {amendment['created_at']}{byline}:\n{quoted_reason}\n")
     return "## Contract amendment history\n\n" + "\n".join(entries)
@@ -322,12 +333,7 @@ def build_brief(journal_root: Path, task_id: str, host_root: Path | None = None)
         "Contract body (verbatim):\n"
         f"{body}"
     )
-    amendment_history = render_amendment_history(read_records(journal_root, task_id))
-    if amendment_history:
-        separator = (
-            "" if brief.endswith("\n\n") else "\n" if brief.endswith("\n") else "\n\n"
-        )
-        brief += separator + amendment_history
+    brief = append_amendment_history(brief, render_amendment_history(task.records))
     project_root = journal_root.parents[1]
     return _append_named_material(
         brief, host_root or project_root, project_root, task.contract
