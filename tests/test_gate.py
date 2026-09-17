@@ -1803,6 +1803,29 @@ def test_the_merge_boundary_reports_the_same_detail(
     assert secret not in standalone.out
 
 
+def test_the_transcripts_line_is_bounded_and_says_what_it_left_out(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: the transcript's line is bounded and says what it left out."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    for index in range(21):
+        head = _implement(
+            repo,
+            f"src/secret{index:02}.py",
+            "key = 'AKIAIOSFODNN7EXAMPLE'\n",
+        )
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    gate_line = next(line for line in output.splitlines() if line.startswith("WARN:"))
+    assert passed, output
+    assert "src/secret00.py: aws-access-key-id" in gate_line
+    assert "src/secret20.py: aws-access-key-id" not in gate_line
+    assert gate_line.endswith(", and 1 more not shown")
+
+
 def test_gate_leak_scan_is_clean_for_benign_additions(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -1,12 +1,4 @@
-# leak-scan Specification
-
-## Purpose
-What the added-content leak scan reports and what it refuses to print.
-A hit has to be actionable — the file, and which signature or which configured
-marker matched — and the scan's own output must never carry the thing it is
-looking for, including in a path.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: A leak-scan hit names where it matched and what matched
 A hit from the added-content scan SHALL name the file it matched in and what
@@ -65,17 +57,3 @@ it to learn where every hit is.
 - **WHEN** the standalone leak-scan command finds more hits than the gate's
   line would show
 - **THEN** every hit appears in its output
-
-### Requirement: A marker is not matched against the declaration that configures it
-The scan SHALL NOT report a private-marker hit whose only occurrence in the
-scanned content is the project configuration that declares that marker.
-
-#### Scenario: a change to the marker list does not trip on itself
-- **WHEN** the scanned content is a diff of the project configuration that
-  declares the markers, and the markers appear only there
-- **THEN** the scan reports no private-marker hit
-
-#### Scenario: a marker elsewhere in the same content is still reported
-- **WHEN** the scanned content includes both the declaration and an occurrence
-  of the same marker in another file
-- **THEN** the scan reports the hit, naming the other file

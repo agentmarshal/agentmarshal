@@ -318,23 +318,23 @@ def safe_path(path: str, private_markers: tuple[str, ...]) -> str:
     return safe
 
 
-# A marker present in two hundred files used to render as one category token;
-# it now renders as two hundred records, and the merge transcript is a document
-# people read. Enough hits to act on are shown and the rest are counted.
-_RENDER_LIMIT = 20
-
-
-def render_leak_hits(hits: list[LeakHit]) -> str:
+# A caller may render hits into a bounded document (the merge transcript) or
+# use them as its whole output (the standalone command). The caller owns that
+# choice; this renderer owns only the common, location-safe hit shape.
+def render_leak_hits(hits: list[LeakHit], limit: int | None) -> str:
     """Render hit records without exposing matched content.
 
     The standalone command and merge gate both use this one renderer: warning
     detail therefore cannot silently diverge between their two call sites.
+
+    ``limit`` is the caller's: a caller rendering one line of a document passes
+    its bound and the rendering says how many hits it left out, while a caller
+    whose whole output is the list of places to look passes ``None``.
     """
 
-    rendered = ", ".join(
-        f"{hit.path}: {hit.identification}" for hit in hits[:_RENDER_LIMIT]
-    )
-    remaining = len(hits) - _RENDER_LIMIT
+    shown = hits if limit is None else hits[:limit]
+    rendered = ", ".join(f"{hit.path}: {hit.identification}" for hit in shown)
+    remaining = len(hits) - len(shown)
     if remaining > 0:
         return f"{rendered}, and {remaining} more not shown"
     return rendered

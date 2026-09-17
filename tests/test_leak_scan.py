@@ -60,6 +60,28 @@ def test_leak_scan_flags_secret_in_added_content(
     assert "aws-access-key-id" in out
 
 
+def test_the_standalone_command_shows_every_place_to_look(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: the standalone command shows every place to look."""
+
+    repo, base = _repo(tmp_path, monkeypatch)
+    for index in range(21):
+        head = _add_file(
+            repo,
+            f"secret{index:02}.py",
+            "key = 'AKIAIOSFODNN7EXAMPLE'\n",
+        )
+
+    code = main(["leak-scan", "--base", base, "--commit", head])
+
+    output = capsys.readouterr().out
+    assert code == 1
+    assert "secret00.py: aws-access-key-id" in output
+    assert "secret20.py: aws-access-key-id" in output
+    assert "more not shown" not in output
+
+
 def test_leak_scan_passes_clean_diff(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
