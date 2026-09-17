@@ -63,10 +63,11 @@ class GateReport:
     lines: list[str]
     resolved_commit: str
     resolved_finding: str | None = None
-    # True when a check was reported as not examined rather than evaluated. A
-    # caller that decides a merge has to tell a full pass from a partial one
-    # without reading the whole transcript.
-    partial: bool = False
+    # True when the review-bound checks were reported as not examined because
+    # the caller asked to judge without a review. It says nothing about the
+    # other lines this gate can report as not examined — a caller that needs
+    # those reads the transcript, which names each one.
+    review_not_examined: bool = False
 
 
 def _actor_git_identities(project_root: Path, record: dict[str, object]) -> set[str]:
@@ -1142,5 +1143,5 @@ def run_gate(
         passed=violations == 0,
         lines=lines,
         resolved_commit=resolved_commit,
-        partial=review_not_examined,
+        review_not_examined=review_not_examined,
     )

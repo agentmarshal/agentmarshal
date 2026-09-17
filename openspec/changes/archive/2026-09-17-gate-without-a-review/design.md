@@ -33,5 +33,6 @@ none does, with `no review record for <sha>`.
   own output. The merge step in this project's own tooling does not use it.
 - [An operator reads "not examined" as "passed"] → the transcript names each
   unexamined check on its own line, in the wording the findings lane already
-  uses. The gate has no summary line to count them in, and this note earlier
-  claimed it did.
+  uses, and a run that left the review unexamined says so on its closing line
+  instead of the usual `gate: passed`. An earlier version of this note said the
+  gate had nowhere to say it; the closing line is where.

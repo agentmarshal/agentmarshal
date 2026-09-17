@@ -825,7 +825,7 @@ def _run_gate(args: argparse.Namespace, stderr: TextIO) -> int:
         return 1
     if placement.is_sidecar:
         print("gate: advisory checks passed; decides no merge")
-    elif report.partial:
+    elif report.review_not_examined:
         print("gate: passed what it examined; the review was not examined")
     else:
         print("gate: passed")
