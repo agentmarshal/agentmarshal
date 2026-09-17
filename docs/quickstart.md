@@ -230,6 +230,10 @@ BASE=$(git rev-parse HEAD)
 ```
 
 `amend` records the reason; git history remains the contract's content trail.
+When a task has amendment records, both `brief` and the model-review prompt show
+their recorded time, reason, and recorder (when one was recorded) immediately
+after the contract. They read that history from the active journal, so a review
+also sees amendments recorded after its candidate was built.
 
 Deliver the complete governed task to the implementer through the briefing
 command. It includes the declared scope and acceptance criteria, the rules the
@@ -276,6 +280,10 @@ agentmarshal submit-review \
 model produce the verdict, set `AGENTMARSHAL_REVIEWER_CMD` (see Configuration)
 and use `agentmarshal review` with the same `--task/--commit/--base` plus
 `--role/--vendor/--model/--email`.
+
+A model review record also pins `reviewed_contract`, the SHA-256 of the exact
+contract text its prompt carried. The human `submit-review` path leaves this
+field absent because it did not deliver a contract itself.
 
 The review record is written into the journal working tree. It stays
 uncommitted until you record completion, so a review never has to be part of

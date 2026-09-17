@@ -141,11 +141,13 @@ _SCHEMA_2_FIELDS = frozenset(
 )
 _SCHEMA_2_SESSION_FIELDS = frozenset({"usage"})
 _RECORDED_BY_SOURCES = frozenset({"project-actor", "git-identity", "override"})
-_SUPPORTED_SCHEMAS = frozenset({1, 2, 3, 4})
+_SUPPORTED_SCHEMAS = frozenset({1, 2, 3, 4, 5})
 _SCHEMA_4_FIELDS = frozenset(
     {"reviewed_finding", "accepted_finding", "completed_finding"}
 )
+_SCHEMA_5_FIELDS = frozenset({"reviewed_contract"})
 _ARTIFACT_HASH_PATTERN = re.compile(r"[0-9a-f]{64}$")
+_CONTRACT_HASH_PATTERN = re.compile(r"[0-9a-f]{64}$")
 _REVIEWED_COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}$")
 _REVIEW_VERDICTS = frozenset({"approved", "changes_required", "blocked", "rejected"})
 _SESSION_ACTIVITIES = frozenset({"implementation", "review", "other"})
@@ -209,6 +211,8 @@ def _validate_record(record: Mapping[str, object]) -> dict[str, object]:
     record_type = data.get("record_type")
     if not isinstance(record_type, str) or record_type not in _RECORD_FIELDS:
         raise JournalRecordError("record has an unknown or missing record type")
+    if schema >= 5 and record_type != "review":
+        raise JournalRecordError("record schema 5 is only supported for review records")
     # Every accepted record type must be projectable to an in-toto
     # Statement; a type without a registered predicateType could not be,
     # so reject it fail-closed (ADR-0005 Decision 5).
@@ -221,6 +225,10 @@ def _validate_record(record: Mapping[str, object]) -> dict[str, object]:
         allowed_fields = allowed_fields | _SCHEMA_2_FIELDS
         if record_type == "session":
             allowed_fields = allowed_fields | _SCHEMA_2_SESSION_FIELDS
+    if schema >= 5 and record_type == "review":
+        allowed_fields = allowed_fields | _SCHEMA_5_FIELDS
+    if "reviewed_contract" in data and schema < 5:
+        raise JournalRecordError("record field 'reviewed_contract' requires schema 5")
     unexpected_fields = data.keys() - allowed_fields
     if unexpected_fields:
         raise JournalRecordError(
@@ -386,6 +394,16 @@ def _validate_review_record(data: Mapping[str, object]) -> None:
         if overlap:
             raise JournalRecordError(
                 "review record findings and advisory_findings must be disjoint"
+            )
+    if "reviewed_contract" in data:
+        reviewed_contract = data["reviewed_contract"]
+        if (
+            not isinstance(reviewed_contract, str)
+            or _CONTRACT_HASH_PATTERN.fullmatch(reviewed_contract) is None
+        ):
+            raise JournalRecordError(
+                "review record field 'reviewed_contract' must be exactly 64 "
+                "lowercase hex characters"
             )
 
 
@@ -899,6 +917,7 @@ def create_review_record(
     findings: list[str],
     *,
     reviewed_finding: str | None = None,
+    reviewed_contract: str | None = None,
     advisory_findings: list[str] | None = None,
     artifacts: list[dict[str, str]] | None = None,
     source: str = SOURCE_LIVE,
@@ -917,7 +936,11 @@ def create_review_record(
             "'reviewed_finding'"
         )
     record: dict[str, object] = {
-        "schema": 4 if reviewed_finding is not None else 3,
+        "schema": 5
+        if reviewed_contract is not None
+        else 4
+        if reviewed_finding is not None
+        else 3,
         "record_type": "review",
         "task": task_id,
         "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
@@ -936,6 +959,8 @@ def create_review_record(
         record["reviewed_finding"] = reviewed_finding
     else:
         record["reviewed_commit"] = reviewed_commit
+    if reviewed_contract is not None:
+        record["reviewed_contract"] = reviewed_contract
     if advisory_findings:
         record["advisory_findings"] = advisory_findings
     if artifacts:

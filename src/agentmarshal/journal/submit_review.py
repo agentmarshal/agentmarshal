@@ -46,6 +46,7 @@ def submit_review(
     advisory_findings: list[str] | None = None,
     *,
     reviewed_finding: str | None = None,
+    reviewed_contract: str | None = None,
     prose: bytes | None = None,
 ) -> SubmittedReview:
     """Validate and record a review against an opened task."""
@@ -63,6 +64,7 @@ def submit_review(
             reviewer_email,
             findings,
             reviewed_finding=reviewed_finding,
+            reviewed_contract=reviewed_contract,
             advisory_findings=advisory_findings,
         )
         if prose is None:

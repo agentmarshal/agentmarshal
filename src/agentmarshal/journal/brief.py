@@ -11,7 +11,29 @@ from agentmarshal.journal.extensions import (
     ExtensionManifestMissing,
     read_extension_manifest,
 )
+from agentmarshal.journal.records import read_records
 from agentmarshal.journal.status import TaskStatusError, load_task_status
+
+
+def render_amendment_history(records: list[dict[str, object]]) -> str:
+    """Render the record-backed amendment history shared by both briefings.
+
+    Reasons are quoted line by line. They remain the recorded text, but cannot
+    introduce a heading or delimiter that looks like part of this rendering.
+    """
+
+    amendments = [record for record in records if record["record_type"] == "amendment"]
+    if not amendments:
+        return ""
+    entries: list[str] = []
+    for amendment in amendments:
+        recorder = amendment.get("recorded_by")
+        byline = f"; recorded by {recorder}" if isinstance(recorder, str) else ""
+        reason = amendment["reason"]
+        assert isinstance(reason, str)  # validated by read_records
+        quoted_reason = "\n".join(f"> {line}" for line in reason.splitlines())
+        entries.append(f"- {amendment['created_at']}{byline}:\n{quoted_reason}\n")
+    return "## Contract amendment history\n\n" + "\n".join(entries)
 
 
 def _contract_body(text: str) -> str:
@@ -294,6 +316,12 @@ def build_brief(journal_root: Path, task_id: str, host_root: Path | None = None)
         "Contract body (verbatim):\n"
         f"{body}"
     )
+    amendment_history = render_amendment_history(read_records(journal_root, task_id))
+    if amendment_history:
+        separator = (
+            "" if brief.endswith("\n\n") else "\n" if brief.endswith("\n") else "\n\n"
+        )
+        brief += separator + amendment_history
     project_root = journal_root.parents[1]
     return _append_named_material(
         brief, host_root or project_root, project_root, task.contract

@@ -12,6 +12,7 @@ import pytest
 from agentmarshal.cli import main
 from agentmarshal.journal import review
 from agentmarshal.journal.records import (
+    create_amendment_record,
     create_review_record,
     read_records,
     write_record,
@@ -328,6 +329,109 @@ def test_review_uses_contract_from_reviewed_commit(
     assert "Review task" in prompt
     assert "UNCOMMITTED CONTRACT CHANGE" not in prompt
     _assert_no_snapshot(repo, tmp_path)
+
+
+def _record_amendment(
+    journal: Path,
+    reason: str,
+    created_at: str,
+    record_id: str,
+) -> None:
+    amendment = create_amendment_record("CR-001", "test", reason)
+    amendment["created_at"] = created_at
+    write_record(journal, "CR-001", amendment, record_id=record_id)
+
+
+def test_review_prompt_renders_the_amendment_history(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a reviewer is told that a criterion is younger than the task."""
+
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    journal = repo / ".agentmarshal" / "journal"
+    monkeypatch.setenv("AGENTMARSHAL_ACTOR", "contract-owner")
+    _record_amendment(
+        journal,
+        "First criterion was clarified.",
+        "2026-09-17T01:02:03Z",
+        "01J00000000000000000000001",
+    )
+    _record_amendment(
+        journal,
+        "Second criterion was added.",
+        "2026-09-17T02:03:04Z",
+        "01J00000000000000000000002",
+    )
+    prompt_output = tmp_path / "review-prompt.txt"
+    stub = _reviewer_stub(
+        tmp_path,
+        _verdict(commit, "approved", []),
+        prompt_output=prompt_output,
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert main(_review_args(commit)) == 0
+
+    prompt = prompt_output.read_text(encoding="utf-8")
+    history = "## Contract amendment history"
+    assert prompt.index("# CR-001: Review task") < prompt.index(history)
+    assert "2026-09-17T01:02:03Z; recorded by contract-owner" in prompt
+    assert "> First criterion was clarified." in prompt
+    assert "2026-09-17T02:03:04Z; recorded by contract-owner" in prompt
+    assert "> Second criterion was added." in prompt
+
+
+def test_review_reads_amendments_from_the_active_journal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: an amendment recorded after the candidate was built is rendered."""
+
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    journal = repo / ".agentmarshal" / "journal"
+    _record_amendment(
+        journal,
+        "Recorded after the candidate commit.",
+        "2026-09-17T03:04:05Z",
+        "01J00000000000000000000001",
+    )
+    prompt_output = tmp_path / "review-prompt.txt"
+    stub = _reviewer_stub(
+        tmp_path,
+        _verdict(commit, "approved", []),
+        prompt_output=prompt_output,
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert main(_review_args(commit)) == 0
+
+    prompt = prompt_output.read_text(encoding="utf-8")
+    assert "Recorded after the candidate commit." in prompt
+    assert "## Contract amendment history" in prompt
+
+
+def test_review_record_hashes_the_contract_text_in_its_prompt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: the launcher records the contract it handed over."""
+
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    prompt_output = tmp_path / "review-prompt.txt"
+    stub = _reviewer_stub(
+        tmp_path,
+        _verdict(commit, "approved", []),
+        prompt_output=prompt_output,
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert main(_review_args(commit)) == 0
+
+    prompt = prompt_output.read_text(encoding="utf-8")
+    contract = prompt.split("Task contract:\n", 1)[1].split("\n\nDiff:\n", 1)[0]
+    record = read_records(repo / ".agentmarshal" / "journal", "CR-001")[-1]
+    assert (
+        record["reviewed_contract"]
+        == hashlib.sha256(contract.encode("utf-8")).hexdigest()
+    )
 
 
 @pytest.mark.parametrize(
@@ -875,7 +979,9 @@ def test_a_failure_after_the_pin_names_the_artifact_and_keeps_no_other_copy(
 
 
 def test_prompt_without_named_material_is_the_prompt_written_before_schema_2() -> None:
-    """The 0.3.0 prompt, pinned literally: the split into a prefix and a suffix
+    """Scenario: a task with no amendments is unchanged.
+
+    The 0.3.0 prompt, pinned literally: the split into a prefix and a suffix
     must reproduce it, and this is the test that would notice a seam."""
 
     from agentmarshal.journal.records import _REVIEW_VERDICTS
