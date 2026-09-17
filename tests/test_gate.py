@@ -9,7 +9,9 @@ from pathlib import Path
 import pytest
 
 from agentmarshal.cli import main
+from agentmarshal.journal import artifacts as artifacts_module
 from agentmarshal.journal import gate as gate_module
+from agentmarshal.journal import review as review_module
 from agentmarshal.journal.contracts import scope_covers
 from agentmarshal.journal.gate import GateError, markers_from_tree, run_gate
 from agentmarshal.journal.records import (
@@ -242,6 +244,17 @@ def test_a_default_run_prints_the_transcript_it_printed_before(
     test_embedded_diff_lane_transcript_matches_published_030_byte_for_byte(
         tmp_path, monkeypatch, capsys
     )
+
+
+def test_findings_gate_uses_the_public_artifact_resolver() -> None:
+    """The gate and launcher hold the artifact resolver's one function object."""
+
+    assert (
+        gate_module.artifact_path
+        is review_module.artifact_path
+        is artifacts_module.artifact_path
+    )
+    assert not hasattr(gate_module, "_artifact_path")
 
 
 def test_the_flag_reaches_the_gate_from_the_command_line(

@@ -15,15 +15,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
+from agentmarshal.journal.artifacts import artifact_path as artifact_path
 from agentmarshal.journal.brief import (
     append_amendment_history,
     render_amendment_history,
 )
 from agentmarshal.journal.contracts import parse_contract_text
 from agentmarshal.journal.extensions import (
+    ExtensionManifestError,
     ExtensionManifestMissing,
     read_extension_manifest,
 )
+from agentmarshal.journal.gate import finding_reviewer_identity_refusal
 
 # The allowed verdicts have one definition, in records.py, which validation
 # uses. The prompt renders that same set so it cannot drift from what the
@@ -40,6 +43,11 @@ from agentmarshal.journal.submit_review import (
 
 _VERDICT_BEGIN = "AGENTMARSHAL_VERDICT_BEGIN"
 _VERDICT_END = "AGENTMARSHAL_VERDICT_END"
+# Embedded content is presented, not quoted verbatim: a pinned artifact may
+# itself hold a complete verdict block, and the diff path is immune to that only
+# because every diff line already carries a prefix.  An empty line takes the bar
+# alone, so the prompt never carries trailing whitespace.
+_ARTIFACT_CONTENT_PREFIX = "|"
 _VERDICT_REQUIRED = {"reviewed_commit", "verdict", "findings"}
 # advisory_findings is in the record schema and create_review_record accepts it;
 # accepting it here is what makes it reachable through the protocol at all.
@@ -53,20 +61,9 @@ _REVIEW_PROMPT = """You are a read-only code reviewer. Review the supplied task 
 and diff.
 Do not modify files. Your reviewed commit is {commit}.
 
-{named_material}For each blocking or advisory finding id you report, print one line of \
-prose
-before the verdict block, naming what is wrong and where. The ids are labels
-for the machine; the prose is what a human will read.
+{named_material}{prose_instruction}
 
-At the end, print exactly one JSON object between lines containing exactly
-{verdict_begin} and {verdict_end}. The object must contain:
-- reviewed_commit: the exact reviewed commit SHA
-- verdict: exactly one of: {verdicts}
-- findings: an array of unique finding-id strings; empty only for "approved",
-  and non-empty for every other verdict
-and may additionally contain:
-- advisory_findings: an array of unique non-blocking finding-id strings,
-  disjoint from findings; allowed with any verdict, including "approved"
+{verdict_protocol}
 
 No other key is accepted.
 
@@ -76,6 +73,32 @@ Task contract:
 Diff:
 {diff}
 """
+_FINDING_REVIEW_PROMPT = (
+    "You are a read-only reviewer. Review the supplied task contract\n"
+    "and verified finding artifacts.\n"
+    "Do not modify files. Your reviewed finding is {finding}.\n"
+    "\n"
+    "Finding claim:\n"
+    "{summary}\n"
+    "\n"
+    "Each embedded artifact-content line begins with `{content_prefix}`; that "
+    "prefix presents the content and is not part of the file.\n"
+    "The verified artifacts are also files in your working directory, at the "
+    "paths named below, so one whose content is not embedded can still be "
+    "read there.\n"
+    "\n"
+    "{named_material}{prose_instruction}\n"
+    "\n"
+    "{verdict_protocol}\n"
+    "\n"
+    "No other key is accepted.\n"
+    "\n"
+    "Task contract:\n"
+    "{contract}\n"
+    "\n"
+    "Finding artifacts:\n"
+    "{artifacts}\n"
+)
 
 
 class ReviewLaunchError(Exception):
@@ -89,6 +112,80 @@ class LaunchedReview:
     record_path: Path
     artifact_ref: str | None
     diagnostics_note: str | None
+
+
+@dataclass(frozen=True)
+class _VerifiedArtifact:
+    """A locally resolved finding artifact, read and hashed before review."""
+
+    reference: str
+    digest: str
+    content: bytes
+    snapshot_reference: Path
+
+
+def _named_contract_material(
+    decisions: tuple[str, ...],
+    documents: tuple[str, ...],
+    absent_extensions: tuple[str, ...],
+    *,
+    absent_extensions_phrase: str,
+    preamble: str = "",
+) -> str:
+    """Render the contract names shared by commit and finding review prompts.
+
+    ``preamble`` is said only when there is material to say it about: a
+    research task usually names none, and telling a reviewer that unsupplied
+    material exists invites a finding about its absence.
+    """
+
+    if not (decisions or documents or absent_extensions):
+        return ""
+    lines = [preamble] if preamble else []
+    lines.append("Named contract material:")
+    if decisions:
+        lines.append("Decisions:")
+        lines.extend(f"- {decision}" for decision in decisions)
+        lines.append("A finding may cite a contradiction with a named decision.")
+    if documents:
+        lines.append("Documents:")
+        lines.extend(f"- {document}" for document in documents)
+    if absent_extensions:
+        # A removal candidate deletes its manifest (ADR-0010 D5); the review
+        # still launches, and the reviewer is told what is absent.
+        lines.append(absent_extensions_phrase)
+        lines.extend(f"- {name}" for name in absent_extensions)
+    return "\n".join(lines) + "\n\n"
+
+
+def _prose_instruction() -> str:
+    """Return the shared request for human-readable finding explanations."""
+
+    return (
+        "For each blocking or advisory finding id you report, print one line of "
+        "prose\n"
+        "before the verdict block, naming what is wrong and where. The ids are labels\n"
+        "for the machine; the prose is what a human will read."
+    )
+
+
+def _verdict_protocol(subject_field: str, subject_description: str) -> str:
+    """Render the shared machine-verdict protocol for one review binding."""
+
+    verdicts = ", ".join(sorted(REVIEW_VERDICTS))
+    return (
+        "At the end, print exactly one JSON object between lines containing "
+        "exactly\n"
+        f"{_VERDICT_BEGIN} and {_VERDICT_END}. The object must contain:\n"
+        f"- {subject_field}: {subject_description}\n"
+        f"- verdict: exactly one of: {verdicts}\n"
+        "- findings: an array of unique finding-id strings; empty only for "
+        '"approved",\n'
+        "  and non-empty for every other verdict\n"
+        "and may additionally contain:\n"
+        "- advisory_findings: an array of unique non-blocking finding-id strings,\n"
+        '  disjoint from findings; allowed with any verdict, including "approved"'
+    )
 
 
 def _run_git(project_root: Path, arguments: list[str]) -> str:
@@ -131,32 +228,100 @@ def _review_prompt(
 ) -> str:
     """Build the reviewer prompt with its required machine-verdict protocol."""
 
-    verdicts = ", ".join(sorted(REVIEW_VERDICTS))
-    named_material = ""
-    if decisions or documents or absent_extensions:
-        lines = ["Named contract material:"]
-        if decisions:
-            lines.append("Decisions:")
-            lines.extend(f"- {decision}" for decision in decisions)
-            lines.append("A finding may cite a contradiction with a named decision.")
-        if documents:
-            lines.append("Documents:")
-            lines.extend(f"- {document}" for document in documents)
-        if absent_extensions:
-            # A removal candidate deletes its manifest (ADR-0010 D5); the
-            # review still launches, and the reviewer is told what is absent.
-            lines.append("Extensions whose manifest is absent in the reviewed tree:")
-            lines.extend(f"- {name}" for name in absent_extensions)
-        named_material = "\n".join(lines) + "\n\n"
     contract_material = append_amendment_history(contract, amendment_history)
     return _REVIEW_PROMPT.format(
         commit=commit,
-        named_material=named_material,
-        verdict_begin=_VERDICT_BEGIN,
-        verdict_end=_VERDICT_END,
-        verdicts=verdicts,
+        named_material=_named_contract_material(
+            decisions,
+            documents,
+            absent_extensions,
+            absent_extensions_phrase=(
+                "Extensions whose manifest is absent in the reviewed tree:"
+            ),
+        ),
+        prose_instruction=_prose_instruction(),
+        verdict_protocol=_verdict_protocol(
+            "reviewed_commit", "the exact reviewed commit SHA"
+        ),
         contract=contract_material,
         diff=diff,
+    )
+
+
+def _finding_review_prompt(
+    contract: str,
+    finding: str,
+    summary: str,
+    artifacts: tuple[_VerifiedArtifact, ...],
+    unresolved_references: tuple[str, ...],
+    *,
+    decisions: tuple[str, ...] = (),
+    documents: tuple[str, ...] = (),
+    absent_extensions: tuple[str, ...] = (),
+    amendment_history: str = "",
+) -> str:
+    """Build the distinct reviewer prompt for a hash-pinned finding."""
+
+    artifact_sections: list[str] = []
+    for artifact in artifacts:
+        artifact_heading = f"Verified artifact: {artifact.reference}\n"
+        if artifact.snapshot_reference.as_posix() != artifact.reference:
+            artifact_heading += (
+                f"Snapshot path: {artifact.snapshot_reference.as_posix()}\n"
+            )
+        try:
+            text = artifact.content.decode("utf-8")
+        except UnicodeDecodeError:
+            artifact_sections.append(
+                artifact_heading + f"Recorded sha256: {artifact.digest}\n"
+                f"Content not embedded: the verified artifact is not valid UTF-8 "
+                f"({len(artifact.content)} bytes)."
+            )
+        else:
+            # splitlines(), not split("\n"): the verdict parser reads lines
+            # the way str.splitlines() does, so content separated by a lone
+            # \r — a measurement log with progress output — would otherwise
+            # arrive as one prefixed chunk with unprefixed sentinel lines
+            # inside it. The terminators are normalised in the presentation;
+            # the recorded hash is what pins the bytes.
+            prefixed_text = "\n".join(
+                f"{_ARTIFACT_CONTENT_PREFIX} {line}"
+                if line
+                else _ARTIFACT_CONTENT_PREFIX
+                for line in text.splitlines()
+            )
+            artifact_sections.append(
+                artifact_heading + f"Recorded sha256: {artifact.digest}\n"
+                f"Content (each line is prefixed):\n{prefixed_text}"
+            )
+    if unresolved_references:
+        artifact_sections.append(
+            "Unverified references (not fetched):\n"
+            + "\n".join(f"- {reference}" for reference in unresolved_references)
+        )
+
+    return _FINDING_REVIEW_PROMPT.format(
+        content_prefix=_ARTIFACT_CONTENT_PREFIX,
+        finding=finding,
+        summary=summary,
+        named_material=_named_contract_material(
+            decisions,
+            documents,
+            absent_extensions,
+            absent_extensions_phrase=(
+                "Extensions whose manifest is absent in the project:"
+            ),
+            preamble=(
+                "The named contract material below is named, not supplied in "
+                "this snapshot; only the pinned artifacts were verified."
+            ),
+        ),
+        prose_instruction=_prose_instruction(),
+        verdict_protocol=_verdict_protocol(
+            "reviewed_finding", "the exact reviewed finding id"
+        ),
+        contract=append_amendment_history(contract, amendment_history),
+        artifacts="\n\n".join(artifact_sections),
     )
 
 
@@ -372,9 +537,19 @@ def _reject(
 
 
 def _parse_verdict(
-    output: str, *, preserve_output: bool = True
-) -> tuple[str, str, list[str], list[str]]:
-    """Parse a verdict, preserving rejected recorded-review output when asked."""
+    output: str,
+    *,
+    subject_fields: frozenset[str] = frozenset({"reviewed_commit"}),
+    expected_field: str | None = None,
+    preserve_output: bool = True,
+) -> tuple[str, str, str, list[str], list[str]]:
+    """Parse a verdict for one of the accepted review-subject field sets.
+
+    ``subject_fields`` is what the parser will read; ``expected_field`` is what
+    the caller asked the reviewer for. A finding launch reads both shapes so a
+    commit-shaped verdict can be named in the refusal, and must not invite one:
+    the refusal names the field the prompt asked for.
+    """
 
     def reject(reason: str) -> ReviewLaunchError:
         return _reject(output, reason, preserve_output=preserve_output)
@@ -391,25 +566,39 @@ def _parse_verdict(
     if not isinstance(verdict_data, dict):
         raise reject("reviewer verdict must be a JSON object")
     keys = set(verdict_data)
-    missing = _VERDICT_REQUIRED - keys
+    required = (
+        _VERDICT_REQUIRED - {"reviewed_commit"}
+        if "reviewed_finding" in subject_fields
+        else _VERDICT_REQUIRED
+    )
+    missing = required - keys
     if missing:
         raise reject(
             "reviewer verdict is missing required field(s): "
             + ", ".join(sorted(missing)),
         )
+    bindings = keys & subject_fields
+    if len(bindings) != 1:
+        raise reject(
+            f"reviewer verdict must name {expected_field}"
+            if expected_field is not None
+            else "reviewer verdict must name exactly one of "
+            + " or ".join(sorted(subject_fields))
+        )
     # An unknown key is still refused — a verdict we do not understand must not
     # be recorded — but the message names it, instead of reporting a shape
     # failure the reviewer cannot act on.
-    unknown = keys - _VERDICT_REQUIRED - _VERDICT_OPTIONAL
+    unknown = keys - required - subject_fields - _VERDICT_OPTIONAL
     if unknown:
         raise reject(
             "reviewer verdict has unsupported field(s): " + ", ".join(sorted(unknown)),
         )
-    reviewed_commit = verdict_data["reviewed_commit"]
+    subject_field = bindings.pop()
+    subject = verdict_data[subject_field]
     verdict = verdict_data["verdict"]
     findings = verdict_data["findings"]
     advisory = verdict_data.get("advisory_findings", [])
-    if not isinstance(reviewed_commit, str) or not isinstance(verdict, str):
+    if not isinstance(subject, str) or not isinstance(verdict, str):
         raise reject("reviewer verdict fields must be strings")
     for name, value in (("findings", findings), ("advisory_findings", advisory)):
         if not isinstance(value, list) or not all(
@@ -417,7 +606,8 @@ def _parse_verdict(
         ):
             raise reject(f"reviewer verdict {name} must be an array of strings")
     return (
-        reviewed_commit,
+        subject_field,
+        subject,
         verdict,
         cast(list[str], findings),
         cast(list[str], advisory),
@@ -504,7 +694,13 @@ def dry_run_review(
         diagnostics_note = _keep_diagnostics(raw_diagnostics)
         output = raw_output.decode("utf-8", errors="replace")
         try:
-            verdict = _parse_verdict(output, preserve_output=False)
+            (
+                _subject_field,
+                reviewed_commit,
+                _verdict,
+                _findings,
+                _advisory,
+            ) = _parse_verdict(output, preserve_output=False)
         except ReviewLaunchError as error:
             # The operator is debugging this command; the output is the evidence.
             # It goes beside the rejected-verdict copies, outside any journal.
@@ -521,33 +717,291 @@ def dry_run_review(
         # The recorded path refuses a verdict about another commit, and so does
         # this one: a command that echoes a commit of its own would pass a check
         # that only parsed.
-        if verdict[0] != _DRY_RUN_COMMIT:
+        if reviewed_commit != _DRY_RUN_COMMIT:
             raise _with_diagnostics(
                 ReviewLaunchError(
                     "reviewer verdict names a commit the dry run did not ask about: "
-                    f"{verdict[0]}"
+                    f"{reviewed_commit}"
                 ),
                 diagnostics_note,
             )
         return tree, diagnostics_note
 
 
+def _verified_finding_artifacts(
+    project_root: Path, finding: dict[str, object]
+) -> tuple[tuple[_VerifiedArtifact, ...], tuple[str, ...]]:
+    """Read and hash all locally resolvable artifacts before a reviewer runs."""
+
+    verified: list[_VerifiedArtifact] = []
+    unresolved: list[str] = []
+    drifted: list[str] = []
+    for artifact in cast(list[dict[str, str]], finding["artifacts"]):
+        reference = artifact["ref"]
+        path = artifact_path(project_root, reference)
+        if path is None:
+            unresolved.append(reference)
+            continue
+        try:
+            content = path.read_bytes()
+        except OSError as error:
+            raise ReviewLaunchError(
+                f"finding artifact {reference} could not be read: {error}"
+            ) from error
+        digest = hashlib.sha256(content).hexdigest()
+        if digest != artifact["hash"]:
+            drifted.append(reference)
+            continue
+        reference_path = Path(reference)
+        snapshot_reference = (
+            path.relative_to(project_root.resolve())
+            if reference_path.is_absolute()
+            else reference_path
+        )
+        verified.append(
+            _VerifiedArtifact(reference, digest, content, snapshot_reference)
+        )
+    if drifted:
+        raise ReviewLaunchError(
+            "finding artifact(s) do not match their recorded sha256: "
+            + ", ".join(drifted)
+        )
+    if not verified:
+        finding_id = cast(str, finding["id"])
+        raise ReviewLaunchError(
+            f"finding {finding_id} has no artifacts that could be verified locally"
+        )
+    return tuple(verified), tuple(unresolved)
+
+
+def _extract_finding_snapshot(
+    artifacts: tuple[_VerifiedArtifact, ...], snapshot: Path
+) -> None:
+    """Materialize verified bytes at their referenced paths in the snapshot."""
+
+    snapshot.mkdir()
+    resolved_snapshot = snapshot.resolve()
+    for artifact in artifacts:
+        # References, rather than resolved artifact paths, are the paths the
+        # prompt tells the reviewer to use.  A symlink is deliberately copied
+        # as its verified bytes at its link spelling.  Retain confinement here
+        # even though ``artifact_path`` already verified the source path.
+        destination = snapshot / artifact.snapshot_reference
+        try:
+            destination.resolve().relative_to(resolved_snapshot)
+        except (OSError, ValueError) as error:
+            raise ReviewLaunchError(
+                f"finding artifact reference escapes the snapshot: {artifact.reference}"
+            ) from error
+        try:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(artifact.content)
+        except OSError as error:
+            # Same class as the manifest failure this task already closed: an
+            # I/O error here left `launch_review` as a bare OSError, and the
+            # CLI catches only ReviewLaunchError.
+            raise ReviewLaunchError(
+                f"finding artifact {artifact.reference} could not be placed in "
+                f"the review snapshot: {error}"
+            ) from error
+
+
+def _launch_finding_review(
+    project_root: Path,
+    journal_root: Path,
+    task_id: str,
+    reviewed_finding: str,
+    reviewer_role: str,
+    reviewer_vendor: str,
+    reviewer_model: str,
+    reviewer_email: str,
+) -> LaunchedReview:
+    """Review verified finding artifacts and bind the resulting record to it."""
+
+    try:
+        task = load_task_status(journal_root, task_id)
+    except (OSError, TaskStatusError, ValueError) as error:
+        raise ReviewLaunchError(str(error)) from error
+    task_findings = [
+        record for record in task.records if record["record_type"] == "finding"
+    ]
+    finding = next(
+        (record for record in task_findings if record.get("id") == reviewed_finding),
+        None,
+    )
+    if finding is None:
+        raise ReviewLaunchError(
+            f"reviewed finding {reviewed_finding} is not a finding of task {task_id}"
+        )
+    latest_finding = task_findings[-1]
+    latest_finding_id = cast(str, latest_finding["id"])
+    if reviewed_finding != latest_finding_id:
+        raise ReviewLaunchError(
+            f"reviewed finding {reviewed_finding} is not the latest finding of task "
+            f"{task_id}; latest finding is {latest_finding_id}"
+        )
+    if task.state != "open":
+        raise ReviewLaunchError(
+            f"task {task_id} is already closed (state: {task.state})"
+        )
+    if task.contract.scope:
+        raise ReviewLaunchError(
+            "findings lane requires an empty scope; declared scope: "
+            + ", ".join(task.contract.scope)
+        )
+    identity_refusal = finding_reviewer_identity_refusal(
+        project_root, finding, reviewer_email, launching=True
+    )
+    if identity_refusal is not None:
+        raise ReviewLaunchError(identity_refusal)
+
+    verified, unresolved = _verified_finding_artifacts(project_root, finding)
+    contract_path = journal_root / "tasks" / task.task_id / "contract.md"
+    try:
+        contract = contract_path.read_text(encoding="utf-8")
+    except OSError as error:
+        raise ReviewLaunchError(
+            f"cannot read task contract for review: {error}"
+        ) from error
+    # The status projection parsed this same file; the commit path parses a
+    # second time only because its contract comes from the reviewed snapshot.
+    header = task.contract
+    documents = list(header.documents)
+    absent: list[str] = []
+    for name in header.extensions:
+        try:
+            documents.extend(read_extension_manifest(project_root, name).documents)
+        except ExtensionManifestMissing:
+            absent.append(name)
+        except ExtensionManifestError as error:
+            # A malformed manifest refuses the launch on both paths; the commit
+            # path reaches that through its ValueError wrapper. Without this the
+            # exception left the CLI as a traceback.
+            raise ReviewLaunchError(str(error)) from error
+
+    prompt = _finding_review_prompt(
+        contract,
+        reviewed_finding,
+        cast(str, finding["summary"]),
+        verified,
+        unresolved,
+        decisions=header.decisions,
+        documents=tuple(dict.fromkeys(documents)),
+        absent_extensions=tuple(absent),
+        amendment_history=render_amendment_history(task.records),
+    )
+    raw_output = b""
+    reviewer_output = ""
+    with tempfile.TemporaryDirectory(
+        prefix="agentmarshal-review-"
+    ) as temporary_directory:
+        temporary_root = Path(temporary_directory)
+        snapshot = temporary_root / "snapshot"
+        prompt_file = temporary_root / "review-prompt.txt"
+        _extract_finding_snapshot(verified, snapshot)
+        prompt_file.write_text(prompt, encoding="utf-8")
+        raw_output, raw_diagnostics = _run_reviewer(
+            _reviewer_command(reviewer_model, prompt_file), snapshot, prompt
+        )
+        diagnostics_note = _keep_diagnostics(raw_diagnostics)
+        reviewer_output = raw_output.decode("utf-8", errors="replace")
+        try:
+            (
+                subject_field,
+                subject,
+                verdict,
+                blocking_findings,
+                advisory,
+            ) = _parse_verdict(
+                reviewer_output,
+                subject_fields=frozenset({"reviewed_commit", "reviewed_finding"}),
+                expected_field="reviewed_finding",
+            )
+        except ReviewLaunchError as error:
+            raise _with_diagnostics(error, diagnostics_note) from error
+        if subject_field != "reviewed_finding" or subject != reviewed_finding:
+            raise _with_diagnostics(
+                _reject(
+                    reviewer_output,
+                    "reviewer verdict subject does not match requested finding "
+                    f"{reviewed_finding}: verdict named {subject_field} {subject}",
+                ),
+                diagnostics_note,
+            )
+    try:
+        submitted = submit_review(
+            journal_root,
+            task_id,
+            None,
+            verdict,
+            reviewer_role,
+            reviewer_vendor,
+            reviewer_model,
+            reviewer_email,
+            blocking_findings,
+            advisory or None,
+            prose=raw_output,
+            reviewed_finding=reviewed_finding,
+            reviewed_contract=hashlib.sha256(contract.encode("utf-8")).hexdigest(),
+        )
+    except ReviewSubmitError as error:
+        if error.artifact_ref is not None:
+            raise _with_diagnostics(
+                ReviewLaunchError(str(error)), diagnostics_note
+            ) from error
+        raise _with_diagnostics(
+            _reject(reviewer_output, str(error)), diagnostics_note
+        ) from error
+    return LaunchedReview(
+        submitted.record_path, submitted.artifact_ref, diagnostics_note
+    )
+
+
 def launch_review(
     project_root: Path,
     task_id: str,
-    commit: str,
-    base: str,
+    commit: str | None,
+    base: str | None,
     reviewer_role: str,
     reviewer_vendor: str,
     reviewer_model: str,
     reviewer_email: str,
     *,
     journal_root: Path | None = None,
+    reviewed_finding: str | None = None,
 ) -> LaunchedReview:
-    """Review an exact commit in a temporary metadata-free snapshot and record it."""
+    """Review an exact commit or a hash-pinned finding and record the verdict."""
 
     sidecar_journal = journal_root
     journal_root = journal_root or project_root / ".agentmarshal" / "journal"
+    if reviewed_finding is not None and (commit is not None or base is not None):
+        # One binding per review is the record rule (records.py); a public
+        # caller handed both would otherwise have the finding judged silently.
+        # A base belongs to the commit path too: there is nothing to compare a
+        # finding against, and accepting it silently would drop it.
+        given = ", ".join(
+            name
+            for name, value in (("commit", commit), ("base", base))
+            if value is not None
+        )
+        raise ReviewLaunchError(
+            f"a review names one subject: a reviewed finding was given with {given}"
+        )
+    if reviewed_finding is not None:
+        # A sidecar finding belongs to the sidecar project, even though the
+        # commit path receives the configured host as ``project_root``.
+        return _launch_finding_review(
+            journal_root.parents[1],
+            journal_root,
+            task_id,
+            reviewed_finding,
+            reviewer_role,
+            reviewer_vendor,
+            reviewer_model,
+            reviewer_email,
+        )
+    if commit is None or base is None:
+        raise ReviewLaunchError("a commit review requires both commit and base")
     try:
         task = load_task_status(journal_root, task_id)
     except (OSError, TaskStatusError, ValueError) as error:
@@ -623,7 +1077,13 @@ def launch_review(
         output = raw_output.decode("utf-8", errors="replace")
         reviewer_output = output
         try:
-            reviewed_commit, verdict, findings, advisory = _parse_verdict(output)
+            (
+                _subject_field,
+                reviewed_commit,
+                verdict,
+                findings,
+                advisory,
+            ) = _parse_verdict(output)
         except ReviewLaunchError as error:
             raise _with_diagnostics(error, diagnostics_note) from error
         if reviewed_commit != resolved_commit:

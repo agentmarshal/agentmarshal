@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
+from agentmarshal.journal.artifacts import artifact_path as artifact_path
 from agentmarshal.journal.capture import (
     CaptureError,
     private_markers_from_project,
@@ -105,18 +106,35 @@ def _actor_git_identities(project_root: Path, record: dict[str, object]) -> set[
     }
 
 
-def _artifact_path(project_root: Path, reference: str) -> Path | None:
-    """Resolve a local artifact only when it is a file below the project root."""
+def finding_reviewer_identity_refusal(
+    project_root: Path,
+    finding: dict[str, object],
+    reviewer_email: str | None,
+    *,
+    launching: bool = False,
+) -> str | None:
+    """Return the findings-lane identity refusal, if the reviewer is dependent.
 
-    candidate = Path(reference)
-    if not candidate.is_absolute():
-        candidate = project_root / candidate
-    try:
-        resolved = candidate.resolve(strict=True)
-        resolved.relative_to(project_root.resolve())
-    except (OSError, ValueError):
-        return None
-    return resolved if resolved.is_file() else None
+    The gate's established transcript describes the successful comparison and
+    must remain byte-for-byte stable.  A launcher refusal instead describes
+    the failed condition, so callers opt into that wording explicitly.
+    """
+
+    recorder_identities = _actor_git_identities(project_root, finding)
+    if not recorder_identities:
+        return "finding recorder resolves to no git identities"
+    normalized = reviewer_email.strip().casefold() if reviewer_email is not None else ""
+    if not normalized or normalized in recorder_identities:
+        if launching:
+            return (
+                "declared reviewer identity is not independent of the finding "
+                "recorder's declared git identities"
+            )
+        return (
+            "declared reviewer identity differs from the finding recorder's "
+            "declared git identities"
+        )
+    return None
 
 
 def run_findings_gate(journal_root: Path, task_id: str) -> GateReport:
@@ -207,24 +225,23 @@ def run_findings_gate(journal_root: Path, task_id: str) -> GateReport:
     if latest_finding is not None and latest_review is not None:
         reviewer = latest_review.get("reviewer")
         email = reviewer.get("email") if isinstance(reviewer, dict) else None
-        recorder_identities = _actor_git_identities(
-            journal_root.parents[1], latest_finding
+        identity_refusal = finding_reviewer_identity_refusal(
+            journal_root.parents[1],
+            latest_finding,
+            email if isinstance(email, str) else None,
         )
-        if not recorder_identities:
-            check(False, "finding recorder resolves to no git identities")
-        else:
-            normalized = email.strip().casefold() if isinstance(email, str) else ""
-            check(
-                bool(normalized) and normalized not in recorder_identities,
-                "declared reviewer identity differs from the finding recorder's "
-                "declared git identities",
-            )
+        check(
+            identity_refusal is None,
+            identity_refusal
+            or "declared reviewer identity differs from the finding recorder's "
+            "declared git identities",
+        )
 
     verified = 0
     if latest_finding is not None:
         for artifact in cast(list[dict[str, str]], latest_finding["artifacts"]):
             reference = artifact["ref"]
-            path = _artifact_path(journal_root.parents[1], reference)
+            path = artifact_path(journal_root.parents[1], reference)
             if path is None:
                 lines.append(
                     f"NOT VERIFIED: artifact {reference} does not resolve locally"

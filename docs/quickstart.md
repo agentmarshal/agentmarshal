@@ -46,9 +46,13 @@ these when you wire in a model reviewer or CI.
 ### Reviewer-command execution contract
 
 For a recorded `agentmarshal review`, the command starts with its working
-directory set to a metadata-free snapshot of the reviewed commit. A relative
+directory set to a metadata-free snapshot: the reviewed commit for a commit
+review, or the finding's verified artifacts for a finding review. A relative
 path in `AGENTMARSHAL_REVIEWER_CMD` therefore resolves inside that snapshot,
-not against the operator's checkout. `{prompt_file}` is the path to a temporary
+not against the operator's checkout — and a finding review's snapshot holds
+only the pinned artifacts, so a relative path that a commit review finds in the
+reviewed tree is not there. One command for both bindings is an absolute path,
+or a name on `PATH`. `{prompt_file}` is the path to a temporary
 file containing the complete review prompt; that same prompt is also supplied
 on standard input.
 
@@ -76,11 +80,14 @@ AGENTMARSHAL_VERDICT_BEGIN
 AGENTMARSHAL_VERDICT_END
 ```
 
-Required: `reviewed_commit`, `verdict` — one of **`approved`,
+For a commit review, required: `reviewed_commit`, `verdict` — one of **`approved`,
 `changes_required`, `blocked`, `rejected`** — and `findings`, an array of unique
 finding-id strings (empty only for `approved`, non-empty for every other
-verdict). Optionally `advisory_findings`: non-blocking finding ids, disjoint
-from `findings`, allowed with any verdict including `approved`.
+verdict). For a finding review, use `reviewed_finding` in place of
+`reviewed_commit`: it must name the finding under review. Optionally
+`advisory_findings`: non-blocking finding ids, disjoint from `findings`, allowed
+with any verdict including `approved`. Everything else about the verdict
+contract is unchanged.
 
 Any other key is refused, and the error names it. The prompt AgentMarshal builds
 states all of this, so a reviewer does not have to guess. It also asks for one
