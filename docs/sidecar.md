@@ -412,6 +412,8 @@ sha256sum evidence/CR-001-conclusion.md
 agentmarshal finding --task CR-001 --summary "Conclusion; source saved in evidence/" \
   --artifact evidence/CR-001-conclusion.md=<sha256> \
   --artifact evidence/CR-001-source-copy.html=<sha256>
+# AGENTMARSHAL_REVIEWER_CMD must be configured for the next command; without
+# it the launcher refuses with "no reviewer command configured".
 agentmarshal review --task CR-001 --reviewed-finding <finding-record-id> \
   --role reviewer --vendor <vendor> --model <model> --email reviewer@example.invalid
 # The launcher verifies locally pinned artifacts first and refuses a reviewer

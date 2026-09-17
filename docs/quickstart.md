@@ -49,7 +49,10 @@ For a recorded `agentmarshal review`, the command starts with its working
 directory set to a metadata-free snapshot: the reviewed commit for a commit
 review, or the finding's verified artifacts for a finding review. A relative
 path in `AGENTMARSHAL_REVIEWER_CMD` therefore resolves inside that snapshot,
-not against the operator's checkout. `{prompt_file}` is the path to a temporary
+not against the operator's checkout — and a finding review's snapshot holds
+only the pinned artifacts, so a relative path that a commit review finds in the
+reviewed tree is not there. One command for both bindings is an absolute path,
+or a name on `PATH`. `{prompt_file}` is the path to a temporary
 file containing the complete review prompt; that same prompt is also supplied
 on standard input.
 

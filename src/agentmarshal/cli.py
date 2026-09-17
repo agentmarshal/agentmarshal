@@ -182,7 +182,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--base",
         help=(
             "comparison base ref (required for a commit review; refused with "
-            "--reviewed-finding)"
+            "--reviewed-finding and with --dry-run)"
         ),
     )
     launch_parser.add_argument(
