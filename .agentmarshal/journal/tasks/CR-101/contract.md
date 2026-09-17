@@ -13,6 +13,7 @@ scope = [
   "openspec/changes/review-binds-to-a-finding/",
   "openspec/changes/archive/",
   "openspec/specs/findings-review/",
+  "docs/sidecar.md",
 ]
 acceptance = [
   "every scenario in openspec/changes/review-binds-to-a-finding/specs/ is demonstrated by a test whose docstring names it; the implementation follows design.md's decisions or records in design.md why it departed",
@@ -59,6 +60,15 @@ See the `acceptance` field above. The scenarios they refer to are in
 `openspec/changes/review-binds-to-a-finding/specs/findings-review/spec.md`; the
 decisions the implementation is expected to follow, or to depart from with a
 recorded reason, are in that change's `design.md`.
+
+## Amended 2026-09-18
+
+`docs/sidecar.md` joins the scope. Its findings-lane runbook routes a review of
+a finding to `submit-review --reviewed-finding` — the human path — because that
+was the only path when it was written. This task makes the automated path
+exist, and both deciding runs named that runbook as the place an adopter would
+look. Shipping a path in one release and its documentation in another is how
+the adopter batch's finding 016 happened.
 
 ## Non-Goals
 
