@@ -12,6 +12,7 @@ scope = [
   "tests/test_gate.py",
   "tests/test_review_launcher.py",
   "tests/test_project.py",
+  "tests/test_placement.py",
   "openspec/changes/adopter-small-defects/",
   "openspec/changes/archive/",
   "openspec/specs/leak-scan/",
@@ -53,6 +54,13 @@ public patterns, and naming one discloses nothing.
 Dropping a self-match is a narrowing of the scan, and the narrowing is bounded
 by location: only an occurrence inside the configuration that declares the
 marker is ignored, and only when it is the sole occurrence.
+
+## Amended 2026-09-17
+
+`tests/test_placement.py` joins the scope. The standalone command's headline
+changes in this task — it renders records now, not categories — and that file
+asserts the old wording. The scope named the four test files the work was
+expected to touch and missed the one an output change reaches.
 
 ## Non-Goals
 
