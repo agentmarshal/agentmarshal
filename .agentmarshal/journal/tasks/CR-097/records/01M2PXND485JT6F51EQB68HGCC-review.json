@@ -1,0 +1,35 @@
+{
+  "advisory_findings": [
+    "dry-run-git-failure-read-as-no-commit",
+    "model-guard-substring-match",
+    "placeholder-error-echoes-whole-command",
+    "dry-run-zero-sha-check-undocumented",
+    "contract-documents-path-dangles"
+  ],
+  "artifacts": [
+    {
+      "hash": "8787b130379c1da20e13e938bcce821e8d628d98a4823b44b1a36a2307da00ca",
+      "ref": ".agentmarshal/journal/tasks/CR-097/artifacts/01M2PXND485JT6F51EQB68HGCC-review.md"
+    }
+  ],
+  "created_at": "2026-09-17T05:33:06.568140Z",
+  "findings": [
+    "dry-run-empty-snapshot-unreported"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "aa3e9f113bd33a76c804e40658da608c5d9680f7",
+  "reviewed_contract": "cdfd8e9ff2aedfefe486b6e08f9d2ad191fc71e06fa28b72091e4c33a836c496",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-097",
+  "tool_version": "0.3.0",
+  "verdict": "changes_required"
+}
