@@ -54,6 +54,11 @@ from agentmarshal.project import (
 
 _JOURNAL_PREFIX = ".agentmarshal/journal/"
 _EXTENSIONS_PREFIX = ".agentmarshal/extensions/"
+# Twenty, because this line is one line of a document people read: a marker
+# present in two hundred files used to render as one category token and now
+# renders as two hundred records. Enough hits to act on are shown and the rest
+# are counted. The bound is the transcript's, which is why it lives here and
+# not in the renderer — `agentmarshal leak-scan` passes none.
 _LEAK_HIT_RENDER_LIMIT = 20
 
 
@@ -1178,7 +1183,7 @@ def run_gate(
         if leak_hits:
             lines.append(
                 "WARN: possible leak in candidate additions "
-                f"(advisory, not blocking): "
+                "(advisory, not blocking): "
                 f"{render_leak_hits(leak_hits, limit=_LEAK_HIT_RENDER_LIMIT)}"
             )
 

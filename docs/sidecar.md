@@ -246,7 +246,10 @@ The gate also runs the advisory leak scan over the candidate's added content.
 It appends nothing when there is no hit, which is why the transcript above has
 no such line; on a hit it adds `WARN: possible leak in candidate additions
 (advisory, not blocking): <file>: <what matched>`, and on a scan it could not
-perform, `WARN: leak-scan skipped`. Neither blocks.
+perform, `WARN: leak-scan skipped`. Neither blocks. The line is one line of a
+transcript, so it shows the first twenty hits and ends `, and N more not shown`;
+`agentmarshal leak-scan`, whose whole output is the list of places to look,
+shows every hit.
 
 Two lines say "none examined" rather than `PASS` in the ordinary sense: the
 candidate is a host diff, and a host diff adds no records to this journal.
