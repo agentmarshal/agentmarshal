@@ -12,7 +12,9 @@ import pytest
 from agentmarshal.cli import main
 from agentmarshal.journal import review
 from agentmarshal.journal.records import (
+    create_abandoned_record,
     create_amendment_record,
+    create_completed_record,
     create_review_record,
     read_records,
     write_record,
@@ -134,6 +136,21 @@ def _verdict(
     if advisory_findings is not None:
         data["advisory_findings"] = advisory_findings
     return f"AGENTMARSHAL_VERDICT_BEGIN\n{json.dumps(data)}\nAGENTMARSHAL_VERDICT_END\n"
+
+
+def _close_task(repo: Path, record_type: str) -> None:
+    """Close CR-001 by writing the terminal record itself.
+
+    The lane commands that close a task have preconditions of their own; the
+    launcher's refusal is about the state, so the state is written directly,
+    the way tests/test_journal.py's own terminal-task helper does."""
+
+    root = repo / ".agentmarshal" / "journal"
+    if record_type == "completed":
+        record = create_completed_record("CR-001", "test", "a" * 40)
+    else:
+        record = create_abandoned_record("CR-001", "test", "Superseded")
+    write_record(root, "CR-001", record)
 
 
 def _finding_args(finding: str) -> list[str]:
@@ -917,10 +934,16 @@ def test_a_task_that_lands_through_a_diff_is_refused(
     ] == ["opened", "finding"]
 
 
+@pytest.mark.parametrize(
+    ("terminal_record", "state"),
+    [("completed", "done"), ("abandoned", "abandoned")],
+)
 def test_a_closed_task_is_refused_before_running(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    terminal_record: str,
+    state: str,
 ) -> None:
     """Scenario: a launched review on a closed task runs no reviewer.
 
@@ -931,7 +954,7 @@ def test_a_closed_task_is_refused_before_running(
 
     repo, _commit = _review_repo(tmp_path, monkeypatch)
     finding = _record_finding(repo, [("evidence/conclusion.md", b"Pinned prose\n")])
-    assert main(["abandon", "--task", "CR-001", "--reason", "Superseded"]) == 0
+    _close_task(repo, terminal_record)
     prompt_output = tmp_path / "prompt-would-have-been-written.txt"
     stub = _reviewer_stub(
         tmp_path,
@@ -943,25 +966,31 @@ def test_a_closed_task_is_refused_before_running(
 
     assert main(_finding_args(finding)) == 1
 
-    assert "state: abandoned" in capsys.readouterr().err
+    assert f"state: {state}" in capsys.readouterr().err
     assert not prompt_output.exists()
     assert [
         record["record_type"]
         for record in read_records(repo / ".agentmarshal" / "journal", "CR-001")
-    ] == ["opened", "finding", "abandoned"]
+    ] == ["opened", "finding", terminal_record]
 
 
+@pytest.mark.parametrize(
+    ("terminal_record", "state"),
+    [("completed", "done"), ("abandoned", "abandoned")],
+)
 def test_a_closed_commit_review_is_refused_before_running(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    terminal_record: str,
+    state: str,
 ) -> None:
     """Scenario: a launched review on a closed task runs no reviewer.
 
     The commit binding of the same rule."""
 
     repo, commit = _review_repo(tmp_path, monkeypatch)
-    assert main(["abandon", "--task", "CR-001", "--reason", "Superseded"]) == 0
+    _close_task(repo, terminal_record)
     reviewer_was_run = tmp_path / "reviewer-was-run.txt"
     stub = _reviewer_stub(
         tmp_path,
@@ -973,12 +1002,12 @@ def test_a_closed_commit_review_is_refused_before_running(
 
     assert main(_review_args(commit)) == 1
 
-    assert "state: abandoned" in capsys.readouterr().err
+    assert f"state: {state}" in capsys.readouterr().err
     assert not reviewer_was_run.exists()
     assert [
         record["record_type"]
         for record in read_records(repo / ".agentmarshal" / "journal", "CR-001")
-    ] == ["opened", "abandoned"]
+    ] == ["opened", terminal_record]
 
 
 def test_an_edited_artifact_refuses_the_review(

@@ -119,7 +119,7 @@ def load_task_for_record(
     ):
         raise TaskStatusError(
             f"task {task_id} is not open (state: {task.state}); "
-            f"terminal record prevents {record_type}"
+            "its terminal record admits only a measurement or a reopening"
         )
     return task
 

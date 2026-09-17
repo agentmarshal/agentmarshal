@@ -13,9 +13,11 @@ admits after a terminal record — a measurement or a reopening. The refusal
 SHALL name the state the task is in, and SHALL leave the journal exactly as it
 was.
 
-The rule is the projection's own (ADR-0005 Decision 3): a session record
-accrues after completion, a reopening is the one admitted lifecycle mutation,
-and every other record makes the task unreadable from then on.
+The rule is the projection's own. A session record accrues after completion
+because measurements are not lifecycle (ADR-0005 Decision 3). A reopening is
+the one lifecycle mutation admitted after a terminal record — Decision 3
+predates it and states the opposite, which that ADR's own status note records.
+Every other record makes the task unreadable from then on.
 
 #### Scenario: a verdict is refused on a completed task
 - **WHEN** a review verdict is submitted for a task that has completed
