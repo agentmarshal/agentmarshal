@@ -922,7 +922,7 @@ def test_a_closed_task_is_refused_before_running(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Scenario: a closed task is refused."""
+    """a launched review on a closed task runs no reviewer."""
 
     repo, _commit = _review_repo(tmp_path, monkeypatch)
     finding = _record_finding(repo, [("evidence/conclusion.md", b"Pinned prose\n")])
@@ -938,12 +938,40 @@ def test_a_closed_task_is_refused_before_running(
 
     assert main(_finding_args(finding)) == 1
 
-    assert "task CR-001 is already closed (state: abandoned)" in capsys.readouterr().err
+    assert "state: abandoned" in capsys.readouterr().err
     assert not prompt_output.exists()
     assert [
         record["record_type"]
         for record in read_records(repo / ".agentmarshal" / "journal", "CR-001")
     ] == ["opened", "finding", "abandoned"]
+
+
+def test_a_closed_commit_review_is_refused_before_running(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """a launched review on a closed task runs no reviewer."""
+
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    assert main(["abandon", "--task", "CR-001", "--reason", "Superseded"]) == 0
+    reviewer_was_run = tmp_path / "reviewer-was-run.txt"
+    stub = _reviewer_stub(
+        tmp_path,
+        _verdict(commit, "approved", []),
+        prompt_output=reviewer_was_run,
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+    capsys.readouterr()
+
+    assert main(_review_args(commit)) == 1
+
+    assert "state: abandoned" in capsys.readouterr().err
+    assert not reviewer_was_run.exists()
+    assert [
+        record["record_type"]
+        for record in read_records(repo / ".agentmarshal" / "journal", "CR-001")
+    ] == ["opened", "abandoned"]
 
 
 def test_an_edited_artifact_refuses_the_review(

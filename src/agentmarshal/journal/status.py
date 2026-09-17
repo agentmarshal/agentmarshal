@@ -26,6 +26,7 @@ _RECORD_TYPE_STATES: Mapping[str, str | None] = {
     "reopened": "open",
 }
 _TERMINAL_RECORD_TYPES = frozenset({"completed", "abandoned"})
+_RECORD_TYPES_ADMITTED_AFTER_TERMINAL = frozenset({"session", "reopened"})
 
 
 class TaskStatusError(ValueError):
@@ -56,7 +57,10 @@ def project_status(records: Sequence[Mapping[str, object]]) -> str:
         # record projects to no state and may accrue after a terminal
         # record. Reopening is the sole lifecycle mutation admitted after
         # completion; all work records remain forbidden until it occurs.
-        if has_terminal_record and record_type not in {"session", "reopened"}:
+        if (
+            has_terminal_record
+            and record_type not in _RECORD_TYPES_ADMITTED_AFTER_TERMINAL
+        ):
             raise TaskStatusError("task has a lifecycle record after a terminal record")
         if record_type == "reopened":
             if not has_terminal_record:
@@ -96,6 +100,23 @@ def load_task_status(journal_root: Path, task_id: str) -> TaskStatus:
             f"{task_directory / 'contract.md'}"
         )
     return TaskStatus(task_id, contract, records, project_status(records))
+
+
+def load_task_for_record(
+    journal_root: Path, task_id: str, record_type: str
+) -> TaskStatus:
+    """Load a task and refuse a record its terminal projection cannot admit."""
+
+    task = load_task_status(journal_root, task_id)
+    if (
+        task.state != "open"
+        and record_type not in _RECORD_TYPES_ADMITTED_AFTER_TERMINAL
+    ):
+        raise TaskStatusError(
+            f"task {task_id} is not open (state: {task.state}); "
+            f"terminal record prevents {record_type}"
+        )
+    return task
 
 
 def list_task_statuses(journal_root: Path) -> list[TaskStatus]:
