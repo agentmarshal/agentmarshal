@@ -1,0 +1,15 @@
+Проверил дифф и дерево на коммите `3c2116bf861636f42ea949c73462d522face0aa5`. Все четыре acceptance criteria выполнены: каждый из четырёх сценариев spec.md покрыт тестом, чей docstring называет его (`tests/test_cli.py:16`, `tests/test_doctor.py:44,67,107`), `doctor` добавил три precondition-проверки, значение reviewer-команды нигде не печатается (тест на `s3cret` это фиксирует), unmet precondition оставляет exit status прежним (`src/agentmarshal/cli.py:388-393` — путь на `return 1` сохраняется, потому что любая ошибка discovery всегда сопровождается non-precondition FAIL'ом), `init` печатает список один раз и ничего не конфигурирует, tasks.md отмечен. Scope дифф не нарушает. Блокирующих дефектов не нашёл, ниже — advisory.
+
+`ci-check-matches-commented-invocation`: в `src/agentmarshal/doctor.py:193` проверка CI ищет regex по сырому тексту YAML, поэтому упоминание в комментарии считается вызовом — `gitflic-ci.yaml:3` этого же репозитория («governance is the v2 `agentmarshal validate`») удовлетворяет проверку сам по себе, без строки `run:`. Это ровно то, от чего предостерегает Purpose нового спека — «never claiming a check passed where none was made».
+
+`ci-check-misses-non-github-ci-locations`: в `src/agentmarshal/doctor.py:179` сканируются только `.github/workflows` и корень проекта, так что проект с CI в `.circleci/`, `.forgejo/workflows/` или `.woodpecker/` получает красную проверку, которую он не может погасить, — «a check that is red by construction» из threat model контракта.
+
+`precondition-status-indistinguishable-from-failure`: в `src/agentmarshal/cli.py:386-391` unmet precondition печатается тем же словом `FAIL:`, что и настоящая поломка, а summary схлопывает оба случая в «check(s) reported unmet» — единственным различающим сигналом остаётся exit code, и заодно пропала формулировка «failed» для реальных отказов. Для проекта с одним оператором без секции `actors` (ADR-0006 §1 прямо объявляет этот дефолт поддерживаемым: «a project that configures nothing still gets a value») строка `FAIL: recorded actor` красна всегда.
+
+`design-departure-not-recorded`: первое решение в `design.md:14` — «New checks join the existing list. Same shape, same summary line», но изменение добавило поле `precondition` в `DoctorCheck`/`DoctorResult` (`doctor.py:36`) и переписало summary-строку; обоснование живёт только в комментарии к коду, а AC1 требует фиксировать отступление именно в design.md.
+
+`stale-neutral-path-risk-in-design`: в `design.md:39` остался риск «[The neutral path hides a genuine refusal]» про нейтральную полосу gate'а, которую amendment от 2026-09-17 вынес в отдельную задачу («The template is not touched here», `design.md:30`), — документ описывает механизм, которого в этом изменении нет.
+
+AGENTMARSHAL_VERDICT_BEGIN
+{"reviewed_commit": "3c2116bf861636f42ea949c73462d522face0aa5", "verdict": "approved", "findings": [], "advisory_findings": ["ci-check-matches-commented-invocation", "ci-check-misses-non-github-ci-locations", "precondition-status-indistinguishable-from-failure", "design-departure-not-recorded", "stale-neutral-path-risk-in-design"]}
+AGENTMARSHAL_VERDICT_END

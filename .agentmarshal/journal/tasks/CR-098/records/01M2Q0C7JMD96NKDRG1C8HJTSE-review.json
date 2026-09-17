@@ -1,0 +1,35 @@
+{
+  "advisory_findings": [
+    "doctor-precondition-names-duplicated",
+    "doctor-summary-conflates-failure-and-advice",
+    "contract-document-path-absent"
+  ],
+  "artifacts": [
+    {
+      "hash": "cfc522a5a3bed7c287db755297bbce7e00d464a380ab42e9c49e3e99747f0891",
+      "ref": ".agentmarshal/journal/tasks/CR-098/artifacts/01M2Q0C7JMD96NKDRG1C8HJTSE-review.md"
+    }
+  ],
+  "created_at": "2026-09-17T06:20:31.700565Z",
+  "findings": [
+    "template-gate-never-runs",
+    "template-drops-deterministic-lanes",
+    "doctor-ci-check-github-only"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "35e75be07ca73b71b55d55ba37ae8556a81388ac",
+  "reviewed_contract": "f2df6fe742206e93c69e1ff97ab027c56a07d52fb06ba62d4ffb585197844d3f",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-098",
+  "tool_version": "0.3.0",
+  "verdict": "changes_required"
+}

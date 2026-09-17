@@ -1,0 +1,33 @@
+{
+  "advisory_findings": [
+    "ci-check-matches-commented-invocation",
+    "ci-check-misses-non-github-ci-locations",
+    "precondition-status-indistinguishable-from-failure",
+    "design-departure-not-recorded",
+    "stale-neutral-path-risk-in-design"
+  ],
+  "artifacts": [
+    {
+      "hash": "d3d4cd19df8b02c896a2b62ee2bc8720bd2fa5f1ff3a520bf5936f245ea5a4d7",
+      "ref": ".agentmarshal/journal/tasks/CR-098/artifacts/01M2Q1XYB1NHRTMHYWWRTAYWK9-review.md"
+    }
+  ],
+  "created_at": "2026-09-17T06:47:40.641605Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "3c2116bf861636f42ea949c73462d522face0aa5",
+  "reviewed_contract": "287c4db57ab20531278a32b5847c18597864399590af1535183e8fe1e2c2d4a1",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-098",
+  "tool_version": "0.3.0",
+  "verdict": "approved"
+}
