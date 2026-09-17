@@ -1,0 +1,35 @@
+{
+  "advisory_findings": [
+    "project-config-path-not-placement-aware",
+    "per-line-scan-drops-multi-line-matches",
+    "unknown-file-placeholder-not-recorded",
+    "standalone-headline-still-says-categories"
+  ],
+  "artifacts": [
+    {
+      "hash": "9ca0b1c7b9496bcd057d1f53f81effc0965e6284c445af038ef7c633b2e5db9d",
+      "ref": ".agentmarshal/journal/tasks/CR-100/artifacts/01M2QE78R1RD7T7TBJX4Q319WB-review.md"
+    }
+  ],
+  "created_at": "2026-09-17T10:22:29.121475Z",
+  "findings": [
+    "leak-scan-path-discloses-marker-value",
+    "self-match-suppression-keys-on-wrong-repository"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "8e29891f03b78270c5480d47854201487612ccee",
+  "reviewed_contract": "7ca71fe3d6d5fb785e4e2470f45533bea6f14a89ab06b9623f821e6c08d08db2",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-100",
+  "tool_version": "0.3.0",
+  "verdict": "changes_required"
+}

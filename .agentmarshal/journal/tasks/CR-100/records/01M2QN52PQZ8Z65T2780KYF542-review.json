@@ -1,0 +1,29 @@
+{
+  "advisory_findings": [
+    "leak-scan-self-match-only-in-the-diff-scan"
+  ],
+  "artifacts": [
+    {
+      "hash": "89e65fcb4a28fbe98f30643144204728b6caf4aa64b57f61a86f8bc24fc3141c",
+      "ref": ".agentmarshal/journal/tasks/CR-100/artifacts/01M2QN52PQZ8Z65T2780KYF542-review.md"
+    }
+  ],
+  "created_at": "2026-09-17T12:23:37.431615Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "e7a6074430a6173df7076c71ccabde21498f277f",
+  "reviewed_contract": "4bb1f32a3c61f860b75f475b2fcc965920895893b2fac1fdf1cbd951f5e940f6",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-100",
+  "tool_version": "0.3.0",
+  "verdict": "approved"
+}
