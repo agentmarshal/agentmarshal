@@ -553,6 +553,11 @@ def run_gate(
 ) -> GateReport:
     """Evaluate a merge candidate; fail closed on every violation.
 
+    ``review_required`` says whether the caller is in a position to have a
+    review at all. When it is false and the candidate has no review record,
+    the two review-bound checks are reported as not examined rather than
+    refused; a candidate that has one is judged by it either way.
+
     ``attestation`` selects how the pipeline-attestation check is
     satisfied. ``commit`` (the default, Variant 1) requires
     ``pipeline_sha`` to equal the candidate commit — the invoker attests a

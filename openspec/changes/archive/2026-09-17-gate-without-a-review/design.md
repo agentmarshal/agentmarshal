@@ -31,5 +31,7 @@ none does, with `no review record for <sha>`.
 - [The mode becomes the habit] → it reports what it did not examine on every
   run that uses it, so a merge authority that uses it by mistake says so in its
   own output. The merge step in this project's own tooling does not use it.
-- [An operator reads "not examined" as "passed"] → the summary counts it apart,
-  as `doctor` now does for a precondition.
+- [An operator reads "not examined" as "passed"] → the transcript names each
+  unexamined check on its own line, in the wording the findings lane already
+  uses. The gate has no summary line to count them in, and this note earlier
+  claimed it did.

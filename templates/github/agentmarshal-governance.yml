@@ -48,9 +48,10 @@ jobs:
     # of itself — a review names a commit only after that commit exists, and
     # it lands at completion — so this run asks the gate to judge everything
     # that does not depend on one. The transcript names what it did not
-    # examine. Scope, append-only, base-state and lifecycle are enforced here,
-    # and the merge authority runs the gate again, without the flag, when the
-    # review exists. Safe to mark REQUIRED. See docs/github-enforcement.md.
+    # examine. Scope, append-only, base-state and lifecycle are enforced here.
+    # The approved-independent-review requirement is NOT enforced by this job
+    # and nothing shipped enforces it on this provider; see
+    # docs/github-enforcement.md. Safe to mark REQUIRED for what it does check.
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:

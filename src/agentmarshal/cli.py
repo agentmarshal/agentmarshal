@@ -737,6 +737,13 @@ def _run_validate(stderr: TextIO) -> int:
 
 
 def _run_gate(args: argparse.Namespace, stderr: TextIO) -> int:
+    if args.findings and args.without_review:
+        print(
+            "gate --without-review judges a candidate's review; the findings "
+            "lane has no candidate and already reports what it did not examine",
+            file=stderr,
+        )
+        return 1
     if args.findings and (args.commit is not None or args.base is not None):
         print(
             "gate: --findings is mutually exclusive with --commit and --base",

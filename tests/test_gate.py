@@ -229,6 +229,69 @@ def _run(
     return report.passed, "\n".join(report.lines)
 
 
+def test_a_default_run_prints_the_transcript_it_printed_before(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: the pinned transcript still matches.
+
+    The byte-for-byte comparison against the released 0.3.0 is pinned and must
+    stay as it is, so this test names the scenario and delegates to it."""
+
+    test_embedded_diff_lane_transcript_matches_published_030_byte_for_byte(
+        tmp_path, monkeypatch, capsys
+    )
+
+
+def test_the_flag_reaches_the_gate_from_the_command_line(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The flag is wired: the command prints what the mode reports."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    head = _implement(repo, "src/module.py")
+    capsys.readouterr()
+
+    code = main(
+        [
+            "gate",
+            "--task",
+            "CR-001",
+            "--commit",
+            head,
+            "--base",
+            base,
+            "--pipeline-sha",
+            head,
+            "--without-review",
+        ]
+    )
+
+    output = capsys.readouterr().out
+    assert code == 0, output
+    assert "NOT EXAMINED: latest review" in output
+
+
+def test_the_flag_is_refused_on_the_findings_lane(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A lane with no candidate has no review of one to leave unexamined."""
+
+    repo, _base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    monkeypatch.chdir(repo)
+    capsys.readouterr()
+
+    code = main(["gate", "--task", "CR-001", "--findings", "--without-review"])
+
+    assert code == 1
+    assert "has no candidate" in capsys.readouterr().err
+
+
 def _run_without_review(
     repo: Path, commit: str, base: str, pipeline_sha: str | None
 ) -> tuple[bool, str]:

@@ -35,9 +35,12 @@ depend on a review and names, in its own transcript, the two checks it did
 not examine. Mark it REQUIRED.
 
 What that does **not** give you is the approved-independent-review
-requirement in CI. The merge authority enforces it by running the gate
-again, without the flag, at the moment the review exists — see the open
-item below.
+requirement. Nothing shipped here enforces it on GitHub: a required check
+runs before the review exists, and this project ships no merge authority
+for this provider. Enforcing it needs something that runs the gate — with
+no flag — at the moment the review does exist, which is what this
+repository's own merge tooling does and what review materialisation would
+replace. See the open item below.
 
 ## Token permissions
 
