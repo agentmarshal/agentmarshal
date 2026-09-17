@@ -1,0 +1,33 @@
+{
+  "advisory_findings": [
+    "diff-dev-null-drops-added-lines",
+    "safe_path-collapses-distinct-files",
+    "diagnostics-lost-when-preservation-fails",
+    "launched-review-not-exported",
+    "sidecar-doc-describes-old-warn-line"
+  ],
+  "artifacts": [
+    {
+      "hash": "51482c14bd8de196b869c6a866b5cc549c37d2a63b0b1f966df5964b1627aa87",
+      "ref": ".agentmarshal/journal/tasks/CR-100/artifacts/01M2QJQSAFZ9T9MZZZYKE2VNEX-review.md"
+    }
+  ],
+  "created_at": "2026-09-17T11:41:24.687344Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "945cbf4757d8676b7baafc10095932f83713de21",
+  "reviewed_contract": "4bb1f32a3c61f860b75f475b2fcc965920895893b2fac1fdf1cbd951f5e940f6",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-100",
+  "tool_version": "0.3.0",
+  "verdict": "approved"
+}

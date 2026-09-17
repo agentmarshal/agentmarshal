@@ -1,0 +1,33 @@
+{
+  "advisory_findings": [
+    "leak-scan-command-config-path-diverges-from-gate",
+    "diagnostics-preservation-failure-aborts-the-review"
+  ],
+  "artifacts": [
+    {
+      "hash": "c8290780d70cbb242b9dd386526747522fdff1929d1c589f8f42e6b1dcd40caa",
+      "ref": ".agentmarshal/journal/tasks/CR-100/artifacts/01M2QF9VYNSS1BA56A5CEK12QY-review.md"
+    }
+  ],
+  "created_at": "2026-09-17T10:41:22.901440Z",
+  "findings": [
+    "spec-leak-scan-delta-not-applied",
+    "path-scenario-has-no-test-that-names-it"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "9681bb563e63894f7c37ad447766c500496e62da",
+  "reviewed_contract": "7ca71fe3d6d5fb785e4e2470f45533bea6f14a89ab06b9623f821e6c08d08db2",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-100",
+  "tool_version": "0.3.0",
+  "verdict": "changes_required"
+}
