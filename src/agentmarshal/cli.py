@@ -580,7 +580,15 @@ def _run_review(args: argparse.Namespace, stderr: TextIO) -> int:
     if args.dry_run:
         ignored = [
             flag
-            for flag, value in (("--task", args.task), ("--commit", args.commit))
+            for flag, value in (
+                ("--task", args.task),
+                ("--commit", args.commit),
+                ("--base", args.base),
+                ("--role", args.role),
+                ("--vendor", args.vendor),
+                ("--email", args.email),
+                ("--reviewed-finding", args.reviewed_finding),
+            )
             if value is not None
         ]
         if ignored:

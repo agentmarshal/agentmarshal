@@ -214,13 +214,14 @@ def _reviewer_command(model: str, prompt_file: Path) -> list[str]:
                 )
         return [element.format(**replacements) for element in template]
     except (KeyError, IndexError, ValueError) as error:
-        # The scan above names every field the formatter would reject, so what
-        # reaches here is a template the scan passes and the formatter does not:
-        # a bad format specification such as {model:d}, or a brace the scan
-        # itself could not parse. Neither has a field name to report, which is
-        # why this refusal carries none.
+        # What reaches here is a template the scan passes and the formatter does
+        # not — a bad format specification such as {model:d} — or one neither
+        # could parse, such as a brace left unclosed by a quoting accident. There
+        # is no field name to report in either case, so the refusal quotes the
+        # template: the operator needs something to search for.
         raise ReviewLaunchError(
-            "AGENTMARSHAL_REVIEWER_CMD has an invalid placeholder"
+            f"AGENTMARSHAL_REVIEWER_CMD has an invalid placeholder ({error}) in: "
+            f"{template_text}"
         ) from error
 
 
@@ -400,7 +401,15 @@ def dry_run_review(project_root: Path, reviewer_model: str | None) -> None:
         prompt_file = temporary_root / "review-prompt.txt"
         prompt = _dry_run_prompt()
         prompt_file.write_text(prompt, encoding="utf-8")
-        _extract_snapshot(project_root, "HEAD", snapshot)
+        # A project initialised in a repository with no commit has no tree to
+        # copy. The command is still worth exercising; only a relative path in
+        # it cannot be, and the caller is told which of the two it got.
+        try:
+            _run_git(project_root, ["rev-parse", "--verify", "HEAD^{commit}"])
+        except ReviewLaunchError:
+            snapshot.mkdir()
+        else:
+            _extract_snapshot(project_root, "HEAD", snapshot)
         output = _run_reviewer(
             _reviewer_command(reviewer_model or "", prompt_file), snapshot, prompt
         ).decode("utf-8", errors="replace")
