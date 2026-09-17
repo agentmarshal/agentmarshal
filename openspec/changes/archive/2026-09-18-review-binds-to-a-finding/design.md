@@ -51,9 +51,9 @@ that stands in for it.
 - **A binary artifact is named, not embedded.** An artifact that is not valid
   UTF-8 is named with its hash and size and its content is left out; the
   reviewer is told why. Size is deliberately not a criterion: no threshold
-  exists anywhere in this path, the Non-Goals below say why one is not
-  invented here, and an earlier draft of this decision said "binary and
-  oversized", which claimed a limit the code does not have. A conclusion pinned as a PDF is still
+  exists anywhere in this path, the last entry of the Risks section below says
+  why one is not invented here, and an earlier draft of this decision said
+  "binary and oversized", which claimed a limit the code does not have. A conclusion pinned as a PDF is still
   reviewable by a human, and this path must not turn a byte sequence into
   mojibake inside a prompt.
 - **The verdict protocol mirrors the commit one.** The block carries

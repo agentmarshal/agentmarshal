@@ -83,6 +83,9 @@ _FINDING_REVIEW_PROMPT = (
     "\n"
     "Each embedded artifact-content line begins with `{content_prefix}`; that "
     "prefix presents the content and is not part of the file.\n"
+    "The verified artifacts are also files in your working directory, at the "
+    "paths named below, so one whose content is not embedded can still be "
+    "read there.\n"
     "\n"
     "{named_material}{prose_instruction}\n"
     "\n"
@@ -971,12 +974,18 @@ def launch_review(
 
     sidecar_journal = journal_root
     journal_root = journal_root or project_root / ".agentmarshal" / "journal"
-    if reviewed_finding is not None and commit is not None:
+    if reviewed_finding is not None and (commit is not None or base is not None):
         # One binding per review is the record rule (records.py); a public
         # caller handed both would otherwise have the finding judged silently.
+        # A base belongs to the commit path too: there is nothing to compare a
+        # finding against, and accepting it silently would drop it.
+        given = ", ".join(
+            name
+            for name, value in (("commit", commit), ("base", base))
+            if value is not None
+        )
         raise ReviewLaunchError(
-            "a review names one subject: both a commit and a reviewed finding "
-            "were given"
+            f"a review names one subject: a reviewed finding was given with {given}"
         )
     if reviewed_finding is not None:
         # A sidecar finding belongs to the sidecar project, even though the

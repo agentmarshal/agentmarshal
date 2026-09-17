@@ -1046,6 +1046,29 @@ def test_a_malformed_extension_manifest_refuses_the_finding_launch(
     assert len(read_records(repo / ".agentmarshal" / "journal", "CR-001")) == 2
 
 
+def test_launch_review_refuses_a_base_beside_a_finding(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A base belongs to the commit path; accepting it would drop it silently."""
+
+    repo, _commit = _review_repo(tmp_path, monkeypatch)
+    finding = _record_finding(repo, [("evidence/conclusion.md", b"Conclusion\n")])
+
+    with pytest.raises(review.ReviewLaunchError, match="one subject"):
+        review.launch_review(
+            repo,
+            "CR-001",
+            None,
+            "HEAD",
+            "code-reviewer",
+            "test",
+            "test-model",
+            "reviewer@test.invalid",
+            reviewed_finding=finding,
+        )
+
+
 def test_launch_review_refuses_both_subjects_at_once(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2044,6 +2067,8 @@ Conclusion
 
 Each embedded artifact-content line begins with `|`; that prefix presents \
 the content and is not part of the file.
+The verified artifacts are also files in your working directory, at the paths \
+named below, so one whose content is not embedded can still be read there.
 
 The named contract material below is named, not supplied in this snapshot; \
 only the pinned artifacts were verified.
