@@ -14,6 +14,8 @@ scope = [
   "openspec/changes/archive/",
   "openspec/specs/findings-review/",
   "docs/sidecar.md",
+  "docs/quickstart.md",
+  "openspec/specs/reviewer-adapter/",
 ]
 acceptance = [
   "every scenario in openspec/changes/review-binds-to-a-finding/specs/ is demonstrated by a test whose docstring names it; the implementation follows design.md's decisions or records in design.md why it departed",
@@ -69,6 +71,17 @@ was the only path when it was written. This task makes the automated path
 exist, and both deciding runs named that runbook as the place an adopter would
 look. Shipping a path in one release and its documentation in another is how
 the adopter batch's finding 016 happened.
+
+## Amended 2026-09-18 (second)
+
+`docs/quickstart.md` and `openspec/specs/reviewer-adapter/` join the scope. The
+`reviewer-adapter` capability requires the reviewer command's contract to be
+documented where it is configured, and quickstart is that place: it says the
+command starts in a snapshot of the reviewed commit and must print
+`reviewed_commit`, with any other key refused. After this task the same
+configured command is launched for a finding review, into a snapshot of
+verified artifacts, and must print `reviewed_finding`. Both deciding runs of
+round 4 named it, and leaving it would ship a capability this task violates.
 
 ## Non-Goals
 
