@@ -172,7 +172,8 @@ def _build_parser() -> argparse.ArgumentParser:
         "--commit", help=f"reviewed commit SHA ({required_unless_dry_run})"
     )
     launch_binding.add_argument(
-        "--reviewed-finding", help="reviewed finding record id (refused by --dry-run)"
+        "--reviewed-finding",
+        help="reviewed finding record id (does not apply to --dry-run)",
     )
     launch_parser.add_argument(
         "--base", help=f"comparison base ref ({required_unless_dry_run})"
@@ -683,22 +684,18 @@ def _run_review(args: argparse.Namespace, stderr: TextIO) -> int:
         if diagnostics_note is not None:
             print(diagnostics_note, file=stderr)
         return 0
-    if args.reviewed_finding is not None:
-        print(
-            "review --reviewed-finding is not supported in this release; use the "
-            "human path: submit-review --reviewed-finding",
-            file=stderr,
-        )
-        return 1
     required = {
         "--task": args.task,
-        "--commit": args.commit,
-        "--base": args.base,
         "--role": args.role,
         "--vendor": args.vendor,
         "--model": args.model,
         "--email": args.email,
     }
+    if args.reviewed_finding is None:
+        required.update({"--commit": args.commit, "--base": args.base})
+    elif args.base is not None:
+        print("review --base applies only to --commit", file=stderr)
+        return 1
     missing = [flag for flag, value in required.items() if value is None]
     if missing:
         print("review: required unless --dry-run: " + ", ".join(missing), file=stderr)
@@ -717,6 +714,7 @@ def _run_review(args: argparse.Namespace, stderr: TextIO) -> int:
             args.model,
             args.email,
             journal_root=placement.journal_root if placement.is_sidecar else None,
+            reviewed_finding=args.reviewed_finding,
         )
     except ReviewLaunchError as error:
         print(error, file=stderr)

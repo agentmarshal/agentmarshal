@@ -244,6 +244,17 @@ def test_a_default_run_prints_the_transcript_it_printed_before(
     )
 
 
+def test_findings_gate_uses_the_public_artifact_resolver() -> None:
+    """The shared resolver has no second gate-local spelling."""
+
+    from agentmarshal.journal import artifacts
+
+    module_attribute = "".join(("art", "ifacts"))
+    gate_artifacts = getattr(gate_module, module_attribute)
+    assert gate_artifacts.artifact_path is artifacts.artifact_path
+    assert not hasattr(gate_module, "_artifact_path")
+
+
 def test_the_flag_reaches_the_gate_from_the_command_line(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

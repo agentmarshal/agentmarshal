@@ -135,6 +135,59 @@ def _verdict(
     return f"AGENTMARSHAL_VERDICT_BEGIN\n{json.dumps(data)}\nAGENTMARSHAL_VERDICT_END\n"
 
 
+def _finding_args(finding: str) -> list[str]:
+    return [
+        "review",
+        "--task",
+        "CR-001",
+        "--reviewed-finding",
+        finding,
+        "--role",
+        "reviewer",
+        "--vendor",
+        "test",
+        "--model",
+        "test-model",
+        "--email",
+        "reviewer@example.invalid",
+    ]
+
+
+def _finding_verdict(
+    finding: str,
+    verdict: str,
+    findings: list[str],
+    advisory_findings: list[str] | None = None,
+) -> str:
+    data: dict[str, object] = {
+        "reviewed_finding": finding,
+        "verdict": verdict,
+        "findings": findings,
+    }
+    if advisory_findings is not None:
+        data["advisory_findings"] = advisory_findings
+    return f"AGENTMARSHAL_VERDICT_BEGIN\n{json.dumps(data)}\nAGENTMARSHAL_VERDICT_END\n"
+
+
+def _record_finding(repo: Path, artifacts: list[tuple[str, bytes | None]]) -> str:
+    """Record a finding, writing each non-``None`` local artifact first."""
+
+    _git(repo, "config", "user.email", "test@example.com")
+    arguments = ["finding", "--task", "CR-001", "--summary", "Conclusion"]
+    for reference, content in artifacts:
+        if content is not None:
+            path = repo / reference
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(content)
+            digest = hashlib.sha256(content).hexdigest()
+        else:
+            digest = hashlib.sha256(b"remote conclusion").hexdigest()
+        arguments.extend(["--artifact", f"{reference}={digest}"])
+    assert main(arguments) == 0
+    records = read_records(repo / ".agentmarshal" / "journal", "CR-001")
+    return str(records[-1]["id"])
+
+
 def _kept_outputs(tmp_path: Path) -> list[Path]:
     return list(tmp_path.glob("agentmarshal-rejected-verdict-*.txt"))
 
@@ -649,6 +702,190 @@ def test_review_records_stub_verdict(
     assert main(["status", "CR-001"]) == 0
     assert "reviewed_commit=" in main_output(capsys)
     _assert_no_snapshot(repo, tmp_path)
+
+
+def test_the_reviewer_judges_a_finding_and_the_record_binds_to_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: the reviewer judges a finding and the record binds to it."""
+
+    repo, _commit = _review_repo(tmp_path, monkeypatch)
+    finding = _record_finding(repo, [("evidence/conclusion.md", b"Pinned prose\n")])
+    output = "reviewer reasoning\n" + _finding_verdict(finding, "approved", [])
+    stub = _reviewer_stub(tmp_path, output)
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+    capsys.readouterr()
+
+    assert main(_finding_args(finding)) == 0
+
+    record = read_records(repo / ".agentmarshal" / "journal", "CR-001")[-1]
+    assert record["reviewed_finding"] == finding
+    assert "reviewed_commit" not in record
+    artifacts = record["artifacts"]
+    assert isinstance(artifacts, list)
+    artifact = artifacts[0]
+    assert isinstance(artifact, dict)
+    assert (repo / str(artifact["ref"])).read_bytes() == output.encode("utf-8")
+    assert "reviewer prose pinned:" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("subject_field", "subject"),
+    [("reviewed_finding", "01ARZ3NDEKTSV4RRFFQ69G5FAV"), ("reviewed_commit", "a" * 40)],
+)
+def test_a_verdict_about_another_subject_is_refused(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    subject_field: str,
+    subject: str,
+) -> None:
+    """Scenario: a verdict about another subject is refused."""
+
+    repo, _commit = _review_repo(tmp_path, monkeypatch)
+    finding = _record_finding(repo, [("evidence/conclusion.md", b"Pinned prose\n")])
+    payload = {subject_field: subject, "verdict": "approved", "findings": []}
+    stub = _reviewer_stub(
+        tmp_path,
+        f"AGENTMARSHAL_VERDICT_BEGIN\n{json.dumps(payload)}\nAGENTMARSHAL_VERDICT_END\n",
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+    capsys.readouterr()
+
+    assert main(_finding_args(finding)) == 1
+
+    message = capsys.readouterr().err
+    assert finding in message
+    assert subject in message
+    records = read_records(repo / ".agentmarshal" / "journal", "CR-001")
+    assert [record["record_type"] for record in records] == ["opened", "finding"]
+    for path in _kept_outputs(tmp_path):
+        path.unlink()
+
+
+def test_an_edited_artifact_refuses_the_review(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: an edited artifact refuses the review."""
+
+    repo, _commit = _review_repo(tmp_path, monkeypatch)
+    finding = _record_finding(repo, [("evidence/conclusion.md", b"Pinned prose\n")])
+    (repo / "evidence" / "conclusion.md").write_text("Edited prose\n", encoding="utf-8")
+    prompt_output = tmp_path / "prompt-would-have-been-written.txt"
+    stub = _reviewer_stub(
+        tmp_path,
+        _finding_verdict(finding, "approved", []),
+        prompt_output=prompt_output,
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+    capsys.readouterr()
+
+    assert main(_finding_args(finding)) == 1
+
+    assert "evidence/conclusion.md" in capsys.readouterr().err
+    assert not prompt_output.exists()
+    records = read_records(repo / ".agentmarshal" / "journal", "CR-001")
+    assert [record["record_type"] for record in records] == ["opened", "finding"]
+
+
+def test_a_finding_with_nothing_verifiable_is_refused(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a finding with nothing verifiable is refused."""
+
+    repo, _commit = _review_repo(tmp_path, monkeypatch)
+    finding = _record_finding(repo, [("https://example.invalid/conclusion", None)])
+    prompt_output = tmp_path / "prompt-would-have-been-written.txt"
+    stub = _reviewer_stub(
+        tmp_path,
+        _finding_verdict(finding, "approved", []),
+        prompt_output=prompt_output,
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+    capsys.readouterr()
+
+    assert main(_finding_args(finding)) == 1
+
+    assert "no artifacts that could be verified locally" in capsys.readouterr().err
+    assert not prompt_output.exists()
+
+
+def test_a_reference_that_does_not_resolve_is_named_not_verified(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Scenario: a reference that does not resolve is named, not verified."""
+
+    repo, _commit = _review_repo(tmp_path, monkeypatch)
+    finding = _record_finding(
+        repo,
+        [
+            ("evidence/conclusion.md", b"Pinned prose\n"),
+            ("https://example.invalid/conclusion", None),
+        ],
+    )
+    prompt_output = tmp_path / "finding-prompt.txt"
+    stub = _reviewer_stub(
+        tmp_path,
+        _finding_verdict(finding, "approved", []),
+        prompt_output=prompt_output,
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert main(_finding_args(finding)) == 0
+
+    prompt = prompt_output.read_text(encoding="utf-8")
+    assert "Verified artifact: evidence/conclusion.md" in prompt
+    assert "Pinned prose" in prompt
+    assert "Unverified references (not fetched):" in prompt
+    assert "https://example.invalid/conclusion" in prompt
+
+
+def test_a_binary_finding_artifact_is_named_without_text_decoding(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Binary evidence is available by name without injecting mojibake into a prompt."""
+
+    repo, _commit = _review_repo(tmp_path, monkeypatch)
+    finding = _record_finding(repo, [("evidence/conclusion.pdf", b"%PDF\xff\x00")])
+    prompt_output = tmp_path / "finding-prompt.txt"
+    stub = _reviewer_stub(
+        tmp_path,
+        _finding_verdict(finding, "approved", []),
+        prompt_output=prompt_output,
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert main(_finding_args(finding)) == 0
+
+    prompt = prompt_output.read_text(encoding="utf-8")
+    assert "Verified artifact: evidence/conclusion.pdf" in prompt
+    assert (
+        "Content not embedded: the verified artifact is not valid UTF-8 (6 bytes)."
+        in prompt
+    )
+
+
+def test_review_dry_run_still_refuses_a_reviewed_finding(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The CLI refuses a finding flag when dry-run judges no work."""
+
+    _repo, _commit = _review_repo(tmp_path, monkeypatch)
+    capsys.readouterr()
+
+    assert main(["review", "--dry-run", "--reviewed-finding", "F-001"]) == 1
+
+    assert "--reviewed-finding does not apply" in capsys.readouterr().err
 
 
 def test_a_warning_from_a_wrapper_reaches_the_operator(
@@ -1257,7 +1494,7 @@ def test_a_failure_after_the_pin_names_the_artifact_and_keeps_no_other_copy(
 
 
 def test_prompt_without_named_material_is_the_prompt_written_before_schema_2() -> None:
-    """Scenario: a task with no amendments is unchanged.
+    """Scenario: the pinned commit prompt still matches byte for byte.
 
     The 0.3.0 prompt, pinned literally: the split into a prefix and a suffix
     must reproduce it, and this is the test that would notice a seam."""

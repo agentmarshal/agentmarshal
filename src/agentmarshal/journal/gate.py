@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
+import agentmarshal.journal.artifacts as artifacts
 from agentmarshal.journal.capture import (
     CaptureError,
     private_markers_from_project,
@@ -103,20 +104,6 @@ def _actor_git_identities(project_root: Path, record: dict[str, object]) -> set[
         for identity in identities
         if isinstance(identity, str) and identity.strip()
     }
-
-
-def _artifact_path(project_root: Path, reference: str) -> Path | None:
-    """Resolve a local artifact only when it is a file below the project root."""
-
-    candidate = Path(reference)
-    if not candidate.is_absolute():
-        candidate = project_root / candidate
-    try:
-        resolved = candidate.resolve(strict=True)
-        resolved.relative_to(project_root.resolve())
-    except (OSError, ValueError):
-        return None
-    return resolved if resolved.is_file() else None
 
 
 def run_findings_gate(journal_root: Path, task_id: str) -> GateReport:
@@ -224,7 +211,7 @@ def run_findings_gate(journal_root: Path, task_id: str) -> GateReport:
     if latest_finding is not None:
         for artifact in cast(list[dict[str, str]], latest_finding["artifacts"]):
             reference = artifact["ref"]
-            path = _artifact_path(journal_root.parents[1], reference)
+            path = artifacts.artifact_path(journal_root.parents[1], reference)
             if path is None:
                 lines.append(
                     f"NOT VERIFIED: artifact {reference} does not resolve locally"

@@ -14,6 +14,25 @@ from agentmarshal.journal.records import (
 from agentmarshal.project import UnsafeProjectPathError, _create_exclusive
 
 
+def artifact_path(project_root: Path, reference: str) -> Path | None:
+    """Resolve an artifact only when it is a file below ``project_root``.
+
+    The resolved path is returned so callers use the same answer for symlinks
+    as for ordinary paths.  References outside the project, missing paths, and
+    directories deliberately remain unresolvable local artifacts.
+    """
+
+    candidate = Path(reference)
+    if not candidate.is_absolute():
+        candidate = project_root / candidate
+    try:
+        resolved = candidate.resolve(strict=True)
+        resolved.relative_to(project_root.resolve())
+    except (OSError, ValueError):
+        return None
+    return resolved if resolved.is_file() else None
+
+
 def _prepare_artifact_directory(journal_root: Path, task_id: str) -> Path:
     """Create and return a task's real, non-symlinked artifact directory."""
 
