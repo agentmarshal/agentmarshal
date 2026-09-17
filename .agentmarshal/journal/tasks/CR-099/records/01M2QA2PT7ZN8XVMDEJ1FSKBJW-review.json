@@ -1,0 +1,36 @@
+{
+  "advisory_findings": [
+    "required-gate-blocks-non-cr-branches-undocumented",
+    "repo-own-workflow-left-on-the-retired-arrangement",
+    "archived-proposal-link-depth",
+    "passed-line-does-not-distinguish-a-partial-run",
+    "pinned-transcript-wrapper-duplicates-an-expensive-test",
+    "review-helper-duplicated-in-new-test"
+  ],
+  "artifacts": [
+    {
+      "hash": "ec42ddf0b9105940c77f74ca466926caf8c6589fe6002d49b448f5e9be08f5ff",
+      "ref": ".agentmarshal/journal/tasks/CR-099/artifacts/01M2QA2PT7ZN8XVMDEJ1FSKBJW-review.md"
+    }
+  ],
+  "created_at": "2026-09-17T09:10:05.383724Z",
+  "findings": [
+    "doc-claims-a-second-gate-run-github-does-not-have"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "ed2556aa01e7ebfeea2f211407fbdf45a720e292",
+  "reviewed_contract": "c7456a1c52b9af92cf06522fa9995e344ab4af6b0ce153a6e8ad830e0270e628",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-099",
+  "tool_version": "0.3.0",
+  "verdict": "changes_required"
+}

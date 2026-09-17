@@ -1,0 +1,33 @@
+{
+  "advisory_findings": [
+    "design-risks-denies-the-summary-line-that-shipped",
+    "enforcement-doc-open-item-points-at-itself",
+    "pinned-transcript-scenario-only-delegates"
+  ],
+  "artifacts": [
+    {
+      "hash": "b257e59389a78b94ee87b8c9fe14423ce07710c29de09a65bf626545fe8450db",
+      "ref": ".agentmarshal/journal/tasks/CR-099/artifacts/01M2QAPR9T54CTY4XYGRBBRZKX-review.md"
+    }
+  ],
+  "created_at": "2026-09-17T09:21:02.266378Z",
+  "findings": [
+    "partial-flag-misses-other-not-examined-checks"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "31462c3a541081459299b3d74cb15725ca924b66",
+  "reviewed_contract": "c7456a1c52b9af92cf06522fa9995e344ab4af6b0ce153a6e8ad830e0270e628",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-099",
+  "tool_version": "0.3.0",
+  "verdict": "changes_required"
+}
