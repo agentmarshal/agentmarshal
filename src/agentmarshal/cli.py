@@ -51,7 +51,7 @@ from agentmarshal.journal.records import (
     write_record,
 )
 from agentmarshal.journal.report import ReportError, build_report, format_report
-from agentmarshal.journal.review import ReviewLaunchError, launch_review
+from agentmarshal.journal.review import ReviewLaunchError, dry_run_review, launch_review
 from agentmarshal.journal.session import SessionRecordError, record_session
 from agentmarshal.journal.status import (
     TaskStatus,
@@ -150,15 +150,42 @@ def _build_parser() -> argparse.ArgumentParser:
     launch_parser = subparsers.add_parser(
         "review", help="run and record a read-only task review"
     )
-    launch_parser.add_argument("--task", required=True, help="task identifier")
-    launch_binding = launch_parser.add_mutually_exclusive_group(required=True)
-    launch_binding.add_argument("--commit", help="reviewed commit SHA")
-    launch_binding.add_argument("--reviewed-finding", help="reviewed finding record id")
-    launch_parser.add_argument("--base", required=True, help="comparison base ref")
-    launch_parser.add_argument("--role", required=True, help="reviewer role")
-    launch_parser.add_argument("--vendor", required=True, help="reviewer vendor")
-    launch_parser.add_argument("--model", required=True, help="reviewer model")
-    launch_parser.add_argument("--email", required=True, help="reviewer email")
+    launch_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="exercise the configured reviewer; records nothing",
+    )
+    # Every flag below is required for a recorded review and refused for a dry
+    # run, which judges the command rather than any work. argparse cannot say
+    # that, so the help does.
+    required_unless_dry_run = "required unless --dry-run"
+    launch_parser.add_argument(
+        "--task", help=f"task identifier ({required_unless_dry_run})"
+    )
+    launch_binding = launch_parser.add_mutually_exclusive_group()
+    launch_binding.add_argument(
+        "--commit", help=f"reviewed commit SHA ({required_unless_dry_run})"
+    )
+    launch_binding.add_argument(
+        "--reviewed-finding", help="reviewed finding record id (refused by --dry-run)"
+    )
+    launch_parser.add_argument(
+        "--base", help=f"comparison base ref ({required_unless_dry_run})"
+    )
+    launch_parser.add_argument(
+        "--role", help=f"reviewer role ({required_unless_dry_run})"
+    )
+    launch_parser.add_argument(
+        "--vendor", help=f"reviewer vendor ({required_unless_dry_run})"
+    )
+    launch_parser.add_argument(
+        "--model",
+        help="reviewer model (required unless --dry-run; a dry run needs it when "
+        "the configured command names one)",
+    )
+    launch_parser.add_argument(
+        "--email", help=f"reviewer email ({required_unless_dry_run})"
+    )
     gate_parser = subparsers.add_parser(
         "gate", help="verify a merge candidate against the journal"
     )
@@ -572,12 +599,60 @@ def _run_accept(args: argparse.Namespace, stderr: TextIO) -> int:
 
 
 def _run_review(args: argparse.Namespace, stderr: TextIO) -> int:
+    if args.dry_run:
+        ignored = [
+            flag
+            for flag, value in (
+                ("--task", args.task),
+                ("--commit", args.commit),
+                ("--base", args.base),
+                ("--role", args.role),
+                ("--vendor", args.vendor),
+                ("--email", args.email),
+                ("--reviewed-finding", args.reviewed_finding),
+            )
+            if value is not None
+        ]
+        if ignored:
+            print(
+                "review --dry-run judges the configured command, not any work: "
+                + ", ".join(ignored)
+                + " does not apply",
+                file=stderr,
+            )
+            return 1
+        placement = _placement("review", stderr, require_host=True)
+        if placement is None:
+            return 1
+        try:
+            tree = dry_run_review(placement.host_root, args.model)
+        except ReviewLaunchError as error:
+            print(f"dry run failed: {error}", file=stderr)
+            return 1
+        print(
+            f"dry run: the command ran against {tree}; its output has a "
+            "parseable verdict; nothing was recorded"
+        )
+        return 0
     if args.reviewed_finding is not None:
         print(
             "review --reviewed-finding is not supported in this release; use the "
             "human path: submit-review --reviewed-finding",
             file=stderr,
         )
+        return 1
+    required = {
+        "--task": args.task,
+        "--commit": args.commit,
+        "--base": args.base,
+        "--role": args.role,
+        "--vendor": args.vendor,
+        "--model": args.model,
+        "--email": args.email,
+    }
+    missing = [flag for flag, value in required.items() if value is None]
+    if missing:
+        print("review: required unless --dry-run: " + ", ".join(missing), file=stderr)
         return 1
     placement = _placement("review", stderr, require_host=True)
     if placement is None:

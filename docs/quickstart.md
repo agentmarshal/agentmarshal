@@ -43,6 +43,27 @@ these when you wire in a model reviewer or CI.
 | `AGENTMARSHAL_REVIEWER_CMD` | `agentmarshal review` | The reviewer command to launch (model-agnostic; none is bundled). Placeholders `{model}` and `{prompt_file}` are substituted; the command receives the review prompt on **stdin** and must print the machine verdict block (below). Unset it and use `submit-review` for a human review instead. |
 | `AGENTMARSHAL_PIPELINE_OK_SHA` | `agentmarshal gate`, `complete` | Your attestation that a **green pipeline ran for this exact commit**. The gate (in the default `commit` mode) passes the attestation check only when this equals the candidate commit. Locally you set it; in CI the pipeline sets it. `--pipeline-sha` is the equivalent flag. |
 
+### Reviewer-command execution contract
+
+For a recorded `agentmarshal review`, the command starts with its working
+directory set to a metadata-free snapshot of the reviewed commit. A relative
+path in `AGENTMARSHAL_REVIEWER_CMD` therefore resolves inside that snapshot,
+not against the operator's checkout. `{prompt_file}` is the path to a temporary
+file containing the complete review prompt; that same prompt is also supplied
+on standard input.
+
+`agentmarshal review --dry-run` launches the configured command against a
+synthetic prompt in a snapshot of `HEAD`, reports whether its output carries a
+parseable verdict, and records nothing — a way to exercise the contract above
+before the first real review. If the command names `{model}`, pass `--model`
+with it.
+
+The snapshot bounds **where the command starts**, not what its process may
+read. A normally launched command can still read anything its operating-system
+user can read, including paths outside the snapshot. Bounding those reads is
+the reviewer adapter's responsibility: configure its sandbox or permissions for
+the execution harness (ADR-0001).
+
 ### The model-reviewer verdict protocol
 
 When you use `agentmarshal review`, your `AGENTMARSHAL_REVIEWER_CMD` must end

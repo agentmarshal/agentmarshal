@@ -7,6 +7,7 @@ import io
 import json
 import os
 import shlex
+import string
 import subprocess
 import tarfile
 import tempfile
@@ -43,6 +44,11 @@ _VERDICT_REQUIRED = {"reviewed_commit", "verdict", "findings"}
 # advisory_findings is in the record schema and create_review_record accepts it;
 # accepting it here is what makes it reachable through the protocol at all.
 _VERDICT_OPTIONAL = {"advisory_findings"}
+_DRY_RUN_COMMIT = "0" * 40
+_DRY_RUN_CONTRACT = (
+    "# Example task\n\nThis synthetic contract exercises the reviewer command."
+)
+_DRY_RUN_DIFF = "diff --git a/example.py b/example.py\n+print('example')\n"
 _REVIEW_PROMPT = """You are a read-only code reviewer. Review the supplied task contract
 and diff.
 Do not modify files. Your reviewed commit is {commit}.
@@ -145,6 +151,39 @@ def _review_prompt(
     )
 
 
+def _names_model(template: str) -> bool:
+    """Whether the template has a model field, however it is formatted."""
+
+    try:
+        fields = [token for _, token, _, _ in string.Formatter().parse(template)]
+    except ValueError:
+        return False
+    return "model" in fields
+
+
+def _dry_run_prompt() -> str:
+    """Build the real reviewer prompt around a fixed, synthetic example."""
+
+    return _review_prompt(_DRY_RUN_CONTRACT, _DRY_RUN_DIFF, _DRY_RUN_COMMIT)
+
+
+def _unsupported_placeholder(template: str, known: set[str]) -> str | None:
+    """Return the first formatter field not accepted by the template rule."""
+
+    for _literal, token, specification, _conversion in string.Formatter().parse(
+        template
+    ):
+        if token is None:
+            continue
+        if token not in known:
+            return token
+        if specification:
+            nested = _unsupported_placeholder(specification, known)
+            if nested is not None:
+                return nested
+    return None
+
+
 def _reviewer_command(model: str, prompt_file: Path) -> list[str]:
     """Build the reviewer command from ``AGENTMARSHAL_REVIEWER_CMD``.
 
@@ -176,10 +215,30 @@ def _reviewer_command(model: str, prompt_file: Path) -> list[str]:
         raise ReviewLaunchError("AGENTMARSHAL_REVIEWER_CMD must not be empty")
     replacements = {"model": model, "prompt_file": str(prompt_file)}
     try:
+        for element in template:
+            token = _unsupported_placeholder(element, set(replacements))
+            if token is not None:
+                named = token if token else "{} (an auto-numbered field)"
+                raise ReviewLaunchError(
+                    f"AGENTMARSHAL_REVIEWER_CMD has an unsupported placeholder: {named}"
+                )
         return [element.format(**replacements) for element in template]
-    except (KeyError, ValueError) as error:
+    except (KeyError, IndexError, ValueError) as error:
+        # What reaches here is a template the scan passes and the formatter does
+        # not — a bad format specification such as {model:d} — or one neither
+        # could parse, such as a brace left unclosed by a quoting accident.
+        # Neither has a field name to report, and the value is not echoed: a
+        # vendor template often carries a token, and this would be the one place
+        # the tool prints it. The position of the last opening brace is what the
+        # operator needs to find it, and it discloses nothing.
+        position = template_text.rfind("{")
+        where = (
+            f"; the last opening brace is at character {position}"
+            if position >= 0
+            else ""
+        )
         raise ReviewLaunchError(
-            "AGENTMARSHAL_REVIEWER_CMD has an invalid placeholder"
+            f"AGENTMARSHAL_REVIEWER_CMD has an invalid placeholder ({error}){where}"
         ) from error
 
 
@@ -237,9 +296,13 @@ def _preserve_output(output: str) -> Path:
     return Path(name)
 
 
-def _reject(output: str, reason: str) -> ReviewLaunchError:
+def _reject(
+    output: str, reason: str, *, preserve_output: bool = True
+) -> ReviewLaunchError:
     """Build a rejection that names where the reviewer's raw output was kept."""
 
+    if not preserve_output:
+        return ReviewLaunchError(reason)
     try:
         kept = _preserve_output(output)
     except OSError as error:  # pragma: no cover - preservation is best effort
@@ -247,23 +310,29 @@ def _reject(output: str, reason: str) -> ReviewLaunchError:
     return ReviewLaunchError(f"{reason}; reviewer output kept at {kept}")
 
 
-def _parse_verdict(output: str) -> tuple[str, str, list[str], list[str]]:
+def _parse_verdict(
+    output: str, *, preserve_output: bool = True
+) -> tuple[str, str, list[str], list[str]]:
+    """Parse a verdict, preserving rejected recorded-review output when asked."""
+
+    def reject(reason: str) -> ReviewLaunchError:
+        return _reject(output, reason, preserve_output=preserve_output)
+
     lines = output.splitlines()
     begins = [index for index, line in enumerate(lines) if line == _VERDICT_BEGIN]
     ends = [index for index, line in enumerate(lines) if line == _VERDICT_END]
     if len(begins) != 1 or len(ends) != 1 or begins[0] >= ends[0]:
-        raise _reject(output, "reviewer output has invalid verdict sentinels")
+        raise reject("reviewer output has invalid verdict sentinels")
     try:
         verdict_data = json.loads("\n".join(lines[begins[0] + 1 : ends[0]]))
     except json.JSONDecodeError as error:
-        raise _reject(output, f"reviewer verdict is not valid JSON: {error}") from error
+        raise reject(f"reviewer verdict is not valid JSON: {error}") from error
     if not isinstance(verdict_data, dict):
-        raise _reject(output, "reviewer verdict must be a JSON object")
+        raise reject("reviewer verdict must be a JSON object")
     keys = set(verdict_data)
     missing = _VERDICT_REQUIRED - keys
     if missing:
-        raise _reject(
-            output,
+        raise reject(
             "reviewer verdict is missing required field(s): "
             + ", ".join(sorted(missing)),
         )
@@ -272,8 +341,7 @@ def _parse_verdict(output: str) -> tuple[str, str, list[str], list[str]]:
     # failure the reviewer cannot act on.
     unknown = keys - _VERDICT_REQUIRED - _VERDICT_OPTIONAL
     if unknown:
-        raise _reject(
-            output,
+        raise reject(
             "reviewer verdict has unsupported field(s): " + ", ".join(sorted(unknown)),
         )
     reviewed_commit = verdict_data["reviewed_commit"]
@@ -281,14 +349,12 @@ def _parse_verdict(output: str) -> tuple[str, str, list[str], list[str]]:
     findings = verdict_data["findings"]
     advisory = verdict_data.get("advisory_findings", [])
     if not isinstance(reviewed_commit, str) or not isinstance(verdict, str):
-        raise _reject(output, "reviewer verdict fields must be strings")
+        raise reject("reviewer verdict fields must be strings")
     for name, value in (("findings", findings), ("advisory_findings", advisory)):
         if not isinstance(value, list) or not all(
             isinstance(item, str) for item in value
         ):
-            raise _reject(
-                output, f"reviewer verdict {name} must be an array of strings"
-            )
+            raise reject(f"reviewer verdict {name} must be an array of strings")
     return (
         reviewed_commit,
         verdict,
@@ -330,6 +396,69 @@ def _extract_snapshot(project_root: Path, commit: str, snapshot: Path) -> None:
         if not _run_git(project_root, ["ls-tree", commit]).strip():
             return
         raise ReviewLaunchError(f"snapshot extraction failed: {error}") from error
+
+
+def dry_run_review(project_root: Path, reviewer_model: str | None) -> str:
+    """Exercise the configured reviewer without writing to any journal.
+
+    The command runs where a recorded review runs it: in a snapshot, so a
+    relative path in the template resolves as it will in earnest. The tree is
+    the current ``HEAD`` rather than a commit the operator names, which is a
+    departure from this change's design note and is recorded there.
+    """
+
+    template = os.environ.get("AGENTMARSHAL_REVIEWER_CMD")
+    if template is not None and reviewer_model is None and _names_model(template):
+        raise ReviewLaunchError(
+            "the configured reviewer command names a model, so a dry run needs --model"
+        )
+    with tempfile.TemporaryDirectory(prefix="agentmarshal-review-dry-run-") as name:
+        temporary_root = Path(name)
+        snapshot = temporary_root / "snapshot"
+        prompt_file = temporary_root / "review-prompt.txt"
+        prompt = _dry_run_prompt()
+        prompt_file.write_text(prompt, encoding="utf-8")
+        # A project initialised in a repository with no commit has no tree to
+        # copy. The command is still worth exercising; only a relative path in
+        # it cannot be, and the caller is told which of the two it got. A git
+        # that will not run at all is a different problem and stays an error.
+        _run_git(project_root, ["rev-parse", "--git-dir"])
+        head = subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet", "HEAD^{commit}"],
+            cwd=project_root,
+            capture_output=True,
+            check=False,
+        )
+        if head.returncode == 0:
+            _extract_snapshot(project_root, "HEAD", snapshot)
+            tree = "a snapshot of HEAD"
+        else:
+            snapshot.mkdir()
+            tree = "an empty tree, because this repository has no commit yet"
+        output = _run_reviewer(
+            _reviewer_command(reviewer_model or "", prompt_file), snapshot, prompt
+        ).decode("utf-8", errors="replace")
+        try:
+            verdict = _parse_verdict(output, preserve_output=False)
+        except ReviewLaunchError as error:
+            # The operator is debugging this command; the output is the evidence.
+            # It goes beside the rejected-verdict copies, outside any journal.
+            try:
+                kept = _preserve_output(output)
+            except OSError:
+                raise ReviewLaunchError(f"reviewer output: {error}") from error
+            raise ReviewLaunchError(
+                f"reviewer output: {error}; what the command printed is at {kept}"
+            ) from error
+        # The recorded path refuses a verdict about another commit, and so does
+        # this one: a command that echoes a commit of its own would pass a check
+        # that only parsed.
+        if verdict[0] != _DRY_RUN_COMMIT:
+            raise ReviewLaunchError(
+                "reviewer verdict names a commit the dry run did not ask about: "
+                f"{verdict[0]}"
+            )
+        return tree
 
 
 def launch_review(
