@@ -1,0 +1,37 @@
+{
+  "advisory_findings": [
+    "A-UNTERMINATED-BRACE-STILL-UNNAMED",
+    "A-DRY-RUN-IGNORES-WORK-FLAGS-SILENTLY",
+    "A-DRY-RUN-COMMIT-CHECK-UNDOCUMENTED-UNTESTED",
+    "A-PLACEHOLDER-TEST-PARAM-SELF-MATCHES",
+    "A-SNAPSHOT-EXTRACTED-BEFORE-TEMPLATE-VALIDATED",
+    "A-REVIEW-USAGE-ERRORS-NOW-EXIT-1",
+    "A-SPEC-HAS-ONE-DOCUMENTATION-SCENARIO-NOT-TWO"
+  ],
+  "artifacts": [
+    {
+      "hash": "4740cac6c73bd88bdbdc97f6c6bc57e9ef4cf5b7ab326bc82a856754502d8ccc",
+      "ref": ".agentmarshal/journal/tasks/CR-097/artifacts/01M2PX3MEGB3PKCYS7V1S4FXCE-review.md"
+    }
+  ],
+  "created_at": "2026-09-17T05:23:24.240703Z",
+  "findings": [
+    "F-DRY-RUN-REQUIRES-HEAD-COMMIT"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "3767b68b374983f084f045f3e0fe0317a445f972",
+  "reviewed_contract": "cdfd8e9ff2aedfefe486b6e08f9d2ad191fc71e06fa28b72091e4c33a836c496",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-097",
+  "tool_version": "0.3.0",
+  "verdict": "changes_required"
+}

@@ -1,0 +1,35 @@
+{
+  "advisory_findings": [
+    "dry-run-commit-check-unspecified",
+    "unclosed-brace-refusal-unsearchable",
+    "placeholder-test-partly-vacuous",
+    "dry-run-ignores-remaining-flags",
+    "dry-run-needs-a-commit-in-practice",
+    "preserve-output-flag-is-dead-weight",
+    "spec-has-one-documentation-scenario"
+  ],
+  "artifacts": [
+    {
+      "hash": "4d8e62caf51bf30991d86f41a28aa0fbeb2d7e006f9af946ec9ca1328613811b",
+      "ref": ".agentmarshal/journal/tasks/CR-097/artifacts/01M2PWPNM7RR7Z8VJQ3WB8NX4W-review.md"
+    }
+  ],
+  "created_at": "2026-09-17T05:16:19.463847Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "3767b68b374983f084f045f3e0fe0317a445f972",
+  "reviewed_contract": "cdfd8e9ff2aedfefe486b6e08f9d2ad191fc71e06fa28b72091e4c33a836c496",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-097",
+  "tool_version": "0.3.0",
+  "verdict": "approved"
+}

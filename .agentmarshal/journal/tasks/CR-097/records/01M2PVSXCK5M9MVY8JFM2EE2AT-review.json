@@ -1,0 +1,33 @@
+{
+  "advisory_findings": [
+    "F-2-dry-run-accepts-verdicts-the-record-refuses",
+    "F-3-dry-run-silently-ignores-task-and-commit",
+    "F-4-spec-has-one-documentation-scenario-not-two"
+  ],
+  "artifacts": [
+    {
+      "hash": "5a11df8363a8469bdc8e84e3ad7d277ef06bed8f56ccf036241710a99b86a8c9",
+      "ref": ".agentmarshal/journal/tasks/CR-097/artifacts/01M2PVSXCK5M9MVY8JFM2EE2AT-review.md"
+    }
+  ],
+  "created_at": "2026-09-17T05:00:37.139181Z",
+  "findings": [
+    "F-1-dry-run-ignores-journal-placement"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "5ffb96e1ad9b0ce5efb2750d5c46121f6e981e35",
+  "reviewed_contract": "cdfd8e9ff2aedfefe486b6e08f9d2ad191fc71e06fa28b72091e4c33a836c496",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-097",
+  "tool_version": "0.3.0",
+  "verdict": "changes_required"
+}
