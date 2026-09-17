@@ -52,6 +52,12 @@ nothing verifiable to review.
 - **THEN** no reviewer is run and the refusal says that nothing could be
   verified
 
+#### Scenario: the reviewer is told where a verified artifact is
+- **WHEN** an artifact's reference and its place in the review's snapshot
+  differ, as an absolute reference does
+- **THEN** the prompt names both, so following the prompt leads to the pinned
+  copy and not to the working tree
+
 #### Scenario: a reference that does not resolve is named, not verified
 - **WHEN** a finding pins several references and only some resolve under the
   project root
@@ -61,7 +67,8 @@ nothing verifiable to review.
 ### Requirement: The launcher refuses before it spends a reviewer run
 The launcher SHALL refuse, without running the reviewer, a finding that is not
 the task's latest, a reviewer whose declared identity is not independent of the
-finding's recorder, and a task whose contract declares a scope. Each is a
+finding's recorder, a task whose contract declares a scope, and a task that is
+already closed. Each is a
 condition the findings lane refuses after the fact, and a review recorded under
 any of them cannot be withdrawn from an append-only journal.
 
@@ -82,6 +89,12 @@ any of them cannot be withdrawn from an append-only journal.
   declares a scope
 - **THEN** no reviewer is run, no review is recorded, and the refusal says the
   findings lane requires an empty scope
+
+#### Scenario: a closed task is refused
+- **WHEN** a review is launched against a finding of a task that has completed
+  or been abandoned
+- **THEN** no reviewer is run, no review is recorded, and the refusal names the
+  state the task is in
 
 ### Requirement: Artifact content cannot introduce a verdict
 Artifact content the prompt carries SHALL be presented so that no line of it

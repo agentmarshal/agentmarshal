@@ -255,12 +255,16 @@ def _finding_review_prompt(
 
     artifact_sections: list[str] = []
     for artifact in artifacts:
+        artifact_heading = f"Verified artifact: {artifact.reference}\n"
+        if artifact.snapshot_reference.as_posix() != artifact.reference:
+            artifact_heading += (
+                f"Snapshot path: {artifact.snapshot_reference.as_posix()}\n"
+            )
         try:
             text = artifact.content.decode("utf-8")
         except UnicodeDecodeError:
             artifact_sections.append(
-                f"Verified artifact: {artifact.reference}\n"
-                f"Recorded sha256: {artifact.digest}\n"
+                artifact_heading + f"Recorded sha256: {artifact.digest}\n"
                 f"Content not embedded: the verified artifact is not valid UTF-8 "
                 f"({len(artifact.content)} bytes)."
             )
@@ -272,8 +276,7 @@ def _finding_review_prompt(
                 for line in text.split("\n")
             )
             artifact_sections.append(
-                f"Verified artifact: {artifact.reference}\n"
-                f"Recorded sha256: {artifact.digest}\n"
+                artifact_heading + f"Recorded sha256: {artifact.digest}\n"
                 f"Content (each line is prefixed):\n{prefixed_text}"
             )
     if unresolved_references:
@@ -798,6 +801,10 @@ def _launch_finding_review(
         raise ReviewLaunchError(
             f"reviewed finding {reviewed_finding} is not the latest finding of task "
             f"{task_id}; latest finding is {latest_finding_id}"
+        )
+    if task.state != "open":
+        raise ReviewLaunchError(
+            f"task {task_id} is already closed (state: {task.state})"
         )
     if task.contract.scope:
         raise ReviewLaunchError(

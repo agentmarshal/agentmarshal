@@ -109,6 +109,14 @@ that stands in for it.
   detectable after the fact rather than prevented, which is the same guarantee
   a commit review gives for a contract amended after the review.
 
+- **Departure: the launcher's refusal wording is its own.** The decision above
+  says the launcher reuses the gate's identity resolution and its refusal
+  wording. It reuses the resolution, and deliberately not the wording: the
+  gate's line is a transcript entry phrased as the check it performs, byte-
+  stable because published transcripts pin it, while a pre-run refusal has to
+  tell an operator what is wrong before anything is spent. One function holds
+  both phrasings so the rule still has a single home.
+
 ## Risks
 
 - [A reviewer reading pinned research prose reads private material] → the

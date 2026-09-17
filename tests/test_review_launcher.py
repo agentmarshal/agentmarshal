@@ -852,6 +852,35 @@ def test_finding_review_refuses_the_recorder_before_running(
     ] == ["opened", "finding"]
 
 
+def test_finding_review_refuses_an_unresolvable_recorder_before_running(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a reviewer who is not independent of the recorder is refused."""
+
+    repo, _commit = _review_repo(tmp_path, monkeypatch)
+    monkeypatch.setenv("AGENTMARSHAL_ACTOR", "unmapped-recorder")
+    finding = _record_finding(repo, [("evidence/conclusion.md", b"Pinned prose\n")])
+    prompt_output = tmp_path / "prompt-would-have-been-written.txt"
+    stub = _reviewer_stub(
+        tmp_path,
+        _finding_verdict(finding, "approved", []),
+        prompt_output=prompt_output,
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+    capsys.readouterr()
+
+    assert main(_finding_args(finding)) == 1
+
+    assert "finding recorder resolves to no git identities" in capsys.readouterr().err
+    assert not prompt_output.exists()
+    assert [
+        record["record_type"]
+        for record in read_records(repo / ".agentmarshal" / "journal", "CR-001")
+    ] == ["opened", "finding"]
+
+
 def test_a_task_that_lands_through_a_diff_is_refused(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -886,6 +915,35 @@ def test_a_task_that_lands_through_a_diff_is_refused(
         record["record_type"]
         for record in read_records(repo / ".agentmarshal" / "journal", "CR-001")
     ] == ["opened", "finding"]
+
+
+def test_a_closed_task_is_refused_before_running(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a closed task is refused."""
+
+    repo, _commit = _review_repo(tmp_path, monkeypatch)
+    finding = _record_finding(repo, [("evidence/conclusion.md", b"Pinned prose\n")])
+    assert main(["abandon", "--task", "CR-001", "--reason", "Superseded"]) == 0
+    prompt_output = tmp_path / "prompt-would-have-been-written.txt"
+    stub = _reviewer_stub(
+        tmp_path,
+        _finding_verdict(finding, "approved", []),
+        prompt_output=prompt_output,
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+    capsys.readouterr()
+
+    assert main(_finding_args(finding)) == 1
+
+    assert "task CR-001 is already closed (state: abandoned)" in capsys.readouterr().err
+    assert not prompt_output.exists()
+    assert [
+        record["record_type"]
+        for record in read_records(repo / ".agentmarshal" / "journal", "CR-001")
+    ] == ["opened", "finding", "abandoned"]
 
 
 def test_an_edited_artifact_refuses_the_review(
@@ -1007,22 +1065,61 @@ def test_the_reviewer_is_shown_the_claim_the_finding_makes(
     assert f"Finding claim:\n{summary}" in prompt_output.read_text(encoding="utf-8")
 
 
-def test_an_absolute_artifact_reference_records_a_review(
+def test_the_reviewer_is_told_where_a_verified_artifact_is(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An absolute artifact reference under the project root gets a review."""
+    """Scenario: the reviewer is told where a verified artifact is."""
 
     repo, _commit = _review_repo(tmp_path, monkeypatch)
     reference = repo / "evidence" / "absolute-conclusion.md"
     finding = _record_finding(repo, [(str(reference), b"Pinned prose\n")])
-    stub = _reviewer_stub(tmp_path, _finding_verdict(finding, "approved", []))
+    prompt_output = tmp_path / "finding-prompt.txt"
+    stub = _reviewer_stub(
+        tmp_path,
+        _finding_verdict(finding, "approved", []),
+        prompt_output=prompt_output,
+    )
     monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
 
     assert main(_finding_args(finding)) == 0
 
     record = read_records(repo / ".agentmarshal" / "journal", "CR-001")[-1]
     assert record["reviewed_finding"] == finding
+    prompt = prompt_output.read_text(encoding="utf-8")
+    assert f"Verified artifact: {reference}" in prompt
+    assert "Snapshot path: evidence/absolute-conclusion.md" in prompt
+
+
+def test_the_documented_contract_covers_both_bindings() -> None:
+    """Scenario: the documented contract covers both bindings."""
+
+    quickstart = Path(__file__).parents[1] / "docs" / "quickstart.md"
+    documentation = quickstart.read_text(encoding="utf-8")
+
+    assert "metadata-free snapshot: the reviewed commit" in documentation
+    assert "the finding's verified artifacts" in documentation
+    assert "reviewed_commit" in documentation
+    assert "reviewed_finding" in documentation
+
+
+def test_an_operator_learns_the_contract_without_reading_the_launcher() -> None:
+    """Scenario: an operator learns the contract without reading the launcher."""
+
+    quickstart = Path(__file__).parents[1] / "docs" / "quickstart.md"
+    documentation = quickstart.read_text(encoding="utf-8")
+
+    assert "working\ndirectory set to a metadata-free snapshot" in documentation
+    assert (
+        "relative\npath in `AGENTMARSHAL_REVIEWER_CMD` therefore resolves inside"
+        in documentation
+    )
+    assert "`{prompt_file}` is the path to a temporary\nfile" in documentation
+    assert (
+        "snapshot bounds **where the command starts**, not what its process may\nread"
+        in documentation
+    )
+    assert "reviewer adapter's responsibility" in documentation
 
 
 def test_artifact_content_carrying_the_verdict_sentinels_yields_no_verdict_of_its_own(
