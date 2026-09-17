@@ -10,6 +10,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from agentmarshal.journal.actors import SOURCE_GIT_IDENTITY, resolve_recorded_by
 from agentmarshal.journal.review import ReviewLaunchError, _reviewer_command
 from agentmarshal.project import (
     GitNotAvailableError,
@@ -28,6 +29,11 @@ class DoctorCheck:
 
     name: str
     run: Callable[[], tuple[bool, str]]
+    # A precondition is something this tool's guarantees rest on and that only
+    # the operator can establish. Unmet, it is reported and does not make the
+    # command fail. Carried here rather than as a list of names elsewhere: two
+    # copies of one set drift, and renaming a check proved it.
+    precondition: bool = False
 
 
 @dataclass(frozen=True)
@@ -36,6 +42,7 @@ class DoctorResult:
 
     name: str
     ok: bool
+    precondition: bool
     detail: str
 
 
@@ -112,15 +119,31 @@ def _check_project_schema(start: Path) -> tuple[bool, str]:
     return True, "project schema 1 is supported"
 
 
-def _check_actor_variable() -> tuple[bool, str]:
-    actor = os.environ.get("AGENTMARSHAL_ACTOR", "").strip()
-    if actor:
-        return True, "AGENTMARSHAL_ACTOR is declared for this session"
-    return (
-        False,
-        "AGENTMARSHAL_ACTOR is unset; records will resolve to the invoking git "
-        "identity, so an agent can be conflated with that identity",
-    )
+def _check_actor_variable(start: Path) -> tuple[bool, str]:
+    # Ask the resolver the records ask, not just the environment: a project may
+    # declare its agents in the actors table instead (ADR-0006), and reporting
+    # that as unconfigured would be wrong.
+    project_root, discovery_error = _find_project_root(start)
+    if discovery_error is not None:
+        return False, discovery_error
+    assert project_root is not None
+    resolved = resolve_recorded_by(project_root)
+    if resolved is None:
+        return (
+            False,
+            "no actor can be resolved and no git identity is configured; "
+            "records will carry no recorder at all",
+        )
+    actor, source = resolved
+    if source == SOURCE_GIT_IDENTITY:
+        return (
+            False,
+            "records will resolve to the invoking git identity, so an agent "
+            "cannot be told from the person whose identity it uses; declare "
+            "AGENTMARSHAL_ACTOR in the agent's harness, or map the identity in "
+            "the project's actors table",
+        )
+    return True, f"records will name {actor}, resolved from the {source}"
 
 
 def _check_reviewer_command() -> tuple[bool, str]:
@@ -149,15 +172,19 @@ def _check_validate_ci_definition(start: Path) -> tuple[bool, str]:
     if discovery_error is not None:
         return False, discovery_error
     assert project_root is not None
-    workflows = project_root / ".github" / "workflows"
-    try:
-        definitions = tuple(
-            path
-            for path in workflows.iterdir()
-            if path.is_file() and path.suffix in {".yaml", ".yml"}
-        )
-    except OSError:
-        definitions = ()
+    # A project keeps its CI where its provider wants it: under .github for one,
+    # a file in the root for another. This repository's own is in the root, and
+    # an earlier draft of this check reported it as having no CI at all.
+    definitions: tuple[Path, ...] = ()
+    for directory in (project_root / ".github" / "workflows", project_root):
+        try:
+            definitions += tuple(
+                path
+                for path in directory.iterdir()
+                if path.is_file() and path.suffix in {".yaml", ".yml"}
+            )
+        except OSError:
+            continue
     for definition in definitions:
         try:
             content = definition.read_text(encoding="utf-8")
@@ -189,14 +216,20 @@ def doctor_checks(
             "project initialized", lambda: _check_project_initialized(search_start)
         ),
         DoctorCheck("project schema", lambda: _check_project_schema(search_start)),
-        DoctorCheck("actor variable", _check_actor_variable),
+        DoctorCheck(
+            "recorded actor",
+            lambda: _check_actor_variable(search_start),
+            precondition=True,
+        ),
         DoctorCheck(
             "reviewer command placeholders",
             _check_reviewer_command,
+            precondition=True,
         ),
         DoctorCheck(
             "CI validate definition",
             lambda: _check_validate_ci_definition(search_start),
+            precondition=True,
         ),
     ]
 
@@ -215,5 +248,5 @@ def run_doctor(
             detail = (
                 f"check could not run; verify repository access and retry ({error})"
             )
-        results.append(DoctorResult(check.name, ok, detail))
+        results.append(DoctorResult(check.name, ok, check.precondition, detail))
     return tuple(results)

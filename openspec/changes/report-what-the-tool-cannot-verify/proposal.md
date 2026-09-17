@@ -24,14 +24,11 @@ and never carried the fix back into the template.
 - `doctor` checks what it can: the actor variable, a reviewer command whose
   placeholders resolve, and a CI definition that invokes `validate`. Each
   failure says what breaks if it stays missing.
-- The provider template reports neutral, not failure, when the pull-request
-  head carries no review record for its SHA, and says why in its output.
 - The self-hosting document states the branch-naming requirement the template
   imposes: the task identifier is read from the head reference.
 
 ## Impact
 
 - `src/agentmarshal/doctor.py` (or its equivalent) and `src/agentmarshal/cli.py`.
-- `templates/github/agentmarshal-governance.yml`.
 - `docs/self-hosting-workflow.md`, `docs/harness-setup.md`.
 - No gate change: `doctor` advises and `init` prints.

@@ -70,10 +70,6 @@ from agentmarshal.project import (
     initialize_project,
 )
 
-_DOCTOR_PRECONDITION_CHECKS = frozenset(
-    {"actor variable", "reviewer command placeholders", "CI validate definition"}
-)
-
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="agentmarshal")
@@ -392,7 +388,7 @@ def _run_doctor() -> int:
     failures = [result for result in results if not result.ok]
     if failures:
         print(f"Summary: {len(failures)} check(s) reported unmet")
-        if any(result.name not in _DOCTOR_PRECONDITION_CHECKS for result in failures):
+        if any(not result.precondition for result in failures):
             return 1
         return 0
     print(f"Summary: all {len(results)} checks passed")

@@ -1,12 +1,4 @@
-# trust-preconditions Specification
-
-## Purpose
-What this tool's guarantees rest on that it cannot establish itself, and what it
-owes an operator about them: to name them once at `init`, to report the ones it
-can reach without a network or a credential, and never to ship a check that is
-red by construction, which teaches an operator that red is normal.
-
-## Requirements
+## ADDED Requirements
 
 ### Requirement: `init` names the preconditions it cannot verify
 `init` SHALL print, once, the configuration its guarantees depend on and that it
@@ -42,20 +34,3 @@ is a report, not a gate.
   definition invoking `validate` are all present
 - **THEN** it reports them as met and its exit status is what it was before this
   change
-
-### Requirement: The provider template does not fail a head that cannot carry its review
-The shipped provider template SHALL NOT report failure when the pull-request
-head carries no review record for its own SHA. It SHALL succeed without
-evaluating the review-bound lane and SHALL say in its output that it judged
-nothing and why. When the head does carry such a record, it SHALL run the gate
-as before and report its result.
-
-#### Scenario: an implementation pull request is not red
-- **WHEN** the template's gate job runs on a head with no review record for its
-  SHA
-- **THEN** the job succeeds and its output says that it judged nothing, because
-  the review is recorded at completion rather than on this head
-
-#### Scenario: a head that carries its review is gated
-- **WHEN** the head does carry a review record for its SHA
-- **THEN** the job runs the gate and reports its result

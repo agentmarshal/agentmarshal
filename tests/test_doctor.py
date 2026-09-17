@@ -76,7 +76,7 @@ def test_doctor_reports_unset_actor_variable(
     assert main(["doctor"]) == 0
 
     output = capsys.readouterr().out
-    assert "FAIL: actor variable" in output
+    assert "FAIL: recorded actor" in output
     assert "records will resolve to the invoking git identity" in output
     assert "Summary: 1 check(s) reported unmet" in output
 

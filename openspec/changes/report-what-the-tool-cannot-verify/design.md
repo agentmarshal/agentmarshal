@@ -27,20 +27,12 @@ merge UI and any wait-for-checks automation read.
 - **`doctor` never prints the reviewer command's value.** It reports whether the
   placeholders resolve. A vendor template often carries a key, and CR-097
   removed the one place this tool echoed it.
-- **The template decides neutrality by looking for the review record, not by
-  catching a failure.** The job asks whether the head carries a review record
-  for its own SHA before running the gate, and exits neutral with a message when
-  it does not. Catching the gate's refusal and reinterpreting it would swallow
-  every other reason the gate refuses.
-- **`continue-on-error` goes away with it.** A job that succeeds when it has
-  nothing to judge and fails when the gate refuses needs no blanket tolerance,
-  and the check becomes meaningful enough to require later.
-- **"Neutral" is not available, so the job succeeds and says so.** An earlier
-  draft of this change asked the template for a neutral result. A workflow job
-  has no such conclusion — the mechanism that once produced one was withdrawn,
-  and the Checks API path needs an app. The job therefore exits zero with a line
-  saying it judged nothing and why, which is what an operator and a
-  wait-for-checks automation can both read.
+- **The template is not touched here.** An earlier draft of this change asked
+  it to succeed without evaluating the review-bound lane. Review showed that
+  needs a gate that can be told to leave that lane unexamined, and this task's
+  contract forbids a gate change; skipping the whole gate instead would drop the
+  scope, append-only, base-state and lifecycle checks it does enforce today.
+  Both belong to a task of their own.
 
 ## Risks
 
