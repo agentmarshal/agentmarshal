@@ -343,6 +343,23 @@ def _run_init(host: Path | None, stderr: TextIO) -> int:
             f"{initialized.outbox_error}",
             file=stderr,
         )
+    print("Before the first governed task, configure these preconditions:")
+    print(
+        "- Provider: disable squash and rebase merges; either rewrites the "
+        "reviewed SHA, so review evidence no longer binds to the merged commit."
+    )
+    print(
+        "- Harness: set AGENTMARSHAL_ACTOR for each agent; without it, an "
+        "agent's records resolve to the invoking git identity."
+    )
+    print(
+        "- Reviewer: configure AGENTMARSHAL_REVIEWER_CMD when using "
+        "agentmarshal review; without it, an automated review cannot launch."
+    )
+    print(
+        "- CI: install a workflow that invokes agentmarshal validate; without "
+        "it, journal integrity is not checked before merge."
+    )
     return 0
 
 
@@ -366,12 +383,27 @@ def _placement(
 def _run_doctor() -> int:
     results = run_doctor()
     for result in results:
-        status = "OK" if result.ok else "FAIL"
+        if result.ok:
+            status = "OK"
+        elif result.precondition:
+            # Not a failure: something only the operator can establish, which
+            # this command reports rather than judges. Printing FAIL here would
+            # be the very habit this check exists to break.
+            status = "TODO"
+        else:
+            status = "FAIL"
         print(f"{status}: {result.name} — {result.detail}")
-    failures = sum(not result.ok for result in results)
-    if failures:
-        print(f"Summary: {failures} check(s) failed")
-        return 1
+    unmet = [result for result in results if not result.ok]
+    broken = [result for result in unmet if not result.precondition]
+    if unmet:
+        parts = []
+        if broken:
+            parts.append(f"{len(broken)} check(s) failed")
+        todo = len(unmet) - len(broken)
+        if todo:
+            parts.append(f"{todo} precondition(s) left to the operator")
+        print("Summary: " + ", ".join(parts))
+        return 1 if broken else 0
     print(f"Summary: all {len(results)} checks passed")
     return 0
 
