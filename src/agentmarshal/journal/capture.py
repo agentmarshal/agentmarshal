@@ -326,6 +326,10 @@ def render_leak_hits(hits: list[LeakHit], limit: int | None) -> str:
 
     The standalone command and merge gate both use this one renderer: warning
     detail therefore cannot silently diverge between their two call sites.
+
+    ``limit`` is the caller's: a caller rendering one line of a document passes
+    its bound and the rendering says how many hits it left out, while a caller
+    whose whole output is the list of places to look passes ``None``.
     """
 
     shown = hits if limit is None else hits[:limit]
