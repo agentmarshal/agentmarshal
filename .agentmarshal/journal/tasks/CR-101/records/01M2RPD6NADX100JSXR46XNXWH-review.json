@@ -1,0 +1,30 @@
+{
+  "advisory_findings": [
+    "ADV-PROMPT-ABS-PATH",
+    "ADV-PROPOSAL-CAPABILITIES"
+  ],
+  "artifacts": [
+    {
+      "hash": "cae1076651ac511416720ac627996f10721dfe1281d6d1bff8f71e4dd978fbe3",
+      "ref": ".agentmarshal/journal/tasks/CR-101/artifacts/01M2RPD6NADX100JSXR46XNXWH-review.md"
+    }
+  ],
+  "created_at": "2026-09-17T22:04:46.634903Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "3a95a761f7825cecd7a115ef0fb0f14b0e9f43ba",
+  "reviewed_contract": "7b63c71e53fb2b58f461fc6308ccb1279da3f9f47d60bafae00a770200169124",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-101",
+  "tool_version": "0.3.0",
+  "verdict": "approved"
+}

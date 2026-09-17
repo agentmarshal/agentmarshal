@@ -1,0 +1,23 @@
+Разобрал диф против контракта, `design.md`, обеих спек и текущего кода. Проверил: все шесть сценариев из `openspec/changes/archive/2026-09-18-review-binds-to-a-finding/specs/findings-review/spec.md` названы в docstring'ах тестов, старый сценарий `a task with no amendments is unchanged` не осиротел (он остался в `tests/test_brief.py:70`), commit-шаблон `_REVIEW_PROMPT` и `_review_prompt` не тронуты, resolver действительно существует один раз. Ниже то, что не сходится.
+
+**B1-ruff-e501-test-line** — `tests/test_review_launcher.py:752` длиной 89 символов при `line-length = 88` в `pyproject.toml:[tool.ruff]`, а `select` включает `"E"`, то есть E501; шаг `uv run ruff check` в `gitflic-ci.yaml` на этом падает, и это единственная строка файла длиннее 88 (проверил `cut -c89-`).
+
+**B2-prompt-scaffolding-duplicated** — `_FINDING_REVIEW_PROMPT` и `_finding_review_prompt` (`src/agentmarshal/journal/review.py:80-107`, `202-262`) копируют verdict-протокол и весь блок named material из commit-пути вместо общих helper'ов, хотя `design.md` в разделе Risks обещает ровно обратное («the shared parts (verdict protocol, named material, amendment history) stay in shared helpers»), departure в `design.md` не записан (acceptance criterion 1), и drift уже случился: `review.py:187` печатает «absent in the reviewed tree», а `review.py:227` — «absent in the project», то есть буквально повтор урока CR-100, который design сам же и цитирует.
+
+**B3-second-verdict-parser** — `_parse_finding_verdict` (`src/agentmarshal/journal/review.py:529-591`) это почти дословная 60-строчная копия `_parse_verdict`, тогда как design решает «the parser accepts exactly one of the two» в единственном числе; хуже того, новый парсер вписывает `required = {"verdict", "findings"}` литералом вместо `_VERDICT_REQUIRED` (`review.py:44`), так что будущее обязательное поле, добавленное в общую константу, на finding-вердикты молча не распространится.
+
+**B4-finding-review-requires-host** — `_run_review` вызывает `_placement("review", stderr, require_host=True)` (`src/agentmarshal/cli.py:703`) и для finding-пути тоже, хотя `launch_review` при `reviewed_finding` игнорирует `project_root` целиком и берёт корень из `journal_root.parents[1]` (`review.py:893-905`); в sidecar-размещении с отсутствующим или не-git хостом `resolve_placement` бросает `PlacementError` (`placement.py:86-97`) и запуск отказывает по причине, к которой finding-обзор не имеет отношения — при том что `gate` и `complete` для той же полосы намеренно передают `require_host=not args.findings` (`cli.py:763`, `cli.py:859`), а мотивирующий кейс из `proposal.md` — это как раз sidecar-журнал.
+
+**A1-gate-resolver-import-spelling** — `gate.py:23` берёт resolver как `import agentmarshal.journal.artifacts as artifacts`, тогда как `review.py:18` импортирует саму функцию; цикла импортов нет, зато alias `artifacts` в файле, где `artifacts` — это ещё и списки записей (`gate.py:212`), и именно из-за него тест вынужден лезть через `getattr`.
+
+**A2-gate-test-asserts-internals** — `tests/test_gate.py:247-255` утверждает `not hasattr(gate_module, "_artifact_path")` и собирает имя атрибута как `"".join(("art", "ifacts"))` без объяснения, хотя `tasks.md` 2.4 определяет проверку как «the gate's own tests still pass with `_artifact_path` gone».
+
+**A3-stale-commit-base-help** — help у `--commit` и `--base` (`cli.py:172-180`) всё ещё говорит «required unless --dry-run», и комментарий выше («Every flag below is required for a recorded review and refused for a dry run») теперь неверен: с `--reviewed-finding` `--commit` не требуется, а `--base` прямо отвергается (`cli.py:694-698`).
+
+**A4-finding-prompt-hardwrapped** — в `_FINDING_REVIEW_PROMPT` переносы исходника попали в сам промпт («Review the supplied\ntask contract\nand verified finding artifacts», «print one\nline of prose»), тогда как commit-шаблон держит фразы целыми через `\`-continuation (`review.py:57`).
+
+**A5-non-latest-finding-accepted** — `_launch_finding_review` принимает любой finding задачи (`review.py:773-785`), а `run_findings_gate` сверяет `reviews[-1]` с `findings[-1]` (`gate.py:150-166`), поэтому обзор устаревшего finding допишет «последний» review, который закроет полосу отказом, и отменить его в append-only журнале нечем.
+
+AGENTMARSHAL_VERDICT_BEGIN
+{"reviewed_commit": "23c54095d07ed85fdc01ded5ed74c54d1ebcf7eb", "verdict": "changes_required", "findings": ["B1-ruff-e501-test-line", "B2-prompt-scaffolding-duplicated", "B3-second-verdict-parser", "B4-finding-review-requires-host"], "advisory_findings": ["A1-gate-resolver-import-spelling", "A2-gate-test-asserts-internals", "A3-stale-commit-base-help", "A4-finding-prompt-hardwrapped", "A5-non-latest-finding-accepted"]}
+AGENTMARSHAL_VERDICT_END

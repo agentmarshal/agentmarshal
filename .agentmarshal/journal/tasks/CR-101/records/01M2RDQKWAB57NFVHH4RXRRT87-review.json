@@ -1,0 +1,34 @@
+{
+  "advisory_findings": [
+    "IDENTITY-SCENARIO-HALF-TESTED",
+    "DEPARTURE-NOT-IN-DESIGN",
+    "ABSOLUTE-REF-SNAPSHOT-PATH-MISMATCH"
+  ],
+  "artifacts": [
+    {
+      "hash": "1a635243502759494c99494439180f8678ec901e80f0a1d2d6f1fa4abcc79052",
+      "ref": ".agentmarshal/journal/tasks/CR-101/artifacts/01M2RDQKWAB57NFVHH4RXRRT87-review.md"
+    }
+  ],
+  "created_at": "2026-09-17T19:33:10.666768Z",
+  "findings": [
+    "REVIEWER-CONTRACT-DOC-STALE",
+    "CLOSED-TASK-NOT-REFUSED-BEFORE-RUN"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "625ad0939d5b0dcd7ad4979850a3634df95b9057",
+  "reviewed_contract": "9257cb58da927aef0b84814ff9f40dbb20774574b9c5eaffedfbf065e8f72633",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-101",
+  "tool_version": "0.3.0",
+  "verdict": "changes_required"
+}
