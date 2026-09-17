@@ -10,6 +10,7 @@ scope = [
   "tests/test_review_launcher.py",
   "tests/test_brief.py",
   "tests/test_journal.py",
+  "tests/test_attestation.py",
   "docs/quickstart.md",
   "openspec/changes/render-amendment-history/",
   "openspec/changes/archive/",
@@ -55,6 +56,15 @@ it removes the asymmetry where the one independent reader was the one reader not
 told. The rendering is built from records and never by parsing the contract
 document, which ADR-0004 D3 forbids the gate to do and which an earlier draft of
 ADR-0011 got wrong.
+
+## Amended 2026-09-17
+
+`tests/test_attestation.py` joins the scope. It pinned schema 5 as an unknown
+schema; adding 5 to the ladder makes that test wrong, and the test names the
+next unknown number instead. The schema ladder in this model is shared across
+record types — `schema >= 2` opens provenance for every type and schema 4 is
+bound to fields rather than to a type — so a record of any type may declare 5
+without carrying the new field, exactly as it may declare 4 today.
 
 ## Non-Goals
 
