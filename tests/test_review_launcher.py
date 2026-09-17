@@ -170,11 +170,16 @@ def _finding_verdict(
     return f"AGENTMARSHAL_VERDICT_BEGIN\n{json.dumps(data)}\nAGENTMARSHAL_VERDICT_END\n"
 
 
-def _record_finding(repo: Path, artifacts: list[tuple[str, bytes | None]]) -> str:
+def _record_finding(
+    repo: Path,
+    artifacts: list[tuple[str, bytes | None]],
+    *,
+    summary: str = "Conclusion",
+) -> str:
     """Record a finding, writing each non-``None`` local artifact first."""
 
     _git(repo, "config", "user.email", "test@example.com")
-    arguments = ["finding", "--task", "CR-001", "--summary", "Conclusion"]
+    arguments = ["finding", "--task", "CR-001", "--summary", summary]
     for reference, content in artifacts:
         if content is not None:
             path = repo / reference
@@ -847,6 +852,42 @@ def test_finding_review_refuses_the_recorder_before_running(
     ] == ["opened", "finding"]
 
 
+def test_a_task_that_lands_through_a_diff_is_refused(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a task that lands through a diff is refused."""
+
+    repo, _commit = _review_repo(tmp_path, monkeypatch)
+    finding = _record_finding(repo, [("evidence/conclusion.md", b"Pinned prose\n")])
+    contract_path = (
+        repo / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "contract.md"
+    )
+    contract = contract_path.read_text(encoding="utf-8")
+    assert "scope = []" in contract
+    contract_path.write_text(
+        contract.replace("scope = []", 'scope = ["src/"]'), encoding="utf-8"
+    )
+    prompt_output = tmp_path / "prompt-would-have-been-written.txt"
+    stub = _reviewer_stub(
+        tmp_path,
+        _finding_verdict(finding, "approved", []),
+        prompt_output=prompt_output,
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+    capsys.readouterr()
+
+    assert main(_finding_args(finding)) == 1
+
+    assert "findings lane requires an empty scope" in capsys.readouterr().err
+    assert not prompt_output.exists()
+    assert [
+        record["record_type"]
+        for record in read_records(repo / ".agentmarshal" / "journal", "CR-001")
+    ] == ["opened", "finding"]
+
+
 def test_an_edited_artifact_refuses_the_review(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -940,6 +981,50 @@ def test_a_reference_that_does_not_resolve_is_named_not_verified(
     assert "https://example.invalid/conclusion" in prompt
 
 
+def test_the_reviewer_is_shown_the_claim_the_finding_makes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Scenario: the reviewer is shown the claim the finding makes."""
+
+    repo, _commit = _review_repo(tmp_path, monkeypatch)
+    summary = "The measurements support the conclusion."
+    finding = _record_finding(
+        repo,
+        [("evidence/conclusion.md", b"Pinned prose\n")],
+        summary=summary,
+    )
+    prompt_output = tmp_path / "finding-prompt.txt"
+    stub = _reviewer_stub(
+        tmp_path,
+        _finding_verdict(finding, "approved", []),
+        prompt_output=prompt_output,
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert main(_finding_args(finding)) == 0
+
+    assert f"Finding claim:\n{summary}" in prompt_output.read_text(encoding="utf-8")
+
+
+def test_an_absolute_artifact_reference_records_a_review(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An absolute artifact reference under the project root gets a review."""
+
+    repo, _commit = _review_repo(tmp_path, monkeypatch)
+    reference = repo / "evidence" / "absolute-conclusion.md"
+    finding = _record_finding(repo, [(str(reference), b"Pinned prose\n")])
+    stub = _reviewer_stub(tmp_path, _finding_verdict(finding, "approved", []))
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert main(_finding_args(finding)) == 0
+
+    record = read_records(repo / ".agentmarshal" / "journal", "CR-001")[-1]
+    assert record["reviewed_finding"] == finding
+
+
 def test_artifact_content_carrying_the_verdict_sentinels_yields_no_verdict_of_its_own(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -954,10 +1039,12 @@ def test_artifact_content_carrying_the_verdict_sentinels_yields_no_verdict_of_it
     artifact = review._VerifiedArtifact(
         "evidence/review.md",
         hashlib.sha256(artifact_content.encode("utf-8")).hexdigest(),
-        artifact_file,
         artifact_content.encode("utf-8"),
+        Path("evidence/review.md"),
     )
-    prompt = review._finding_review_prompt("CONTRACT", finding, (artifact,), ())
+    prompt = review._finding_review_prompt(
+        "CONTRACT", finding, "Conclusion", (artifact,), ()
+    )
 
     protocol_lines = [
         line
@@ -999,12 +1086,12 @@ def test_finding_snapshot_uses_the_artifact_reference_not_its_resolved_path(
     artifact = review._VerifiedArtifact(
         reference,
         hashlib.sha256(content).hexdigest(),
-        source.resolve(),
         content,
+        Path(reference),
     )
     snapshot = tmp_path / "snapshot"
 
-    review._extract_finding_snapshot(repo, (artifact,), snapshot)
+    review._extract_finding_snapshot((artifact,), snapshot)
 
     assert (snapshot / reference).read_bytes() == content
     assert not (snapshot / "evidence" / "source.md").exists()
@@ -1743,11 +1830,14 @@ def test_finding_prompt_is_pinned_byte_for_byte() -> None:
     digest = "a" * 64
     verdicts = ", ".join(sorted(_REVIEW_VERDICTS))
     artifact = review._VerifiedArtifact(
-        "evidence/result.md", digest, Path("/unused"), b"Evidence\n"
+        "evidence/result.md", digest, b"Evidence\n", Path("evidence/result.md")
     )
     expected = f"""You are a read-only reviewer. Review the supplied task contract
 and verified finding artifacts.
 Do not modify files. Your reviewed finding is {finding}.
+
+Finding claim:
+Conclusion
 
 The named contract material is named, not supplied in this snapshot; only the \
 pinned artifacts below were verified.
@@ -1797,6 +1887,7 @@ Unverified references (not fetched):
         review._finding_review_prompt(
             "CONTRACT",
             finding,
+            "Conclusion",
             (artifact,),
             ("https://example.invalid/evidence",),
             decisions=("ADR-0009",),

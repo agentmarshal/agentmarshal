@@ -254,7 +254,7 @@ def test_findings_gate_uses_the_public_artifact_resolver() -> None:
         is review_module.artifact_path
         is artifacts_module.artifact_path
     )
-    assert not hasattr(gate_module, "actor_git_identities")
+    assert not hasattr(gate_module, "_artifact_path")
 
 
 def test_the_flag_reaches_the_gate_from_the_command_line(

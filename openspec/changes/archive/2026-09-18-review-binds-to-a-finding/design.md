@@ -90,6 +90,25 @@ that stands in for it.
   code does is the defect this project keeps finding in its own documents, so
   the refusals are specified and each carries a scenario.
 
+- **A scoped task is refused too, and the reason is the lane's own.** The
+  findings lane refuses a task whose contract declares a scope, so a finding
+  review launched on one spends a run and writes a permanent record no lane
+  will read. The launcher's pre-run refusals exist to prevent exactly that, so
+  the admission rule is asked before the reviewer runs, not after.
+- **The finding's summary travels with its artifacts.** ADR-0009 Decision 1
+  makes the summary the one-line claim the finding makes about the bytes it
+  pins. A reviewer given the bytes and not the claim is asked whether evidence
+  is good without being told what it is evidence for.
+- **A finding review's contract is the working tree's, and the record says
+  which one it was.** There is no commit to read it from, so the launcher reads
+  the contract as it stands and records its sha256 in `reviewed_contract`
+  (ADR-0011), the way the commit path does. ADR-0011 left what the findings
+  lane does with amendment history and the contract hash unsettled; this
+  settles it the same way for both paths — the amendment history is rendered
+  into the prompt, and the hash pins which text was judged. Drift is therefore
+  detectable after the fact rather than prevented, which is the same guarantee
+  a commit review gives for a contract amended after the review.
+
 ## Risks
 
 - [A reviewer reading pinned research prose reads private material] → the

@@ -77,6 +77,9 @@ _FINDING_REVIEW_PROMPT = (
     "and verified finding artifacts.\n"
     "Do not modify files. Your reviewed finding is {finding}.\n"
     "\n"
+    "Finding claim:\n"
+    "{summary}\n"
+    "\n"
     "The named contract material is named, not supplied in this snapshot; only the "
     "pinned artifacts below were verified.\n"
     "Each embedded artifact-content line begins with `|`; that prefix presents "
@@ -115,8 +118,8 @@ class _VerifiedArtifact:
 
     reference: str
     digest: str
-    path: Path
     content: bytes
+    snapshot_reference: Path
 
 
 def _named_contract_material(
@@ -239,6 +242,7 @@ def _review_prompt(
 def _finding_review_prompt(
     contract: str,
     finding: str,
+    summary: str,
     artifacts: tuple[_VerifiedArtifact, ...],
     unresolved_references: tuple[str, ...],
     *,
@@ -280,6 +284,7 @@ def _finding_review_prompt(
 
     return _FINDING_REVIEW_PROMPT.format(
         finding=finding,
+        summary=summary,
         named_material=_named_contract_material(
             decisions,
             documents,
@@ -715,7 +720,15 @@ def _verified_finding_artifacts(
         if digest != artifact["hash"]:
             drifted.append(reference)
             continue
-        verified.append(_VerifiedArtifact(reference, digest, path, content))
+        reference_path = Path(reference)
+        snapshot_reference = (
+            path.relative_to(project_root.resolve())
+            if reference_path.is_absolute()
+            else reference_path
+        )
+        verified.append(
+            _VerifiedArtifact(reference, digest, content, snapshot_reference)
+        )
     if drifted:
         raise ReviewLaunchError(
             "finding artifact(s) do not match their recorded sha256: "
@@ -730,7 +743,7 @@ def _verified_finding_artifacts(
 
 
 def _extract_finding_snapshot(
-    project_root: Path, artifacts: tuple[_VerifiedArtifact, ...], snapshot: Path
+    artifacts: tuple[_VerifiedArtifact, ...], snapshot: Path
 ) -> None:
     """Materialize verified bytes at their referenced paths in the snapshot."""
 
@@ -741,10 +754,10 @@ def _extract_finding_snapshot(
         # prompt tells the reviewer to use.  A symlink is deliberately copied
         # as its verified bytes at its link spelling.  Retain confinement here
         # even though ``artifact_path`` already verified the source path.
-        destination = snapshot / artifact.reference
+        destination = snapshot / artifact.snapshot_reference
         try:
             destination.resolve().relative_to(resolved_snapshot)
-        except (OSError, ValueError) as error:  # pragma: no cover - guarded by resolver
+        except (OSError, ValueError) as error:
             raise ReviewLaunchError(
                 f"finding artifact reference escapes the snapshot: {artifact.reference}"
             ) from error
@@ -786,6 +799,11 @@ def _launch_finding_review(
             f"reviewed finding {reviewed_finding} is not the latest finding of task "
             f"{task_id}; latest finding is {latest_finding_id}"
         )
+    if task.contract.scope:
+        raise ReviewLaunchError(
+            "findings lane requires an empty scope; declared scope: "
+            + ", ".join(task.contract.scope)
+        )
     identity_refusal = finding_reviewer_identity_refusal(
         project_root, finding, reviewer_email, launching=True
     )
@@ -815,6 +833,7 @@ def _launch_finding_review(
     prompt = _finding_review_prompt(
         contract,
         reviewed_finding,
+        cast(str, finding["summary"]),
         verified,
         unresolved,
         decisions=header.decisions,
@@ -830,7 +849,7 @@ def _launch_finding_review(
         temporary_root = Path(temporary_directory)
         snapshot = temporary_root / "snapshot"
         prompt_file = temporary_root / "review-prompt.txt"
-        _extract_finding_snapshot(project_root, verified, snapshot)
+        _extract_finding_snapshot(verified, snapshot)
         prompt_file.write_text(prompt, encoding="utf-8")
         raw_output, raw_diagnostics = _run_reviewer(
             _reviewer_command(reviewer_model, prompt_file), snapshot, prompt

@@ -394,7 +394,8 @@ projected across them — a projection with two sources would be a guess.
 | `status`, `report` | Print `Placement: sidecar` on stderr; stdout unchanged |
 | `leak-scan` | Scans the **host's** added content, with the private markers read from the sidecar's own `project.json` |
 | `finding` | Journal-owned: writes to the sidecar, and its artifacts must resolve under the sidecar repository, not the host |
-| `submit-review`, `accept`, `review`, `amend`, `reopen`, `abandon`, `record-session`, `validate` | Unchanged, writing to the sidecar and reading host git facts where needed |
+| `review` | A finding review (`--reviewed-finding`) decides sidecar evidence without requiring a reachable host; commit review behaviour is unchanged |
+| `submit-review`, `accept`, `amend`, `reopen`, `abandon`, `record-session`, `validate` | Unchanged, writing to the sidecar and reading host git facts where needed |
 
 ## Research findings loop
 
@@ -415,12 +416,14 @@ agentmarshal review --task CR-001 --reviewed-finding <finding-record-id> \
   --role reviewer --vendor <vendor> --model <model> --email reviewer@example.invalid
 # The launcher verifies locally pinned artifacts first and refuses a reviewer
 # whose declared identity is not independent of the finding recorder.
-agentmarshal submit-review --task CR-001 --reviewed-finding <finding-record-id> \
-  --verdict approved --role reviewer --vendor human --model none \
-  --email reviewer@example.invalid
 agentmarshal gate --task CR-001 --findings
 agentmarshal complete --task CR-001 --findings
 ```
+
+**Human alternative (no reviewer command configured):** use
+`agentmarshal submit-review --reviewed-finding …` to record that person's
+verdict directly. Do not run it after the launched-review block above; each
+command records a separate review, and the findings gate evaluates the latest.
 
 The reviewer email and recorder are declared identities. A recorder that is a
 git identity stands for its own email; a recorder named as a project actor, or

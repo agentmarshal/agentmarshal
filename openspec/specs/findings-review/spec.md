@@ -26,12 +26,20 @@ naming a different finding — or a commit — SHALL be refused without a record
   the verdict named
 
 ### Requirement: The reviewer is given the pinned bytes, and drift refuses the launch
+The prompt SHALL carry the finding's own summary: it is the one-line claim the
+recorder made about these artifacts, and a reviewer asked to judge evidence
+without it is judging bytes without a claim.
+
 Before running the reviewer the launcher SHALL verify every artifact reference
 that resolves to a file under the project root against the hash the finding
 recorded, and SHALL refuse the launch when any of them differs. The content the
 reviewer is given SHALL be read from those verified paths. A finding none of
 whose references resolve under the project root SHALL be refused: there would be
 nothing verifiable to review.
+
+#### Scenario: the reviewer is shown the claim the finding makes
+- **WHEN** a review is launched against a finding whose record carries a summary
+- **THEN** the prompt contains that summary
 
 #### Scenario: an edited artifact refuses the review
 - **WHEN** an artifact the finding pins no longer hashes to the recorded value
@@ -52,10 +60,10 @@ nothing verifiable to review.
 
 ### Requirement: The launcher refuses before it spends a reviewer run
 The launcher SHALL refuse, without running the reviewer, a finding that is not
-the task's latest and a reviewer whose declared identity is not independent of
-the finding's recorder. Both are conditions the findings lane refuses after the
-fact, and a review recorded under either cannot be withdrawn from an
-append-only journal.
+the task's latest, a reviewer whose declared identity is not independent of the
+finding's recorder, and a task whose contract declares a scope. Each is a
+condition the findings lane refuses after the fact, and a review recorded under
+any of them cannot be withdrawn from an append-only journal.
 
 #### Scenario: a finding that is not the latest is refused
 - **WHEN** a review is launched against a finding of the task that a later
@@ -68,6 +76,12 @@ append-only journal.
   declared git identities, or the recorder resolves to no git identity at all
 - **THEN** no reviewer is run, no review is recorded, and the refusal gives the
   reason the findings lane would give
+
+#### Scenario: a task that lands through a diff is refused
+- **WHEN** a review is launched against a finding of a task whose contract
+  declares a scope
+- **THEN** no reviewer is run, no review is recorded, and the refusal says the
+  findings lane requires an empty scope
 
 ### Requirement: Artifact content cannot introduce a verdict
 Artifact content the prompt carries SHALL be presented so that no line of it
