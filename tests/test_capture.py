@@ -345,7 +345,7 @@ def test_a_built_in_signature_names_its_file_and_itself() -> None:
         f"+KEY = '{secret}'\n"
     )
 
-    rendered = render_leak_hits(scan_diff_for_leaks(diff))
+    rendered = render_leak_hits(scan_diff_for_leaks(diff), limit=None)
 
     assert rendered == "src/keys.py: aws-access-key-id"
     assert secret not in rendered
@@ -367,7 +367,7 @@ def test_a_path_that_carries_a_marker_is_not_printed_either() -> None:
 
     hits = scan_diff_for_leaks(diff, ("internal.corp.invalid",))
 
-    rendered = render_leak_hits(hits)
+    rendered = render_leak_hits(hits, limit=None)
     assert "internal.corp.invalid" not in rendered
     assert "private marker #1" in rendered
 
@@ -388,7 +388,7 @@ def test_a_path_that_is_itself_a_key_is_described_not_printed() -> None:
 
     hits = scan_diff_for_leaks(diff)
 
-    rendered = render_leak_hits(hits)
+    rendered = render_leak_hits(hits, limit=None)
     assert "AKIAIOSFODNN7EXAMPLE" not in rendered
     # Only the span that is the key is replaced; the directory still says where.
     assert "keys/<aws-access-key-id>: aws-access-key-id" in rendered
@@ -413,7 +413,7 @@ def test_two_leaking_files_under_one_marker_directory_stay_two_hits() -> None:
 
     hits = scan_diff_for_leaks(diff, ("internal.corp.invalid",))
 
-    rendered = render_leak_hits(hits)
+    rendered = render_leak_hits(hits, limit=None)
     assert "internal.corp.invalid" not in rendered
     assert len(hits) == 2
     assert "configs/<private marker #1>/one.json" in rendered
@@ -433,15 +433,18 @@ def test_added_lines_of_a_dev_null_destination_are_still_scanned() -> None:
     assert hits == [LeakHit("(unknown file)", "aws-access-key-id")]
 
 
-def test_a_rendered_warning_is_bounded_and_counts_the_rest() -> None:
-    """The merge transcript is read by people; the line cannot be unbounded."""
+def test_render_leak_hits_uses_the_callers_limit() -> None:
+    """A shared renderer supports both the gate's bound and command's full list."""
 
     hits = [LeakHit(f"file{index:03d}", "aws-access-key-id") for index in range(25)]
 
-    rendered = render_leak_hits(hits)
+    bounded = render_leak_hits(hits, limit=20)
+    unbounded = render_leak_hits(hits, limit=None)
 
-    assert rendered.count("aws-access-key-id") == 20
-    assert rendered.endswith(", and 5 more not shown")
+    assert bounded.count("aws-access-key-id") == 20
+    assert bounded.endswith(", and 5 more not shown")
+    assert unbounded.count("aws-access-key-id") == 25
+    assert "more not shown" not in unbounded
 
 
 def test_a_signature_split_across_added_lines_is_still_found() -> None:
@@ -494,7 +497,7 @@ def test_a_private_marker_is_named_by_position_not_by_value() -> None:
         f"+HOST = '{marker}'\n"
     )
 
-    rendered = render_leak_hits(scan_diff_for_leaks(diff, (marker,)))
+    rendered = render_leak_hits(scan_diff_for_leaks(diff, (marker,)), limit=None)
 
     assert rendered == "src/config.py: private-marker #1"
     assert marker not in rendered

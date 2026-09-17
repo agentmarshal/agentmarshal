@@ -245,8 +245,8 @@ for ADR-0010, not a check this transcript can make.
 The gate also runs the advisory leak scan over the candidate's added content.
 It appends nothing when there is no hit, which is why the transcript above has
 no such line; on a hit it adds `WARN: possible leak in candidate additions
-(advisory, not blocking)` with the markers it matched, and on a scan it could
-not perform, `WARN: leak-scan skipped`. Neither blocks.
+(advisory, not blocking): <file>: <what matched>`, and on a scan it could not
+perform, `WARN: leak-scan skipped`. Neither blocks.
 
 Two lines say "none examined" rather than `PASS` in the ordinary sense: the
 candidate is a host diff, and a host diff adds no records to this journal.

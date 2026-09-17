@@ -1306,7 +1306,7 @@ def _run_leak_scan(args: argparse.Namespace, stderr: TextIO) -> int:
     if hits:
         print(
             "leak-scan: possible leaks in added content "
-            "(file: what matched): " + render_leak_hits(hits)
+            "(file: what matched): " + render_leak_hits(hits, limit=None)
         )
         print(
             "(best-effort: a hit is not proof of a leak and a clean run is not "

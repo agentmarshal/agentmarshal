@@ -54,6 +54,7 @@ from agentmarshal.project import (
 
 _JOURNAL_PREFIX = ".agentmarshal/journal/"
 _EXTENSIONS_PREFIX = ".agentmarshal/extensions/"
+_LEAK_HIT_RENDER_LIMIT = 20
 
 
 class GateError(Exception):
@@ -1177,7 +1178,8 @@ def run_gate(
         if leak_hits:
             lines.append(
                 "WARN: possible leak in candidate additions "
-                f"(advisory, not blocking): {render_leak_hits(leak_hits)}"
+                f"(advisory, not blocking): "
+                f"{render_leak_hits(leak_hits, limit=_LEAK_HIT_RENDER_LIMIT)}"
             )
 
     return GateReport(

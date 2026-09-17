@@ -17,6 +17,7 @@ from agentmarshal.cli import main
 from agentmarshal.journal import (
     JournalContractError,
     JournalRecordError,
+    LaunchedReview,
     create_opened_record,
     create_review_record,
     create_session_record,
@@ -88,6 +89,12 @@ def _without_recorder(record: dict[str, object]) -> dict[str, object]:
         for key, value in record.items()
         if key not in {"recorded_by", "recorded_by_source"}
     }
+
+
+def test_launched_review_is_exported_from_the_journal_package() -> None:
+    from agentmarshal.journal.review import LaunchedReview as ReviewLaunchedReview
+
+    assert LaunchedReview is ReviewLaunchedReview
 
 
 def test_write_record_rejects_symlinked_journal_ancestor(tmp_path: Path) -> None:

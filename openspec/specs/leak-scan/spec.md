@@ -22,6 +22,11 @@ The scan that refuses one captured artefact reports the categories it matched
 and no location: the caller named the artefact it offered, so there is no file
 to add.
 
+A caller that renders hits into a document of its own — the merge transcript —
+MAY bound how many it shows, and SHALL say how many it did not. A caller whose
+whole output is the list of places to look SHALL NOT bound it: the operator ran
+it to learn where every hit is.
+
 #### Scenario: a built-in signature names its file and itself
 - **WHEN** the scan matches a built-in signature in an added line
 - **THEN** the hit names the file and the signature, and the matched text
@@ -51,6 +56,15 @@ to add.
 - **WHEN** the gate's added-content scan finds a hit
 - **THEN** its line carries the same file and identification the standalone
   command gives
+
+#### Scenario: the transcript's line is bounded and says what it left out
+- **WHEN** the gate's added-content scan finds more hits than its line shows
+- **THEN** the line shows the first of them and says how many it did not show
+
+#### Scenario: the standalone command shows every place to look
+- **WHEN** the standalone leak-scan command finds more hits than the gate's
+  line would show
+- **THEN** every hit appears in its output
 
 ### Requirement: A marker is not matched against the declaration that configures it
 The scan SHALL NOT report a private-marker hit whose only occurrence in the

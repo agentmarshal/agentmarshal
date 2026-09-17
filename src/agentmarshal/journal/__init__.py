@@ -22,7 +22,7 @@ from agentmarshal.journal.report import (
     build_report,
     format_report,
 )
-from agentmarshal.journal.review import ReviewLaunchError, launch_review
+from agentmarshal.journal.review import LaunchedReview, ReviewLaunchError, launch_review
 from agentmarshal.journal.session import SessionRecordError, record_session
 from agentmarshal.journal.status import (
     TaskStatus,
@@ -42,6 +42,7 @@ __all__ = [
     "JournalContractError",
     "JournalRecordError",
     "JournalReport",
+    "LaunchedReview",
     "ReportError",
     "ReviewLaunchError",
     "ReviewSubmitError",
