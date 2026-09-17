@@ -22,6 +22,7 @@ from agentmarshal.journal.brief import (
 )
 from agentmarshal.journal.contracts import parse_contract_text
 from agentmarshal.journal.extensions import (
+    ExtensionManifestError,
     ExtensionManifestMissing,
     read_extension_manifest,
 )
@@ -521,9 +522,16 @@ def _parse_verdict(
     output: str,
     *,
     subject_fields: frozenset[str] = frozenset({"reviewed_commit"}),
+    expected_field: str | None = None,
     preserve_output: bool = True,
 ) -> tuple[str, str, str, list[str], list[str]]:
-    """Parse a verdict for one of the accepted review-subject field sets."""
+    """Parse a verdict for one of the accepted review-subject field sets.
+
+    ``subject_fields`` is what the parser will read; ``expected_field`` is what
+    the caller asked the reviewer for. A finding launch reads both shapes so a
+    commit-shaped verdict can be named in the refusal, and must not invite one:
+    the refusal names the field the prompt asked for.
+    """
 
     def reject(reason: str) -> ReviewLaunchError:
         return _reject(output, reason, preserve_output=preserve_output)
@@ -554,7 +562,9 @@ def _parse_verdict(
     bindings = keys & subject_fields
     if len(bindings) != 1:
         raise reject(
-            "reviewer verdict must name exactly one of "
+            f"reviewer verdict must name {expected_field}"
+            if expected_field is not None
+            else "reviewer verdict must name exactly one of "
             + " or ".join(sorted(subject_fields))
         )
     # An unknown key is still refused — a verdict we do not understand must not
@@ -836,6 +846,11 @@ def _launch_finding_review(
             documents.extend(read_extension_manifest(project_root, name).documents)
         except ExtensionManifestMissing:
             absent.append(name)
+        except ExtensionManifestError as error:
+            # A malformed manifest refuses the launch on both paths; the commit
+            # path reaches that through its ValueError wrapper. Without this the
+            # exception left the CLI as a traceback.
+            raise ReviewLaunchError(str(error)) from error
 
     prompt = _finding_review_prompt(
         contract,
@@ -873,6 +888,7 @@ def _launch_finding_review(
             ) = _parse_verdict(
                 reviewer_output,
                 subject_fields=frozenset({"reviewed_commit", "reviewed_finding"}),
+                expected_field="reviewed_finding",
             )
         except ReviewLaunchError as error:
             raise _with_diagnostics(error, diagnostics_note) from error
@@ -931,6 +947,13 @@ def launch_review(
 
     sidecar_journal = journal_root
     journal_root = journal_root or project_root / ".agentmarshal" / "journal"
+    if reviewed_finding is not None and commit is not None:
+        # One binding per review is the record rule (records.py); a public
+        # caller handed both would otherwise have the finding judged silently.
+        raise ReviewLaunchError(
+            "a review names one subject: both a commit and a reviewed finding "
+            "were given"
+        )
     if reviewed_finding is not None:
         # A sidecar finding belongs to the sidecar project, even though the
         # commit path receives the configured host as ``project_root``.

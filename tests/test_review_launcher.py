@@ -1008,6 +1008,70 @@ def test_a_finding_with_nothing_verifiable_is_refused(
     assert not prompt_output.exists()
 
 
+def test_a_malformed_extension_manifest_refuses_the_finding_launch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A broken manifest is a refusal, not a traceback out of the CLI.
+
+    The commit path turns this into a launcher error through its ValueError
+    wrapper; the finding path caught only the missing-manifest subclass, so a
+    malformed one escaped the CLI entirely."""
+
+    repo, _commit = _review_repo(tmp_path, monkeypatch)
+    contract = repo / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "contract.md"
+    contract.write_text(
+        contract.read_text(encoding="utf-8").replace(
+            "schema = 1\n", "schema = 2\nextensions = ['openspec']\n"
+        ),
+        encoding="utf-8",
+    )
+    manifest = repo / ".agentmarshal" / "extensions" / "openspec.toml"
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text("this is not toml = = =\n", encoding="utf-8")
+    finding = _record_finding(repo, [("evidence/conclusion.md", b"Conclusion\n")])
+    prompt_output = tmp_path / "prompt-would-have-been-written.txt"
+    stub = _reviewer_stub(
+        tmp_path,
+        _finding_verdict(finding, "approved", []),
+        prompt_output=prompt_output,
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+    capsys.readouterr()
+
+    assert main(_finding_args(finding)) == 1
+
+    assert not prompt_output.exists()
+    assert len(read_records(repo / ".agentmarshal" / "journal", "CR-001")) == 2
+
+
+def test_launch_review_refuses_both_subjects_at_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One review names one subject, checked where the record rule is.
+
+    The CLI makes the two flags mutually exclusive, but launch_review is a
+    public export and a caller handing both had the finding judged silently."""
+
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    finding = _record_finding(repo, [("evidence/conclusion.md", b"Conclusion\n")])
+
+    with pytest.raises(review.ReviewLaunchError, match="names one subject"):
+        review.launch_review(
+            repo,
+            "CR-001",
+            commit,
+            "HEAD",
+            "code-reviewer",
+            "test",
+            "test-model",
+            "reviewer@test.invalid",
+            reviewed_finding=finding,
+        )
+
+
 def test_a_reference_that_does_not_resolve_is_named_not_verified(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1879,6 +1943,12 @@ def test_a_failure_after_the_pin_names_the_artifact_and_keeps_no_other_copy(
 
 def test_prompt_without_named_material_is_the_prompt_written_before_schema_2() -> None:
     """Scenario: the pinned commit prompt still matches byte for byte.
+
+    Scenario: a task with no amendments is unchanged — the prompt half. That
+    contract-history scenario claims brief and prompt are both unchanged
+    byte for byte; tests/test_brief.py pins the brief, and this pins the
+    prompt.
+
 
     The 0.3.0 prompt, pinned literally: the split into a prefix and a suffix
     must reproduce it, and this is the test that would notice a seam."""
