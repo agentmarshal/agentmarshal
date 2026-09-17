@@ -1784,7 +1784,7 @@ def test_the_merge_boundary_reports_the_same_detail(
         f"WARN: possible leak in candidate additions (advisory, not blocking): {detail}"
     )
     assert standalone.out == (
-        f"leak-scan: possible leak categories in added content: {detail}\n"
+        f"leak-scan: possible leaks in added content (file: what matched): {detail}\n"
     )
     assert secret not in gate_output
     assert secret not in standalone.out

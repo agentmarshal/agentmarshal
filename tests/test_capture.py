@@ -331,6 +331,63 @@ def test_a_built_in_signature_names_its_file_and_itself() -> None:
     assert secret not in rendered
 
 
+def test_a_path_that_carries_a_marker_is_not_printed_either() -> None:
+    """A repository can name a directory after an internal host, and then the
+    path is the secret; naming the file would disclose what naming the marker
+    refused to."""
+
+    diff = (
+        "--- a/configs/internal.corp.invalid/app.json\n"
+        "+++ b/configs/internal.corp.invalid/app.json\n"
+        "@@ -0,0 +1 @@\n"
+        '+{"host": "internal.corp.invalid"}\n'
+    )
+
+    hits = scan_diff_for_leaks(diff, ("internal.corp.invalid",))
+
+    rendered = render_leak_hits(hits)
+    assert "internal.corp.invalid" not in rendered
+    assert "private marker #1" in rendered
+
+
+def test_a_signature_split_across_added_lines_is_still_found() -> None:
+    """A signature may span a wrapped header; matching line by line lost it."""
+
+    # The authorization-header signature allows whitespace between the header
+    # and its value, so a wrapped header matches the file's added text and not
+    # either line alone.
+    diff = (
+        "--- a/src/client.py\n"
+        "+++ b/src/client.py\n"
+        "@@ -0,0 +1,2 @@\n"
+        "+Authorization:\n"
+        "+  Bearer abcdefghijklmnopqrstuvwxyz0123456789\n"
+    )
+
+    hits = scan_diff_for_leaks(diff)
+
+    assert [hit.identification for hit in hits] == ["authorization-header"]
+
+
+def test_the_declaration_path_is_not_reported_beside_a_real_occurrence() -> None:
+    """Where a marker is defined is not where it leaked."""
+
+    diff = (
+        "--- a/.agentmarshal/project.json\n"
+        "+++ b/.agentmarshal/project.json\n"
+        "@@ -0,0 +1 @@\n"
+        '+{"leak_scan": {"private_markers": ["acme-internal"]}}\n'
+        "--- a/src/app.py\n"
+        "+++ b/src/app.py\n"
+        "@@ -0,0 +1 @@\n"
+        '+HOST = "acme-internal"\n'
+    )
+
+    hits = scan_diff_for_leaks(diff, ("acme-internal",))
+
+    assert [hit.path for hit in hits] == ["src/app.py"]
+
+
 def test_a_private_marker_is_named_by_position_not_by_value() -> None:
     """Scenario: a private marker is named by position, not by value."""
 

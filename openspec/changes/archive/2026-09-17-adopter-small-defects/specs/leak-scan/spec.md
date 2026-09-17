@@ -5,7 +5,9 @@ A leak-scan hit SHALL name the file it matched in and what matched: the
 signature's own identifier for a built-in signature, and the configured
 marker's position in the project's marker list for a private marker. It SHALL
 NOT print the matched text, nor the marker's value: a private marker is itself
-the sensitive string, which is why it is named by position.
+the sensitive string, which is why it is named by position. A path that itself
+contains a configured marker SHALL NOT be printed either, and SHALL be
+described in the same way the marker is.
 
 #### Scenario: a built-in signature names its file and itself
 - **WHEN** the scan matches a built-in signature in an added line
@@ -16,6 +18,11 @@ the sensitive string, which is why it is named by position.
 - **WHEN** the scan matches a configured private marker
 - **THEN** the hit names the file and which marker of the configured list
   matched, and the marker's value appears nowhere in the output
+
+#### Scenario: a path that carries a marker is described, not printed
+- **WHEN** the file a hit matched in has a path containing a configured marker
+- **THEN** the rendering describes the path by that marker's position and the
+  marker's value appears nowhere in the output
 
 #### Scenario: the merge boundary reports the same detail
 - **WHEN** the gate's added-content scan finds a hit

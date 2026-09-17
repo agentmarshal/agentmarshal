@@ -283,7 +283,7 @@ def test_sidecar_gate_complete_and_leak_scan_read_only_the_host(
     assert "Placement: sidecar" in report_output.err
 
     assert main(["leak-scan", "--base", base, "--commit", head]) == 1
-    assert "possible leak categories" in capsys.readouterr().out
+    assert "possible leaks in added content" in capsys.readouterr().out
     assert _tree_snapshot(host) == before
 
 

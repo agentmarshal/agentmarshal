@@ -1130,7 +1130,13 @@ def run_gate(
                 f"{merge_base}..{resolved_commit}",
             ],
         )
-        leak_hits = scan_diff_for_leaks(diff_text, markers)
+        # The declaration that a marker may match is the project file the
+        # markers were read from. In a sidecar that file is the sidecar's and
+        # the diff is the host's, so no path in the diff is it, and nothing is
+        # suppressed — which is the safe direction.
+        leak_hits = scan_diff_for_leaks(
+            diff_text, markers, config_path=_PROJECT_FILE if not sidecar else ""
+        )
     except (ValueError, CaptureError, GateError) as error:
         lines.append(f"WARN: leak-scan skipped ({error})")
     else:

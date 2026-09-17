@@ -284,10 +284,24 @@ class LeakHit:
     ``identification`` is either a public built-in signature name or a private
     marker's one-based configured position.  It deliberately never holds the
     matched text or a marker value.
+
+    Neither does ``path``: a repository can have a directory named after an
+    internal host, so a path may contain a marker, and naming the file would
+    disclose what naming the marker refused to. Such a path is replaced by
+    :func:`safe_path`, which says what it cannot say.
     """
 
     path: str
     identification: str
+
+
+def safe_path(path: str, private_markers: tuple[str, ...]) -> str:
+    """Return *path*, or a description of it when it carries a marker."""
+
+    for index, marker in enumerate(private_markers, start=1):
+        if marker and marker in path:
+            return f"<a path containing private marker #{index}>"
+    return path
 
 
 def render_leak_hits(hits: list[LeakHit]) -> str:
@@ -340,21 +354,34 @@ def _diff_path(header: str) -> str | None:
     path = header[4:]
     if path == "/dev/null":
         return None
+    # git's default destination prefix. A repository configured with
+    # diff.noprefix or diff.mnemonicPrefix emits something else, and the path
+    # is then taken as given: a wrong-looking path in a warning is a smaller
+    # fault than a stripped first character, and callers here build the diff
+    # themselves.
     return path[2:] if path.startswith("b/") else path
 
 
-def _line_hits(line: str, path: str) -> set[LeakHit]:
-    """Return built-in-signature hits for a single added line."""
+def _signature_hits(added_text: str, path: str) -> set[LeakHit]:
+    """Return built-in-signature hits over one file's added text.
+
+    Whole text rather than line by line: a signature may span a wrapped header,
+    and an earlier draft of this change narrowed those by matching each line on
+    its own.
+    """
 
     return {
         LeakHit(path, signature)
         for signature, pattern in _LEAK_PATTERNS
-        if pattern.search(line)
+        if pattern.search(added_text)
     }
 
 
 def scan_diff_for_leaks(
-    unified_diff: str, private_markers: tuple[str, ...] = ()
+    unified_diff: str,
+    private_markers: tuple[str, ...] = (),
+    *,
+    config_path: str = _PROJECT_CONFIG_PATH,
 ) -> list[LeakHit]:
     """Return location-safe leak hits from the *added* lines of a unified diff.
 
@@ -382,6 +409,9 @@ def scan_diff_for_leaks(
     # safe placeholder lets the pure parser still report a hand-written hunk
     # used by callers/tests rather than silently omitting a detected signature.
     current_path: str | None = "(unknown file)"
+    # Added lines are collected per file and matched together: a signature may
+    # span more than one line, and attribution still needs the file.
+    added_by_path: dict[str, list[str]] = {}
     lines = unified_diff.splitlines()
     index = 0
     total = len(lines)
@@ -404,12 +434,7 @@ def scan_diff_for_leaks(
             if body.startswith("+"):
                 added_line = body[1:]
                 if current_path is not None:
-                    hits.update(_line_hits(added_line, current_path))
-                    for marker_index, marker in enumerate(private_markers, start=1):
-                        if marker:
-                            marker_occurrences[marker_index].extend(
-                                [current_path] * added_line.count(marker)
-                            )
+                    added_by_path.setdefault(current_path, []).append(added_line)
                 new_remaining -= 1
             elif body.startswith("-"):
                 old_remaining -= 1
@@ -420,11 +445,27 @@ def scan_diff_for_leaks(
     # A declaration only self-matches when it is the marker's sole occurrence
     # in the scanned additions.  Any second occurrence, including one in the
     # same candidate diff, leaves every hit reportable.
+    for path, added_lines in added_by_path.items():
+        added_text = "\n".join(added_lines)
+        hits.update(_signature_hits(added_text, safe_path(path, private_markers)))
+        for marker_index, marker in enumerate(private_markers, start=1):
+            if marker and marker in added_text:
+                marker_occurrences[marker_index].append(path)
     for marker_index, occurrences in marker_occurrences.items():
-        if len(occurrences) == 1 and occurrences[0] == _PROJECT_CONFIG_PATH:
+        elsewhere = {path for path in occurrences if path != config_path}
+        if not elsewhere:
+            # Every occurrence is in the configuration that declares the
+            # marker. That is the declaration matching itself, which is what
+            # this rule exists to drop.
             continue
-        for path in set(occurrences):
-            hits.add(LeakHit(path, f"private-marker #{marker_index}"))
+        # The declaration's own path is not reported beside a real occurrence:
+        # it is where the marker is defined, not where it leaked.
+        for path in elsewhere:
+            hits.add(
+                LeakHit(
+                    safe_path(path, private_markers), f"private-marker #{marker_index}"
+                )
+            )
     return sorted(hits)
 
 
