@@ -1,0 +1,29 @@
+{
+  "advisory_findings": [
+    "ADV-EXPORT-TEST-DOES-NOT-PIN-ALL"
+  ],
+  "artifacts": [
+    {
+      "hash": "2ad8672940e778e05c41f79e61ee04429a1076c64c209a1e91b265d671b6ecb8",
+      "ref": ".agentmarshal/journal/tasks/CR-103/artifacts/01M2RVZC1TJ3AF1121R0NQXQFS-review.md"
+    }
+  ],
+  "created_at": "2026-09-17T23:42:04.858685Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "0ca8c9de586dc34434d9651f84dbc58524721c06",
+  "reviewed_contract": "85cfc1a0d227ae51c4ed26b6d9319386b55e2ee9a4977a821e90deb3ea41142e",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-103",
+  "tool_version": "0.3.0",
+  "verdict": "approved"
+}

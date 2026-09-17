@@ -1,0 +1,30 @@
+{
+  "advisory_findings": [
+    "ADV-SIDECAR-BELOW-IT-AMBIGUOUS",
+    "ADV-RENDER-LIMIT-NOT-IN-DOCSTRING"
+  ],
+  "artifacts": [
+    {
+      "hash": "2c9d7497fd022f11ca5fa4c3f956420c1ae0ccab87d7de8224bd92da13408fff",
+      "ref": ".agentmarshal/journal/tasks/CR-103/artifacts/01M2RV324HMPRWG289SWKBEQ6C-review.md"
+    }
+  ],
+  "created_at": "2026-09-17T23:26:37.201818Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "b72564daf990c9c8877e2ddcbb9901382839ac6c",
+  "reviewed_contract": "85cfc1a0d227ae51c4ed26b6d9319386b55e2ee9a4977a821e90deb3ea41142e",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-103",
+  "tool_version": "0.3.0",
+  "verdict": "approved"
+}

@@ -1,0 +1,30 @@
+{
+  "advisory_findings": [
+    "sidecar-doc-omits-the-bound-it-documents",
+    "gate-bound-constant-lost-its-rationale"
+  ],
+  "artifacts": [
+    {
+      "hash": "4dda91581c0ea7d6aa0b5a9ff005c6db7eac695d5e8ff53637ad4797a101d8a8",
+      "ref": ".agentmarshal/journal/tasks/CR-103/artifacts/01M2RT6DXG92CH90RGSXWVYVFM-review.md"
+    }
+  ],
+  "created_at": "2026-09-17T23:10:58.992341Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "09ae82d2bc58ba71eec6fbb57037eb215f232f9f",
+  "reviewed_contract": "85cfc1a0d227ae51c4ed26b6d9319386b55e2ee9a4977a821e90deb3ea41142e",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-103",
+  "tool_version": "0.3.0",
+  "verdict": "approved"
+}
