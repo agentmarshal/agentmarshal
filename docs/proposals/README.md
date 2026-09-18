@@ -95,11 +95,11 @@ brought it forward, and 022 put a decision record in front of it.
 | [016](016-reviewer-prose-not-durable-in-the-published-release.md) | Reviewer prose is not durable in the published release | D | accepted *(third request met in another shape)* | 0.4.0 carries the fix |
 | [017](017-provider-template-gate-check-structurally-red.md) | The shipped template's gate check is red on every implementation PR | D | accepted | 0.4.0, onboarding |
 | [018](018-session-activity-vocabulary-and-cost.md) | No activity for a coordinating role, no place for cost | D | accepted *(cost deferred)* | 0.4.0 for the activity; the cost field with the accounting rework |
-| [019](019-journal-transactions-assume-direct-commits.md) | Journal transactions assume direct commits to the base | D | accepted | 0.4.0, templates |
+| [019](019-journal-transactions-assume-direct-commits.md) | Journal transactions assume direct commits to the base | D | accepted | not in 0.4.0; still accepted, see its dated note |
 | [020](020-leak-scan-names-no-file-and-self-matches.md) | `leak-scan` names no file, and matches its own markers | D | accepted *(third part deferred)* | 0.4.0 for the first two; the third with the decision record that adds the record type |
 | [021](021-reviewer-stderr-discarded-on-success.md) | A reviewer command's stderr is discarded on success | D | accepted | 0.4.0 |
 | [022](022-amendments-invisible-to-the-reviewer.md) | Contract amendments are invisible to the reviewer | D | accepted | decision record, then 0.4.0 |
-| [023](023-upstream-outbox-has-no-transaction.md) | The outbox has a convention but no transaction | D | accepted | 0.4.0 for the documentation; the command in 0.5.0 |
+| [023](023-upstream-outbox-has-no-transaction.md) | The outbox has a convention but no transaction | D | accepted | 0.4.0 for the documentation; the command not yet shipped |
 
 ## Batch of 2026-08-30
 

@@ -15,6 +15,12 @@ reviewed as evidence, while the ordinary diff lane has gained more explicit
 inputs and checks. The release also closes several paths where the tool's
 writer, gate, or diagnostics disagreed with the evidence model.
 
+Three record schemas are new, and 0.3.0 cannot read a journal containing any of
+them: schema 4 for a finding and the records bound to one, schema 5 for a
+review carrying the hash of its contract — every review `agentmarshal review`
+records — and schema 6 for a coordination session. Read
+[UPGRADING.md](UPGRADING.md) before any of them is written to a shared journal.
+
 ### Findings land as evidence, not a diff (CR-085, CR-086, CR-101)
 
 ADR-0009 defines the findings lane. An empty-scope research task can record a
@@ -38,7 +44,8 @@ machine-local files it does not commit recorded in its manifest.
 ### Review evidence names both prose and contract (CR-091, CR-092, CR-095, CR-096)
 
 Accepted reviewer output is kept once as a hash-pinned journal artifact and
-validated under the same collision and append-only rules as records; a refusal
+validated under the same collision and append-only rules as records, and
+`submit-review --prose FILE` attaches human prose the same way; a refusal
 that is foreseeable before writing leaves no orphan artifact. Briefs and review
 prompts show that a contract was amended, when, and why, and reviews record the
 hash of the contract text they judged.

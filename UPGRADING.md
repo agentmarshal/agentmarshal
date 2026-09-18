@@ -34,6 +34,27 @@ journal fails closed.
    record with the message above; upgrade that reader rather than editing the
    journal to remove evidence.
 
+### Per installation method
+
+**Pinned (`agentmarshal==0.3.0`)** — change the pin to `==0.4.0` and reinstall.
+
+**Unpinned (`pip install agentmarshal`)** — an unpinned install does not move on
+its own where the requirement is already satisfied; it moves on a fresh
+environment, on `pip install -U`, or when a container is rebuilt. For this
+upgrade that divergence is not harmless: an unpinned CI runner still on 0.3.0 is
+exactly the missed reader the procedure above warns about. Pin, or upgrade it
+explicitly.
+
+### Commit the review's prose with its record
+
+`agentmarshal review` now keeps the reviewer's output as a journal artifact
+under the task's `artifacts/` directory and pins its SHA-256 in the review
+record (CR-091); on success it no longer leaves a temporary copy.
+`submit-review --prose FILE` attaches human prose the same way. `validate`
+fails when a review record pins an artifact that is missing, so a wrapper that
+stages only `records/` must also stage `artifacts/` from the first review
+recorded with 0.4.0.
+
 ### Contract headers gain schema 2
 
 Contract headers that carry `decisions`, `documents` or `extensions` use

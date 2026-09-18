@@ -166,9 +166,12 @@ boundary is stated in the ADRs and
   candidate's additions. Making a match block is roadmap. The scan is
   best-effort by design (ADR-0005) — never a guarantee. The blocking mode is
   designed in ADR-0005.
-- **Further contract metadata** — a threat-model field and any enforcement
-  built from it. This is a direction, not yet a design: no document specifies
-  it. It is separate from the active contract `extensions` field in ADR-0010.
+- **Further contract metadata** — required machine-readable acceptance
+  criteria that the gate enforces, so every merged task doubles as an
+  evaluation case, plus a threat-model field. Today acceptance criteria are
+  required by convention only (ADR-0004). This is a direction, not yet a
+  design: no document specifies it. It is separate from the active contract
+  `extensions` field in ADR-0010.
 - **Broader providers** — first-class GitHub, GitFlic, and self-hosted rails.
   A direction, not yet a design: no document specifies it.
 
