@@ -29,7 +29,7 @@ independence check is a string comparison, not evidence of human involvement.
 AgentMarshal governs its own development. Everything under
 `.agentmarshal/journal/` is real: the task contracts we worked to, the review
 verdicts bound to exact commit SHAs, the lifecycle records, and the
-token-economics measurements of what each task actually cost. The tool's
+token-economics measurements of what each task consumed. The tool's
 guarantees are demonstrated on the tool's own history — not just described.
 
 We opened this repository with its **full history** on purpose — the mistakes,
@@ -50,7 +50,7 @@ historical 0.1.0 boundary and note what has changed since:
   acceptance array was empty in every contract through CR-038 — without
   backfilling any historical record.
 
-To see how the project actually evolved, token costs and all, read the journal.
+To see how the project actually evolved, token spend and all, read the journal.
 
 ## Status
 

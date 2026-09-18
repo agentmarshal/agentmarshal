@@ -69,6 +69,17 @@ command that reads your outbox, hashes each finding and reports its state back
 to you is proposed in [023](023-upstream-outbox-has-no-transaction.md) and
 accepted for a later release.
 
+## Batch of 2026-09-18
+
+One finding from the reporter of the batch below, after twelve governed tasks
+with three executor models: the journal measures tokens, while the provider
+stopped work on an allowance of its own, so the evidence pointed away from the
+decision it was supposed to support. Accepted in part.
+
+| # | Theme | Reporter | Disposition | Where |
+|---|---|---|---|---|
+| [024](024-provider-quota-stop-cannot-be-recorded.md) | A provider quota stop cannot be recorded | D | accepted *(reset-time field deferred)* | default branch for the outcome value and the tokens-are-not-cost statement; the field with the accounting rework |
+
 ## Batch of 2026-09-16
 
 From one adopter who installed the published 0.3.0 on a new repository and ran

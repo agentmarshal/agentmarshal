@@ -415,11 +415,12 @@ AGENTMARSHAL_PIPELINE_OK_SHA="$IMPL" \
 git add .agentmarshal && git commit -m "complete CR-001"
 ```
 
-### 7. Record what the task cost
+### 7. Record what the task consumed
 
-Now, not earlier: a task's cost is known when it ends. AgentMarshal accepts a
-session record after the task is closed for exactly this reason — a session
-changes no state, so recording one cannot revive or alter a finished task.
+Now, not earlier: what a task consumed is known when it ends. AgentMarshal
+accepts a session record after the task is closed for exactly this reason — a
+session changes no state, so recording one cannot revive or alter a finished
+task.
 
 This is a 0.3.0 capability. 0.2.0 refuses a session record for a task that is
 not open, answering `task CR-001 is not open (state: done)` — worth knowing if
@@ -440,6 +441,15 @@ provider logs, which is the usual case for an external executor. Omit both
 usage flags when the provenance is unavailable; the report calls those counts
 unrecorded rather than silently treating them as provider-reported.
 
+Token counts are what the record measures, not what a provider charges. A
+provider that meters an allowance in its own units stops work when that
+allowance runs out, and a comparison of models by tokens can point the other
+way from one by the allowance each consumed. `--outcome` is required free text:
+the tool refuses an empty value but does not check or count which word you use.
+For a session the provider refused to continue, use `provider-limit`, so that
+such a session reads differently from a crash and journals from different
+projects say the same thing the same way.
+
 Then commit it, like every other record:
 
 ```sh
@@ -448,11 +458,11 @@ git add .agentmarshal && git commit -m "record CR-001 economics"
 
 That commit is a **journal-only additive candidate**, which the gate accepts
 against a task that is already closed — its measurements-only lane exists for
-exactly this. Leaving the record uncommitted would defeat the point: the cost
-would live in a working tree instead of in git, which is the thing this project
+exactly this. Leaving the record uncommitted would defeat the point: the
+measurement would live in a working tree instead of in git, which is the thing this project
 exists to stop.
 
-Nothing calls this for you. Recording the cost is a step of your loop — put it
+Nothing calls this for you. Recording the measurement is a step of your loop — put it
 in whatever wrapper runs the loop, or it will not happen.
 
 ### 8. Inspect the evidence
