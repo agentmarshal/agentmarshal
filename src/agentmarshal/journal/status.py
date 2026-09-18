@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from agentmarshal.journal.contracts import ContractHeader, parse_contract
 from agentmarshal.journal.records import (
@@ -13,6 +14,21 @@ from agentmarshal.journal.records import (
     read_records,
     validate_task_id,
 )
+
+# The record types a writer may ask the guard about, as a type rather than a
+# string: mypy refuses a typo at the call site, and the guard's own runtime
+# refusal then covers only a caller outside this package.
+WritableRecordType = Literal[
+    "opened",
+    "review",
+    "acceptance",
+    "session",
+    "amendment",
+    "finding",
+    "completed",
+    "abandoned",
+    "reopened",
+]
 
 _RECORD_TYPE_STATES: Mapping[str, str | None] = {
     "opened": "open",
@@ -26,6 +42,7 @@ _RECORD_TYPE_STATES: Mapping[str, str | None] = {
     "reopened": "open",
 }
 _TERMINAL_RECORD_TYPES = frozenset({"completed", "abandoned"})
+_RECORD_TYPES_ADMITTED_AFTER_TERMINAL = frozenset({"session", "reopened"})
 
 
 class TaskStatusError(ValueError):
@@ -56,7 +73,10 @@ def project_status(records: Sequence[Mapping[str, object]]) -> str:
         # record projects to no state and may accrue after a terminal
         # record. Reopening is the sole lifecycle mutation admitted after
         # completion; all work records remain forbidden until it occurs.
-        if has_terminal_record and record_type not in {"session", "reopened"}:
+        if (
+            has_terminal_record
+            and record_type not in _RECORD_TYPES_ADMITTED_AFTER_TERMINAL
+        ):
             raise TaskStatusError("task has a lifecycle record after a terminal record")
         if record_type == "reopened":
             if not has_terminal_record:
@@ -96,6 +116,41 @@ def load_task_status(journal_root: Path, task_id: str) -> TaskStatus:
             f"{task_directory / 'contract.md'}"
         )
     return TaskStatus(task_id, contract, records, project_status(records))
+
+
+def load_task_for_record(
+    journal_root: Path, task_id: str, record_type: WritableRecordType
+) -> TaskStatus:
+    """Load a task and refuse a record its terminal projection cannot admit."""
+
+    if record_type not in _RECORD_TYPE_STATES:
+        # An unknown type would silently fall on the refusing side, and a typo
+        # towards "session" would start refusing the cost step of a completed
+        # task. The projection's own table decides what a record type is.
+        raise TaskStatusError(f"unknown record type: {record_type!r}")
+    task = load_task_status(journal_root, task_id)
+    if record_type == "reopened":
+        # The projection admits a reopening only from `done`: not while the
+        # task is open, and not after abandonment. The admitted set cannot
+        # express that — it does not know which record closed the task — so
+        # the predicate lives here once, and the CLI no longer keeps a copy of
+        # it. The copy was correct; it was a copy.
+        if task.state != "done":
+            raise TaskStatusError(
+                f"task {task_id} cannot be reopened (state: {task.state})"
+            )
+        return task
+    if task.state == "open":
+        return task
+    if record_type not in _RECORD_TYPES_ADMITTED_AFTER_TERMINAL:
+        admitted = (
+            "a measurement or a reopening" if task.state == "done" else "a measurement"
+        )
+        raise TaskStatusError(
+            f"task {task_id} is not open (state: {task.state}); "
+            f"its terminal record admits only {admitted}"
+        )
+    return task
 
 
 def list_task_statuses(journal_root: Path) -> list[TaskStatus]:

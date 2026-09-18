@@ -10,7 +10,7 @@ from agentmarshal.journal.records import (
     create_session_record,
     write_record,
 )
-from agentmarshal.journal.status import TaskStatusError, load_task_status
+from agentmarshal.journal.status import TaskStatusError, load_task_for_record
 
 
 class SessionRecordError(Exception):
@@ -47,7 +47,7 @@ def record_session(
     """
 
     try:
-        load_task_status(journal_root, task_id)
+        load_task_for_record(journal_root, task_id, "session")
         record = create_session_record(
             task_id,
             __version__,

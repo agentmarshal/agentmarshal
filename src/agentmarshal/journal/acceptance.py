@@ -11,7 +11,7 @@ from agentmarshal.journal.records import (
     create_acceptance_record,
     write_record,
 )
-from agentmarshal.journal.status import TaskStatusError, load_task_status
+from agentmarshal.journal.status import TaskStatusError, load_task_for_record
 
 
 class AcceptanceError(Exception):
@@ -31,11 +31,7 @@ def accept_findings(
     """Validate and append acceptance of the latest review's findings."""
 
     try:
-        task = load_task_status(journal_root, task_id)
-        if task.state != "open":
-            raise AcceptanceError(
-                f"task {task_id} has a terminal record (state: {task.state})"
-            )
+        task = load_task_for_record(journal_root, task_id, "acceptance")
         if (accepted_commit is None) == (accepted_finding is None):
             raise AcceptanceError(
                 "acceptance must name exactly one of accepted_commit or "

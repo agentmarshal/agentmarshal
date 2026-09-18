@@ -35,7 +35,7 @@ from agentmarshal.journal.gate import finding_reviewer_identity_refusal
 from agentmarshal.journal.records import (
     _REVIEW_VERDICTS as REVIEW_VERDICTS,
 )
-from agentmarshal.journal.status import TaskStatusError, load_task_status
+from agentmarshal.journal.status import TaskStatusError, load_task_for_record
 from agentmarshal.journal.submit_review import (
     ReviewSubmitError,
     submit_review,
@@ -819,7 +819,7 @@ def _launch_finding_review(
     """Review verified finding artifacts and bind the resulting record to it."""
 
     try:
-        task = load_task_status(journal_root, task_id)
+        task = load_task_for_record(journal_root, task_id, "review")
     except (OSError, TaskStatusError, ValueError) as error:
         raise ReviewLaunchError(str(error)) from error
     task_findings = [
@@ -839,10 +839,6 @@ def _launch_finding_review(
         raise ReviewLaunchError(
             f"reviewed finding {reviewed_finding} is not the latest finding of task "
             f"{task_id}; latest finding is {latest_finding_id}"
-        )
-    if task.state != "open":
-        raise ReviewLaunchError(
-            f"task {task_id} is already closed (state: {task.state})"
         )
     if task.contract.scope:
         raise ReviewLaunchError(
@@ -1003,7 +999,7 @@ def launch_review(
     if commit is None or base is None:
         raise ReviewLaunchError("a commit review requires both commit and base")
     try:
-        task = load_task_status(journal_root, task_id)
+        task = load_task_for_record(journal_root, task_id, "review")
     except (OSError, TaskStatusError, ValueError) as error:
         raise ReviewLaunchError(str(error)) from error
     resolved_commit = _resolve_commit(project_root, commit)

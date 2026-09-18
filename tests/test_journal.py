@@ -9,7 +9,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -31,6 +31,11 @@ from agentmarshal.journal.open_task import TaskOpenError, journal_root, open_tas
 from agentmarshal.journal.records import (
     create_abandoned_record,
     create_completed_record,
+)
+from agentmarshal.journal.status import (
+    TaskStatusError,
+    WritableRecordType,
+    load_task_for_record,
 )
 
 
@@ -2501,3 +2506,210 @@ def test_record_session_still_refuses_an_invalid_record(
     )
 
     assert "activity" in capsys.readouterr().err
+
+
+def test_the_guard_refuses_a_record_type_the_projection_does_not_know(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unknown type would fall on the refusing side without saying so.
+
+    A caller typo towards "session" would start refusing the cost step of a
+    completed task, and only the projection's own table knows what a record
+    type is."""
+
+    repo = tmp_path / "repo"
+    root = initialize_status_repo(repo)
+    monkeypatch.chdir(repo)
+    assert main(["open", "--title", "Task"]) == 0
+
+    # The parameter is a Literal, so mypy refuses this at any typed call site;
+    # the cast is what a caller outside this package looks like, and the
+    # runtime refusal exists for exactly that caller.
+    with pytest.raises(TaskStatusError, match="unknown record type"):
+        load_task_for_record(root, "CR-001", cast(WritableRecordType, "sessions"))
+
+
+def _terminal_task(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record_type: str = "completed",
+) -> tuple[Path, Path]:
+    repo = tmp_path / "repo"
+    root = initialize_status_repo(repo)
+    monkeypatch.chdir(repo)
+    assert main(["open", "--title", "Task"]) == 0
+    if record_type == "completed":
+        record = create_completed_record("CR-001", "test", "a" * 40)
+    else:
+        record = create_abandoned_record("CR-001", "test", "Superseded")
+    write_record(root, "CR-001", record)
+    return repo, root
+
+
+def _submit_review_arguments() -> list[str]:
+    return [
+        "submit-review",
+        "--task",
+        "CR-001",
+        "--commit",
+        "a" * 40,
+        "--verdict",
+        "approved",
+        "--role",
+        "reviewer",
+        "--vendor",
+        "human",
+        "--model",
+        "none",
+        "--email",
+        "reviewer@test.invalid",
+    ]
+
+
+def test_a_verdict_is_refused_on_a_completed_task(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a verdict is refused on a completed task."""
+
+    _repo, root = _terminal_task(tmp_path, monkeypatch)
+    before = read_records(root, "CR-001")
+    capsys.readouterr()
+
+    assert main(_submit_review_arguments()) == 1
+    assert "state: done" in capsys.readouterr().err
+    assert read_records(root, "CR-001") == before
+    assert main(["validate"]) == 0
+
+
+def test_a_verdict_is_refused_on_an_abandoned_task(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a verdict is refused on an abandoned task."""
+
+    _repo, root = _terminal_task(tmp_path, monkeypatch, "abandoned")
+    before = read_records(root, "CR-001")
+    capsys.readouterr()
+
+    assert main(_submit_review_arguments()) == 1
+    assert "state: abandoned" in capsys.readouterr().err
+    assert read_records(root, "CR-001") == before
+    assert main(["validate"]) == 0
+
+
+def test_a_measurement_is_still_accepted_after_completion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Scenario: a measurement is still accepted after completion."""
+
+    _repo, root = _terminal_task(tmp_path, monkeypatch)
+
+    assert (
+        main(
+            [
+                "record-session",
+                "--task",
+                "CR-001",
+                "--role",
+                "implementer",
+                "--actor",
+                "agent",
+                "--activity",
+                "implementation",
+                "--outcome",
+                "success",
+                "--input-tokens",
+                "1",
+                "--output-tokens",
+                "2",
+                "--cache-tokens",
+                "3",
+            ]
+        )
+        == 0
+    )
+    assert read_records(root, "CR-001")[-1]["record_type"] == "session"
+    assert main(["validate"]) == 0
+
+
+def test_a_reopening_is_still_accepted_after_completion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Scenario: a reopening is still accepted after completion."""
+
+    _repo, root = _terminal_task(tmp_path, monkeypatch)
+
+    assert main(["reopen", "--task", "CR-001", "--reason", "Missed work"]) == 0
+    assert read_records(root, "CR-001")[-1]["record_type"] == "reopened"
+    assert main(["validate"]) == 0
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        _submit_review_arguments(),
+        [
+            "accept",
+            "--task",
+            "CR-001",
+            "--commit",
+            "a" * 40,
+            "--by",
+            "operator@test.invalid",
+            "--reason",
+            "Too late",
+        ],
+        ["amend", "--task", "CR-001", "--reason", "Too late"],
+        [
+            "finding",
+            "--task",
+            "CR-001",
+            "--summary",
+            "Too late",
+            "--artifact",
+            "evidence.txt=" + "a" * 64,
+        ],
+        [
+            "complete",
+            "--task",
+            "CR-001",
+            "--commit",
+            "a" * 40,
+            "--base",
+            "b" * 40,
+        ],
+        ["abandon", "--task", "CR-001", "--reason", "Too late"],
+    ],
+)
+@pytest.mark.parametrize(
+    ("terminal_record", "state"),
+    [("completed", "done"), ("abandoned", "abandoned")],
+)
+def test_every_writing_command_refuses_a_closed_task(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    arguments: list[str],
+    terminal_record: str,
+    state: str,
+) -> None:
+    """Scenario: every writing command refuses a closed task.
+
+    Both terminal states, every command: the criterion reads "for each terminal
+    state", and a review of the first attempt found `abandoned` covered for one
+    command out of six."""
+
+    _repo, root = _terminal_task(tmp_path, monkeypatch, terminal_record)
+    before = read_records(root, "CR-001")
+    capsys.readouterr()
+
+    assert main(arguments) == 1
+    assert f"state: {state}" in capsys.readouterr().err
+    assert read_records(root, "CR-001") == before
+    assert main(["validate"]) == 0

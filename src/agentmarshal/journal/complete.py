@@ -24,7 +24,7 @@ from agentmarshal.journal.records import (
     create_completed_record,
     write_record,
 )
-from agentmarshal.journal.status import TaskStatusError, load_task_status
+from agentmarshal.journal.status import TaskStatusError, load_task_for_record
 
 
 class LifecycleError(Exception):
@@ -50,11 +50,9 @@ def complete_task(
 
     journal_root = project_root / ".agentmarshal" / "journal"
     try:
-        task = load_task_status(journal_root, task_id)
+        load_task_for_record(journal_root, task_id, "completed")
     except (OSError, TaskStatusError, ValueError) as error:
         raise LifecycleError(str(error)) from error
-    if task.state != "open":
-        raise LifecycleError(f"task {task_id} is not open (state: {task.state})")
     try:
         report = run_gate(project_root, task_id, commit, base, pipeline_sha)
     except GateError as error:
@@ -73,11 +71,9 @@ def complete_findings_task(journal_root: Path, task_id: str) -> CompletionResult
     """Gate the latest finding and bind completion to it on success."""
 
     try:
-        task = load_task_status(journal_root, task_id)
+        load_task_for_record(journal_root, task_id, "completed")
     except (OSError, TaskStatusError, ValueError) as error:
         raise LifecycleError(str(error)) from error
-    if task.state != "open":
-        raise LifecycleError(f"task {task_id} is not open (state: {task.state})")
     try:
         report = run_findings_gate(journal_root, task_id)
     except GateError as error:
@@ -105,11 +101,9 @@ def abandon_task(project_root: Path, task_id: str, reason: str) -> Path:
         raise LifecycleError("abandon reason must not be empty")
     journal_root = project_root / ".agentmarshal" / "journal"
     try:
-        task = load_task_status(journal_root, task_id)
+        load_task_for_record(journal_root, task_id, "abandoned")
     except (OSError, TaskStatusError, ValueError) as error:
         raise LifecycleError(str(error)) from error
-    if task.state != "open":
-        raise LifecycleError(f"task {task_id} is not open (state: {task.state})")
     try:
         record = create_abandoned_record(task_id, __version__, reason)
         return write_record(journal_root, task_id, record)

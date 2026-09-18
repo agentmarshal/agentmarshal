@@ -61,6 +61,7 @@ from agentmarshal.journal.status import (
     TaskStatus,
     TaskStatusError,
     list_task_statuses,
+    load_task_for_record,
     load_task_status,
 )
 from agentmarshal.journal.submit_review import ReviewSubmitError, submit_review
@@ -877,11 +878,7 @@ def _run_complete(args: argparse.Namespace, stderr: TextIO) -> int:
             report = result.report
             record_path = result.record_path
         elif placement.is_sidecar:
-            task = load_task_status(placement.journal_root, args.task)
-            if task.state != "open":
-                raise LifecycleError(
-                    f"task {args.task} is not open (state: {task.state})"
-                )
+            load_task_for_record(placement.journal_root, args.task, "completed")
             report = run_gate(
                 placement.host_root,
                 args.task,
@@ -955,11 +952,7 @@ def _run_finding(args: argparse.Namespace, stderr: TextIO) -> int:
             return 1
         artifacts.append({"ref": reference, "hash": digest})
     try:
-        task = load_task_status(placement.journal_root, args.task)
-        if task.state != "open":
-            raise TaskStatusError(
-                f"task {args.task} has a terminal record (state: {task.state})"
-            )
+        load_task_for_record(placement.journal_root, args.task, "finding")
         record = create_finding_record(args.task, __version__, args.summary, artifacts)
         record_path = write_record(placement.journal_root, args.task, record)
     except (JournalRecordError, OSError, TaskStatusError, ValueError) as error:
@@ -992,11 +985,7 @@ def _run_reopen(args: argparse.Namespace, stderr: TextIO) -> int:
         return 1
     journal_root = placement.journal_root
     try:
-        task = load_task_status(journal_root, args.task)
-        if task.state != "done":
-            raise TaskStatusError(
-                f"task {args.task} cannot be reopened (state: {task.state})"
-            )
+        load_task_for_record(journal_root, args.task, "reopened")
         record = create_reopened_record(args.task, __version__, args.reason)
         record_path = write_record(journal_root, args.task, record)
     except (JournalRecordError, OSError, TaskStatusError, ValueError) as error:
@@ -1016,9 +1005,7 @@ def _run_amend(args: argparse.Namespace, stderr: TextIO) -> int:
         return 1
     journal_root = placement.journal_root
     try:
-        task = load_task_status(journal_root, args.task)
-        if task.state != "open":
-            raise TaskStatusError(f"task {args.task} is not open (state: {task.state})")
+        load_task_for_record(journal_root, args.task, "amendment")
         record = create_amendment_record(args.task, __version__, args.reason)
         record_path = write_record(journal_root, args.task, record)
     except (JournalRecordError, OSError, TaskStatusError, ValueError) as error:

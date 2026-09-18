@@ -14,7 +14,7 @@ from agentmarshal.journal.records import (
     validate_record_for_write,
     write_record,
 )
-from agentmarshal.journal.status import TaskStatusError, load_task_status
+from agentmarshal.journal.status import TaskStatusError, load_task_for_record
 
 
 class ReviewSubmitError(Exception):
@@ -52,7 +52,7 @@ def submit_review(
     """Validate and record a review against an opened task."""
 
     try:
-        load_task_status(journal_root, task_id)
+        load_task_for_record(journal_root, task_id, "review")
         record = create_review_record(
             task_id,
             __version__,
