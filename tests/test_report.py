@@ -27,6 +27,10 @@ def _initialize_repo(repo: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     subprocess.run(["git", "init", "--quiet"], cwd=repo, check=True)
     monkeypatch.chdir(repo)
     assert main(["init"]) == 0
+    project_path = repo / ".agentmarshal" / "project.json"
+    project = json.loads(project_path.read_text(encoding="utf-8"))
+    project["capture"] = {"overrides": {"reviews": "commit"}}
+    project_path.write_text(json.dumps(project), encoding="utf-8")
     return repo / ".agentmarshal" / "journal"
 
 

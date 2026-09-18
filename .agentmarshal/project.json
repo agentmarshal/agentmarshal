@@ -1,6 +1,11 @@
 {
   "schema": 1,
   "preset": "minimal",
+  "capture": {
+    "overrides": {
+      "reviews": "commit"
+    }
+  },
   "runtime_config": ".agentmarshal/config/runtime.conf",
   "journal_root": ".agentmarshal/journal",
   "agents_dir": "agentmarshal/agents",

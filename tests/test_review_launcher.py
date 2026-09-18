@@ -58,6 +58,10 @@ def _review_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path,
     )
     monkeypatch.chdir(repo)
     assert main(["init"]) == 0
+    project_path = repo / ".agentmarshal" / "project.json"
+    project = json.loads(project_path.read_text(encoding="utf-8"))
+    project["capture"] = {"overrides": {"reviews": "commit"}}
+    project_path.write_text(json.dumps(project), encoding="utf-8")
     assert main(["open", "--title", "Review task"]) == 0
     _git(repo, "add", ".agentmarshal")
     _git(
@@ -1827,6 +1831,10 @@ def test_rejected_verdict_still_keeps_the_prose(
     """Scenario: a rejected verdict still keeps the prose."""
 
     repo, commit = _review_repo(tmp_path, monkeypatch)
+    project_path = repo / ".agentmarshal" / "project.json"
+    project = json.loads(project_path.read_text(encoding="utf-8"))
+    project["capture"] = {"preset": "minimal"}
+    project_path.write_text(json.dumps(project), encoding="utf-8")
     output = "prose from a rejected verdict\nAGENTMARSHAL_VERDICT_BEGIN\n{}\n"
     output += "AGENTMARSHAL_VERDICT_END\n"
     stub = _reviewer_stub(tmp_path, output)

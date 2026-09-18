@@ -45,6 +45,7 @@ def _repo(
     assert main(["init"]) == 0
     project_path = repo / ".agentmarshal" / "project.json"
     project = json.loads(project_path.read_text(encoding="utf-8"))
+    project["capture"] = {"overrides": {"reviews": "commit"}}
     project["actors"] = {"researcher": {"git_identities": ["recorder@test.invalid"]}}
     project_path.write_text(json.dumps(project), encoding="utf-8")
     arguments = ["open", "--title", "Research"]

@@ -16,7 +16,9 @@ from agentmarshal.journal.acceptance import AcceptanceError, accept_findings
 from agentmarshal.journal.brief import build_brief
 from agentmarshal.journal.capture import (
     CaptureError,
+    CaptureLevel,
     render_leak_hits,
+    review_capture_level_from_journal,
     scan_diff_for_leaks,
 )
 from agentmarshal.journal.complete import (
@@ -610,6 +612,19 @@ def _run_submit_review(args: argparse.Namespace, stderr: TextIO) -> int:
     # argparse enforces exactly one of --commit / --reviewed-finding; --finding
     # keeps its one meaning, a blocking finding id, under either binding.
     try:
+        if args.prose is not None:
+            try:
+                prose_capture_level = review_capture_level_from_journal(
+                    placement.journal_root
+                )
+            except (CaptureError, ValueError) as error:
+                raise ReviewSubmitError(str(error)) from error
+            if prose_capture_level is not CaptureLevel.COMMIT:
+                raise ReviewSubmitError(
+                    "review prose cannot be kept at capture level "
+                    f"{prose_capture_level.value!r}; set "
+                    'capture.overrides.reviews = "commit" to permit it'
+                )
         prose = args.prose.read_bytes() if args.prose is not None else None
         submitted = submit_review(
             placement.journal_root,
@@ -734,6 +749,8 @@ def _run_review(args: argparse.Namespace, stderr: TextIO) -> int:
         print(f"reviewer prose pinned: {submitted.artifact_ref}", file=stderr)
     if submitted.diagnostics_note is not None:
         print(submitted.diagnostics_note, file=stderr)
+    if submitted.prose_note is not None:
+        print(submitted.prose_note, file=stderr)
     print(submitted.record_path)
     return 0
 

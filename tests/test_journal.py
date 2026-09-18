@@ -43,7 +43,10 @@ def initialize_status_repo(repo: Path) -> Path:
     init_git_repo(repo)
     project_file = repo / ".agentmarshal" / "project.json"
     project_file.parent.mkdir()
-    project_file.write_text('{"schema": 1}\n', encoding="utf-8")
+    project_file.write_text(
+        '{"schema": 1, "capture": {"overrides": {"reviews": "commit"}}}\n',
+        encoding="utf-8",
+    )
     return journal_root(repo)
 
 
