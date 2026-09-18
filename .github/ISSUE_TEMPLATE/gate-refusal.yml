@@ -1,0 +1,43 @@
+name: Gate refusal
+description: Report a gate refusal whose reason is unclear. A confusing refusal is itself a finding.
+title: "Gate refusal: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Include the full gate transcript and the command you ran. Reports may be in any language; public artifacts are English.
+  - type: textarea
+    id: command
+    attributes:
+      label: Command
+      description: Paste the exact command that the gate refused.
+    validations:
+      required: true
+  - type: textarea
+    id: transcript
+    attributes:
+      label: Full gate transcript
+      description: Paste the complete output, including the failing check named by the gate.
+    validations:
+      required: true
+  - type: textarea
+    id: unclear_reason
+    attributes:
+      label: Why the reason is unclear
+      description: Say what you expected the output to identify and what it did not make clear.
+    validations:
+      required: true
+  - type: textarea
+    id: version
+    attributes:
+      label: Version
+      description: Output of `agentmarshal --version`.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Python version, and git provider (GitHub / GitFlic / self-hosted).
+    validations:
+      required: true

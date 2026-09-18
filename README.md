@@ -92,9 +92,13 @@ Windows is untested.)
 ## Quickstart
 
 New to the idea? [docs/overview.md](docs/overview.md) explains the purpose,
-the design, and the vocabulary (host repo, task, gate, …) in a page. The whole
-loop, inside a git repository — see [docs/quickstart.md](docs/quickstart.md)
-for the annotated walkthrough with a full configuration reference:
+the design, and the vocabulary (host repo, task, gate, …) in a page. For every
+guide, decision, finding, and contributor workflow, see the
+[documentation map](docs/README.md).
+
+The whole loop, inside a git repository — see
+[docs/quickstart.md](docs/quickstart.md) for the annotated walkthrough with a
+full configuration reference:
 
 ```sh
 agentmarshal init                                     # write .agentmarshal/

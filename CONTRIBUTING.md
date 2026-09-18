@@ -5,6 +5,9 @@ agent work with durable, SHA-bound evidence, and it holds itself to the same
 rules it ships. Two things below are unusual enough to read before you start —
 the **language rule** and the **governed contribution flow**.
 
+One person maintains this project, so replies may take days. No response-time
+promise is made.
+
 ## Language
 
 The rule differs by artifact, because the two have different jobs.
@@ -90,6 +93,8 @@ project has already had to correct in its own journal.
 
 For a pull request from a fork this matters more, not less: a fork PR is an
 untrusted boundary — see [docs/github-enforcement.md](docs/github-enforcement.md).
+Who records the independent review for a pull request from a fork is not yet
+settled; if you need one, say so in the pull request's description.
 
 If your change is refused by the gate, the output names the failing check. Open
 an issue if the reason is not clear; a confusing refusal is itself a finding we
