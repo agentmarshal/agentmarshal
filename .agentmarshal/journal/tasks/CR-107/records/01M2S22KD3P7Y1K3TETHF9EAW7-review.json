@@ -1,0 +1,32 @@
+{
+  "advisory_findings": [
+    "gate-runs-candidate-source-overstated",
+    "gate-comments-paraphrase-template"
+  ],
+  "artifacts": [
+    {
+      "hash": "9510f0b60d1d2bfe04f387eecda6821f85b36a0bde7e8ef8d3557bea4cfcf6b1",
+      "ref": ".agentmarshal/journal/tasks/CR-107/artifacts/01M2S22KD3P7Y1K3TETHF9EAW7-review.md"
+    }
+  ],
+  "created_at": "2026-09-18T01:28:42.147196Z",
+  "findings": [
+    "unpublished-rfc-pointer-remains"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "651c921754b7274c1517e8f6d11ca2ba067866c1",
+  "reviewed_contract": "83cb1fbd6ebf92fc3593436e1b36e1cc3286b77da3570ca1f9a9f9c504dc8fc3",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-107",
+  "tool_version": "0.3.0",
+  "verdict": "changes_required"
+}
