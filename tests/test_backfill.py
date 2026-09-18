@@ -118,6 +118,13 @@ def test_qa_stat_maps_review_activity() -> None:
     assert tokens["cache"] == 320000  # cache-creation absent defaults to zero
 
 
+def test_coordination_activity_is_preserved_with_its_schema() -> None:
+    record = _map(_lead_stat(activity="coordination"))
+
+    assert record["activity"] == "coordination"
+    assert record["schema"] == 6
+
+
 def test_unknown_activity_normalizes_to_other() -> None:
     record = _map(_lead_stat(activity="planning"))
     assert record["activity"] == "other"

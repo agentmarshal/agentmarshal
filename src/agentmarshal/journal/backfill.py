@@ -8,7 +8,7 @@ as *provenance-marked* records: every imported record is
 moment of the event.
 
 This module is the pure mapping layer: it turns a v1 stat record into a
-schema-3 ``session`` record, preserving the original timestamp, and
+``session`` record, preserving the original timestamp, and
 validates it. It writes nothing to the journal — the restore run that
 commits the records through the measurements lane (CR-028) is a separate
 data operation that consumes this library.
@@ -28,7 +28,9 @@ from agentmarshal import __version__
 from agentmarshal.journal.attestation import SOURCE_IMPORTED
 from agentmarshal.journal.capture import CaptureError, assert_no_leaks
 from agentmarshal.journal.records import (
+    _SESSION_ACTIVITIES,
     JournalRecordError,
+    session_record_schema,
     validate_record_content,
     validate_task_id,
 )
@@ -44,11 +46,6 @@ _MAX_STAT_BYTES = 1 << 20  # 1 MiB
 # type matches. The id is a placeholder; the real id is assigned when the
 # restore run writes the record.
 _VALIDATION_FILENAME = "01J00000000000000000000000-session.json"
-
-# The session record's activity vocabulary (records.py). A stat activity
-# outside it is normalized to "other" rather than rejected — the point of
-# the backfill is to preserve economics, not to relitigate taxonomy.
-_SESSION_ACTIVITIES = frozenset({"implementation", "review", "other"})
 
 # v1 stat fields the mapping reads. A record missing one is malformed and
 # fails closed.
@@ -105,7 +102,7 @@ def session_record_from_stat(
     source_digest: str,
     imported_at: str,
 ) -> dict[str, object]:
-    """Map a v1 stat record to a validated schema-3 imported session record.
+    """Map a v1 stat record to a validated imported session record.
 
     ``created_at`` is the stat's original ``recorded_at`` (not now), and
     ``source`` is always ``imported-from-host``. The cache token count sums
@@ -151,7 +148,7 @@ def session_record_from_stat(
     )
 
     record: dict[str, object] = {
-        "schema": 3,
+        "schema": session_record_schema(normalized_activity),
         "record_type": "session",
         "task": stat["task"],
         "created_at": stat["recorded_at"],

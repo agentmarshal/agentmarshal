@@ -47,6 +47,7 @@ from agentmarshal.journal.prune import (
     report_worktrees,
 )
 from agentmarshal.journal.records import (
+    _SESSION_ACTIVITIES,
     JournalRecordError,
     create_amendment_record,
     create_completed_record,
@@ -284,7 +285,7 @@ def _build_parser() -> argparse.ArgumentParser:
     session_parser.add_argument("--role", required=True, help="worker role")
     session_parser.add_argument("--actor", required=True, help="worker identity")
     session_parser.add_argument(
-        "--activity", required=True, help="implementation, review, or other"
+        "--activity", required=True, help=", ".join(sorted(_SESSION_ACTIVITIES))
     )
     session_parser.add_argument("--outcome", required=True, help="work outcome")
     session_parser.add_argument("--input-tokens", type=int, default=0)
