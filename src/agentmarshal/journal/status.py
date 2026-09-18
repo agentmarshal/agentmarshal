@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from agentmarshal.journal.contracts import ContractHeader, parse_contract
 from agentmarshal.journal.records import (
@@ -13,6 +14,21 @@ from agentmarshal.journal.records import (
     read_records,
     validate_task_id,
 )
+
+# The record types a writer may ask the guard about, as a type rather than a
+# string: mypy refuses a typo at the call site, and the guard's own runtime
+# refusal then covers only a caller outside this package.
+WritableRecordType = Literal[
+    "opened",
+    "review",
+    "acceptance",
+    "session",
+    "amendment",
+    "finding",
+    "completed",
+    "abandoned",
+    "reopened",
+]
 
 _RECORD_TYPE_STATES: Mapping[str, str | None] = {
     "opened": "open",
@@ -103,7 +119,7 @@ def load_task_status(journal_root: Path, task_id: str) -> TaskStatus:
 
 
 def load_task_for_record(
-    journal_root: Path, task_id: str, record_type: str
+    journal_root: Path, task_id: str, record_type: WritableRecordType
 ) -> TaskStatus:
     """Load a task and refuse a record its terminal projection cannot admit."""
 
@@ -115,9 +131,10 @@ def load_task_for_record(
     task = load_task_status(journal_root, task_id)
     if record_type == "reopened":
         # The projection admits a reopening only from `done`: not while the
-        # task is open, and not after abandonment. The admitted set cannot say
-        # that on its own — it does not know which record closed the task — so
-        # the one predicate lives here, and the CLI no longer keeps a copy.
+        # task is open, and not after abandonment. The admitted set cannot
+        # express that — it does not know which record closed the task — so
+        # the predicate lives here once, and the CLI no longer keeps a copy of
+        # it. The copy was correct; it was a copy.
         if task.state != "done":
             raise TaskStatusError(
                 f"task {task_id} cannot be reopened (state: {task.state})"

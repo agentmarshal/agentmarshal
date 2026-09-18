@@ -26,9 +26,12 @@ memory — twelve in eight modules:
   into; it is in scope and unchanged.
 
 So the defect was one writer with no guard beside six writers each holding a
-private copy of the same rule — and the second half matters as much as the
-first: six copies drift, and one had already drifted (it admitted a reopening
-after abandonment).
+private copy of the same rule. None of those six had drifted: each refused a
+closed task correctly, in its own words, and `reopen`'s own predicate was
+correct too. The second half of the problem is therefore what six copies make
+possible rather than what they had already done — and the reason the reopening
+predicate moves into the guard is that the admitted set cannot express it, not
+that a copy of it had gone wrong.
 
 ## Goals
 
