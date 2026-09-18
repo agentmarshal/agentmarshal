@@ -71,8 +71,9 @@ jobs:
         run: |
           git fetch --no-tags origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
           task="$(printf '%s' "$HEAD_REF" | grep -oE 'CR-[0-9]+' | head -1)"
-          # Phase C: materialise the review record from the PR approval before
-          # this step for the review-bound lane.
+          # Phase C: materialise the review record from the PR approval
+          # (reviewer identity + verdict) before this step for the
+          # review-bound lane.
           # Repository-specific: invoke the checked-out source through uv.
           uv run agentmarshal gate --attestation ci-required --without-review \
             --task "$task" \

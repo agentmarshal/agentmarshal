@@ -75,7 +75,7 @@ with no consumer: delete them.
   contracts.** CR-039 is the first to carry a non-empty `acceptance`
   array and full Context / Objective / Acceptance / Non-Goals prose; it
   is the pattern for what follows.
-- **Gate enforcement is planned, not yet in effect.** Making the gate
+- **Gate enforcement is not in effect.** Making the gate
   reject a new task whose contract has empty acceptance (while
   grandfathering the existing thin ones via a schema-version bump) is a
   contract-schema change that has not been designed or scheduled yet.
