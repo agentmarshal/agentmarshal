@@ -9,7 +9,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -31,7 +31,11 @@ from agentmarshal.journal.records import (
     create_abandoned_record,
     create_completed_record,
 )
-from agentmarshal.journal.status import TaskStatusError, load_task_for_record
+from agentmarshal.journal.status import (
+    TaskStatusError,
+    WritableRecordType,
+    load_task_for_record,
+)
 
 
 def initialize_status_repo(repo: Path) -> Path:
@@ -2512,8 +2516,11 @@ def test_the_guard_refuses_a_record_type_the_projection_does_not_know(
     monkeypatch.chdir(repo)
     assert main(["open", "--title", "Task"]) == 0
 
+    # The parameter is a Literal, so mypy refuses this at any typed call site;
+    # the cast is what a caller outside this package looks like, and the
+    # runtime refusal exists for exactly that caller.
     with pytest.raises(TaskStatusError, match="unknown record type"):
-        load_task_for_record(root, "CR-001", "sessions")
+        load_task_for_record(root, "CR-001", cast(WritableRecordType, "sessions"))
 
 
 def _terminal_task(
