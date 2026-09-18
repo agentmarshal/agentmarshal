@@ -38,8 +38,9 @@ jobs:
     # a review of itself, so this run asks the gate to judge every check that
     # does not depend on one. The transcript names what it did not examine.
     # Scope, append-only, base-state and lifecycle are enforced here.
-    # The approved-independent-review requirement is not enforced by this job;
-    # see docs/github-enforcement.md. It is safe to require for what it checks.
+    # The approved-independent-review requirement is NOT enforced by this job
+    # and nothing shipped enforces it on this provider; see
+    # docs/github-enforcement.md. Safe to mark REQUIRED for what it does check.
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:

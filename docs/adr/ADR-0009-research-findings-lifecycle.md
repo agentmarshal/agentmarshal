@@ -227,8 +227,9 @@ documentation will state them next to this lane as it does next to the others.
 
 ## Example (non-normative)
 
-The working [findings-lane runbook](../sidecar.md#research-findings-loop) shows
-how this repository uses the lane in a sidecar journal.
+The [findings-lane runbook](../sidecar.md#research-findings-loop) walks the
+lane end to end for a research task in a sidecar journal: record a finding,
+review it, gate it, complete it.
 
 ## Consequences
 
