@@ -118,6 +118,16 @@ uv run mypy
 `agentmarshal validate` checks the whole journal for integrity and is the
 governance check in CI.
 
+### Versions
+
+The default branch always carries the **next** release's version with a
+`.dev0` suffix — after 0.4.0 it reads `0.5.0.dev0` — so anything built from it
+reports a version that sorts after the last release, before the next one, and
+says it is a development build. The task that prepares a release removes the
+suffix; the first task after its tag is pushed restores it for the following
+release. The release workflow refuses to publish a development or local
+version.
+
 ## Licence
 
 By contributing you agree that your contribution is licensed under
