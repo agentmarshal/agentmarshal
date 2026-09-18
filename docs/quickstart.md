@@ -2,11 +2,15 @@
 
 This walks through the whole AgentMarshal loop on a throwaway repository —
 from installing the package to a task that carries durable, SHA-bound
-evidence that its work was independently reviewed. Every command below was run
-against the published `agentmarshal` 0.3.0 release: the main path end to end in
-one pass, and the two branches that pass cannot reach — `accept`, which needs a
-non-approving review, and `reopen`, which undoes the state the run arrives at —
-separately.
+evidence that its work was independently reviewed. Every command in "The
+governed loop" below was run against a wheel of `agentmarshal` 0.4.0 built
+before the release was published: the main path end to end in one pass, and
+the two branches that pass cannot reach — `accept`, which needs a non-approving
+review, and `reopen`, which undoes the state the run arrives at — separately.
+The install command names the published release, which that run could not
+use. `tests/test_quickstart.py` repeats the loop from this page's own shell
+blocks against this project's source tree in its CI, and checks the gate's
+output against the transcripts shown in step 5.
 
 New here? [overview.md](overview.md) explains the idea and the vocabulary
 (**host repo**, task, contract, scope, gate, …) in a page. This guide is the
@@ -16,10 +20,10 @@ Requirements: **Python ≥ 3.12** and **git** on your `PATH`.
 
 ## Install
 
-These are the exact commands this guide was verified with:
+Install the release this guide describes:
 
 ```sh
-pip install agentmarshal==0.3.0
+pip install agentmarshal==0.4.0
 agentmarshal --version
 ```
 
@@ -193,8 +197,8 @@ second, explicit lie. See [ADR-0006](adr/ADR-0006-actors-and-identity.md).
 `agentmarshal init` writes a minimal `.agentmarshal/project.json`
 (`schema` + framework version); no hand-editing is needed for the loop. The
 supplementary-artifact `capture` policy is parsed but not acted on in
-0.3.0: there is no policy-driven artifact writer or private store yet. The
-`leak_scan.private_markers` list is active in 0.3.0 and adds project-specific
+0.4.0: there is no policy-driven artifact writer or private store yet. The
+`leak_scan.private_markers` list is active in 0.4.0 and adds project-specific
 strings to the built-in advisory scan used by `leak-scan` and the gate.
 
 When a schema-2 contract names an extension, the gate reads that extension's
@@ -347,7 +351,7 @@ separate check:
 agentmarshal leak-scan --commit "$IMPL" --base "$BASE"
 ```
 
-The gate runs this scan too and warns on matches; in 0.3.0 a match does not
+The gate runs this scan too and warns on matches; in 0.4.0 a match does not
 block. In an embedded journal, the gate is the merge authority. It passes only
 when every blocking check holds:
 

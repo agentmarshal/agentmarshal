@@ -38,6 +38,10 @@ somewhere to be recorded.
 
 ## Disposition — accepted (re-read 2026-09-01)
 
+> Its sequencing was superseded: the projection called next in line below was
+> not built next. The acceptance stands; what happened instead is in the
+> dated section at the end.
+
 The deferral was sequencing, and the sequence has arrived. The in-toto
 Statement projection this waited on is next in line, so the record type can
 be shaped once, alongside it. And ADR-0008 answered the
@@ -55,3 +59,11 @@ is decided during our own sidecar dogfood, together with the projection work.
 What the report was careful not to ask for still holds — the tool records that
 findings exist and where they are pinned; it does not become a store for
 research content.
+
+## Later — 2026-09-18
+
+The sequencing above did not hold. The in-toto Statement projection was not
+built next and is still unshipped. ADR-0009 (2026-09-05) specified the
+findings lifecycle without it, and CR-086 implemented that lifecycle, which
+ships in 0.4.0. The record type was therefore shaped before the projection,
+not alongside it.

@@ -51,3 +51,9 @@ provider.
 
 Accepted for the next release, together with the branch-naming requirement
 named in proposal 017.
+
+## Later — 2026-09-18
+
+0.4.0 does not carry this. Neither the documented pattern nor the script under
+the templates directory shipped in it; the disposition above stands, and the
+release that carries them will say so in its changelog.
