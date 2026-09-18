@@ -462,9 +462,7 @@ def _run_reviewer(
     return result.stdout, result.stderr
 
 
-def _preserve_output(
-    output: str, prefix: str = "agentmarshal-rejected-verdict-"
-) -> Path:
+def _preserve_output(output: str) -> Path:
     """Write a reviewer's raw output where the caller can still read it.
 
     A verdict that fails validation used to take the whole run with it: the
@@ -473,8 +471,26 @@ def _preserve_output(
     removing it is the caller's decision.
     """
 
-    descriptor, name = tempfile.mkstemp(prefix=prefix, suffix=".txt")
+    descriptor, name = tempfile.mkstemp(
+        prefix="agentmarshal-rejected-verdict-", suffix=".txt"
+    )
     with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+        handle.write(output)
+    return Path(name)
+
+
+def _preserve_accepted_output(output: bytes) -> Path:
+    """Keep an accepted verdict's output outside the journal, byte for byte.
+
+    The capture policy's ``hash`` level names a private store that does not
+    exist yet; until it does, the output stays in a local temporary file the
+    command names, and nothing in the journal refers to it.
+    """
+
+    descriptor, name = tempfile.mkstemp(
+        prefix="agentmarshal-reviewer-output-", suffix=".txt"
+    )
+    with os.fdopen(descriptor, "wb") as handle:
         handle.write(output)
     return Path(name)
 
@@ -904,9 +920,7 @@ def _launch_review_tail(
     prose_note: str | None = None
     if prose_capture_level is CaptureLevel.HASH:
         try:
-            # An accepted verdict, kept outside the journal because the
-            # private store the hash level names does not exist yet.
-            kept = _preserve_output(reviewer_output, "agentmarshal-reviewer-output-")
+            kept = _preserve_accepted_output(raw_output)
         except OSError as error:
             prose_note = f"reviewer prose could not be kept locally: {error}"
         else:

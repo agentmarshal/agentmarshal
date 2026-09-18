@@ -103,11 +103,13 @@ is a model that avoids cross-branch mutation, not a database.
    writes nothing). ADR-0005 marks the same capture boundary.
 
    **Status in 0.4.0.** The historical boundary still applies to durable
-   supplementary capture: the parser exists, but there is no policy-driven
-   artifact writer or private store. An advisory added-content leak-scan now
-   ships at the gate and as `agentmarshal leak-scan`; accepted reviewer output
-   is also preserved once as a hash-pinned journal artifact. Neither is the
-   capture/private-store design decided here.
+   private capture: there is no private store. The capture policy's `reviews`
+   class is read (CR-111): at `commit` an accepted reviewer's output is
+   preserved once as a hash-pinned journal artifact; at the default `hash` it
+   stays out of the journal in a local temporary file until the store exists;
+   at `off` it is not kept. The `economics` and `sessions` classes are not
+   read. An advisory added-content leak-scan also ships at the gate and as
+   `agentmarshal leak-scan`. Neither is the private-store design decided here.
 
 ## Consequences
 

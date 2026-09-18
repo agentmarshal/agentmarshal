@@ -176,7 +176,7 @@ def test_by_default_the_prose_stays_out_of_the_journal(
         assert not artifacts.exists()
         assert "artifacts" not in record
         assert len(kept) == 1
-        assert kept[0].read_text(encoding="utf-8") == output
+        assert kept[0].read_bytes() == output.encode("utf-8")
         assert str(kept[0]) in message
     finally:
         for path in kept:
