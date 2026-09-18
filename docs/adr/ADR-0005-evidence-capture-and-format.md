@@ -23,12 +23,13 @@ Date: 2026-07-28
 > command is available for any CI. It is best-effort and never blocks a merge;
 > the mandatory block-on-leak enforcement above remains roadmap.
 >
-> **Status in 0.4.0.** The capture-policy parser exists, but no policy-driven
-> supplementary-artifact writer or private store does; the in-toto Statement,
-> DSSE/Sigstore output, and public backfill command also remain unshipped.
-> Accepted reviewer output is preserved once as a hash-pinned journal artifact;
-> refused output remains best-effort in a temporary file, outside that durable
-> capture design.
+> **Status in 0.4.0.** The reviews capture class is read: its default `hash`
+> level is a local-temporary-file stopgap while the private store is unshipped,
+> and `capture.overrides.reviews = "commit"` preserves the reviewer's standard
+> output as a hash-pinned journal artifact. The economics and sessions classes
+> are not read yet. The in-toto Statement, DSSE/Sigstore output, private store,
+> and public backfill command also remain unshipped; refused output remains
+> best-effort in a temporary file, outside the durable capture design.
 > The lifecycle has also gained append-only `amendment`, `acceptance`, and
 > `reopened` records; reopening makes the historical immutability rule in
 > Decision 3 no longer the current lifecycle rule.

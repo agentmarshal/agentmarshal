@@ -41,14 +41,20 @@ footprint. It executes no manifest command. OpenSpec 1.12.0 is the first
 declared extension in this repository, with its git-visible footprint and the
 machine-local files it does not commit recorded in its manifest.
 
-### Review evidence names both prose and contract (CR-091, CR-092, CR-095, CR-096)
+### Review evidence names both prose and contract (CR-091, CR-092, CR-095, CR-096, CR-111)
 
-Accepted reviewer output is kept once as a hash-pinned journal artifact and
-validated under the same collision and append-only rules as records, and
-`submit-review --prose FILE` attaches human prose the same way; a refusal
-that is foreseeable before writing leaves no orphan artifact. Briefs and review
-prompts show that a contract was amended, when, and why, and reviews record the
-hash of the contract text they judged.
+The capture policy's `reviews` class decides what happens to a review's prose.
+By default (`hash`) it stays out of the journal: the private store that level
+names is not built, so `agentmarshal review` keeps the reviewer's standard
+output in a local temporary file and names it. With
+`capture.overrides.reviews = "commit"` the output is written and pinned as a
+journal artifact, and `submit-review --prose FILE` attaches human prose the
+same way; at any other level `--prose` is refused. Only the `reviews` class is
+read; the `economics` and `sessions` classes are not. Pinned artifacts are validated
+under the same collision and append-only rules as records, and a foreseeable
+refusal leaves no orphan artifact. Briefs and review prompts show that a
+contract was amended, when, and why, and reviews record the hash of the contract
+text they judged.
 
 ### The gate reads one candidate listing and can state its limits (CR-093, CR-099, CR-103, CR-105)
 

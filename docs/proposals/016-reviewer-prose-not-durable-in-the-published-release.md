@@ -61,3 +61,14 @@ refused by record validation, still keeps its output in a temporary file and
 says where — the one place that line survives. What the request was for, the
 reasoning behind an approval surviving the run, is what ships. What it asked for literally is what
 0.4.0 removes.
+
+## Later — 2026-09-18
+
+Before 0.4.0 was published, pinned prose became a choice rather than the
+default (CR-111). A journal in a public repository publishes whatever the
+reviewer wrote, so the project's capture policy now decides. By default its
+`reviews` level is `hash`: an accepted review's standard output stays out of
+the journal, in a local temporary file whose path the command prints — for an
+approval too, which is the literal form of the third request above. The
+durable, pinned prose this disposition accepted is what
+`"capture": {"overrides": {"reviews": "commit"}}` gives.
