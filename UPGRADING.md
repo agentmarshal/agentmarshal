@@ -40,7 +40,7 @@ Contract headers that carry `decisions`, `documents` or `extensions` use
 `schema = 2`; AgentMarshal 0.4.0 reads both schema 1 and schema 2 headers, while
 0.3.0 refuses a schema-2 contract. Upgrade every checkout that reads a shared
 journal before committing the first schema-2 contract. Existing schema-1
-contracts and the record schema do not change.
+contracts do not change, and a schema-2 contract uses no new record schema.
 
 ### Writers now reject records the projection would reject
 
@@ -50,6 +50,24 @@ record, which could previously exit 0 and leave the journal invalid, now exits
 1 without writing the review (CR-102). Session measurements and a reopening
 that the projection admits remain allowed. No installation action is required;
 scripts that treated that successful exit as a write must handle the refusal.
+
+### The gate sees both ends of a rename
+
+0.3.0 listed a renamed path by its destination alone for the scope check, the
+choice between the journal-only and diff lanes, and the empty-range refusal.
+0.4.0 reads one listing in which a rename is its source deleted and its
+destination added (CR-093). Two kinds of candidate that passed the 0.3.0 gate
+are refused or judged differently now:
+
+- a rename from a path the contract's scope does not cover into one it does is
+  refused, and the scope line names the source path;
+- a move from outside `.agentmarshal/journal/` into it is no longer a
+  journal-only candidate: it takes the diff lane, where the contract is read
+  and the source path must be in scope.
+
+No installation action is required. A branch built on either shape must widen
+the task's scope to the source path, through an amendment, or drop the move.
+The gate's transcript for a candidate with no rename is unchanged.
 
 ### A reopening transaction now passes the gate
 

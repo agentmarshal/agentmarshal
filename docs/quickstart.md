@@ -3,10 +3,12 @@
 This walks through the whole AgentMarshal loop on a throwaway repository —
 from installing the package to a task that carries durable, SHA-bound
 evidence that its work was independently reviewed. Every command below was run
-against `agentmarshal` 0.4.0, installed from the wheel built from this release's
-source before it was published: the main path end to end in one pass, and the two branches that pass cannot reach — `accept`, which needs a
-non-approving review, and `reopen`, which undoes the state the run arrives at —
-separately.
+against `agentmarshal` 0.4.0 before it was published: the main path end to end
+in one pass, and the two branches that pass cannot reach — `accept`, which
+needs a non-approving review, and `reopen`, which undoes the state the run
+arrives at — separately. `tests/test_quickstart.py` repeats that run from
+this page's own shell blocks in this project's CI and checks the gate's output
+against the transcripts shown in step 5.
 
 New here? [overview.md](overview.md) explains the idea and the vocabulary
 (**host repo**, task, contract, scope, gate, …) in a page. This guide is the

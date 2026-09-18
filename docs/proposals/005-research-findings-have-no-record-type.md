@@ -38,6 +38,10 @@ somewhere to be recorded.
 
 ## Disposition — accepted (re-read 2026-09-01)
 
+> Its sequencing was superseded: the projection called next in line below was
+> not built next. The acceptance stands; what happened instead is in the
+> dated section at the end.
+
 The deferral was sequencing, and the sequence has arrived. The in-toto
 Statement projection this waited on is next in line, so the record type can
 be shaped once, alongside it. And ADR-0008 answered the

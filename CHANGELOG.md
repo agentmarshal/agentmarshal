@@ -53,12 +53,20 @@ completed task now passes the gate's additive-record rule. The gate's leak-scan 
 shows at most twenty hits and counts the rest; the standalone command prints
 every hit. The shipped GitHub workflow uses the
 review-free mode rather than tolerating a check that cannot carry its own review.
+That is partial coverage: on GitHub, nothing shipped enforces the
+approved-independent-review requirement, because the required check runs
+before the review exists (see `docs/github-enforcement.md`).
 
 ### Reviewer setup reports its actual preconditions (CR-097, CR-098)
 
 The reviewer-command contract, rejected placeholder, and a no-recording
-`review --dry-run` exercise are documented. The tool reports preconditions it
-cannot verify.
+`review --dry-run` exercise are documented. `agentmarshal init` prints the
+preconditions the tool cannot verify — provider merge settings, the agent's
+declared actor, the reviewer command, a CI step that runs `validate` — with what
+skipping each costs. `agentmarshal doctor` checks the last three and reports an
+unmet one as a `TODO` line, never printing the reviewer command's value; an unmet
+precondition does not change its exit status, and its summary line counts the
+preconditions left instead of claiming that every check passed.
 
 ### Writers preserve journal readability (CR-102)
 
