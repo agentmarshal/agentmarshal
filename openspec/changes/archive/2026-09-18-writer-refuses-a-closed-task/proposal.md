@@ -1,7 +1,7 @@
 ## Why
 
 The projection has always refused to read a task whose records carry work after
-a terminal record. The writer never refused to write one.
+a terminal record. The `submit-review` writer never refused to write one.
 
 Probed on a throwaway journal while CR-101 argued about a pre-run refusal:
 
@@ -35,9 +35,9 @@ discovering the refusal costs no paid run.
 ## Impact
 
 `submit-review` refuses a closed task instead of corrupting it — it was the
-writer without a guard. `accept`, `amend`, `finding` and `complete` already
-refused through five private copies of the rule and now refuse through the one
-in the projection's module. `review` refuses before it starts the reviewer,
-which is new for both bindings. `record-session` keeps working on a closed
-task, and `reopen` keeps its own refusal for an abandoned one, which the guard
-now mirrors. No record schema changes.
+writer without a guard. Eight paths already had private `state != "open"`
+refusals: `accept`, `amend`, `finding`, the three completion paths, sidecar
+`complete`, and finding review. Commit review gains its pre-run refusal here;
+finding review had one since CR-101. `record-session` keeps working on a closed
+task, and `reopen`'s own `state != "done"` refusal moves into the guard. No
+record schema changes.

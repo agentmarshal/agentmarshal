@@ -163,9 +163,10 @@ active in 0.3.0**, in rough order (features land in later releases —
   command and an advisory merge-time scan that warns on possible leaks in a
   candidate's additions. Making a match block is roadmap. The scan is
   best-effort by design (ADR-0005) — never a guarantee.
-- **Contract-extension RFC** — required machine-readable acceptance criteria
+- **Contract extensions** — required machine-readable acceptance criteria
   plus a threat-model field, so every merged task doubles as an evaluation
-  case and gates enforce it.
+  case and gates enforce it. This is a direction, not yet a design: no
+  document specifies it.
 - **Broader providers** — first-class GitHub, GitFlic, and self-hosted rails.
 
 See the [ADRs](adr/) for the full design decisions.

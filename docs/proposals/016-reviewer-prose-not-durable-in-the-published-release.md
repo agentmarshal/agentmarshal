@@ -45,7 +45,8 @@ neither the reader nor the tool can tell which set of promises applies.
 
 The reporter paid sixty lines for that, which is the honest measure of the
 defect. Two things follow, and both are accepted. The behaviour ships in 0.4.0,
-which this proposal has moved earlier in the plan. And the documentation stops
+and this proposal is the reason it ships in the next release rather than a
+later one. And the documentation stops
 describing unreleased behaviour as though it were current:
 a paragraph that describes work not in the latest release says so, in the
 paragraph, until the release catches up.

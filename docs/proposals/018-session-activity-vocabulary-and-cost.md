@@ -40,7 +40,7 @@ The cost field is deferred, with a reason rather than a maybe. Money in an
 evidence record is a stronger claim than tokens: it depends on a price list
 that changes without notice, on a currency, and on a billing account nobody
 reviewing the record can see. Recording it makes the journal assert something it
-cannot attest. The work it belongs with is the accounting rework already in the
-plan, which has to answer how a per-task figure is attributed when one agent
-session spans several tasks; the currency question is cheap to add once that is
-settled, and premature before it.
+cannot attest. It belongs with a rework of accounting that has to answer, first, how a
+per-task figure is attributed when one agent session spans several tasks; the
+currency question is cheap to add once that is settled, and premature before
+it. That rework is not scheduled in any published release yet.

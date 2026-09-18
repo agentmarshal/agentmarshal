@@ -39,8 +39,8 @@ somewhere to be recorded.
 ## Disposition — accepted (re-read 2026-09-01)
 
 The deferral was sequencing, and the sequence has arrived. The in-toto
-Statement projection this waited on is scheduled in the current release plan,
-so the record type can be shaped once, alongside it. And ADR-0008 answered the
+Statement projection this waited on is next in line, so the record type can
+be shaped once, alongside it. And ADR-0008 answered the
 question the original disposition left open — *where* research records belong:
 a journal is now a thing that can live beside a repository rather than only
 inside it, which is precisely the shape research evidence needs when the

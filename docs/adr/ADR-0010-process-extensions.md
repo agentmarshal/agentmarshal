@@ -200,6 +200,11 @@ Templates for a first extension (OpenSpec) ship only after this project has
 run three to five of its own tasks with it. A second extension is written when
 a second real user exists, not before.
 
+## Example (non-normative)
+
+This repository's [OpenSpec extension manifest](../../.agentmarshal/extensions/openspec.toml)
+is a working declared footprint.
+
 ## Consequences
 
 - Contract header gains optional `extensions`, `documents`, `decisions`. The

@@ -85,8 +85,8 @@ a shipped template that is structurally red, and its own feedback channel with
 no transaction behind it. Four of the ten land close to home: 017, 022 and 023
 name defects this repository has, and 020 names one it would acquire the day it
 declared a marker of its own. A fifth, 019, describes a pattern we solved
-privately and never shipped. Two moved the release plan: 016 pulled it earlier,
-and 022 put a decision record in front of it.
+privately and never shipped. Two changed what the next release contains: 016
+brought it forward, and 022 put a decision record in front of it.
 
 | # | Theme | Reporter | Disposition | Where |
 |---|---|---|---|---|

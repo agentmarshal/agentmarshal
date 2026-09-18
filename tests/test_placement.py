@@ -466,6 +466,44 @@ def test_sidecar_gate_reads_closed_state_from_its_own_journal(
     assert host.is_dir()
 
 
+def test_sidecar_complete_refuses_a_closed_task_without_writing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from agentmarshal.journal.records import create_completed_record, write_record
+    from agentmarshal.journal.validate import validate_journal
+
+    _host, sidecar, base, head = _host_and_sidecar(tmp_path, monkeypatch)
+    assert main(["open", "--title", "Private", "--scope", "app.txt"]) == 0
+    journal_root = sidecar / ".agentmarshal" / "journal"
+    write_record(
+        journal_root,
+        "CR-001",
+        create_completed_record("CR-001", "0.3.0", head),
+    )
+    before = _tree_snapshot(journal_root)
+    capsys.readouterr()
+
+    assert (
+        main(
+            [
+                "complete",
+                "--task",
+                "CR-001",
+                "--commit",
+                head,
+                "--base",
+                base,
+            ]
+        )
+        == 1
+    )
+
+    captured = capsys.readouterr()
+    assert "task CR-001 is not open (state: done)" in captured.err
+    assert _tree_snapshot(journal_root) == before
+    assert validate_journal(sidecar).passed
+
+
 def test_sidecar_gate_gives_no_deterministic_lane_to_a_host_journal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

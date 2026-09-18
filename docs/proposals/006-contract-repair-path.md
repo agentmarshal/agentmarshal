@@ -37,6 +37,6 @@ only an ergonomic one.
 The design constraint is that records are append-only and a contract is read
 from the base side so a candidate cannot widen its own scope — so a repair must
 be an appended, reviewable amendment, never an edit. That is compatible with the
-model; the planned contract-schema RFC is the right vehicle. Note that this and
+model, and a change to the contract schema is the right vehicle for it. Note that this and
 proposal 007 are linked: an amendment path reduces how often an operator needs
 to overrule a reviewer, but does not remove the need.

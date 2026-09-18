@@ -225,6 +225,12 @@ correct, that the reviewer read it, or that the artifacts are complete. Those
 are the same limits every record in this journal carries, and the
 documentation will state them next to this lane as it does next to the others.
 
+## Example (non-normative)
+
+The [findings-lane runbook](../sidecar.md#research-findings-loop) walks the
+lane end to end for a research task in a sidecar journal: record a finding,
+review it, gate it, complete it.
+
 ## Consequences
 
 **Schema 4, appearing only when used — which requires a rule about stamping.**
