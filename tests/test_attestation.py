@@ -184,4 +184,4 @@ def test_unknown_schema_is_rejected(tmp_path: Path) -> None:
     """The number moves as the ladder grows; what is pinned is the refusal."""
 
     with pytest.raises(JournalRecordError, match="schema"):
-        write_record(tmp_path / "journal", "CR-001", _opened_v2(schema=6))
+        write_record(tmp_path / "journal", "CR-001", _opened_v2(schema=7))
