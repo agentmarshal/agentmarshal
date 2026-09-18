@@ -1,0 +1,18 @@
+Разобрал контракт, диффы и текущее состояние дерева. Запустить сам suite не удалось — вызов `pytest` требовал подтверждения в этой сессии, так что проверка статическая: прочитал все изменённые writer-пути, guard, launcher и пересёкшиеся существующие тесты.
+
+Что сделано верно, если коротко: guard живёт в `status.py` рядом с проекцией и читает её собственную константу `_RECORD_TYPES_ADMITTED_AFTER_TERMINAL` (`src/agentmarshal/journal/status.py:29`, `:105`); все шесть журнальных writer'ов (`submit_review`, `acceptance`, `complete`/`abandon`, `amend`, `finding`) проходят через него; оба launcher-пути (`src/agentmarshal/journal/review.py:822` и `:1002`) отказывают до `tempfile.TemporaryDirectory`, то есть до записи prompt-файла и запуска reviewer'а; `record-session` и `reopen` после completion остаются рабочими и закреплены тестами. Условие `task.state != "open"` эквивалентно `has_terminal_record` в проекции, так что writer и reader действительно говорят одно и то же. Пропущенных writer'ов нет: `open_task` всегда выделяет новый id и падает, если каталог задачи уже существует, а `migrate`/`backfill` не пишут в существующую задачу.
+
+**review-closed-task-untested-on-completed** — оба launcher-теста (`tests/test_review_launcher.py:922` и новый `:954`) закрывают задачу только через `abandon`. Ни один тест не запускает `review` против задачи в состоянии `done` — ни для commit-binding, ни для finding-binding. При этом сценарий в `openspec/specs/record-lifecycle/spec.md:50` написан как «has completed **or** been abandoned, with either binding», а критерий приёмки требует «for each terminal state, every command that writes a record into a task refuses». Соседний параметризованный тест в `tests/test_journal.py:2662` специально прогоняет оба состояния для остальных шести команд и в собственном docstring отмечает, что прошлый review поймал ровно такую асимметрию — здесь она воспроизведена для `review`.
+
+**spec-cites-superseded-adr-0005-decision-3** — `openspec/specs/record-lifecycle/spec.md:19-21` (и та же строка в архивной дельте) приписывает ADR-0005 Decision 3 правило «a reopening is the one admitted lifecycle mutation». Decision 3 (`docs/adr/ADR-0005-evidence-capture-and-format.md:128-137`) утверждает обратное — «no further `opened`, `review`, `completed` or `abandoned` record may be added», про reopening там нет ничего, — а статус-заметка самого ADR (`:32-33`) прямо говорит, что reopening делает правило неизменности из Decision 3 «no longer the current lifecycle rule». Половина про session корректна, половина про reopening ссылается на решение, отменённое именно в этой части. Поведение это не меняет, но новый нормативный spec теперь закрепляет неверную ссылку на именованное решение из контракта.
+
+**gate-second-encoding-of-admitted-set** — критерий «no second list of it exists in the tree» выполнен на уровне record-type списков, но `src/agentmarshal/journal/gate.py:715` и `:748` выражают то же правило через имена файлов (`-completed.json`/`-abandoned.json`/`-reopened.json` и `-session.json`), и эти две формулировки уже расходятся: проекция допускает `reopened` после терминальной записи, а measurements-only lane гейта — нет. `gate.py` вне scope этой задачи, поэтому чинить здесь нельзя; отмечаю как известный источник дрейфа для отдельного решения.
+
+AGENTMARSHAL_VERDICT_BEGIN
+{
+  "reviewed_commit": "79eff88bdaeb66a81fe36183e79ef972729af1e4",
+  "verdict": "changes_required",
+  "findings": ["review-closed-task-untested-on-completed"],
+  "advisory_findings": ["spec-cites-superseded-adr-0005-decision-3", "gate-second-encoding-of-admitted-set"]
+}
+AGENTMARSHAL_VERDICT_END

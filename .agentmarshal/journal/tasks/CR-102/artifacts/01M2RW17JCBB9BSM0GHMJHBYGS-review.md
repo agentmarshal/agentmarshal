@@ -1,0 +1,13 @@
+Разобрал контракт, дельта-спеку, ADR-0004/0005 и код. Кратко о главном: guard в `status.py:105` действительно зеркалит проекцию — `task.state != "open"` эквивалентно `has_terminal_record` в `project_status`, потому что только `completed`/`abandoned` дают не-`open` состояние, а `reopened` сбрасывает флаг. Все семь пишущих команд переведены на него, `session` и `reopened` остались допущенными, launcher отказывает до запуска reviewer'а на обеих привязках, ни одной «второй копии» допущенного набора в writer-коде нет, висячих `task = ...` после удаления проверок не осталось, а старые assert'ы на сообщения (`tests/test_acceptance.py:182`, `tests/test_journal.py:1001`, `tests/test_reopen.py:82`) новое сообщение покрывает как подстроку. Блокирующих дефектов не нашёл.
+
+Тесты запустить не смог — среда отклонила запуск `pytest` и `ruff`, так что проверка статическая; это стоит держать в уме.
+
+Две вещи, которые не блокируют, но их стоит записать:
+
+ADV-GATE-SECOND-ADMITTED-SET: критерий «no second list of it exists in the tree» выполнен только для writer'а — `src/agentmarshal/journal/gate.py:748` независимо кодирует «после терминальной записи можно добавить только `-session.json`», и этот набор расходится с константой проекции, которая теперь явно допускает и `reopened`; следствие — кандидат, добавляющий один `<ulid>-reopened.json` на задачу, закрытую в base, отбивается гейтом как «already closed at base», то есть переоткрытие, которое writer теперь сознательно пропускает, отдельным коммитом через гейт не проходит (`tests/test_gate.py:1992` этого не ловит, потому что кладёт completion и reopen в один base-коммит). Предсуществующее, и `gate.py` вне scope контракта — но критерий спрашивает про всё дерево, поэтому фиксирую.
+
+ADV-COMPLETE-FINDINGS-GUARD-UNPINNED: `complete --findings` (`src/agentmarshal/journal/complete.py:74`) и sidecar-ветка `complete` (`src/agentmarshal/cli.py:881`) несут по собственному вызову guard'а, и ни один из них не закреплён тестом на закрытой задаче — параметризованный `test_every_writing_command_refuses_a_closed_task` гоняет только commit-форму, которая уходит в `complete_task`; `tests/test_findings.py` объявлен в scope контракта, но диффом не тронут. Коррупции сейчас нет, потому что `run_findings_gate` (`gate.py:158`) и closed-at-base проверка отказывают независимо, так что это про незакреплённый guard, а не про достижимый баг.
+
+AGENTMARSHAL_VERDICT_BEGIN
+{"reviewed_commit": "44b8011b7a559f0f02605d881ebec8512e0372c3", "verdict": "approved", "findings": [], "advisory_findings": ["ADV-GATE-SECOND-ADMITTED-SET", "ADV-COMPLETE-FINDINGS-GUARD-UNPINNED"]}
+AGENTMARSHAL_VERDICT_END

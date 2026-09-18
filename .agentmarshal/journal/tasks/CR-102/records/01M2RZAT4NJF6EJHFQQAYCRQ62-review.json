@@ -1,0 +1,32 @@
+{
+  "advisory_findings": [
+    "gate-keeps-a-second-copy-of-the-post-terminal-rule",
+    "guard-record-type-is-an-unchecked-string",
+    "sidecar-complete-guard-has-no-test",
+    "design-md-names-a-drift-that-did-not-exist"
+  ],
+  "artifacts": [
+    {
+      "hash": "701196112b2368b753120f81eb1b1110680c104409f70fb813f7ac2e29a24515",
+      "ref": ".agentmarshal/journal/tasks/CR-102/artifacts/01M2RZAT4NJF6EJHFQQAYCRQ62-review.md"
+    }
+  ],
+  "created_at": "2026-09-18T00:40:45.461523Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "0be1f658bb2124517360ef2b6adb9860e92941e5",
+  "reviewed_contract": "d6264473698e7f9221355f5b96797457fc21bed97c9cc954481c79d614eaa496",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-102",
+  "tool_version": "0.3.0",
+  "verdict": "approved"
+}
