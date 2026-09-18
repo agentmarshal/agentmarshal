@@ -26,6 +26,6 @@ the pull request:
   identity that differs from the commit authors';
 - a **pipeline attestation** for that exact commit, from CI.
 
-See [CONTRIBUTING.md](../CONTRIBUTING.md#this-repository-governs-itself). For a
+See [CONTRIBUTING.md](https://github.com/agentmarshal/agentmarshal/blob/master/CONTRIBUTING.md#this-repository-governs-itself). For a
 pull request from a fork, who records the independent review is not yet
 settled; say in the description that you need one.

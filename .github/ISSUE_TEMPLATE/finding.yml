@@ -5,6 +5,10 @@ body:
   - type: markdown
     attributes:
       value: |
+        Reports may be in any language; English is easier for us, but do not let
+        language stop you from reporting. We publish an English digest that keeps
+        your measurements verbatim and credits you.
+
         The value of a report is what was measured. Please complete every field.
   - type: textarea
     id: symptom
