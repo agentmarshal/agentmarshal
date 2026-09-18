@@ -5,6 +5,7 @@ title = "Intake: a provider quota stop cannot be recorded (proposal 024)"
 scope = [
   "docs/proposals/024-provider-quota-stop-cannot-be-recorded.md",
   "docs/proposals/README.md",
+  "docs/README.md",
   "docs/quickstart.md",
   "README.md",
 ]
@@ -42,6 +43,11 @@ to find the digest of their own file.
 ## Acceptance Criteria
 
 As in the header.
+
+## Amended 2026-09-18
+
+`docs/README.md` joins the scope. The documentation map lists every proposal
+by file, so a new digest without a line there leaves the map incomplete.
 
 ## Non-Goals
 
