@@ -94,7 +94,9 @@ Windows is untested.)
 New to the idea? [docs/overview.md](docs/overview.md) explains the purpose,
 the design, and the vocabulary (host repo, task, gate, …) in a page. The whole
 loop, inside a git repository — see [docs/quickstart.md](docs/quickstart.md)
-for the annotated walkthrough with a full configuration reference:
+for the annotated walkthrough with a full configuration reference. For every
+guide, decision, finding, and contributor workflow, see the
+[documentation map](docs/README.md):
 
 ```sh
 agentmarshal init                                     # write .agentmarshal/

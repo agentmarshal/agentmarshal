@@ -5,6 +5,9 @@ agent work with durable, SHA-bound evidence, and it holds itself to the same
 rules it ships. Two things below are unusual enough to read before you start —
 the **language rule** and the **governed contribution flow**.
 
+One person maintains this project, so replies may take days. No response-time
+promise is made.
+
 ## Language
 
 The rule differs by artifact, because the two have different jobs.

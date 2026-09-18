@@ -1,0 +1,44 @@
+name: Finding
+description: Public artifacts are English. Reports may be in any language; English is easier for us, but do not let language stop you from reporting. We will publish an English digest that keeps measurements verbatim and credits the reporter.
+title: "Finding: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The value of a report is what was measured. Please complete every field.
+  - type: textarea
+    id: symptom
+    attributes:
+      label: Symptom
+      description: What you observed, with the exact command and its output.
+      placeholder: "Command: ...\nOutput: ...\nObserved: ..."
+    validations:
+      required: true
+  - type: textarea
+    id: measurements
+    attributes:
+      label: Measurements
+      description: Counts, timings, and how often it happens (for example, "3 of 7 runs").
+    validations:
+      required: true
+  - type: textarea
+    id: version
+    attributes:
+      label: Version
+      description: Output of `agentmarshal --version`.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Python version, and git provider (GitHub / GitFlic / self-hosted).
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+      description: What you expected instead, and why.
+    validations:
+      required: true
