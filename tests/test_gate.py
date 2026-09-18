@@ -94,6 +94,10 @@ def _gate_repo(
     _git(repo, "init", "--quiet", "-b", "master")
     monkeypatch.chdir(repo)
     assert main(["init"]) == 0
+    project_path = repo / ".agentmarshal" / "project.json"
+    project = json.loads(project_path.read_text(encoding="utf-8"))
+    project["capture"] = {"overrides": {"reviews": "commit"}}
+    project_path.write_text(json.dumps(project), encoding="utf-8")
     arguments = ["open", "--title", "Gate task"]
     for entry in scope:
         arguments.extend(["--scope", entry])

@@ -35,9 +35,10 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 from types import MappingProxyType
 
-from agentmarshal.project import PROJECT_CONFIG_RELPATH
+from agentmarshal.project import PROJECT_CONFIG_RELPATH, read_project_file
 
 
 class CaptureError(ValueError):
@@ -244,6 +245,18 @@ def capture_policy_from_project(project_data: Mapping[str, object]) -> CapturePo
         overrides=overrides,
         allow_public_sessions=allow_public_sessions,
     )
+
+
+def review_capture_level_from_journal(journal_root: Path) -> CaptureLevel:
+    """Read the review-prose level from the journal project's configuration.
+
+    A sidecar journal is itself the project whose policy governs its evidence;
+    its host's project file is deliberately not consulted.
+    """
+
+    project_file = journal_root.parent.parent / PROJECT_CONFIG_RELPATH
+    project = read_project_file(project_file)
+    return capture_policy_from_project(project).level_for(CaptureClass.REVIEWS)
 
 
 # --- leak scanning --------------------------------------------------------

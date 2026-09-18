@@ -45,30 +45,40 @@ upgrade that divergence is not harmless: an unpinned CI runner still on 0.3.0 is
 exactly the missed reader the procedure above warns about. Pin, or upgrade it
 explicitly.
 
-### Commit the review's prose with its record
+### Decide where a review's prose goes
 
-`agentmarshal review` now keeps the reviewer's output as a journal artifact
-under the task's `artifacts/` directory and pins its SHA-256 in the review
-record (CR-091); on success it no longer leaves a temporary copy.
-`submit-review --prose FILE` attaches human prose the same way. `validate`
-fails when a review record pins an artifact that is missing, so a wrapper that
-stages only `records/` must also stage `artifacts/` from the first review
-recorded with 0.4.0.
+0.3.0 kept a recorded review's output only in a temporary file, and only when
+the verdict named a finding. 0.4.0 lets the capture policy in the project file
+decide, for every review (CR-091, CR-111). The reviewer's standard output is
+what is kept; its standard error stays a local temporary file at every level.
 
-**Committing that artifact publishes it where the journal is public.** 0.3.0
-kept a recorded review's output only in a temporary file, and only when the
-verdict named a finding. 0.4.0 writes what the reviewer command prints into the
-journal for every review `agentmarshal review` records, to be committed with
-the record, so in an embedded journal of a public repository that text becomes
-public with the next push. No setting turns this
-off in 0.4.0. Before the first such review, decide which of these holds:
+- **No `capture` section — the default.** The `reviews` level is `hash`, which
+  ADR-0005 defines as a private store; that store is not built yet. Until it
+  is, `agentmarshal review` writes nothing to the journal: it keeps the output
+  in a local temporary file, names the file on stderr, and records no artifact.
+- **`"capture": {"overrides": {"reviews": "commit"}}`.** `agentmarshal review`
+  writes the output under the task's `artifacts/` directory and pins its
+  SHA-256 in the review record, and `submit-review --prose FILE` attaches
+  human prose the same way. `validate` fails when a pinned artifact is
+  missing, so a wrapper that stages only `records/` must also stage
+  `artifacts/`.
+- **`"reviews": "off"`, or the `minimal` preset.** Nothing of an accepted
+  verdict's output is kept.
 
-- the reviewer's output may be public — then nothing changes;
-- it may not — then shape what the reviewer command prints in its adapter, or
-  keep the journal in a repository of its own that you keep private (the
-  experimental sidecar placement, [docs/sidecar.md](docs/sidecar.md)), or
-  record verdicts with `submit-review`, which pins prose only when `--prose` is
-  given.
+At any level other than `commit`, `submit-review --prose` is refused before it
+writes anything.
+
+**`commit` publishes the prose wherever the journal is public.** In an embedded
+journal of a public repository it becomes public with the next push. It can
+hold more than the diff: the reviewer process can read whatever its
+operating-system user can read, beyond the snapshot it starts in. Choose
+`commit` for a public journal only if that is acceptable; the experimental
+sidecar placement ([docs/sidecar.md](docs/sidecar.md)) keeps the journal in a
+repository of its own, whose project file sets its own level.
+
+Only the `reviews` class is read in 0.4.0. `record-session` records what it is
+given whatever the `economics` and `sessions` levels say, so the `minimal`
+preset does not stop economics records.
 
 ### Contract headers gain schema 2
 

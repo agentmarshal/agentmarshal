@@ -1,5 +1,6 @@
 """Tests for the journal-wide validate command (CR-018)."""
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -27,6 +28,10 @@ def _project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tasks: int = 2) ->
     _git(repo, "init", "--quiet", "-b", "master")
     monkeypatch.chdir(repo)
     assert main(["init"]) == 0
+    project_path = repo / ".agentmarshal" / "project.json"
+    project = json.loads(project_path.read_text(encoding="utf-8"))
+    project["capture"] = {"overrides": {"reviews": "commit"}}
+    project_path.write_text(json.dumps(project), encoding="utf-8")
     for index in range(tasks):
         assert main(["open", "--title", f"Task {index}", "--scope", "src/"]) == 0
     return repo

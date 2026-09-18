@@ -22,6 +22,11 @@ from agentmarshal.journal.brief import (
     append_amendment_history,
     render_amendment_history,
 )
+from agentmarshal.journal.capture import (
+    CaptureError,
+    CaptureLevel,
+    review_capture_level_from_journal,
+)
 from agentmarshal.journal.contracts import parse_contract_text
 from agentmarshal.journal.extensions import (
     ExtensionManifestError,
@@ -113,6 +118,7 @@ class LaunchedReview:
     record_path: Path
     artifact_ref: str | None
     diagnostics_note: str | None
+    prose_note: str | None
 
 
 @dataclass(frozen=True)
@@ -473,6 +479,22 @@ def _preserve_output(output: str) -> Path:
     return Path(name)
 
 
+def _preserve_accepted_output(output: bytes) -> Path:
+    """Keep an accepted verdict's output outside the journal, byte for byte.
+
+    The capture policy's ``hash`` level names a private store that does not
+    exist yet; until it does, the output stays in a local temporary file the
+    command names, and nothing in the journal refers to it.
+    """
+
+    descriptor, name = tempfile.mkstemp(
+        prefix="agentmarshal-reviewer-output-", suffix=".txt"
+    )
+    with os.fdopen(descriptor, "wb") as handle:
+        handle.write(output)
+    return Path(name)
+
+
 def _preserve_reviewer_diagnostics(output: bytes) -> Path:
     """Keep successful reviewer stderr beside rejected-verdict copies.
 
@@ -823,6 +845,7 @@ def _launch_review_tail(
     subject_mismatch: Callable[[str, str], str],
     reviewed_commit: str | None = None,
     reviewed_finding: str | None = None,
+    prose_capture_level: CaptureLevel,
 ) -> LaunchedReview:
     """Run, parse, and record either kind of review after its setup is known."""
 
@@ -878,7 +901,7 @@ def _launch_review_tail(
             reviewer_email,
             findings,
             advisory or None,
-            prose=raw_output,
+            prose=raw_output if prose_capture_level is CaptureLevel.COMMIT else None,
             reviewed_finding=reviewed_finding,
             reviewed_contract=hashlib.sha256(contract.encode("utf-8")).hexdigest(),
         )
@@ -894,10 +917,21 @@ def _launch_review_tail(
         raise _with_diagnostics(
             _reject(reviewer_output, str(error)), diagnostics_note
         ) from error
+    prose_note: str | None = None
+    if prose_capture_level is CaptureLevel.HASH:
+        try:
+            kept = _preserve_accepted_output(raw_output)
+        except OSError as error:
+            prose_note = f"reviewer prose could not be kept locally: {error}"
+        else:
+            prose_note = f"reviewer output kept at {kept} (capture level: hash)"
+    elif prose_capture_level is CaptureLevel.OFF:
+        prose_note = "reviewer prose was not kept (capture level: off)"
     return LaunchedReview(
         submitted.record_path,
         submitted.artifact_ref,
         diagnostics_note,
+        prose_note,
     )
 
 
@@ -910,6 +944,7 @@ def _launch_finding_review(
     reviewer_vendor: str,
     reviewer_model: str,
     reviewer_email: str,
+    prose_capture_level: CaptureLevel,
 ) -> LaunchedReview:
     """Review verified finding artifacts and bind the resulting record to it."""
 
@@ -998,6 +1033,7 @@ def _launch_finding_review(
             f"{reviewed_finding}: verdict named {subject_field} {subject}"
         ),
         reviewed_finding=reviewed_finding,
+        prose_capture_level=prose_capture_level,
     )
 
 
@@ -1018,6 +1054,10 @@ def launch_review(
 
     sidecar_journal = journal_root
     journal_root = journal_root or project_root / ".agentmarshal" / "journal"
+    try:
+        prose_capture_level = review_capture_level_from_journal(journal_root)
+    except (CaptureError, OSError, ValueError) as error:
+        raise ReviewLaunchError(str(error)) from error
     if reviewed_finding is not None and (commit is not None or base is not None):
         # One binding per review is the record rule (records.py); a public
         # caller handed both would otherwise have the finding judged silently.
@@ -1043,6 +1083,7 @@ def launch_review(
             reviewer_vendor,
             reviewer_model,
             reviewer_email,
+            prose_capture_level,
         )
     if commit is None or base is None:
         raise ReviewLaunchError("a commit review requires both commit and base")
@@ -1120,4 +1161,5 @@ def launch_review(
             "reviewer verdict reviewed_commit does not match commit"
         ),
         reviewed_commit=resolved_commit,
+        prose_capture_level=prose_capture_level,
     )

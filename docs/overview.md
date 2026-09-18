@@ -105,7 +105,8 @@ task is already closed.
 - **Record** — one append-only JSON evidence file: `opened`, `finding`,
   `review`, `acceptance`, `amendment`, `completed`, `reopened`, `abandoned`,
   or a `session` (measurement). Written once, never edited. A review may pin
-  the reviewer's prose by SHA-256 as an artifact beside the task's records.
+  the reviewer's prose by SHA-256 as an artifact beside the task's records,
+  when the project's capture policy sets its `reviews` level to `commit`.
 - **Projection / state** — a task's status computed from its records, never
   stored.
 - **Review** — a recorded verdict (`approved`, `changes_required`, …) for an
@@ -153,14 +154,14 @@ boundary is stated in the ADRs and
   not just recorded. Adjacent to (not a claim of) SLSA Source; not yet emitted.
   ADR-0005 designs the Statement projection; it names signing as a later slice
   without specifying it.
-- **Capture policy** — token-economics/session records accrue in 0.4.0
-  (`record-session` / `report`). What is roadmap is the *capture policy* that
-  governs retaining heavier supplementary evidence — full review and prompt
-  text, raw session transcripts — public or in a private store. The policy
-  parser exists but no policy-driven writer or private store retains those
-  artifacts. A review's prose is the one supplement kept today, pinned by
-  SHA-256 as a journal artifact (see Record); prompt text and transcripts are
-  not, and no capture policy governs any of it yet. Designed in ADR-0005.
+- **Capture policy** — the `reviews` class is read in 0.4.0: its default
+  `hash` level keeps a reviewer's standard output out of the journal in a named
+  local temporary file until the private store exists, while
+  `capture.overrides.reviews = "commit"` pins it as a journal artifact. The
+  economics and sessions classes are not read yet; `record-session` keeps its
+  existing behaviour whatever their levels say. Prompt text and raw session
+  transcripts still have no policy-driven writer or private store. Designed in
+  ADR-0005.
 - **Mandatory leak-scan enforcement** — 0.4.0 ships a standalone `leak-scan`
   command and an advisory merge-time scan that warns on possible leaks in a
   candidate's additions. Making a match block is roadmap. The scan is
