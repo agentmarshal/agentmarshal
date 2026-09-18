@@ -49,6 +49,20 @@ class TaskStatusError(ValueError):
     """Raised when task status cannot be safely projected."""
 
 
+def record_type_is_admitted_after_terminal(
+    record_type: str, terminal_state: str
+) -> bool:
+    """Return whether the projection admits a record after ``terminal_state``.
+
+    Measurements follow either terminal state. A reopening follows completion
+    only, because it returns that state to open; abandonment remains terminal.
+    """
+
+    return record_type in _RECORD_TYPES_ADMITTED_AFTER_TERMINAL and (
+        record_type != "reopened" or terminal_state == "done"
+    )
+
+
 @dataclass(frozen=True)
 class TaskStatus:
     """A task contract, its evidence, and the derived lifecycle state."""
@@ -129,20 +143,17 @@ def load_task_for_record(
         # task. The projection's own table decides what a record type is.
         raise TaskStatusError(f"unknown record type: {record_type!r}")
     task = load_task_status(journal_root, task_id)
-    if record_type == "reopened":
-        # The projection admits a reopening only from `done`: not while the
-        # task is open, and not after abandonment. The admitted set cannot
-        # express that — it does not know which record closed the task — so
-        # the predicate lives here once, and the CLI no longer keeps a copy of
-        # it. The copy was correct; it was a copy.
-        if task.state != "done":
+    if task.state == "open":
+        if record_type == "reopened":
             raise TaskStatusError(
                 f"task {task_id} cannot be reopened (state: {task.state})"
             )
         return task
-    if task.state == "open":
-        return task
-    if record_type not in _RECORD_TYPES_ADMITTED_AFTER_TERMINAL:
+    if not record_type_is_admitted_after_terminal(record_type, task.state):
+        if record_type == "reopened":
+            raise TaskStatusError(
+                f"task {task_id} cannot be reopened (state: {task.state})"
+            )
         admitted = (
             "a measurement or a reopening" if task.state == "done" else "a measurement"
         )

@@ -15,12 +15,16 @@ from agentmarshal.journal import review as review_module
 from agentmarshal.journal.contracts import scope_covers
 from agentmarshal.journal.gate import GateError, markers_from_tree, run_gate
 from agentmarshal.journal.records import (
+    create_abandoned_record,
     create_acceptance_record,
     create_completed_record,
+    create_reopened_record,
+    create_review_record,
     create_session_record,
     read_records,
     write_record,
 )
+from agentmarshal.journal.status import load_task_status
 
 _WRITER = ["-c", "user.name=Worker", "-c", "user.email=worker@test.invalid"]
 _REVIEWER_EMAIL = "reviewer@test.invalid"
@@ -1552,9 +1556,8 @@ def test_gate_refuses_candidate_on_a_task_closed_at_base(
 def test_gate_allows_session_only_append_to_closed_task(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # A task closed at base still admits measurements: a journal-only
-    # candidate whose added records are all session records accrues
-    # economics after the terminal record (ADR-0005 Decision 3).
+    """Scenario: measurements still accrue after completion."""
+
     repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
     journal = repo / ".agentmarshal" / "journal"
     write_record(journal, "CR-001", create_completed_record("CR-001", "test", base))
@@ -1575,6 +1578,89 @@ def test_gate_allows_session_only_append_to_closed_task(
     assert passed, output
     assert "measurements-only append to a task closed at base" in output
     assert output.count("FAIL") == 0
+
+
+def test_gate_allows_reopening_only_append_to_completed_task(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a reopening lands through the gate.
+
+    The completed record is committed into the base. The candidate adds only
+    the reopening record, so the test exercises the base-state check.
+    """
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    journal = repo / ".agentmarshal" / "journal"
+    write_record(journal, "CR-001", create_completed_record("CR-001", "test", base))
+    closed_base = _commit_all(repo, "complete CR-001 on master")
+
+    _git(repo, "switch", "--quiet", "-c", "reopen", closed_base)
+    assert main(["reopen", "--task", "CR-001", "--reason", "More work found"]) == 0
+    head = _commit_all(repo, "reopen CR-001")
+
+    candidate_paths = _git(repo, "diff", "--name-only", closed_base, head).splitlines()
+    assert len(candidate_paths) == 1
+    assert candidate_paths[0].startswith(".agentmarshal/journal/tasks/CR-001/records/")
+    assert candidate_paths[0].endswith("-reopened.json")
+
+    passed, output = _run(repo, head, closed_base, head)
+
+    assert passed, output
+    assert (
+        "PASS: reopening append to a task completed at base "
+        "(reopening is admitted post-terminal)" in output
+    )
+    assert load_task_status(journal, "CR-001").state == "open"
+
+
+def test_gate_refuses_reopening_only_append_to_abandoned_task(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: an abandoned task cannot be reopened through the gate."""
+
+    repo, _base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    journal = repo / ".agentmarshal" / "journal"
+    write_record(journal, "CR-001", create_abandoned_record("CR-001", "test", "Stop"))
+    abandoned_base = _commit_all(repo, "abandon CR-001 on master")
+
+    _git(repo, "switch", "--quiet", "-c", "reopen", abandoned_base)
+    write_record(journal, "CR-001", create_reopened_record("CR-001", "test", "Retry"))
+    head = _commit_all(repo, "try to reopen CR-001")
+
+    with pytest.raises(GateError, match="an abandoned task cannot be reopened"):
+        _run(repo, head, abandoned_base, head)
+
+
+def test_gate_refuses_review_only_append_to_closed_task(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: other work on a closed task is still refused."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    journal = repo / ".agentmarshal" / "journal"
+    write_record(journal, "CR-001", create_completed_record("CR-001", "test", base))
+    closed_base = _commit_all(repo, "complete CR-001 on master")
+
+    _git(repo, "switch", "--quiet", "-c", "review", closed_base)
+    write_record(
+        journal,
+        "CR-001",
+        create_review_record(
+            "CR-001",
+            "test",
+            closed_base,
+            "approved",
+            "qa",
+            "test",
+            "test-model",
+            _REVIEWER_EMAIL,
+            [],
+        ),
+    )
+    head = _commit_all(repo, "review CR-001 after completion")
+
+    with pytest.raises(GateError, match="lifecycle record after a terminal record"):
+        _run(repo, head, closed_base, head)
 
 
 def test_gate_refuses_measurements_lane_with_another_tasks_session(
