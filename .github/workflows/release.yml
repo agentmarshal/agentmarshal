@@ -37,6 +37,15 @@ jobs:
             echo "::error::tag ${TAG} does not match pyproject version v${version}"
             exit 1
           fi
+          # The default branch carries the next version as X.Y.Z.devN; a tag
+          # that matches it would publish a development build permanently.
+          # PEP 440 is case-insensitive, so compare the lowercased spelling.
+          case "$(printf '%s' "$version" | tr '[:upper:]' '[:lower:]')" in
+            *dev*|*+*)
+              echo "::error::version ${version} is a development or local version; refusing to publish"
+              exit 1
+              ;;
+          esac
       - uses: astral-sh/setup-uv@v5
       - name: Build sdist and wheel
         run: uv build
