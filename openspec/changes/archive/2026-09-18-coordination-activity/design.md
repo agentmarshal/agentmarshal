@@ -37,5 +37,8 @@ introduced (`_SCHEMA_5_FIELDS` is the precedent for a field).
 ## Risks
 
 - [A journal with a coordination record is unreadable by 0.3.0] → true, and
-  stated in UPGRADING at release; the refusal names the schema, which is the
-  clearest thing an older reader can say.
+  stated in UPGRADING at release. The refusal is about the schema, but it does
+  not name the number: 0.3.0 says "record has an unknown or missing schema
+  version". That is still the better of the two refusals an older reader could
+  give — it points at versions, not at a field value — and UPGRADING has to
+  carry the specific "a coordination session needs 0.4.0" itself.

@@ -868,6 +868,17 @@ def create_amendment_record(
     }
 
 
+def session_record_schema(activity: str) -> int:
+    """Return the schema a session record with *activity* is written under.
+
+    One place decides it, for the live writer and for backfill alike: a value
+    introduced by a later schema carries that schema, and every other record
+    keeps the number it always had.
+    """
+
+    return _COORDINATION_SESSION_SCHEMA if activity == "coordination" else 3
+
+
 def create_session_record(
     task_id: str,
     tool_version: str,
@@ -891,7 +902,7 @@ def create_session_record(
             f"session record argument {missing!r} is required when its pair is supplied"
         )
     record: dict[str, object] = {
-        "schema": _COORDINATION_SESSION_SCHEMA if activity == "coordination" else 3,
+        "schema": session_record_schema(activity),
         "record_type": "session",
         "task": task_id,
         "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),

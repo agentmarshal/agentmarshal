@@ -28,9 +28,9 @@ from agentmarshal import __version__
 from agentmarshal.journal.attestation import SOURCE_IMPORTED
 from agentmarshal.journal.capture import CaptureError, assert_no_leaks
 from agentmarshal.journal.records import (
-    _COORDINATION_SESSION_SCHEMA,
     _SESSION_ACTIVITIES,
     JournalRecordError,
+    session_record_schema,
     validate_record_content,
     validate_task_id,
 )
@@ -148,9 +148,7 @@ def session_record_from_stat(
     )
 
     record: dict[str, object] = {
-        "schema": (
-            _COORDINATION_SESSION_SCHEMA if normalized_activity == "coordination" else 3
-        ),
+        "schema": session_record_schema(normalized_activity),
         "record_type": "session",
         "task": stat["task"],
         "created_at": stat["recorded_at"],
