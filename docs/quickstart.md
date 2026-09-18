@@ -3,8 +3,8 @@
 This walks through the whole AgentMarshal loop on a throwaway repository —
 from installing the package to a task that carries durable, SHA-bound
 evidence that its work was independently reviewed. Every command below was run
-against the published `agentmarshal` 0.3.0 release: the main path end to end in
-one pass, and the two branches that pass cannot reach — `accept`, which needs a
+against `agentmarshal` 0.4.0, installed from the wheel built from this release's
+source before it was published: the main path end to end in one pass, and the two branches that pass cannot reach — `accept`, which needs a
 non-approving review, and `reopen`, which undoes the state the run arrives at —
 separately.
 
@@ -16,10 +16,10 @@ Requirements: **Python ≥ 3.12** and **git** on your `PATH`.
 
 ## Install
 
-These are the exact commands this guide was verified with:
+Install the release this guide describes:
 
 ```sh
-pip install agentmarshal==0.3.0
+pip install agentmarshal==0.4.0
 agentmarshal --version
 ```
 

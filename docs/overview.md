@@ -151,6 +151,8 @@ boundary is stated in the ADRs and
 - **Verifiable attestation** — projecting records to an in-toto Statement and
   signing it (DSSE / Sigstore), so provenance is cryptographically checkable,
   not just recorded. Adjacent to (not a claim of) SLSA Source; not yet emitted.
+  ADR-0005 designs the Statement projection; it names signing as a later slice
+  without specifying it.
 - **Capture policy** — token-economics/session records accrue in 0.4.0
   (`record-session` / `report`). What is roadmap is the *capture policy* that
   governs retaining heavier supplementary evidence — full review and prompt
@@ -158,14 +160,16 @@ boundary is stated in the ADRs and
   parser exists but no policy-driven writer or private store retains those
   artifacts. A review's prose is the one supplement kept today, pinned by
   SHA-256 as a journal artifact (see Record); prompt text and transcripts are
-  not, and no capture policy governs any of it yet.
+  not, and no capture policy governs any of it yet. Designed in ADR-0005.
 - **Mandatory leak-scan enforcement** — 0.4.0 ships a standalone `leak-scan`
   command and an advisory merge-time scan that warns on possible leaks in a
   candidate's additions. Making a match block is roadmap. The scan is
-  best-effort by design (ADR-0005) — never a guarantee.
+  best-effort by design (ADR-0005) — never a guarantee. The blocking mode is
+  designed in ADR-0005.
 - **Further contract metadata** — a threat-model field and any enforcement
   built from it. This is a direction, not yet a design: no document specifies
   it. It is separate from the active contract `extensions` field in ADR-0010.
 - **Broader providers** — first-class GitHub, GitFlic, and self-hosted rails.
+  A direction, not yet a design: no document specifies it.
 
 See the [ADRs](adr/) for the full design decisions.
