@@ -55,6 +55,21 @@ fails when a review record pins an artifact that is missing, so a wrapper that
 stages only `records/` must also stage `artifacts/` from the first review
 recorded with 0.4.0.
 
+**Committing that artifact publishes it where the journal is public.** 0.3.0
+kept a recorded review's output only in a temporary file, and only when the
+verdict named a finding. 0.4.0 writes what the reviewer command prints into the
+journal for every review `agentmarshal review` records, to be committed with
+the record, so in an embedded journal of a public repository that text becomes
+public with the next push. No setting turns this
+off in 0.4.0. Before the first such review, decide which of these holds:
+
+- the reviewer's output may be public — then nothing changes;
+- it may not — then shape what the reviewer command prints in its adapter, or
+  keep the journal in a repository of its own that you keep private (the
+  experimental sidecar placement, [docs/sidecar.md](docs/sidecar.md)), or
+  record verdicts with `submit-review`, which pins prose only when `--prose` is
+  given.
+
 ### Contract headers gain schema 2
 
 Contract headers that carry `decisions`, `documents` or `extensions` use
@@ -105,6 +120,18 @@ checks were not examined; an existing review is still judged normally
 (CR-099). The shipped GitHub workflow now passes this flag. If you copied the
 old template, update its gate command to include `--without-review` and stop
 tolerating the structurally failing gate run.
+
+### Adjust parsers of `doctor` output
+
+`agentmarshal doctor` has three new checks — the recorded actor, the reviewer
+command's placeholders, and a CI definition that runs `validate` (CR-098). Each
+is a precondition only the operator can establish, so an unmet one prints as a
+`TODO` line rather than `FAIL`, and the summary line counts it — `Summary: 2
+precondition(s) left to the operator` — instead of reading `Summary: all N
+checks passed`. An unmet precondition does not change the exit status: `doctor`
+exits 1 only when a check fails. A script that matched the old summary line
+should read the exit status instead. `agentmarshal init` now also prints the
+list of preconditions after initializing, on standard output.
 
 ### Adjust parsers of leak-scan output
 
