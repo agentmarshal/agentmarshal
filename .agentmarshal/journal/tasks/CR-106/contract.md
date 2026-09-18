@@ -9,6 +9,7 @@ scope = [
   "src/agentmarshal/cli.py",
   "tests/test_session.py",
   "tests/test_backfill.py",
+  "tests/test_attestation.py",
   "openspec/changes/coordination-activity/",
   "openspec/changes/archive/",
   "openspec/specs/session-activity/",
@@ -46,6 +47,16 @@ lets an older reader refuse it legibly.
 
 See the `acceptance` field above; scenarios in the delta spec, decisions in
 design.md.
+
+## Amended 2026-09-18
+
+`tests/test_attestation.py` joins the scope. `test_unknown_schema_is_rejected`
+uses the first unsupported schema number as its fixture — 6 until this task —
+and its own docstring says the number moves as the ladder grows while the
+refusal is what it pins. This task makes 6 supported, so the fixture moves to 7.
+The implementer stopped at the scope boundary and said so, which is the right
+behaviour; the scope named the files the change was expected to touch and
+missed the one that encodes "the next number up".
 
 ## Non-Goals
 
