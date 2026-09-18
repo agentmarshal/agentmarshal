@@ -24,7 +24,6 @@
 - [adr/ADR-0011-contract-amendment-visibility.md](adr/ADR-0011-contract-amendment-visibility.md) — understand visible contract amendments and review binding.
 - [migration-v1-to-v2.md](migration-v1-to-v2.md) — see what did not carry from the v1 rails into the v2 journal.
 - [incidents/2026-08-31-scope-warning-scope-creep.md](incidents/2026-08-31-scope-warning-scope-creep.md) — study the scope-warning change that grew into scope creep and was rolled back.
-- [README.md](README.md) — use this map to locate the documentation by reader goal.
 
 ## Report or assess a finding
 

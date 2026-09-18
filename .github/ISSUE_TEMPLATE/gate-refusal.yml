@@ -27,3 +27,17 @@ body:
       description: Say what you expected the output to identify and what it did not make clear.
     validations:
       required: true
+  - type: textarea
+    id: version
+    attributes:
+      label: Version
+      description: Output of `agentmarshal --version`.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Python version, and git provider (GitHub / GitFlic / self-hosted).
+    validations:
+      required: true
