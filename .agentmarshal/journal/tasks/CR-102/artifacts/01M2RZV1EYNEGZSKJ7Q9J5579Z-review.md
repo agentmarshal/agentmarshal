@@ -1,0 +1,9 @@
+Ревью сделано по коду, без запуска тестов: запуск `pytest` требует разрешения, которое в этом read-only сеансе не выдано. Guard проверен на каждом месте записи. `load_task_for_record` в `status.py` берёт множество допустимых записей из той же константы, что и projection. `submit-review` был единственным writer'ом без проверки, теперь он отказывает. Оба пути launcher'а отказывают до создания temp dir и запуска reviewer'а. У каждого сценария есть тест, docstring которого его называет. Статусная заметка ADR-0005 совпадает с тем, что написано в спеке о `reopened`. Блокирующих проблем нет.
+
+- ADV-1: `src/agentmarshal/cli.py:881` — путь `complete` в sidecar проверяет task отдельным вызовом guard'а, но тестом на закрытый task он не покрыт. Путь `--findings` по той же причине получил отдельный тест в `tests/test_findings.py`, а параметризованный тест в `tests/test_journal.py` проверяет только embedded-форму с `--commit`.
+- ADV-2: `src/agentmarshal/journal/status.py:21` и `:145` — ключи `_RECORD_TYPE_STATES` вручную продублированы в `WritableRecordType`. Текст отказа («a measurement or a reopening» / «a measurement») перечисляет допустимое множество прозой, а не выводит его из `_RECORD_TYPES_ADMITTED_AFTER_TERMINAL`. Если это множество изменится, сообщение станет неверным.
+- ADV-3: в `design.md` и `proposal.md` архивного change'а неверные цифры. «Двенадцать writer'ов в восьми модулях» не сходится с перечислением. «Шесть написаний» — на деле копий семь, а различных формулировок две. В `proposal.md` сказано «пять копий». Ещё `proposal.md` утверждает, что `reopen` сохраняет собственную проверку, хотя `design.md` и код переносят её в guard.
+
+AGENTMARSHAL_VERDICT_BEGIN
+{"reviewed_commit": "16820dec0e35da9de0ba57128ebc48c03dd24653", "verdict": "approved", "findings": [], "advisory_findings": ["ADV-1", "ADV-2", "ADV-3"]}
+AGENTMARSHAL_VERDICT_END

@@ -1,0 +1,30 @@
+{
+  "advisory_findings": [
+    "gate-lane-keeps-its-own-post-terminal-list",
+    "contract-names-an-unarchived-change-path"
+  ],
+  "artifacts": [
+    {
+      "hash": "72640ec10eba42dcd1e22be6ef493e549e68afd696f1762d928efa05a839b998",
+      "ref": ".agentmarshal/journal/tasks/CR-102/artifacts/01M2RYYVMV4QXFFCYQGSRRT15Z-review.md"
+    }
+  ],
+  "created_at": "2026-09-18T00:34:13.787421Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "0be1f658bb2124517360ef2b6adb9860e92941e5",
+  "reviewed_contract": "d6264473698e7f9221355f5b96797457fc21bed97c9cc954481c79d614eaa496",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-102",
+  "tool_version": "0.3.0",
+  "verdict": "approved"
+}
