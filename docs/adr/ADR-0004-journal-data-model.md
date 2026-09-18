@@ -135,8 +135,9 @@ is a model that avoids cross-branch mutation, not a database.
   v1→v2 migration carried no contract prose at all. So most merged tasks
   are **not** usable evaluation cases today (see
   [docs/migration-v1-to-v2.md](../migration-v1-to-v2.md)). Substantive,
-  machine-readable acceptance is required going forward, and enforcing it
-  in the gate is a planned contract-schema change, not yet in effect.
+  machine-readable acceptance is required going forward by convention;
+  enforcing it in the gate would be a contract-schema change that has not
+  been designed or scheduled, and is not in effect.
 - Session records may carry an optional external trace reference,
   keeping the ledger composable with session observability tooling
   without depending on it.
