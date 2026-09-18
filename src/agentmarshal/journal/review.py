@@ -11,10 +11,12 @@ import string
 import subprocess
 import tarfile
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
+from agentmarshal.journal.actors import finding_reviewer_identity_refusal
 from agentmarshal.journal.artifacts import artifact_path as artifact_path
 from agentmarshal.journal.brief import (
     append_amendment_history,
@@ -26,7 +28,6 @@ from agentmarshal.journal.extensions import (
     ExtensionManifestMissing,
     read_extension_manifest,
 )
-from agentmarshal.journal.gate import finding_reviewer_identity_refusal
 
 # The allowed verdicts have one definition, in records.py, which validation
 # uses. The prompt renders that same set so it cannot drift from what the
@@ -806,6 +807,100 @@ def _extract_finding_snapshot(
             ) from error
 
 
+def _launch_review_tail(
+    journal_root: Path,
+    task_id: str,
+    reviewer_role: str,
+    reviewer_vendor: str,
+    reviewer_model: str,
+    reviewer_email: str,
+    *,
+    snapshot_builder: Callable[[Path], None],
+    prompt_builder: Callable[[Path], tuple[str, str]],
+    subject_fields: frozenset[str],
+    expected_subject_field: str,
+    expected_subject: str,
+    subject_mismatch: Callable[[str, str], str],
+    reviewed_commit: str | None = None,
+    reviewed_finding: str | None = None,
+) -> LaunchedReview:
+    """Run, parse, and record either kind of review after its setup is known."""
+
+    raw_output = b""
+    reviewer_output = ""
+    with tempfile.TemporaryDirectory(
+        prefix="agentmarshal-review-"
+    ) as temporary_directory:
+        temporary_root = Path(temporary_directory)
+        snapshot = temporary_root / "snapshot"
+        prompt_file = temporary_root / "review-prompt.txt"
+        snapshot_builder(snapshot)
+        prompt, contract = prompt_builder(snapshot)
+        prompt_file.write_text(prompt, encoding="utf-8")
+        raw_output, raw_diagnostics = _run_reviewer(
+            _reviewer_command(reviewer_model, prompt_file), snapshot, prompt
+        )
+        diagnostics_note = _keep_diagnostics(raw_diagnostics)
+        # The verdict is parsed from a decoded copy; the artifact pins the
+        # bytes the reviewer wrote, so nothing is normalised on the way.
+        reviewer_output = raw_output.decode("utf-8", errors="replace")
+        try:
+            (
+                subject_field,
+                subject,
+                verdict,
+                findings,
+                advisory,
+            ) = _parse_verdict(
+                reviewer_output,
+                subject_fields=subject_fields,
+                expected_field=expected_subject_field,
+            )
+        except ReviewLaunchError as error:
+            raise _with_diagnostics(error, diagnostics_note) from error
+        if subject_field != expected_subject_field or subject != expected_subject:
+            raise _with_diagnostics(
+                _reject(
+                    reviewer_output,
+                    subject_mismatch(subject_field, subject),
+                ),
+                diagnostics_note,
+            )
+    try:
+        submitted = submit_review(
+            journal_root,
+            task_id,
+            reviewed_commit,
+            verdict,
+            reviewer_role,
+            reviewer_vendor,
+            reviewer_model,
+            reviewer_email,
+            findings,
+            advisory or None,
+            prose=raw_output,
+            reviewed_finding=reviewed_finding,
+            reviewed_contract=hashlib.sha256(contract.encode("utf-8")).hexdigest(),
+        )
+    except ReviewSubmitError as error:
+        if error.artifact_ref is not None:
+            raise _with_diagnostics(
+                ReviewLaunchError(str(error)), diagnostics_note
+            ) from error
+        # A verdict can parse cleanly and still be refused by record validation —
+        # an unknown verdict value, empty findings for a non-approving verdict,
+        # duplicates, or advisory ids overlapping findings. That path discarded
+        # the analysis too, and it is the one seen most often in practice.
+        raise _with_diagnostics(
+            _reject(reviewer_output, str(error)), diagnostics_note
+        ) from error
+    return LaunchedReview(
+        submitted.record_path,
+        submitted.artifact_ref,
+        diagnostics_note,
+    )
+
+
 def _launch_finding_review(
     project_root: Path,
     journal_root: Path,
@@ -886,70 +981,23 @@ def _launch_finding_review(
         absent_extensions=tuple(absent),
         amendment_history=render_amendment_history(task.records),
     )
-    raw_output = b""
-    reviewer_output = ""
-    with tempfile.TemporaryDirectory(
-        prefix="agentmarshal-review-"
-    ) as temporary_directory:
-        temporary_root = Path(temporary_directory)
-        snapshot = temporary_root / "snapshot"
-        prompt_file = temporary_root / "review-prompt.txt"
-        _extract_finding_snapshot(verified, snapshot)
-        prompt_file.write_text(prompt, encoding="utf-8")
-        raw_output, raw_diagnostics = _run_reviewer(
-            _reviewer_command(reviewer_model, prompt_file), snapshot, prompt
-        )
-        diagnostics_note = _keep_diagnostics(raw_diagnostics)
-        reviewer_output = raw_output.decode("utf-8", errors="replace")
-        try:
-            (
-                subject_field,
-                subject,
-                verdict,
-                blocking_findings,
-                advisory,
-            ) = _parse_verdict(
-                reviewer_output,
-                subject_fields=frozenset({"reviewed_commit", "reviewed_finding"}),
-                expected_field="reviewed_finding",
-            )
-        except ReviewLaunchError as error:
-            raise _with_diagnostics(error, diagnostics_note) from error
-        if subject_field != "reviewed_finding" or subject != reviewed_finding:
-            raise _with_diagnostics(
-                _reject(
-                    reviewer_output,
-                    "reviewer verdict subject does not match requested finding "
-                    f"{reviewed_finding}: verdict named {subject_field} {subject}",
-                ),
-                diagnostics_note,
-            )
-    try:
-        submitted = submit_review(
-            journal_root,
-            task_id,
-            None,
-            verdict,
-            reviewer_role,
-            reviewer_vendor,
-            reviewer_model,
-            reviewer_email,
-            blocking_findings,
-            advisory or None,
-            prose=raw_output,
-            reviewed_finding=reviewed_finding,
-            reviewed_contract=hashlib.sha256(contract.encode("utf-8")).hexdigest(),
-        )
-    except ReviewSubmitError as error:
-        if error.artifact_ref is not None:
-            raise _with_diagnostics(
-                ReviewLaunchError(str(error)), diagnostics_note
-            ) from error
-        raise _with_diagnostics(
-            _reject(reviewer_output, str(error)), diagnostics_note
-        ) from error
-    return LaunchedReview(
-        submitted.record_path, submitted.artifact_ref, diagnostics_note
+    return _launch_review_tail(
+        journal_root,
+        task_id,
+        reviewer_role,
+        reviewer_vendor,
+        reviewer_model,
+        reviewer_email,
+        snapshot_builder=lambda snapshot: _extract_finding_snapshot(verified, snapshot),
+        prompt_builder=lambda _snapshot: (prompt, contract),
+        subject_fields=frozenset({"reviewed_commit", "reviewed_finding"}),
+        expected_subject_field="reviewed_finding",
+        expected_subject=reviewed_finding,
+        subject_mismatch=lambda subject_field, subject: (
+            "reviewer verdict subject does not match requested finding "
+            f"{reviewed_finding}: verdict named {subject_field} {subject}"
+        ),
+        reviewed_finding=reviewed_finding,
     )
 
 
@@ -1006,16 +1054,7 @@ def launch_review(
     merge_base = _run_git(project_root, ["merge-base", base, resolved_commit]).strip()
     diff = _run_git(project_root, ["diff", f"{merge_base}..{resolved_commit}"])
 
-    review_result: tuple[str, str, list[str], list[str]]
-    reviewer_output = ""
-    raw_output = b""
-    with tempfile.TemporaryDirectory(
-        prefix="agentmarshal-review-"
-    ) as temporary_directory:
-        temporary_root = Path(temporary_directory)
-        snapshot = temporary_root / "snapshot"
-        prompt_file = temporary_root / "review-prompt.txt"
-        _extract_snapshot(project_root, resolved_commit, snapshot)
+    def prompt_builder(snapshot: Path) -> tuple[str, str]:
         contract_path = (
             journal_root / "tasks" / task.task_id / "contract.md"
             if sidecar_journal is not None
@@ -1061,64 +1100,24 @@ def launch_review(
             absent_extensions=tuple(absent),
             amendment_history=amendment_history,
         )
-        prompt_file.write_text(prompt, encoding="utf-8")
-        raw_output, raw_diagnostics = _run_reviewer(
-            _reviewer_command(reviewer_model, prompt_file),
-            snapshot,
-            prompt,
-        )
-        diagnostics_note = _keep_diagnostics(raw_diagnostics)
-        # The verdict is parsed from a decoded copy; the artifact pins the
-        # bytes the reviewer wrote, so nothing is normalised on the way.
-        output = raw_output.decode("utf-8", errors="replace")
-        reviewer_output = output
-        try:
-            (
-                _subject_field,
-                reviewed_commit,
-                verdict,
-                findings,
-                advisory,
-            ) = _parse_verdict(output)
-        except ReviewLaunchError as error:
-            raise _with_diagnostics(error, diagnostics_note) from error
-        if reviewed_commit != resolved_commit:
-            raise _with_diagnostics(
-                _reject(
-                    output, "reviewer verdict reviewed_commit does not match commit"
-                ),
-                diagnostics_note,
-            )
-        review_result = reviewed_commit, verdict, findings, advisory
-    try:
-        submitted = submit_review(
-            journal_root,
-            task_id,
-            review_result[0],
-            review_result[1],
-            reviewer_role,
-            reviewer_vendor,
-            reviewer_model,
-            reviewer_email,
-            review_result[2],
-            review_result[3] or None,
-            prose=raw_output,
-            reviewed_contract=hashlib.sha256(contract.encode("utf-8")).hexdigest(),
-        )
-    except ReviewSubmitError as error:
-        if error.artifact_ref is not None:
-            raise _with_diagnostics(
-                ReviewLaunchError(str(error)), diagnostics_note
-            ) from error
-        # A verdict can parse cleanly and still be refused by record validation —
-        # an unknown verdict value, empty findings for a non-approving verdict,
-        # duplicates, or advisory ids overlapping findings. That path discarded
-        # the analysis too, and it is the one seen most often in practice.
-        raise _with_diagnostics(
-            _reject(reviewer_output, str(error)), diagnostics_note
-        ) from error
-    return LaunchedReview(
-        submitted.record_path,
-        submitted.artifact_ref,
-        diagnostics_note,
+        return prompt, contract
+
+    return _launch_review_tail(
+        journal_root,
+        task_id,
+        reviewer_role,
+        reviewer_vendor,
+        reviewer_model,
+        reviewer_email,
+        snapshot_builder=lambda snapshot: _extract_snapshot(
+            project_root, resolved_commit, snapshot
+        ),
+        prompt_builder=prompt_builder,
+        subject_fields=frozenset({"reviewed_commit"}),
+        expected_subject_field="reviewed_commit",
+        expected_subject=resolved_commit,
+        subject_mismatch=lambda _subject_field, _subject: (
+            "reviewer verdict reviewed_commit does not match commit"
+        ),
+        reviewed_commit=resolved_commit,
     )

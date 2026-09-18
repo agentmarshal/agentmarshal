@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from agentmarshal.cli import main
+from agentmarshal.journal.actors import finding_reviewer_identity_refusal
 from agentmarshal.journal.gate import run_findings_gate, run_gate
 from agentmarshal.journal.records import (
     JournalRecordError,
@@ -267,6 +268,26 @@ def test_acceptance_over_a_finding_names_every_blocking_item(
     assert any(
         "F-1, F-2" in line and "not an approving review" in line
         for line in report.lines
+    )
+
+
+def test_actor_identity_rule_resolves_a_project_actor_to_git_identities(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The actor-owned rule compares a recorder's mapped git identity."""
+
+    repo, journal = _repo(tmp_path, monkeypatch)
+    _finding(repo)
+    finding = read_records(journal, "CR-001")[-1]
+
+    assert (
+        finding_reviewer_identity_refusal(repo, finding, "RECORDER@test.invalid")
+        == "declared reviewer identity differs from the finding recorder's "
+        "declared git identities"
+    )
+    assert (
+        finding_reviewer_identity_refusal(repo, finding, "reviewer@test.invalid")
+        is None
     )
 
 
