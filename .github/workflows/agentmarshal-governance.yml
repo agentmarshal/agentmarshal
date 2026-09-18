@@ -16,6 +16,10 @@ permissions:
 
 jobs:
   governance:
+    # Journal integrity + your project checks. Mark REQUIRED in branch
+    # protection: on GitHub the provider blocks the merge until every
+    # required check is green, which is what the gate's `ci-required`
+    # attestation mode relies on.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -193,8 +193,8 @@ second, explicit lie. See [ADR-0006](adr/ADR-0006-actors-and-identity.md).
 `agentmarshal init` writes a minimal `.agentmarshal/project.json`
 (`schema` + framework version); no hand-editing is needed for the loop. The
 supplementary-artifact `capture` policy is parsed but not acted on in
-0.3.0: there is no policy-driven artifact writer or private store yet. The
-`leak_scan.private_markers` list is active in 0.3.0 and adds project-specific
+0.4.0: there is no policy-driven artifact writer or private store yet. The
+`leak_scan.private_markers` list is active in 0.4.0 and adds project-specific
 strings to the built-in advisory scan used by `leak-scan` and the gate.
 
 When a schema-2 contract names an extension, the gate reads that extension's
@@ -347,7 +347,7 @@ separate check:
 agentmarshal leak-scan --commit "$IMPL" --base "$BASE"
 ```
 
-The gate runs this scan too and warns on matches; in 0.3.0 a match does not
+The gate runs this scan too and warns on matches; in 0.4.0 a match does not
 block. In an embedded journal, the gate is the merge authority. It passes only
 when every blocking check holds:
 

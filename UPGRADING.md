@@ -2,6 +2,38 @@
 
 ## 0.3.0 → 0.4.0
 
+### Upgrade every reader before the first new record schema
+
+**A 0.3.0 installation cannot read a journal containing a record schema 4, 5,
+or 6.** Schema 4 is used by a `finding` and by a review, acceptance, or
+completion bound to one (CR-086). Schema 5 is used by a review carrying
+`reviewed_contract` (CR-096) — and `agentmarshal review` writes it into
+**every** review it records, so in practice the first review run with 0.4.0
+is a schema-5 record. (A verdict recorded with `submit-review` does not carry
+it.) Schema 6 is used by a `coordination` session (CR-106). A 0.3.0 reader
+refuses each with `record has an unknown or missing schema version`.
+
+The break is one-directional and record-specific: 0.4.0 continues to read
+older records, and ordinary records that do not use these additions retain
+their existing schemas. Nothing needs migration or rewriting. Once anyone
+writes one of the new records, however, every older reader of that shared
+journal fails closed.
+
+### The procedure
+
+1. **Find every place that reads the shared journal.** Include each operator's
+   checkout, CI that runs `validate`, `status`, `gate`, or `complete`, and any
+   merge wrapper.
+2. **Upgrade all of them before anyone runs `agentmarshal review` with
+   0.4.0**, and before the first finding or coordination session is written.
+   This is a coordinated cutover; do not let a 0.3.0 checkout remain as a
+   reader.
+3. **Verify** `agentmarshal --version` reports `0.4.0` everywhere, then run
+   `agentmarshal validate` on the journal.
+4. Resume work. A 0.3.0 reader that was missed will refuse the first such
+   record with the message above; upgrade that reader rather than editing the
+   journal to remove evidence.
+
 ### Contract headers gain schema 2
 
 Contract headers that carry `decisions`, `documents` or `extensions` use
@@ -9,6 +41,40 @@ Contract headers that carry `decisions`, `documents` or `extensions` use
 0.3.0 refuses a schema-2 contract. Upgrade every checkout that reads a shared
 journal before committing the first schema-2 contract. Existing schema-1
 contracts and the record schema do not change.
+
+### Writers now reject records the projection would reject
+
+Record-writing commands now consult the task lifecycle projection before they
+append to an existing task. In particular, a `submit-review` after a terminal
+record, which could previously exit 0 and leave the journal invalid, now exits
+1 without writing the review (CR-102). Session measurements and a reopening
+that the projection admits remain allowed. No installation action is required;
+scripts that treated that successful exit as a write must handle the refusal.
+
+### A reopening transaction now passes the gate
+
+`agentmarshal reopen` on a completed task was already a valid projected record,
+but its additive transaction was refused by the gate. 0.4.0 admits that
+reopening transaction (CR-105). No migration is needed; rerun the normal gate
+after upgrading if an earlier reopening was blocked.
+
+### Update copied GitHub gate workflows
+
+The gate has `--without-review` for a pull-request head that cannot yet carry
+its review. It evaluates the remaining checks and says that the review-bound
+checks were not examined; an existing review is still judged normally
+(CR-099). The shipped GitHub workflow now passes this flag. If you copied the
+old template, update its gate command to include `--without-review` and stop
+tolerating the structurally failing gate run.
+
+### Adjust parsers of leak-scan output
+
+Leak-scan hits now render as `file: what matched`, naming a public signature or
+a configured private marker by position while never printing the matched secret
+(CR-100). The standalone `agentmarshal leak-scan` command prints every hit; the
+gate transcript shows at most twenty and appends how many were not shown
+(CR-103). Update any parser that expected the former category-only output or a
+shared hit limit.
 
 ## 0.2.0 → 0.3.0
 

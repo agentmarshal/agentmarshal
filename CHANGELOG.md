@@ -8,6 +8,92 @@ local timestamp that can read a day either side of it. The journal under
 This project describes what it does and not what it intends to do. Where a
 capability is partial, the entry says so.
 
+## 0.4.0 — 2026-09-18
+
+The headline is that work which is not a source diff can now be recorded and
+reviewed as evidence, while the ordinary diff lane has gained more explicit
+inputs and checks. The release also closes several paths where the tool's
+writer, gate, or diagnostics disagreed with the evidence model.
+
+### Findings land as evidence, not a diff (CR-085, CR-086, CR-101)
+
+ADR-0009 defines the findings lane. An empty-scope research task can record a
+hash-pinned `finding`, review and accept it by finding rather than commit, and
+gate and complete it with `--findings`; a task with declared scope remains in
+the diff lane. `agentmarshal review --reviewed-finding` launches the configured
+reviewer on locally verifiable artifacts and refuses the launch if their bytes
+drift from the recorded hashes. Artifacts that cannot resolve locally are
+reported as not verified; a finding with none that can be verified is refused.
+
+### Process tools have a declared footprint (CR-087, CR-088, CR-089, CR-090)
+
+Contract-header schema 2 adds declared `decisions`, `documents`, and
+`extensions`. Briefs and reviewer prompts carry that named material; the gate
+reads the base-side manifest to add an extension's footprint to effective scope,
+require named documents to be touched, and check a removed manifest's former
+footprint. It executes no manifest command. OpenSpec 1.12.0 is the first
+declared extension in this repository, with its git-visible footprint and the
+machine-local files it does not commit recorded in its manifest.
+
+### Review evidence names both prose and contract (CR-091, CR-092, CR-095, CR-096)
+
+Accepted reviewer output is kept once as a hash-pinned journal artifact and
+validated under the same collision and append-only rules as records; a refusal
+that is foreseeable before writing leaves no orphan artifact. Briefs and review
+prompts show that a contract was amended, when, and why, and reviews record the
+hash of the contract text they judged.
+
+### The gate reads one candidate listing and can state its limits (CR-093, CR-099, CR-103, CR-105)
+
+Every path-sensitive gate check reads one listing in which a rename has both
+its deletion and addition. `--without-review` evaluates the checks independent
+of review and marks the two review-bound checks as not examined when no review
+exists; it never relaxes a review record that does exist. A reopening of a
+completed task now passes the gate's additive-record rule. The gate's leak-scan line
+shows at most twenty hits and counts the rest; the standalone command prints
+every hit. The shipped GitHub workflow uses the
+review-free mode rather than tolerating a check that cannot carry its own review.
+
+### Reviewer setup reports its actual preconditions (CR-097, CR-098)
+
+The reviewer-command contract, rejected placeholder, and a no-recording
+`review --dry-run` exercise are documented. The tool reports preconditions it
+cannot verify.
+
+### Writers preserve journal readability (CR-102)
+
+Commands that add records to an existing task now ask the lifecycle projection
+whether it admits the record. A write that would make the projection refuse the
+task is rejected instead of leaving an invalid append-only journal; sessions
+and a permitted reopening retain their projection-defined exceptions.
+
+### Coordination is a recorded session activity (CR-106)
+
+`record-session` accepts `coordination` beside implementation, review, and
+other. Only a coordination session uses record schema 6; the other activities
+retain their prior schema.
+
+### Adopter findings made diagnostics actionable (CR-094, CR-100)
+
+Ten sanitized adopter findings and their dispositions are published with a way
+to follow each accepted item. A leak-scan hit now identifies the file and a
+built-in signature or configured marker position without printing the secret;
+the scan does not report a marker where it occurs in the configuration that
+declares it, and reports every occurrence anywhere else. A reviewer command's
+diagnostics on a successful run are kept outside the journal with their path
+named, and the generated upstream outbox says it is not evidence.
+
+### Documentation and reporting are easier to enter (CR-084, CR-107, CR-108)
+
+The documentation was reconciled with the released tool and its workflow. New
+contributors can find the security-reporting channel, structured finding and
+gate-refusal forms, the pull-request requirements, and a documentation map.
+
+### Internal consolidation (CR-104)
+
+The review launcher paths share their tail and identity resolution has one
+home; this changes no command behaviour.
+
 ## 0.3.0 — 2026-09-01
 
 The headline is that a journal no longer has to live inside the repository it

@@ -23,11 +23,12 @@ Date: 2026-07-28
 > command is available for any CI. It is best-effort and never blocks a merge;
 > the mandatory block-on-leak enforcement above remains roadmap.
 >
-> **Status in 0.3.0.** The capture-policy parser exists, but no policy-driven
+> **Status in 0.4.0.** The capture-policy parser exists, but no policy-driven
 > supplementary-artifact writer or private store does; the in-toto Statement,
 > DSSE/Sigstore output, and public backfill command also remain unshipped.
-> Reviewer output is now preserved best-effort in a temporary file when a
-> verdict is refused or names findings, outside that durable capture design.
+> Accepted reviewer output is preserved once as a hash-pinned journal artifact;
+> refused output remains best-effort in a temporary file, outside that durable
+> capture design.
 > The lifecycle has also gained append-only `amendment`, `acceptance`, and
 > `reopened` records; reopening makes the historical immutability rule in
 > Decision 3 no longer the current lifecycle rule.

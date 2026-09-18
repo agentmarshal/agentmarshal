@@ -142,16 +142,16 @@ task is already closed.
 
 ## Direction (roadmap)
 
-The design is broader than the shipped 0.3.0 repository version; the honest
+The design is broader than the shipped 0.4.0 repository version; the honest
 boundary is stated in the ADRs and
-[migration-v1-to-v2.md](migration-v1-to-v2.md). What is designed but **not
-active in 0.3.0**, in rough order (features land in later releases —
-`agentmarshal --version` shows yours):
+[migration-v1-to-v2.md](migration-v1-to-v2.md). What is **not active in
+0.4.0**, in rough order (features land in later releases — `agentmarshal
+--version` shows yours). Entries say whether a published design exists:
 
 - **Verifiable attestation** — projecting records to an in-toto Statement and
   signing it (DSSE / Sigstore), so provenance is cryptographically checkable,
   not just recorded. Adjacent to (not a claim of) SLSA Source; not yet emitted.
-- **Capture policy** — token-economics/session records accrue in 0.3.0
+- **Capture policy** — token-economics/session records accrue in 0.4.0
   (`record-session` / `report`). What is roadmap is the *capture policy* that
   governs retaining heavier supplementary evidence — full review and prompt
   text, raw session transcripts — public or in a private store. The policy
@@ -159,14 +159,13 @@ active in 0.3.0**, in rough order (features land in later releases —
   artifacts. A review's prose is the one supplement kept today, pinned by
   SHA-256 as a journal artifact (see Record); prompt text and transcripts are
   not, and no capture policy governs any of it yet.
-- **Mandatory leak-scan enforcement** — 0.3.0 ships a standalone `leak-scan`
+- **Mandatory leak-scan enforcement** — 0.4.0 ships a standalone `leak-scan`
   command and an advisory merge-time scan that warns on possible leaks in a
   candidate's additions. Making a match block is roadmap. The scan is
   best-effort by design (ADR-0005) — never a guarantee.
-- **Contract extensions** — required machine-readable acceptance criteria
-  plus a threat-model field, so every merged task doubles as an evaluation
-  case and gates enforce it. This is a direction, not yet a design: no
-  document specifies it.
+- **Further contract metadata** — a threat-model field and any enforcement
+  built from it. This is a direction, not yet a design: no document specifies
+  it. It is separate from the active contract `extensions` field in ADR-0010.
 - **Broader providers** — first-class GitHub, GitFlic, and self-hosted rails.
 
 See the [ADRs](adr/) for the full design decisions.
