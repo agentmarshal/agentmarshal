@@ -141,7 +141,7 @@ _SCHEMA_2_FIELDS = frozenset(
 )
 _SCHEMA_2_SESSION_FIELDS = frozenset({"usage"})
 _RECORDED_BY_SOURCES = frozenset({"project-actor", "git-identity", "override"})
-_SUPPORTED_SCHEMAS = frozenset({1, 2, 3, 4, 5})
+_SUPPORTED_SCHEMAS = frozenset({1, 2, 3, 4, 5, 6})
 _SCHEMA_4_FIELDS = frozenset(
     {"reviewed_finding", "accepted_finding", "completed_finding"}
 )
@@ -149,7 +149,8 @@ _SCHEMA_5_FIELDS = frozenset({"reviewed_contract"})
 _SHA256_HEX_PATTERN = re.compile(r"[0-9a-f]{64}$")
 _REVIEWED_COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}$")
 _REVIEW_VERDICTS = frozenset({"approved", "changes_required", "blocked", "rejected"})
-_SESSION_ACTIVITIES = frozenset({"implementation", "review", "other"})
+_SESSION_ACTIVITIES = frozenset({"implementation", "review", "other", "coordination"})
+_COORDINATION_SESSION_SCHEMA = 6
 _SESSION_USAGE_METHODS = frozenset({"measured", "reported"})
 _ulid_lock = threading.Lock()
 _last_timestamp = -1
@@ -517,8 +518,20 @@ def _validate_session_record(data: Mapping[str, object]) -> None:
     activity = data.get("activity")
     if not isinstance(activity, str) or activity not in _SESSION_ACTIVITIES:
         raise JournalRecordError(
-            "session record field 'activity' must be one of implementation, review, "
-            "or other"
+            "session record field 'activity' must be one of "
+            + ", ".join(sorted(_SESSION_ACTIVITIES))
+        )
+    schema = data["schema"]
+    # _validate_record has already refused a non-integer schema; narrow for
+    # the comparison rather than cast past the check.
+    if (
+        activity == "coordination"
+        and isinstance(schema, int)
+        and schema < _COORDINATION_SESSION_SCHEMA
+    ):
+        raise JournalRecordError(
+            f"session activity 'coordination' requires schema "
+            f"{_COORDINATION_SESSION_SCHEMA}"
         )
     tokens = data.get("tokens")
     if not isinstance(tokens, dict) or tokens.keys() != {"input", "output", "cache"}:
@@ -855,6 +868,17 @@ def create_amendment_record(
     }
 
 
+def session_record_schema(activity: str) -> int:
+    """Return the schema a session record with *activity* is written under.
+
+    One place decides it, for the live writer and for backfill alike: a value
+    introduced by a later schema carries that schema, and every other record
+    keeps the number it always had.
+    """
+
+    return _COORDINATION_SESSION_SCHEMA if activity == "coordination" else 3
+
+
 def create_session_record(
     task_id: str,
     tool_version: str,
@@ -878,7 +902,7 @@ def create_session_record(
             f"session record argument {missing!r} is required when its pair is supplied"
         )
     record: dict[str, object] = {
-        "schema": 3,
+        "schema": session_record_schema(activity),
         "record_type": "session",
         "task": task_id,
         "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),

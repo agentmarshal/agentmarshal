@@ -1,0 +1,29 @@
+{
+  "advisory_findings": [
+    "private-vocabulary-import"
+  ],
+  "artifacts": [
+    {
+      "hash": "1b097ed157b5a34b9f30b97524788d0994a0dea21a1a3d97e4f058b70eb91889",
+      "ref": ".agentmarshal/journal/tasks/CR-106/artifacts/01M2S1QR5F030V5K18G7Z3XK62-review.md"
+    }
+  ],
+  "created_at": "2026-09-18T01:22:46.575024Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "cdf1f7bd9f69371be71094003499872feb16ed47",
+  "reviewed_contract": "6a481becbd657a4fa3130be9a0f9c8b33a6067de453714f3759198f9ae95d79d",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-106",
+  "tool_version": "0.3.0",
+  "verdict": "approved"
+}

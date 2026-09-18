@@ -22,6 +22,8 @@ import subprocess
 from pathlib import Path
 from typing import Final
 
+from agentmarshal.project import project_file_path, read_project_file
+
 #: Where the value came from, recorded alongside it so an override is visible.
 SOURCE_ACTORS_TABLE: Final = "project-actor"
 SOURCE_GIT_IDENTITY: Final = "git-identity"
@@ -102,3 +104,65 @@ def resolve_recorded_by(project_root: Path) -> tuple[str, str] | None:
     if actor is not None:
         return actor, SOURCE_ACTORS_TABLE
     return identity, SOURCE_GIT_IDENTITY
+
+
+def _actor_git_identities(project_root: Path, record: dict[str, object]) -> set[str]:
+    """Resolve a finding recorder to git identities (ADR-0009 Decision 3)."""
+
+    recorded_by = record.get("recorded_by")
+    source = record.get("recorded_by_source")
+    if not isinstance(recorded_by, str) or not isinstance(source, str):
+        return set()
+    if source == SOURCE_GIT_IDENTITY:
+        return {recorded_by.strip().casefold()} if recorded_by.strip() else set()
+    if source not in {SOURCE_ACTORS_TABLE, SOURCE_OVERRIDE}:
+        return set()
+    try:
+        project = read_project_file(project_file_path(project_root))
+    except (OSError, ValueError):
+        return set()
+    actors = project.get("actors")
+    if not isinstance(actors, dict):
+        return set()
+    actor = actors.get(recorded_by)
+    if not isinstance(actor, dict):
+        return set()
+    identities = actor.get("git_identities")
+    if not isinstance(identities, list):
+        return set()
+    return {
+        identity.strip().casefold()
+        for identity in identities
+        if isinstance(identity, str) and identity.strip()
+    }
+
+
+def finding_reviewer_identity_refusal(
+    project_root: Path,
+    finding: dict[str, object],
+    reviewer_email: str | None,
+    *,
+    launching: bool = False,
+) -> str | None:
+    """Return the findings-lane identity refusal, if the reviewer is dependent.
+
+    The gate's established transcript describes the successful comparison and
+    must remain byte-for-byte stable. A launcher refusal instead describes the
+    failed condition, so callers opt into that wording explicitly.
+    """
+
+    recorder_identities = _actor_git_identities(project_root, finding)
+    if not recorder_identities:
+        return "finding recorder resolves to no git identities"
+    normalized = reviewer_email.strip().casefold() if reviewer_email is not None else ""
+    if not normalized or normalized in recorder_identities:
+        if launching:
+            return (
+                "declared reviewer identity is not independent of the finding "
+                "recorder's declared git identities"
+            )
+        return (
+            "declared reviewer identity differs from the finding recorder's "
+            "declared git identities"
+        )
+    return None
