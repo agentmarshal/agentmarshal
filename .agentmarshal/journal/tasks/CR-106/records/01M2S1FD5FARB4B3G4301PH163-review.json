@@ -1,0 +1,29 @@
+{
+  "advisory_findings": [
+    "design-risk-overstates-refusal-message"
+  ],
+  "artifacts": [
+    {
+      "hash": "03e7fdee472752858ed7f626b23f53396eeb5c6ac0ca9f75f4c10f245a598ff5",
+      "ref": ".agentmarshal/journal/tasks/CR-106/artifacts/01M2S1FD5FARB4B3G4301PH163-review.md"
+    }
+  ],
+  "created_at": "2026-09-18T01:18:13.167825Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "7a34c1a7f45e001bef4ce9ef7d911002b9263905",
+  "reviewed_contract": "6a481becbd657a4fa3130be9a0f9c8b33a6067de453714f3759198f9ae95d79d",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-106",
+  "tool_version": "0.3.0",
+  "verdict": "approved"
+}
