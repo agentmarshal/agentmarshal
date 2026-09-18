@@ -7,19 +7,28 @@ succeeds, because the journal is still valid at that moment — and then append.
 The next read of that task fails, and `validate` reports the whole journal
 invalid.
 
-Writers today: `submit_review.py`, `acceptance.py`, `session.py`,
-`complete.py`, `open_task.py`, and two paths straight out of `cli.py`
-(`amend`, `finding`). The state of them before this change, checked against the
-diff rather than assumed: `submit_review` loaded the projection and ignored
-what it said — that is the hole the probe fell through. `acceptance`,
-`complete` (three paths), and the CLI's `amend` and `finding` each carried
-their **own** `state != "open"` refusal, in five different spellings. `session`
-must admit a closed task and does. `open_task` allocates a new identifier and
-has no existing task to write into.
+The writers, enumerated from the call sites the diff touches rather than from
+memory — twelve in eight modules:
 
-So the defect was one writer without a guard, beside five writers each holding
-a private copy of the same rule — which is the other half of the problem: five
-copies drift, and one of them already had.
+- `submit_review.py` loaded the projection and ignored what it said about being
+  closed. That is the hole the probe fell through, and the only writer with no
+  refusal at all.
+- `acceptance.py`, `complete.py` (three paths: commit, findings, abandon) and
+  the CLI's `amend`, `finding` and sidecar `complete` each carried their **own**
+  `state != "open"` refusal, in six spellings.
+- `cli.py`'s `reopen` carried the one predicate the admitted set cannot
+  express — a reopening is admitted only from `done` — which moves into the
+  guard so it exists once.
+- `review.py` guards both launch paths, and that is new: the refusal used to
+  happen at the write, after a reviewer run had been paid for.
+- `session.py` must admit a closed task, and does.
+- `open_task.py` allocates a new identifier and has no existing task to write
+  into; it is in scope and unchanged.
+
+So the defect was one writer with no guard beside six writers each holding a
+private copy of the same rule — and the second half matters as much as the
+first: six copies drift, and one had already drifted (it admitted a reopening
+after abandonment).
 
 ## Goals
 

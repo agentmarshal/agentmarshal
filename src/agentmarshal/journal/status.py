@@ -113,21 +113,25 @@ def load_task_for_record(
         # task. The projection's own table decides what a record type is.
         raise TaskStatusError(f"unknown record type: {record_type!r}")
     task = load_task_status(journal_root, task_id)
+    if record_type == "reopened":
+        # The projection admits a reopening only from `done`: not while the
+        # task is open, and not after abandonment. The admitted set cannot say
+        # that on its own — it does not know which record closed the task — so
+        # the one predicate lives here, and the CLI no longer keeps a copy.
+        if task.state != "done":
+            raise TaskStatusError(
+                f"task {task_id} cannot be reopened (state: {task.state})"
+            )
+        return task
     if task.state == "open":
         return task
     if record_type not in _RECORD_TYPES_ADMITTED_AFTER_TERMINAL:
+        admitted = (
+            "a measurement or a reopening" if task.state == "done" else "a measurement"
+        )
         raise TaskStatusError(
             f"task {task_id} is not open (state: {task.state}); "
-            "its terminal record admits only a measurement or a reopening"
-        )
-    if record_type == "reopened" and task.state != "done":
-        # The projection admits a reopening after a terminal record but refuses
-        # it after abandonment ("an abandoned task cannot be reopened"), and a
-        # guard that mirrors the reader has to make the same distinction — the
-        # admitted set alone does not, because it does not know which terminal
-        # record closed the task.
-        raise TaskStatusError(
-            f"task {task_id} cannot be reopened (state: {task.state})"
+            f"its terminal record admits only {admitted}"
         )
     return task
 
