@@ -50,7 +50,7 @@ historical 0.1.0 boundary and note what has changed since:
   acceptance array was empty in every contract through CR-038 — without
   backfilling any historical record.
 
-To see how the project actually evolved, token costs and all, read the journal.
+To see how the project actually evolved, token spend and all, read the journal.
 
 ## Status
 

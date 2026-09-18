@@ -15,8 +15,7 @@ whose `outcome` is free text and whose token counts are empty, which a reader
 cannot tell from a run that failed for any other reason. Both refusals stated
 when the allowance would reset; the journal kept neither. The decision rested
 on how much each model consumed before a refusal — a ratio held outside the
-journal. The token counts inside it point the other way: counted in tokens, the
-rejected model is six times cheaper.
+journal, while the token counts inside it pointed the other way.
 
 Measurements, as reported:
 
@@ -60,12 +59,12 @@ that. Agreeing on the word is what lets two journals be compared; making the
 tool enforce or aggregate it is a change of behaviour, and belongs with the
 accounting rework below.
 
-**The reset-time field** is deferred, for the reason proposal 018's cost field
-is. A new session field is a record schema change, and 0.4.0 already asked
-every adopter for a coordinated upgrade over three new schemas. What a session
-record should say about a provider's meter — its units, its window, when it
-refills — is one question, and it belongs with the rework of accounting that
-018 deferred, not answered one field at a time. That rework is not scheduled in
+**The reset-time field** is deferred, to the same rework of accounting that
+proposal 018's cost field waits for. What a session record should say about a
+provider's meter — its units, its window, when it refills — is one question,
+and it should be answered once rather than one field at a time. A new session
+field is also a record schema change, and 0.4.0 has just asked every adopter
+for a coordinated upgrade over three new schemas. That rework is not scheduled in
 any published release yet.
 
 ## Where

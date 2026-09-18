@@ -64,10 +64,7 @@ The **where** column of a batch table says what an accepted proposal became — 
 release, a decision record, or the piece of work that carries it. A disposition
 without that column is a promise; with it, it is a place to look.
 
-Sending a batch and then reading this file is the whole protocol today. To find
-what became of a file you sent, hash it — `sha256sum <file>` — and look for that
-hash in the **Source** line of the digests here: each digest names the file it
-came from that way, and the hash changes if the file is edited after sending. A
+Sending a batch and then reading this file is the whole protocol today. A
 command that reads your outbox, hashes each finding and reports its state back
 to you is proposed in [023](023-upstream-outbox-has-no-transaction.md) and
 accepted for a later release.
