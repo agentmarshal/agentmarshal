@@ -48,6 +48,7 @@ from agentmarshal.journal.records import (
 from agentmarshal.journal.status import (
     TaskStatusError,
     load_task_status,
+    projected_state_of,
     record_type_is_admitted_after_terminal,
 )
 from agentmarshal.project import (
@@ -753,9 +754,11 @@ def run_gate(
     # addition in this task's own subtree: a modification or deletion of an
     # existing file (contract.md, an artifact, anything) cannot be authorized
     # by appended evidence.
+    # Only a closed task has a terminal state to ask about; when the latest
+    # lifecycle record is a reopening the task is open and there is none.
     terminal_state_at_base = (
-        ("done" if lifecycle_at_base[-1].endswith("-completed.json") else "abandoned")
-        if lifecycle_at_base
+        projected_state_of(_record_type_from_record_path(lifecycle_at_base[-1]))
+        if closed_at_base and lifecycle_at_base
         else None
     )
     added_record_types = [_record_type_from_record_path(path) for path in added_records]

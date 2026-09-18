@@ -63,6 +63,16 @@ def record_type_is_admitted_after_terminal(
     )
 
 
+def projected_state_of(record_type: str) -> str | None:
+    """Return the state a record of *record_type* projects to, if any.
+
+    The gate names lifecycle records by file name and asks here what they mean,
+    instead of keeping a suffix-to-state table of its own.
+    """
+
+    return _RECORD_TYPE_STATES.get(record_type)
+
+
 @dataclass(frozen=True)
 class TaskStatus:
     """A task contract, its evidence, and the derived lifecycle state."""
@@ -87,16 +97,18 @@ def project_status(records: Sequence[Mapping[str, object]]) -> str:
         # record projects to no state and may accrue after a terminal
         # record. Reopening is the sole lifecycle mutation admitted after
         # completion; all work records remain forbidden until it occurs.
-        if (
-            has_terminal_record
-            and record_type not in _RECORD_TYPES_ADMITTED_AFTER_TERMINAL
+        # One rule for what follows a terminal record, read here and by the
+        # gate. A terminal record always sets `state`, so the fallback to ""
+        # is never taken while `has_terminal_record` holds.
+        if has_terminal_record and not record_type_is_admitted_after_terminal(
+            record_type, state or ""
         ):
+            if record_type == "reopened":
+                raise TaskStatusError("an abandoned task cannot be reopened")
             raise TaskStatusError("task has a lifecycle record after a terminal record")
         if record_type == "reopened":
             if not has_terminal_record:
                 raise TaskStatusError("task has a reopened record while it is open")
-            if state != "done":
-                raise TaskStatusError("an abandoned task cannot be reopened")
             has_terminal_record = False
         if record_type == "opened":
             if has_opened_record:

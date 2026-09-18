@@ -1613,10 +1613,33 @@ def test_gate_allows_reopening_only_append_to_completed_task(
     assert load_task_status(journal, "CR-001").state == "open"
 
 
+def test_the_admission_rule_refuses_a_reopening_after_abandonment() -> None:
+    """The rule both the projection and the gate apply, pinned on its own.
+
+    Through the gate this case never reaches the base-state branch — the
+    candidate's projection refuses it first — so the branch's rule is tested
+    here rather than only by an outcome another check produces."""
+
+    from agentmarshal.journal.status import record_type_is_admitted_after_terminal
+
+    assert record_type_is_admitted_after_terminal("reopened", "done")
+    assert not record_type_is_admitted_after_terminal("reopened", "abandoned")
+    assert record_type_is_admitted_after_terminal("session", "done")
+    assert record_type_is_admitted_after_terminal("session", "abandoned")
+    assert not record_type_is_admitted_after_terminal("review", "done")
+
+
 def test_gate_refuses_reopening_only_append_to_abandoned_task(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Scenario: an abandoned task cannot be reopened through the gate."""
+    """Scenario: an abandoned task cannot be reopened through the gate.
+
+    End to end, the refusal comes from the candidate's own projection, which
+    the gate loads before any base-state check: a reopening after abandonment
+    makes that projection invalid. The gate's base-state branch for the same
+    case is therefore defence in depth, and the rule it applies is pinned
+    directly by test_the_admission_rule_refuses_a_reopening_after_abandonment.
+    """
 
     repo, _base = _gate_repo(tmp_path, monkeypatch, ["src/"])
     journal = repo / ".agentmarshal" / "journal"
@@ -1634,7 +1657,12 @@ def test_gate_refuses_reopening_only_append_to_abandoned_task(
 def test_gate_refuses_review_only_append_to_closed_task(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Scenario: other work on a closed task is still refused."""
+    """Scenario: other work on a closed task is still refused.
+
+    As with the abandoned reopening, the candidate's own projection refuses a
+    review after a terminal record before the base-state check runs; this pins
+    the end-to-end outcome, not which of the two checks produced it.
+    """
 
     repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
     journal = repo / ".agentmarshal" / "journal"
