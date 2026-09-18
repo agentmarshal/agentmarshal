@@ -1,0 +1,29 @@
+{
+  "advisory_findings": [
+    "upgrading-prose-stdout-only-imprecise"
+  ],
+  "artifacts": [
+    {
+      "hash": "f4e6f74241ed3c2c97e2f8f87a91837050787bc276d6e62fc22b460c7f446b39",
+      "ref": ".agentmarshal/journal/tasks/CR-110/artifacts/01M2SA7FRR0S4AGMQ9GKECTNDW-review.md"
+    }
+  ],
+  "created_at": "2026-09-18T03:51:10.872572Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "cf746accc1fb1e5dd274ea4b07711a71933275ea",
+  "reviewed_contract": "983becf9c44bd775c8c6a4abc067bef91d854445717a20485bc7a8666e6f626f",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-110",
+  "tool_version": "0.4.0",
+  "verdict": "approved"
+}
