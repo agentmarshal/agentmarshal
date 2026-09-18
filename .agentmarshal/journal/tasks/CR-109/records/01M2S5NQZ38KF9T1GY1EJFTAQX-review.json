@@ -1,0 +1,34 @@
+{
+  "advisory_findings": [
+    "ADV-UPGRADING-RECORD-SCHEMA-UNCHANGED-CONTRADICTS",
+    "ADV-QUICKSTART-VERIFICATION-UNEVIDENCED",
+    "ADV-CHANGELOG-GITHUB-REVIEW-UNENFORCED-UNSTATED",
+    "ADV-PROPOSAL-005-ACCEPTED-SECTION-UNMARKED"
+  ],
+  "artifacts": [
+    {
+      "hash": "903cd4ebf890b963ecde01358bfec8c209cb721129f4ff6f789bc137523e76cc",
+      "ref": ".agentmarshal/journal/tasks/CR-109/artifacts/01M2S5NQZ38KF9T1GY1EJFTAQX-review.md"
+    }
+  ],
+  "created_at": "2026-09-18T02:31:35.139819Z",
+  "findings": [
+    "UPGRADING-MISSING-CR093-RENAME-SCOPE"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "7140defa4e2ae65bd6414efafa5735928b82c8a5",
+  "reviewed_contract": "05ad84dcdaa212254371c88773f935b85a4d584972f6baea4b64bb63482f40be",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-109",
+  "tool_version": "0.4.0",
+  "verdict": "changes_required"
+}

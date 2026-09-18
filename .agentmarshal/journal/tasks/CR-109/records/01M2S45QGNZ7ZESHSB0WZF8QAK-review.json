@@ -1,0 +1,32 @@
+{
+  "advisory_findings": [
+    "overview-roadmap-promises-design-status-per-entry",
+    "proposal-005-dated-disposition-rewritten-with-later-facts"
+  ],
+  "artifacts": [
+    {
+      "hash": "68c50af9d7689b03480f62c5bd77db1ae12d3a537cc02a9d698a184eb021eb1e",
+      "ref": ".agentmarshal/journal/tasks/CR-109/artifacts/01M2S45QGNZ7ZESHSB0WZF8QAK-review.md"
+    }
+  ],
+  "created_at": "2026-09-18T02:05:21.813626Z",
+  "findings": [
+    "quickstart-still-pins-and-claims-0.3.0"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "244081cfa1c8dad80fb09fbc5c5fe761ff2d44c7",
+  "reviewed_contract": "05ad84dcdaa212254371c88773f935b85a4d584972f6baea4b64bb63482f40be",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-109",
+  "tool_version": "0.4.0",
+  "verdict": "changes_required"
+}
