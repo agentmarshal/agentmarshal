@@ -7,31 +7,32 @@ succeeds, because the journal is still valid at that moment — and then append.
 The next read of that task fails, and `validate` reports the whole journal
 invalid.
 
-The writers, enumerated from the call sites the diff touches rather than from
-memory — twelve in eight modules:
+The writers, enumerated from the guard call sites the diff adds rather than
+from memory — twelve in six modules:
 
 - `submit_review.py` loaded the projection and ignored what it said about being
   closed. That is the hole the probe fell through, and the only writer with no
   refusal at all.
-- `acceptance.py`, `complete.py` (three paths: commit, findings, abandon) and
-  the CLI's `amend`, `finding` and sidecar `complete` each carried their **own**
-  `state != "open"` refusal, in six spellings.
+- Eight paths carried their **own** `state != "open"` refusal: the CLI's
+  sidecar `complete`, `finding` and `amend`; `acceptance.py`; `complete.py`'s
+  commit, findings and abandon paths; and `review.py`'s finding-review launch.
 - `cli.py`'s `reopen` carried the one predicate the admitted set cannot
   express — a reopening is admitted only from `done` — which moves into the
   guard so it exists once.
-- `review.py` guards both launch paths, and that is new: the refusal used to
-  happen at the write, after a reviewer run had been paid for.
+- `review.py`'s commit-review launch gains a pre-run refusal. Its
+  finding-review launch already had one from CR-101, so a closed findings
+  review did not pay for a reviewer run before this task.
 - `session.py` must admit a closed task, and does.
 - `open_task.py` allocates a new identifier and has no existing task to write
   into; it is in scope and unchanged.
 
-So the defect was one writer with no guard beside six writers each holding a
-private copy of the same rule. None of those six had drifted: each refused a
+So the defect was one writer with no guard beside eight paths each holding a
+private copy of the same rule. None of those eight had drifted: each refused a
 closed task correctly, in its own words, and `reopen`'s own predicate was
-correct too. The second half of the problem is therefore what six copies make
-possible rather than what they had already done — and the reason the reopening
-predicate moves into the guard is that the admitted set cannot express it, not
-that a copy of it had gone wrong.
+correct too. The second half of the problem is therefore what eight copies
+make possible rather than what they had already done — and the reason the
+reopening predicate moves into the guard is that the admitted set cannot
+express it, not that a copy of it had gone wrong.
 
 ## Goals
 

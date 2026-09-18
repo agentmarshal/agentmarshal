@@ -1,13 +1,13 @@
 # AgentMarshal's own governance on GitHub (Variant 2).
-# `governance` (validate + tests) is required-suitable; mark it required in
-# branch protection. `gate` is advisory until review materialisation
-# (Phase C). See docs/github-enforcement.md.
+# `governance` (validate + tests) and `gate` are required-suitable; mark them
+# required in branch protection. See docs/github-enforcement.md.
 name: AgentMarshal governance
 
 on:
   pull_request:
   push:
-    branches: [master] # rename to main here if the default branch is renamed
+    # Repository-specific: this repository's default branch is `master`.
+    branches: [master]
 
 # Least privilege: pull-request-controlled code must not inherit
 # write-capable default token permissions. Scope more only per job.
@@ -21,8 +21,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0 # validate/gate need full history
+      # Repository-specific: the project uses its locked uv environment rather
+      # than the template's generic Python/package installation.
       - uses: astral-sh/setup-uv@v5
       - run: uv sync --locked
+      # Repository-specific: these are this project's checks in place of the
+      # template's <TEST_COMMAND> placeholder.
       - run: uv run agentmarshal validate
       - run: uv run pytest
       - run: uv run ruff check
@@ -30,18 +34,21 @@ jobs:
       - run: uv run mypy
 
   gate:
-    # Advisory until review materialisation (Phase C): the review-bound lane
-    # needs the review evidence materialised from the PR approval. Until
-    # then this still enforces scope, append-only, base-state and lifecycle
-    # and the journal-only lanes. Make it required once that lands.
+    # Required check (Variant 2), not the merge authority. A head cannot carry
+    # a review of itself, so this run asks the gate to judge every check that
+    # does not depend on one. The transcript names what it did not examine.
+    # Scope, append-only, base-state and lifecycle are enforced here.
+    # The approved-independent-review requirement is not enforced by this job;
+    # see docs/github-enforcement.md. It is safe to require for what it checks.
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
+      # Repository-specific: run the checked-out source from this project's
+      # locked uv environment rather than installing the generic template package.
       - uses: astral-sh/setup-uv@v5
       - run: uv sync --locked
       - name: Gate
@@ -52,7 +59,10 @@ jobs:
         run: |
           git fetch --no-tags origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
           task="$(printf '%s' "$HEAD_REF" | grep -oE 'CR-[0-9]+' | head -1)"
-          uv run agentmarshal gate --attestation ci-required \
+          # Phase C: materialise the review record from the PR approval before
+          # this step for the review-bound lane.
+          # Repository-specific: invoke the checked-out source through uv.
+          uv run agentmarshal gate --attestation ci-required --without-review \
             --task "$task" \
             --commit "$HEAD_SHA" \
             --base "origin/${BASE_REF}"

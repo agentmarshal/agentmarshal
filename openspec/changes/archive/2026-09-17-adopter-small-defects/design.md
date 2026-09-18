@@ -55,8 +55,8 @@ string written by `project.py` at `init`.
   nothing deletes it — the same policy `_preserve_output` has had since
   CR-097. It is now on the success path, so the files accumulate wherever many
   reviews run. A retention rule for everything this tool leaves in the
-  system's temporary directory is one decision, not two, and it is in the
-  backlog rather than invented here.
+  system's temporary directory is deliberately deferred because it must cover
+  all of that output, not just this success-path file.
 - **The rendered line is bounded.** A marker in two hundred files was one
   category token before this change and is two hundred records after it. The
   renderer shows the first twenty and counts the rest, because the merge

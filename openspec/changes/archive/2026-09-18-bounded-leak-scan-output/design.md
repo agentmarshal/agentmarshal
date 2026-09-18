@@ -16,9 +16,8 @@ transcript's readability; the command's purpose is the opposite.
 - A retention or cleanup policy for what the tool leaves in the system's
   temporary directory. Rejected verdicts, reviewer diagnostics and dry-run
   output all land there and none of them is ever removed; a rule for one of
-  them would be a rule for the wrong scope. It is deferred, and this document
-  does not point the reader at a record of that deferral, because the register
-  it lives in is not published.
+  them would be a rule for the wrong scope. It is deferred because retention
+  must be decided for all of that output together.
 - A flag to raise or lower the gate's bound. Nobody has asked for one, and a
   knob would need a home in the project file and a story about the transcript's
   stability.
