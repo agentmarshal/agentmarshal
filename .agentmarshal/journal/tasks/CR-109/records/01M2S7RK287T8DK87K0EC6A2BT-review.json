@@ -1,0 +1,31 @@
+{
+  "advisory_findings": [
+    "ADV-UPGRADING-DOCTOR-INIT-OUTPUT",
+    "ADV-UPGRADING-PROSE-PUBLICATION",
+    "ADV-README-STATUS-NAMES-ONLY-030"
+  ],
+  "artifacts": [
+    {
+      "hash": "f1fbcc6a88708d646fab7d6dbb16716e3959f5154d37fa175e5d0f4924267fb7",
+      "ref": ".agentmarshal/journal/tasks/CR-109/artifacts/01M2S7RK287T8DK87K0EC6A2BT-review.md"
+    }
+  ],
+  "created_at": "2026-09-18T03:08:05.576164Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "eb6f57fd6cea2677a738807122f045b331a04d9e",
+  "reviewed_contract": "05ad84dcdaa212254371c88773f935b85a4d584972f6baea4b64bb63482f40be",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-109",
+  "tool_version": "0.4.0",
+  "verdict": "approved"
+}

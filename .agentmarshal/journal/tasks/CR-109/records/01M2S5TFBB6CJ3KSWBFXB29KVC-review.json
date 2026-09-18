@@ -1,0 +1,32 @@
+{
+  "advisory_findings": [
+    "quickstart-unverified-040-run-claim",
+    "changelog-cr098-names-no-command"
+  ],
+  "artifacts": [
+    {
+      "hash": "782e0efaf6254c5ae3489601d754a36b600c4462c1b87e93df3f8f2e0985f657",
+      "ref": ".agentmarshal/journal/tasks/CR-109/artifacts/01M2S5TFBB6CJ3KSWBFXB29KVC-review.md"
+    }
+  ],
+  "created_at": "2026-09-18T02:34:10.155820Z",
+  "findings": [
+    "upgrading-omits-rename-scope-tightening"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "7140defa4e2ae65bd6414efafa5735928b82c8a5",
+  "reviewed_contract": "05ad84dcdaa212254371c88773f935b85a4d584972f6baea4b64bb63482f40be",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-109",
+  "tool_version": "0.4.0",
+  "verdict": "changes_required"
+}
