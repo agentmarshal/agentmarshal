@@ -130,26 +130,36 @@ def test_finding_lane_passes_and_completion_uses_schema_4_binding(
     assert "completed_commit" not in completed
 
 
+@pytest.mark.parametrize(
+    ("close_first", "state"),
+    [
+        (["complete", "--task", "CR-001", "--findings"], "done"),
+        (["abandon", "--task", "CR-001", "--reason", "Superseded"], "abandoned"),
+    ],
+)
 def test_completion_through_findings_refuses_a_closed_task(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    close_first: list[str],
+    state: str,
 ) -> None:
     """Scenario: every writing command refuses a closed task — the findings lane.
 
     `complete --findings` reaches the guard by its own call, and the
-    parametrised command test exercises only the commit form."""
+    parametrised command test exercises only the commit form. Both terminal
+    states, because the criterion reads "for each terminal state"."""
 
     repo, journal = _repo(tmp_path, monkeypatch)
     finding = _finding(repo)
     _review(finding)
-    assert main(["complete", "--task", "CR-001", "--findings"]) == 0
+    assert main(close_first) == 0
     before = read_records(journal, "CR-001")
     capsys.readouterr()
 
     assert main(["complete", "--task", "CR-001", "--findings"]) == 1
 
-    assert "state: done" in capsys.readouterr().err
+    assert f"state: {state}" in capsys.readouterr().err
     assert read_records(journal, "CR-001") == before
     assert main(["validate"]) == 0
 

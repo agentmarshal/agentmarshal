@@ -34,6 +34,10 @@ discovering the refusal costs no paid run.
 
 ## Impact
 
-`submit-review`, `accept`, `amend`, `finding`, `review`, `complete` and
-`abandon` refuse a closed task instead of corrupting it. `record-session` and
-`reopen` are unchanged. No record schema changes.
+`submit-review` refuses a closed task instead of corrupting it — it was the
+writer without a guard. `accept`, `amend`, `finding` and `complete` already
+refused through five private copies of the rule and now refuse through the one
+in the projection's module. `review` refuses before it starts the reviewer,
+which is new for both bindings. `record-session` keeps working on a closed
+task, and `reopen` keeps its own refusal for an abandoned one, which the guard
+now mirrors. No record schema changes.

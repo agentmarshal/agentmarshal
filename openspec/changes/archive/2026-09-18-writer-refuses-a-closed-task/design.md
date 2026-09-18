@@ -9,8 +9,17 @@ invalid.
 
 Writers today: `submit_review.py`, `acceptance.py`, `session.py`,
 `complete.py`, `open_task.py`, and two paths straight out of `cli.py`
-(`amend`, `finding`). Six of the seven already load the projection and ignore
-what it says about being closed.
+(`amend`, `finding`). The state of them before this change, checked against the
+diff rather than assumed: `submit_review` loaded the projection and ignored
+what it said — that is the hole the probe fell through. `acceptance`,
+`complete` (three paths), and the CLI's `amend` and `finding` each carried
+their **own** `state != "open"` refusal, in five different spellings. `session`
+must admit a closed task and does. `open_task` allocates a new identifier and
+has no existing task to write into.
+
+So the defect was one writer without a guard, beside five writers each holding
+a private copy of the same rule — which is the other half of the problem: five
+copies drift, and one of them already had.
 
 ## Goals
 

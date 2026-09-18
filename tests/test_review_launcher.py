@@ -12,7 +12,6 @@ import pytest
 from agentmarshal.cli import main
 from agentmarshal.journal import review
 from agentmarshal.journal.records import (
-    create_abandoned_record,
     create_amendment_record,
     create_completed_record,
     create_review_record,
@@ -139,18 +138,18 @@ def _verdict(
 
 
 def _close_task(repo: Path, record_type: str) -> None:
-    """Close CR-001 by writing the terminal record itself.
+    """Close CR-001, through the command where there is one to run.
 
-    The lane commands that close a task have preconditions of their own; the
-    launcher's refusal is about the state, so the state is written directly,
-    the way tests/test_journal.py's own terminal-task helper does."""
+    `abandon` has no precondition beyond an open task, so it is run for real.
+    `complete` is a gate, and satisfying it here would test the gate rather
+    than the launcher, so that state is written as the record — the way
+    tests/test_journal.py's own terminal-task helper does."""
 
+    if record_type == "abandoned":
+        assert main(["abandon", "--task", "CR-001", "--reason", "Superseded"]) == 0
+        return
     root = repo / ".agentmarshal" / "journal"
-    if record_type == "completed":
-        record = create_completed_record("CR-001", "test", "a" * 40)
-    else:
-        record = create_abandoned_record("CR-001", "test", "Superseded")
-    write_record(root, "CR-001", record)
+    write_record(root, "CR-001", create_completed_record("CR-001", "test", "a" * 40))
 
 
 def _finding_args(finding: str) -> list[str]:

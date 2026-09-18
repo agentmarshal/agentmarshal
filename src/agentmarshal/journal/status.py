@@ -113,13 +113,21 @@ def load_task_for_record(
         # task. The projection's own table decides what a record type is.
         raise TaskStatusError(f"unknown record type: {record_type!r}")
     task = load_task_status(journal_root, task_id)
-    if (
-        task.state != "open"
-        and record_type not in _RECORD_TYPES_ADMITTED_AFTER_TERMINAL
-    ):
+    if task.state == "open":
+        return task
+    if record_type not in _RECORD_TYPES_ADMITTED_AFTER_TERMINAL:
         raise TaskStatusError(
             f"task {task_id} is not open (state: {task.state}); "
             "its terminal record admits only a measurement or a reopening"
+        )
+    if record_type == "reopened" and task.state != "done":
+        # The projection admits a reopening after a terminal record but refuses
+        # it after abandonment ("an abandoned task cannot be reopened"), and a
+        # guard that mirrors the reader has to make the same distinction — the
+        # admitted set alone does not, because it does not know which terminal
+        # record closed the task.
+        raise TaskStatusError(
+            f"task {task_id} cannot be reopened (state: {task.state})"
         )
     return task
 
