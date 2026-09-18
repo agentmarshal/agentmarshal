@@ -46,7 +46,12 @@ from agentmarshal.journal.records import (
     read_records,
     validate_record_content,
 )
-from agentmarshal.journal.status import TaskStatusError, load_task_status
+from agentmarshal.journal.status import (
+    TaskStatusError,
+    load_task_status,
+    projected_state_of,
+    record_type_is_admitted_after_terminal,
+)
 from agentmarshal.project import (
     PROJECT_CONFIG_RELPATH,
     project_file_path,
@@ -300,6 +305,16 @@ def _changed_with_status(
 
 def _is_record_path(path: str) -> bool:
     return path.startswith(_JOURNAL_PREFIX) and "/records/" in path
+
+
+def _record_type_from_record_path(path: str) -> str:
+    """Derive a record type from its journal filename without reading it."""
+
+    return (
+        path.rsplit("/", maxsplit=1)[-1]
+        .removesuffix(".json")
+        .rsplit("-", maxsplit=1)[-1]
+    )
 
 
 def _is_append_only_evidence_path(path: str) -> bool:
@@ -673,34 +688,47 @@ def run_gate(
         # Decision 2) and must not decide anything here.
         closed_at_base = task.state != "open"
         lifecycle_at_base = []
-    # A task closed at base still admits measurements, but only a strictly
-    # additive candidate confined to this task's own journal subtree that
-    # adds at least one session record and no non-session record: economics
-    # (and new supplementary artifacts) accrue after the terminal record
-    # (ADR-0005 Decision 3) without mutating the lifecycle or any existing
-    # file, and without touching any other task. Every change must be an
-    # addition — a modification or deletion (of contract.md, an existing
-    # artifact, anything) fails the lane, so appended evidence can never
-    # authorize a mutation of a closed task. Anything else remains refused
-    # by the base-state check.
-    measurements_only = (
+    # A task closed at base still admits only the record types its projection
+    # admits after that terminal state. Every candidate change remains an
+    # addition in this task's own subtree: a modification or deletion of an
+    # existing file (contract.md, an artifact, anything) cannot be authorized
+    # by appended evidence.
+    # Only a closed task has a terminal state to ask about; when the latest
+    # lifecycle record is a reopening the task is open and there is none.
+    terminal_state_at_base = (
+        projected_state_of(_record_type_from_record_path(lifecycle_at_base[-1]))
+        if closed_at_base and lifecycle_at_base
+        else None
+    )
+    added_record_types = [_record_type_from_record_path(path) for path in added_records]
+    admitted_records_only = (
         bool(added_records)
         and all(
             status == "A" and path.startswith(task_dir_prefix)
             for status, path in changes_with_status
         )
+        and terminal_state_at_base is not None
         and all(
-            path.startswith(task_records_prefix) and path.endswith("-session.json")
-            for path in added_records
+            path.startswith(task_records_prefix)
+            and record_type_is_admitted_after_terminal(
+                record_type, terminal_state_at_base
+            )
+            for path, record_type in zip(added_records, added_record_types, strict=True)
         )
     )
     if not closed_at_base:
         lines.append(f"PASS: task {task_id} is not closed at base")
-    elif measurements_only:
-        lines.append(
-            "PASS: measurements-only append to a task closed at base "
-            "(session records accrue post-terminal)"
-        )
+    elif admitted_records_only:
+        if "reopened" in added_record_types:
+            lines.append(
+                "PASS: reopening append to a task completed at base "
+                "(reopening is admitted post-terminal)"
+            )
+        else:
+            lines.append(
+                "PASS: measurements-only append to a task closed at base "
+                "(session records accrue post-terminal)"
+            )
     else:
         check(
             False,

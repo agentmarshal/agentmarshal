@@ -49,6 +49,30 @@ class TaskStatusError(ValueError):
     """Raised when task status cannot be safely projected."""
 
 
+def record_type_is_admitted_after_terminal(
+    record_type: str, terminal_state: str
+) -> bool:
+    """Return whether the projection admits a record after ``terminal_state``.
+
+    Measurements follow either terminal state. A reopening follows completion
+    only, because it returns that state to open; abandonment remains terminal.
+    """
+
+    return record_type in _RECORD_TYPES_ADMITTED_AFTER_TERMINAL and (
+        record_type != "reopened" or terminal_state == "done"
+    )
+
+
+def projected_state_of(record_type: str) -> str | None:
+    """Return the state a record of *record_type* projects to, if any.
+
+    The gate names lifecycle records by file name and asks here what they mean,
+    instead of keeping a suffix-to-state table of its own.
+    """
+
+    return _RECORD_TYPE_STATES.get(record_type)
+
+
 @dataclass(frozen=True)
 class TaskStatus:
     """A task contract, its evidence, and the derived lifecycle state."""
@@ -73,16 +97,18 @@ def project_status(records: Sequence[Mapping[str, object]]) -> str:
         # record projects to no state and may accrue after a terminal
         # record. Reopening is the sole lifecycle mutation admitted after
         # completion; all work records remain forbidden until it occurs.
-        if (
-            has_terminal_record
-            and record_type not in _RECORD_TYPES_ADMITTED_AFTER_TERMINAL
+        # One rule for what follows a terminal record, read here and by the
+        # gate. A terminal record always sets `state`, so the fallback to ""
+        # is never taken while `has_terminal_record` holds.
+        if has_terminal_record and not record_type_is_admitted_after_terminal(
+            record_type, state or ""
         ):
+            if record_type == "reopened":
+                raise TaskStatusError("an abandoned task cannot be reopened")
             raise TaskStatusError("task has a lifecycle record after a terminal record")
         if record_type == "reopened":
             if not has_terminal_record:
                 raise TaskStatusError("task has a reopened record while it is open")
-            if state != "done":
-                raise TaskStatusError("an abandoned task cannot be reopened")
             has_terminal_record = False
         if record_type == "opened":
             if has_opened_record:
@@ -129,20 +155,17 @@ def load_task_for_record(
         # task. The projection's own table decides what a record type is.
         raise TaskStatusError(f"unknown record type: {record_type!r}")
     task = load_task_status(journal_root, task_id)
-    if record_type == "reopened":
-        # The projection admits a reopening only from `done`: not while the
-        # task is open, and not after abandonment. The admitted set cannot
-        # express that — it does not know which record closed the task — so
-        # the predicate lives here once, and the CLI no longer keeps a copy of
-        # it. The copy was correct; it was a copy.
-        if task.state != "done":
+    if task.state == "open":
+        if record_type == "reopened":
             raise TaskStatusError(
                 f"task {task_id} cannot be reopened (state: {task.state})"
             )
         return task
-    if task.state == "open":
-        return task
-    if record_type not in _RECORD_TYPES_ADMITTED_AFTER_TERMINAL:
+    if not record_type_is_admitted_after_terminal(record_type, task.state):
+        if record_type == "reopened":
+            raise TaskStatusError(
+                f"task {task_id} cannot be reopened (state: {task.state})"
+            )
         admitted = (
             "a measurement or a reopening" if task.state == "done" else "a measurement"
         )
