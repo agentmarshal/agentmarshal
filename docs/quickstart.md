@@ -440,6 +440,14 @@ provider logs, which is the usual case for an external executor. Omit both
 usage flags when the provenance is unavailable; the report calls those counts
 unrecorded rather than silently treating them as provider-reported.
 
+Token counts are what the record measures, not what a provider charges. A
+provider that meters an allowance in its own units stops work when that
+allowance runs out, and a comparison of models by tokens can point the other
+way from one by the allowance each consumed. `--outcome` is free text that the
+tool neither checks nor counts; for a session the provider refused to continue,
+use `provider-limit`, so that such a session reads differently from a crash and
+journals from different projects say the same thing the same way.
+
 Then commit it, like every other record:
 
 ```sh

@@ -51,6 +51,7 @@
 - [proposals/021-reviewer-stderr-discarded-on-success.md](proposals/021-reviewer-stderr-discarded-on-success.md) — review the finding on discarded reviewer stderr.
 - [proposals/022-amendments-invisible-to-the-reviewer.md](proposals/022-amendments-invisible-to-the-reviewer.md) — review the finding on amendments invisible to reviewers.
 - [proposals/023-upstream-outbox-has-no-transaction.md](proposals/023-upstream-outbox-has-no-transaction.md) — review the finding on an outbox without a transaction.
+- [proposals/024-provider-quota-stop-cannot-be-recorded.md](proposals/024-provider-quota-stop-cannot-be-recorded.md) — review the finding on a provider quota stop the journal cannot record.
 
 ## Contribute a change
 

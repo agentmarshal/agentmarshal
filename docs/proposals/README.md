@@ -64,10 +64,24 @@ The **where** column of a batch table says what an accepted proposal became — 
 release, a decision record, or the piece of work that carries it. A disposition
 without that column is a promise; with it, it is a place to look.
 
-Sending a batch and then reading this file is the whole protocol today. A
+Sending a batch and then reading this file is the whole protocol today. To find
+what became of a file you sent, hash it — `sha256sum <file>` — and look for that
+hash in the **Source** line of the digests here: each digest names the file it
+came from that way, and the hash changes if the file is edited after sending. A
 command that reads your outbox, hashes each finding and reports its state back
 to you is proposed in [023](023-upstream-outbox-has-no-transaction.md) and
 accepted for a later release.
+
+## Batch of 2026-09-18
+
+One finding from the reporter of the batch below, after twelve governed tasks
+with three executor models: the journal measures tokens, while the provider
+stopped work on an allowance of its own, so the evidence pointed away from the
+decision it was supposed to support. Accepted in part.
+
+| # | Theme | Reporter | Disposition | Where |
+|---|---|---|---|---|
+| [024](024-provider-quota-stop-cannot-be-recorded.md) | A provider quota stop cannot be recorded | D | accepted *(reset-time field deferred)* | default branch for the outcome value and the tokens-are-not-cost statement; the field with the accounting rework |
 
 ## Batch of 2026-09-16
 
