@@ -16,10 +16,12 @@ append-only — so the upgrade is blocked.
 
 ## What Changes
 
-The rule refuses the characters that can add a line or reorder text —
-categories `Cc`, `Zl`, `Zp`, and the bidirectional controls U+202A–U+202E and
-U+2066–U+2069 — and accepts everything else, space separators included. One
-function decides it for records, one for contracts; neither consults
+The rule refuses the characters that can add a line, reorder text, or fail to
+encode: categories `Cc`, `Zl`, `Zp` and `Cs`, and the bidirectional marks,
+embeddings, overrides and isolates (U+061C, U+200E, U+200F, U+202A–U+202E,
+U+2066–U+2069). Everything else is accepted, space separators included. One
+predicate decides it for all three places that ask — records, contract headers,
+and the artifact reference `validate` reports — and none of them consults
 `str.isprintable()`.
 
 ## Capabilities

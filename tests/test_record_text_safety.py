@@ -24,12 +24,17 @@ from agentmarshal.journal.validate import validate_journal
 _REVIEWER = ("qa", "example", "example-model", "reviewer@test.invalid")
 _LINE_BREAKERS = ("\n", "\r", "\u2028", "\u2029")
 _BIDIRECTIONAL = (
+    "\u061c",
+    "\u200e",
+    "\u200f",
     "\u202a",
     "\u202b",
     "\u202c",
     "\u202d",
     "\u202e",
     "\u2066",
+    "\u2067",
+    "\u2068",
     "\u2069",
 )
 _SPACE_SEPARATORS = ("\u00a0", "\u2007", "\u2009", "\u202f")
@@ -108,9 +113,26 @@ def test_a_bidirectional_override_is_refused(character: str) -> None:
 def test_a_space_separator_is_accepted(character: str) -> None:
     """Scenario: a space separator is accepted."""
 
-    record = _review(f"CR-001-F001 — the count is 71{character}415")
+    record = _review(f"CR-001-F001 - the count is 71{character}415")
 
-    assert record["findings"] == [f"CR-001-F001 — the count is 71{character}415"]
+    assert record["findings"] == [f"CR-001-F001 - the count is 71{character}415"]
+
+
+def test_an_unpaired_surrogate_is_refused() -> None:
+    """A value that could not be written back as UTF-8 is refused."""
+
+    with pytest.raises(JournalRecordError) as refusal:
+        _review("F-001\ud800")
+
+    assert "finding id must not contain control characters" in str(refusal.value)
+
+
+def test_a_private_use_codepoint_is_accepted() -> None:
+    """One unknown glyph can neither break a line nor reorder text."""
+
+    record = _review("F-001\ue000")
+
+    assert record["findings"] == ["F-001\ue000"]
 
 
 def test_a_journal_an_earlier_release_accepted_stays_valid(
@@ -156,13 +178,16 @@ def test_a_journal_an_earlier_release_accepted_stays_valid(
     assert any("OK: CR-001" in line for line in report.lines)
 
 
-@pytest.mark.parametrize("character", _BIDIRECTIONAL)
+@pytest.mark.parametrize("character", (*_BIDIRECTIONAL, "\ud800"))
 def test_the_rule_holds_the_same_on_both_sides(character: str) -> None:
     """Scenario: the rule holds the same on both sides.
 
-    A line breaker never reaches this check on the contract side: TOML refuses
-    it in a string first. A bidirectional control is valid TOML, so the check is
-    what has to refuse it — and it does, by the record side's set.
+    Two classes never reach this check on the contract side: TOML refuses a raw
+    newline or carriage return inside a string, and the header is split with
+    `str.splitlines()` (`contracts.py:125`), which treats U+2028 and U+2029 as
+    line breaks and so breaks the `+++` fence before the header parses. Both are
+    pinned on the record side instead. What is left is valid TOML and reaches
+    the rule.
     """
 
     with pytest.raises(JournalContractError) as refusal:
@@ -173,14 +198,20 @@ def test_the_rule_holds_the_same_on_both_sides(character: str) -> None:
 
 @pytest.mark.parametrize("character", _SPACE_SEPARATORS)
 def test_a_contract_entry_keeps_its_space_separator(character: str) -> None:
-    """The contract side accepts what the record side accepts."""
+    """The contract side accepts what the record side accepts.
+
+    The separator goes in an `extensions` entry, which this rule guards; an
+    `acceptance` entry does not reach it, and asserting there would pass whatever
+    the rule did.
+    """
 
     header = parse_contract_text(
         "+++\n"
         'schema = 2\nid = "CR-001"\n'
-        f'title = "Task"\nscope = ["src/"]\nacceptance = ["counts 71{character}415"]\n'
+        f'title = "Task"\nscope = ["src/"]\nacceptance = []\n'
+        f'extensions = ["tool 71{character}415"]\n'
         "+++\n\n# CR-001\n",
         "contract.md",
     )
 
-    assert header.acceptance == (f"counts 71{character}415",)
+    assert header.extensions == (f"tool 71{character}415",)

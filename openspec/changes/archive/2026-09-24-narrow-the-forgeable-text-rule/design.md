@@ -4,9 +4,12 @@
 has `isprintable() is False` and is not U+0020. It guards review finding ids and
 advisory finding ids, acceptance fields and finding ids, a finding record's
 summary, and an artifact reference. `reject_control_characters` in
-`contracts.py` applies the same test, without the space exception, to scope
-entries and to the `decisions` and `extensions` header entries. Both raise
-`… must not contain control characters`.
+`contracts.py` applies the same test, without the space exception, to `scope`
+and `documents` entries (through `validate_scope_entry`) and to the `decisions`
+and `extensions` header entries. Both raise
+`… must not contain control characters`. A third copy of the test, written
+inline, guards a review artifact's `ref` in `validate.py` — on the read side,
+where this task's retroactivity applies.
 
 Validation runs on read as well as on write: `validate` loads every task, and
 loading validates each record. So a rule tightened in a release reaches records
@@ -30,13 +33,23 @@ an earlier release wrote.
   `Cc` (C0 and C1 controls) covers `\n`, `\r` and the rest; `Zl` is U+2028 and
   `Zp` is U+2029, the two separators that a renderer may treat as line breaks.
   `unicodedata.category` gives this directly, from the standard library.
-- **The bidirectional controls are refused too**, by codepoint:
-  U+202A–U+202E and U+2066–U+2069. They are category `Cf`, so a category rule
-  alone would let them through, and they can make displayed text read in an
-  order the bytes do not have — the same class of harm as forging a line, and
-  the reason the set is not simply "no line breaks". Other `Cf` characters
-  (U+00AD, U+200B–U+200D, U+FEFF) are accepted: they can neither break a line
-  nor reorder text. This is a deliberate boundary, not an oversight.
+- **The bidirectional characters are refused too**, by codepoint: the marks
+  U+061C, U+200E and U+200F, the embeddings and overrides U+202A–U+202E, and the
+  isolates U+2066–U+2069. All are category `Cf`, so a category rule alone would
+  let them through, and each can make displayed text read in an order the bytes
+  do not have — the same class of harm as forging a line, and the reason the set
+  is not simply "no line breaks". The `Cf` characters left out (U+00AD,
+  U+200B–U+200D, U+FEFF) affect neither line breaks nor order; a private-use
+  codepoint (category `Co`) renders as one unknown glyph. Both are accepted.
+  This is a deliberate boundary, not an oversight.
+- **An unpaired surrogate is refused** (category `Cs`). The printability test
+  refused it as a side effect and that side effect is worth keeping on purpose:
+  such a value cannot be encoded as UTF-8, so a record carrying one could not be
+  written back out of the journal it was read from.
+- **The third call site joins the other two.** `validate.py` checked an artifact
+  `ref` with its own copy of the printability test. Two narrowed copies and one
+  left stricter would be exactly the drift this change removes, so it calls the
+  same predicate.
 - **Space separators are accepted**, U+00A0, U+2007, U+2009 and U+202F
   included. They render as a space; nothing about them can produce a line.
 - **The message stays as it is.** `… must not contain control characters` is
