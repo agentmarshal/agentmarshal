@@ -5,6 +5,7 @@ title = "The forgeable-text rule refuses only what can break a line or reorder t
 scope = [
   "src/agentmarshal/journal/records.py",
   "src/agentmarshal/journal/contracts.py",
+  "src/agentmarshal/journal/validate.py",
   "tests/",
   "UPGRADING.md",
   "openspec/changes/narrow-the-forgeable-text-rule/",
@@ -58,6 +59,14 @@ journal that was valid stays valid.
 As in the header. The scenarios in the delta spec are the behaviour;
 design.md holds the decisions, including which categories are refused and why
 the bidirectional controls are in that set.
+
+## Amended 2026-09-24 (scope)
+
+`src/agentmarshal/journal/validate.py` joins the scope. The same printability
+test guards a review artifact's `ref` there, for the same stated purpose — a ref
+that could add a line to the failure output — and on the read side, where the
+retroactivity this task is about applies. Two narrowed copies and one left
+stricter would be the drift the task exists to remove.
 
 ## Amended 2026-09-24
 
