@@ -11,7 +11,8 @@ FAIL: CR-145: review record finding id must not contain control characters: …-
 validate: journal invalid
 ```
 
-0.4.0 refused any string field carrying a character that Python's
+0.4.0 refused a finding id, an acceptance field, a finding summary, an artifact
+reference or a contract header entry carrying a character that Python's
 `str.isprintable()` calls unprintable. That test is false for every space
 separator except a plain space — U+00A0, U+2007, U+2009, U+202F — and none of
 them can end a line, which is all the rule was ever meant to prevent. A journal
@@ -19,13 +20,14 @@ written by an earlier release could hold one, in a finding id whose text is a
 sentence, and the records of a closed task cannot be repaired: the journal is
 append-only and the gate refuses changes to them. The rule now names what it
 refuses — categories `Cc`, `Cs`, `Zl`, `Zp` and the bidirectional marks,
-overrides and isolates — and accepts the rest (CR-114).
+embeddings, overrides and isolates (U+061C, U+200E, U+200F, U+202A–U+202E,
+U+2066–U+2069) — and accepts the rest (CR-114).
 
 Nothing to migrate: upgrade every place that runs `validate`, `status`, `gate`
 or `complete`, and the journal reads as it did before 0.4.0. There is no
 allowlist for a record refused this way, and none is planned; if `validate`
-still refuses a record afterwards, the character in it can break a line, hide
-text or fail to encode, and that is worth reporting.
+still refuses a record afterwards, the character in it is in the set above, and
+that is worth reporting.
 
 Records written on 0.4.0 are unaffected — a refused write wrote nothing.
 

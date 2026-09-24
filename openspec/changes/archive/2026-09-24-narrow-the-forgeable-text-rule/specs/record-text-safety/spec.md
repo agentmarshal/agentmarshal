@@ -9,8 +9,12 @@ cost an adopter a journal an earlier release had accepted.
 ## ADDED Requirements
 
 ### Requirement: A record's text may not forge a line or reorder what is read
-Text a record or a contract header carries is rendered into transcripts, briefs
-and prompts. A value SHALL be refused when it contains a character of Unicode
+Where this rule is applied — a review record's finding and advisory finding
+ids, an acceptance record's fields and finding ids, a finding record's summary
+and artifact references, a review artifact's pinned reference, and a contract
+header's `scope`, `documents`, `decisions` and `extensions` entries — the value
+is rendered into transcripts, briefs and prompts. Such a value SHALL be refused
+when it contains a character of Unicode
 category `Cc`, `Cs`, `Zl` or `Zp`, or a bidirectional mark, embedding, override
 or isolate — U+061C, U+200E, U+200F, U+202A–U+202E, U+2066–U+2069. `Cc`, `Zl`
 and `Zp` can add a line; the bidirectional characters can make displayed text

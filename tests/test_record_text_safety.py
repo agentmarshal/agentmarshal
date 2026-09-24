@@ -5,6 +5,7 @@ read in an order its bytes do not have. Everything else it accepts — the space
 separators included, which the printability test it replaced refused.
 """
 
+import hashlib
 import json
 import subprocess
 from pathlib import Path
@@ -119,7 +120,7 @@ def test_a_space_separator_is_accepted(character: str) -> None:
 
 
 def test_an_unpaired_surrogate_is_refused() -> None:
-    """A value that could not be written back as UTF-8 is refused."""
+    """Scenario: an unpaired surrogate is refused."""
 
     with pytest.raises(JournalRecordError) as refusal:
         _review("F-001\ud800")
@@ -215,3 +216,85 @@ def test_a_contract_entry_keeps_its_space_separator(character: str) -> None:
     )
 
     assert header.extensions == (f"tool 71{character}415",)
+
+
+def _hand_written_review(
+    repo: Path,
+    findings: list[str],
+    artifacts: list[dict[str, str]] | None = None,
+) -> None:
+    """Write a review record the way an earlier release wrote one: schema 2."""
+
+    records = repo / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "records"
+    record: dict[str, object] = {
+        "schema": 2,
+        "record_type": "review",
+        "task": "CR-001",
+        "created_at": "2026-08-23T10:00:00.000000Z",
+        "source": "live",
+        "tool_version": "0.1.0",
+        "reviewed_commit": "b" * 40,
+        "verdict": "changes_required",
+        "reviewer": {
+            "role": _REVIEWER[0],
+            "vendor": _REVIEWER[1],
+            "model": _REVIEWER[2],
+            "email": _REVIEWER[3],
+        },
+        "findings": findings,
+    }
+    if artifacts is not None:
+        record["artifacts"] = artifacts
+    (records / f"{generate_ulid()}-review.json").write_text(
+        json.dumps(record, ensure_ascii=False), encoding="utf-8"
+    )
+
+
+def test_the_rule_guards_every_place_that_renders_record_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: the rule guards every place that renders record text.
+
+    `validate` checks a pinned artifact's reference itself, on the read side.
+    Both halves are pinned here: a reference carrying a space separator
+    validates, and one carrying a refused character is reported. Without the
+    second the check could be dropped unnoticed; without the first it could be
+    left stricter than the writer, which is the drift this task removes.
+    """
+
+    repo = _project(tmp_path, monkeypatch)
+    artifacts = repo / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "artifacts"
+    artifacts.mkdir(parents=True)
+    accepted_name = "01M0QN0YTPC71EQJM1HRVF9A2K-review\u202fnote.md"
+    content = b"reviewer prose\n"
+    (artifacts / accepted_name).write_bytes(content)
+    _hand_written_review(
+        repo,
+        ["F-001"],
+        [
+            {
+                "ref": f".agentmarshal/journal/tasks/CR-001/artifacts/{accepted_name}",
+                "hash": hashlib.sha256(content).hexdigest(),
+            }
+        ],
+    )
+
+    accepted = validate_journal(repo)
+
+    assert accepted.passed, accepted.lines
+
+    _hand_written_review(
+        repo,
+        ["F-002"],
+        [
+            {
+                "ref": ".agentmarshal/journal/tasks/CR-001/artifacts/x\u202ey.md",
+                "hash": "0" * 64,
+            }
+        ],
+    )
+
+    refused = validate_journal(repo)
+
+    assert not refused.passed
+    assert any("contains control characters" in line for line in refused.lines)

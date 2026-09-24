@@ -9,7 +9,10 @@ and `documents` entries (through `validate_scope_entry`) and to the `decisions`
 and `extensions` header entries. Both raise
 `… must not contain control characters`. A third copy of the test, written
 inline, guards a review artifact's `ref` in `validate.py` — on the read side,
-where this task's retroactivity applies.
+where this task's retroactivity applies. Two further callers reach the record
+predicate through its own name: `artifacts.py` checks an artifact's `name` and
+`extensions.py` an extension's, and both of those become a single path component
+on disk, checked separately for exactly that.
 
 Validation runs on read as well as on write: `validate` loads every task, and
 loading validates each record. So a rule tightened in a release reaches records
@@ -68,3 +71,9 @@ an earlier release wrote.
   now a named set rather than a proxy test, so such a change is visible.
 - [Records written between 0.4.0 and this fix were refused, not written] → a
   write refused nothing to the journal; no record needs repair.
+- [An artifact or extension name may now carry an invisible character] → both
+  are path components, and both keep their own single-component check; what the
+  narrowed rule no longer refuses is a name that renders the same as another in
+  a transcript. Whether a name that becomes a path deserves a stricter set than
+  text that is only displayed is a question this change does not answer; it is
+  recorded rather than decided here.

@@ -498,11 +498,12 @@ def _validate_finding_record(data: Mapping[str, object]) -> None:
 _FORGEABLE_CATEGORIES = frozenset({"Cc", "Cs", "Zl", "Zp"})
 # The bidirectional marks, embeddings, overrides and isolates. All are category
 # Cf, so no category rule catches them, and each can make displayed text read in
-# an order its bytes do not have: the same harm as forging a line. The Cf
-# characters left out (U+00AD, U+200B-U+200D, U+FEFF) affect neither line breaks
-# nor order, and category Co, a private-use codepoint, renders as one unknown
-# glyph — both are accepted. That boundary is deliberate, and stated here
-# because it is the first thing a reader asks about.
+# an order its bytes do not have: the same harm as forging a line. The rest of
+# Cf stays accepted — among them U+00AD, U+200B-U+200D, U+FEFF and the tag block
+# U+E0020-U+E007F — as does category Co, a private-use codepoint that renders as
+# one unknown glyph. Some of those are invisible; none can break a line or
+# reorder text, which is what this rule is for. That boundary is deliberate, and
+# stated here because it is the first thing a reader asks about.
 _BIDIRECTIONAL_CONTROLS = frozenset(
     "\u061c\u200e\u200f\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069"
 )
