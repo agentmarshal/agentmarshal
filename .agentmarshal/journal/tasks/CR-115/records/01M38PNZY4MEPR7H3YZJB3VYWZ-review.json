@@ -1,0 +1,31 @@
+{
+  "advisory_findings": [
+    "contributing-versioning-example-now-tautological",
+    "readme-quickstart-capability-statements-still-name-0-4-0",
+    "quickstart-wheel-claim-not-evidenced"
+  ],
+  "artifacts": [
+    {
+      "hash": "30097b825d64df72f8d8a65374e486ab6e4378bdf11f9b6934a38e4defbc083f",
+      "ref": ".agentmarshal/journal/tasks/CR-115/artifacts/01M38PNZY4MEPR7H3YZJB3VYWZ-review.md"
+    }
+  ],
+  "created_at": "2026-09-24T03:17:25.572275Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "32cb9b041d4b07e8d58fc9b326c38361f3c01504",
+  "reviewed_contract": "47cbf0b97e2b7c892e938ffe908d3950fef9e9bc797e48a1173c87d2b239cc89",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-115",
+  "tool_version": "0.4.1",
+  "verdict": "approved"
+}
