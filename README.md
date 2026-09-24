@@ -74,7 +74,7 @@ changes, each with the tasks it comes from.
 Install the published release:
 
 ```sh
-pip install agentmarshal==0.4.0
+pip install agentmarshal==0.4.1
 agentmarshal --version
 ```
 

@@ -3,7 +3,7 @@
 This walks through the whole AgentMarshal loop on a throwaway repository —
 from installing the package to a task that carries durable, SHA-bound
 evidence that its work was independently reviewed. Every command in "The
-governed loop" below was run against a wheel of `agentmarshal` 0.4.0 built
+governed loop" below was run against a wheel of `agentmarshal` 0.4.1 built
 before the release was published: the main path end to end in one pass, and
 the two branches that pass cannot reach — `accept`, which needs a non-approving
 review, and `reopen`, which undoes the state the run arrives at — separately.
@@ -23,7 +23,7 @@ Requirements: **Python ≥ 3.12** and **git** on your `PATH`.
 Install the release this guide describes:
 
 ```sh
-pip install agentmarshal==0.4.0
+pip install agentmarshal==0.4.1
 agentmarshal --version
 ```
 

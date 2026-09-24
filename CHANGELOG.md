@@ -25,8 +25,8 @@ categories `Cc`, `Cs`, `Zl`, `Zp` and the bidirectional marks, embeddings,
 overrides and isolates. One predicate decides it for records, contract headers
 and the artifact reference `validate` checks, so the three cannot drift.
 **If 0.4.0's `validate` refused a record your earlier release accepted, this
-release reads it again** — see [UPGRADING.md](UPGRADING.md). The verdict a
-refused write produced is unaffected: a refused write wrote nothing.
+release reads it again** — see [UPGRADING.md](UPGRADING.md). Records written on
+0.4.0 are unaffected: where the rule refused a write, nothing was written.
 
 ### The default branch says it is not a release (CR-112)
 

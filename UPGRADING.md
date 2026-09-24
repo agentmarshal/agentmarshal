@@ -9,8 +9,8 @@ release machinery of this repository.
 ### A review record refused over a space separator
 
 **If 0.4.0's `validate` refused a review record your earlier release accepted,
-upgrade to 0.4.1; it reads that record again.** The
-refusal looks like this, and it fails the whole journal:
+upgrade to 0.4.1; it reads that record again.** The refusal looks like this, and
+it fails the whole journal:
 
 ```
 FAIL: CR-145: review record finding id must not contain control characters: …-review.json
