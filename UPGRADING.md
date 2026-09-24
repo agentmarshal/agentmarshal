@@ -30,8 +30,9 @@ refuses — categories `Cc`, `Cs`, `Zl`, `Zp` and the bidirectional marks,
 embeddings, overrides and isolates (U+061C, U+200E, U+200F, U+202A–U+202E,
 U+2066–U+2069) — and accepts the rest (CR-114).
 
-Nothing to migrate: upgrade every place that runs `validate`, `status`, `gate`
-or `complete`, and the journal reads as it did before 0.4.0. There is no
+Nothing to migrate: change the pin if you have one — the install commands in
+this repository's documentation now name `agentmarshal==0.4.1` — upgrade every
+place that runs `validate`, `status`, `gate` or `complete`, and the journal reads as it did before 0.4.0. There is no
 allowlist for a record refused this way, and none is planned; if `validate`
 still refuses a record afterwards, the character in it is in the set above, and
 that is worth reporting.
