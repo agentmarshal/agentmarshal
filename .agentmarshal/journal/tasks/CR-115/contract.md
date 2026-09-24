@@ -13,6 +13,11 @@ scope = [
   "docs/quickstart.md",
   "docs/sidecar.md",
   "CONTRIBUTING.md",
+  "docs/overview.md",
+  "docs/adr/ADR-0004-journal-data-model.md",
+  "docs/adr/ADR-0005-evidence-capture-and-format.md",
+  "docs/proposals/README.md",
+  "docs/proposals/024-provider-quota-stop-cannot-be-recorded.md",
 ]
 acceptance = [
   "CHANGELOG.md has a 0.4.1 section dated the day of the release in which every entry names the task it comes from and describes only merged behaviour; the three tasks landed since v0.4.0 — CR-112, CR-113, CR-114 — each appear, and the entry for the fix says what an installation that hit the refusal does",
@@ -63,6 +68,19 @@ contradicts.
 Added criterion: every install command a reader can follow names 0.4.1, and the
 quickstart's statement about the wheel it was verified against stays true of the
 wheel named.
+
+## Amended 2026-09-24 (the rest of the current-release statements)
+
+Five more files join the scope. `docs/overview.md`, ADR-0004 and ADR-0005 state
+what the shipped version is and what is not active in it; the proposals index
+and proposal 024 say the outcome value and the tokens-are-not-cost statement
+live "on the default branch". A reader reaches all of them from the quickstart,
+which this task moved to 0.4.1, and the tag makes every one of those statements
+wrong. The release task for 0.4.0 carried these files for the same reason; this
+contract narrowed the scope too far.
+
+Added criterion: every statement about the shipped release names 0.4.1, and
+every statement about an earlier release as history keeps its own number.
 
 ## Non-Goals
 
