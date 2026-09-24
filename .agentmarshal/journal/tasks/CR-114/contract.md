@@ -14,7 +14,7 @@ scope = [
 ]
 acceptance = [
   "every scenario in the change's delta spec is demonstrated by a test whose docstring names it; the implementation follows design.md's decisions or records in design.md why it departed",
-  "the rule refuses exactly the characters that can add a line or reorder text — Unicode categories Cc, Zl and Zp, and the bidirectional controls U+202A-U+202E and U+2066-U+2069 — and accepts every other character, including the space separators U+00A0, U+2007, U+2009 and U+202F; one function decides this for records and one for contracts, and neither reads str.isprintable()",
+  "the rule refuses exactly the characters that can add a line, reorder text, or fail to encode — Unicode categories Cc, Cs, Zl and Zp, and the bidirectional marks, embeddings, overrides and isolates U+061C, U+200E, U+200F, U+202A-U+202E and U+2066-U+2069 — and accepts every other character, including the space separators U+00A0, U+2007, U+2009 and U+202F and private-use codepoints; one predicate decides this for every place that asks, and none of them reads str.isprintable()",
   "a journal whose review record carries a finding id containing U+202F validates, and a test pins that case with a record written under schema 2 by an earlier release, as an adopter's journal has it",
   "the purpose the rule exists for still holds: a value carrying a newline, a carriage return, U+2028, U+2029 or a bidirectional override is refused wherever it was refused before, with a test per class, and the refusal message still names the field",
   "UPGRADING.md tells an adopter whose 0.4.0 validate refused a historical review record what to do, and names no mechanism that does not exist",
@@ -59,6 +59,16 @@ journal that was valid stays valid.
 As in the header. The scenarios in the delta spec are the behaviour;
 design.md holds the decisions, including which categories are refused and why
 the bidirectional controls are in that set.
+
+## Amended 2026-09-24 (the refused set)
+
+The set in criterion 2 is Cc, Cs, Zl, Zp and every bidirectional mark,
+embedding, override and isolate. Two classes joined it during the work, both
+found by review: an unpaired surrogate, which cannot be encoded as UTF-8 at all,
+so a record carrying one could not be written back out; and the bidirectional
+marks U+061C, U+200E and U+200F, which reorder displayed text as the overrides
+do. The first criterion let the implementation depart from design.md, not from
+the contract, so the contract says it here.
 
 ## Amended 2026-09-24 (scope)
 

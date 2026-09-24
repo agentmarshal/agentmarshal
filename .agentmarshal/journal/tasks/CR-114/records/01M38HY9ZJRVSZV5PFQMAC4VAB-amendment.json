@@ -1,0 +1,11 @@
+{
+  "created_at": "2026-09-24T01:54:35.122202Z",
+  "reason": "The refused set in criterion 2 covers surrogates and the bidirectional marks",
+  "record_type": "amendment",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "schema": 3,
+  "source": "live",
+  "task": "CR-114",
+  "tool_version": "0.5.0.dev0"
+}
