@@ -57,7 +57,9 @@ To see how the project actually evolved, token spend and all, read the journal.
 **Pre-alpha.** Version 0.4.1 ships the governed loop end to end: task contracts,
 review and operator-acceptance evidence, lifecycle repair, the fail-closed gate,
 completion, reporting, validation, advisory leak scanning, and local pruning.
-New in 0.4.0: research work lands as hash-pinned findings reviewed by finding
+New in 0.4.1: `validate` reads a journal 0.4.0 refused over a space separator in
+a record written by an earlier release (CR-114). New in 0.4.0: research work
+lands as hash-pinned findings reviewed by finding
 rather than by commit; contracts can name the decisions, documents, and process
 tools a task works under; a model review records the hash of the contract it
 judged, and the project's capture policy decides whether the reviewer's prose

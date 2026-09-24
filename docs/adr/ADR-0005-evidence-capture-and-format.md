@@ -23,7 +23,7 @@ Date: 2026-07-28
 > command is available for any CI. It is best-effort and never blocks a merge;
 > the mandatory block-on-leak enforcement above remains roadmap.
 >
-> **Status in 0.4.0.** The reviews capture class is read: its default `hash`
+> **Status in 0.4.1.** The reviews capture class is read: its default `hash`
 > level is a local-temporary-file stopgap while the private store is unshipped,
 > and `capture.overrides.reviews = "commit"` preserves the reviewer's standard
 > output as a hash-pinned journal artifact. The economics and sessions classes

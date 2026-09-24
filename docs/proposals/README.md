@@ -78,7 +78,7 @@ decision it was supposed to support. Accepted in part.
 
 | # | Theme | Reporter | Disposition | Where |
 |---|---|---|---|---|
-| [024](024-provider-quota-stop-cannot-be-recorded.md) | A provider quota stop cannot be recorded | D | accepted *(reset-time field deferred)* | default branch for the outcome value and the tokens-are-not-cost statement; the field with the accounting rework |
+| [024](024-provider-quota-stop-cannot-be-recorded.md) | A provider quota stop cannot be recorded | D | accepted *(reset-time field deferred)* | 0.4.1 for the outcome value and the tokens-are-not-cost statement; the field with the accounting rework |
 
 ## Batch of 2026-09-16
 
