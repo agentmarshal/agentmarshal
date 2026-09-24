@@ -8,6 +8,42 @@ local timestamp that can read a day either side of it. The journal under
 This project describes what it does and not what it intends to do. Where a
 capability is partial, the entry says so.
 
+## 0.4.1 — 2026-09-24
+
+A patch release for one defect an adopter hit on 0.4.0, plus the documentation
+and release machinery that landed with it.
+
+### `validate` reads a journal 0.4.0 refused (CR-114)
+
+0.4.0 refused a finding id, an acceptance field, a finding summary, an artifact
+reference or a contract header entry containing any character Python's
+`str.isprintable()` calls unprintable. That test is false for every space
+separator but a plain space, so a journal an earlier release had written could be
+refused for a narrow no-break space inside a finding id — and the records of a
+closed task cannot be repaired. The rule now names what it refuses: Unicode
+categories `Cc`, `Cs`, `Zl`, `Zp` and the bidirectional marks, embeddings,
+overrides and isolates. One predicate decides it for records, contract headers
+and the artifact reference `validate` checks, so the three cannot drift.
+**If 0.4.0's `validate` refused a record your earlier release accepted, this
+release reads it again** — see [UPGRADING.md](UPGRADING.md). The verdict a
+refused write produced is unaffected: a refused write wrote nothing.
+
+### The default branch says it is not a release (CR-112)
+
+Between releases the version carries a `.dev0` suffix, so a build from the
+default branch no longer reports the same version as the published release;
+CONTRIBUTING states the rule, and the release workflow refuses to publish a
+development or local version.
+
+### Token counts are not what a provider charges (CR-113)
+
+Proposal 024 is published with its disposition: a session the provider refused
+to continue is recorded with the outcome `provider-limit`, a documented value
+that the tool neither checks nor counts, and the quickstart and README no longer
+present token counts as what a task cost. The reset time a provider states in
+its refusal still has no field; that waits for the accounting rework proposal
+018 deferred.
+
 ## 0.4.0 — 2026-09-18
 
 The headline is that work which is not a source diff can now be recorded and

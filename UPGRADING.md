@@ -1,9 +1,15 @@
 # Upgrading
 
-## After 0.4.0: a review record refused over a space separator
+## 0.4.0 → 0.4.1
+
+Nothing in this release requires action beyond installing it. Its one behaviour
+change is the refusal below; the rest of what landed is documentation and the
+release machinery of this repository.
+
+### A review record refused over a space separator
 
 **If 0.4.0's `validate` refused a review record your earlier release accepted,
-upgrade to the release that carries CR-114; it reads that record again.** The
+upgrade to 0.4.1; it reads that record again.** The
 refusal looks like this, and it fails the whole journal:
 
 ```
