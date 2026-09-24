@@ -9,7 +9,7 @@ scope = [
   "UPGRADING.md",
   "openspec/changes/narrow-the-forgeable-text-rule/",
   "openspec/changes/archive/",
-  "openspec/specs/record-lifecycle/",
+  "openspec/specs/record-text-safety/",
 ]
 acceptance = [
   "every scenario in the change's delta spec is demonstrated by a test whose docstring names it; the implementation follows design.md's decisions or records in design.md why it departed",
@@ -20,7 +20,7 @@ acceptance = [
   "no record is rewritten, no allowlist is introduced, and the full CI sequence passes",
 ]
 decisions = ["ADR-0004", "ADR-0007"]
-documents = ["openspec/specs/record-lifecycle/"]
+documents = ["openspec/specs/record-text-safety/"]
 +++
 
 # CR-114: the forgeable-text rule refuses only what can break a line
@@ -58,6 +58,13 @@ journal that was valid stays valid.
 As in the header. The scenarios in the delta spec are the behaviour;
 design.md holds the decisions, including which categories are refused and why
 the bidirectional controls are in that set.
+
+## Amended 2026-09-24
+
+The delta spec goes to a new capability, `record-text-safety`, not to
+`record-lifecycle`. That capability's Purpose is which records a closed task
+admits; what a record's text may contain is a different question, and naming it
+there would mislabel both.
 
 ## Non-Goals
 
