@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
+from agentmarshal.journal.records import forges_rendered_text
+
 
 class JournalContractError(ValueError):
     """Raised when a journal contract is malformed."""
@@ -51,9 +53,15 @@ def _optional_string_array(data: dict[str, object], field: str) -> tuple[str, ..
 
 
 def reject_control_characters(value: str, what: str) -> None:
-    """Refuse values that could forge lines in generated task text."""
+    """Refuse values that could forge lines in generated task text.
 
-    if any(not character.isprintable() for character in value):
+    The set is the record side's, read from one predicate
+    (:func:`agentmarshal.journal.records.forges_rendered_text`) so the two
+    cannot drift: a character a contract may not carry is one a record may not
+    carry either.
+    """
+
+    if forges_rendered_text(value):
         raise JournalContractError(f"{what} must not contain control characters")
 
 

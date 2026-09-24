@@ -20,6 +20,7 @@ from agentmarshal.journal.open_task import journal_root
 from agentmarshal.journal.records import (
     JournalRecordError,
     ensure_journal_root_is_real,
+    forges_rendered_text,
     validate_task_id,
 )
 from agentmarshal.journal.status import (
@@ -68,7 +69,7 @@ def _review_artifact_failures(
         record_id = cast(str, record["id"])
         for artifact in cast(list[dict[str, str]], record["artifacts"]):
             reference = artifact["ref"]
-            if any(not character.isprintable() for character in reference):
+            if forges_rendered_text(reference):
                 # A ref is printed in every failure below; one that could add
                 # a line to this output is refused, shown as repr.
                 failures.append(

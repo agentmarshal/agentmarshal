@@ -1,0 +1,99 @@
+## Context
+
+`_reject_control_characters` in `records.py` refuses a value when any character
+has `isprintable() is False` and is not U+0020. It guards review finding ids and
+advisory finding ids, acceptance fields and finding ids, a finding record's
+summary, and an artifact reference. `reject_control_characters` in
+`contracts.py` applies the same test, without the space exception, to
+`documents` entries (through `validate_scope_entry`), to the `decisions` and
+`extensions` header entries, and — through the same helper — to an extension
+manifest's footprint entries. A contract's `scope` entries are **not** checked:
+`parse_contract_text` reads them with `_require_string_array` and nothing
+validates them per entry, though the gate joins them into one output line. That
+is a gap this change neither closes nor widens: adding a check there would
+refuse contracts that earlier releases accepted, which is the retroactive
+tightening this task exists to undo. It is recorded as an open question, not
+decided here. Both raise
+`… must not contain control characters`. A third copy of the test, written
+inline, guards a review artifact's `ref` in `validate.py` — on the read side,
+where this task's retroactivity applies. Two further callers reach the record
+predicate through its own name: `artifacts.py` checks an artifact's `name` and
+`extensions.py` an extension's, and both of those become a single path component
+on disk, checked separately for exactly that.
+
+Validation runs on read as well as on write: `validate` loads every task, and
+loading validates each record. So a rule tightened in a release reaches records
+an earlier release wrote.
+
+## Goals
+
+- Refuse what can add a line to generated text, or hide and reorder it.
+- Accept everything else, including space separators.
+- Keep one decision point per side (records, contracts).
+
+## Non-Goals
+
+- Rules scoped to the schema that introduced them (its own decision record).
+- An allowlist of records accepted as they are.
+- Escaping on display instead of refusing.
+
+## Decisions
+
+- **The refused set is named by Unicode category, not by a printability test.**
+  `Cc` (C0 and C1 controls) covers `\n`, `\r` and the rest; `Zl` is U+2028 and
+  `Zp` is U+2029, the two separators that a renderer may treat as line breaks.
+  `unicodedata.category` gives this directly, from the standard library.
+- **The bidirectional characters are refused too**, by codepoint: the marks
+  U+061C, U+200E and U+200F, the embeddings and overrides U+202A–U+202E, and the
+  isolates U+2066–U+2069. All are category `Cf`, so a category rule alone would
+  let them through, and each can make displayed text read in an order the bytes
+  do not have — the same class of harm as forging a line, and the reason the set
+  is not simply "no line breaks". The `Cf` characters left out (U+00AD,
+  U+200B–U+200D, U+FEFF) affect neither line breaks nor order; a private-use
+  codepoint (category `Co`) renders as one unknown glyph. Both are accepted.
+  This is a deliberate boundary, not an oversight.
+- **What the accepted set means for a prompt, not only a transcript.** These
+  fields are rendered into briefs and review prompts as well as transcripts, and
+  some accepted characters are invisible to a reader while still reaching a
+  model: the tag block U+E0020–U+E007F encodes ASCII text that way. The
+  printability test refused them as a side effect. Accepting them follows the
+  contract — refuse what can break a line, reorder text or fail to encode,
+  accept the rest — and it is a narrower guarantee than "a reader and a model
+  see the same text". That is a different rule with a different threat model,
+  and it deserves its own decision rather than a silent extension of this set. No
+decision record covers it yet, and this change does not pretend otherwise.
+  Category `Cn`, an unassigned codepoint, is accepted for one more reason:
+  refusing it would make a journal's validity depend on the Unicode version each
+  reader ships.
+- **An unpaired surrogate is refused** (category `Cs`). The printability test
+  refused it as a side effect and that side effect is worth keeping on purpose:
+  such a value cannot be encoded as UTF-8, so a record carrying one could not be
+  written back out of the journal it was read from.
+- **The third call site joins the other two.** `validate.py` checked an artifact
+  `ref` with its own copy of the printability test. Two narrowed copies and one
+  left stricter would be exactly the drift this change removes, so it calls the
+  same predicate.
+- **Space separators are accepted**, U+00A0, U+2007, U+2009 and U+202F
+  included. They render as a space; nothing about them can produce a line.
+- **The message stays as it is.** `… must not contain control characters` is
+  what adopters' tooling and our own tests already read, and it is still true
+  of the narrowed set.
+- **One function per side.** Records keep `_reject_control_characters`;
+  contracts keep `reject_control_characters`; the character predicate itself
+  lives once, in `records.py`, and `contracts.py` calls it. The space exception
+  disappears: it existed only to undo the printability test, and the new rule
+  never refuses a space.
+
+## Risks
+
+- [A future renderer treats some accepted character as a line break] → then the
+  set grows by codepoint, and the reason is stated where the set is. The rule is
+  now a named set rather than a proxy test, so such a change is visible.
+- [Records written between 0.4.0 and this fix were refused, not written] → a
+  write refused nothing to the journal; no record needs repair.
+- [An artifact or extension name may now carry an invisible character] → both
+  are path components, and both keep their own single-component check; what the
+  narrowed rule no longer refuses is a name that renders the same as another in
+  a transcript. Whether a name that becomes a path deserves a stricter set than
+  text that is only displayed is a question this change does not answer; it is
+  recorded rather than decided here.
