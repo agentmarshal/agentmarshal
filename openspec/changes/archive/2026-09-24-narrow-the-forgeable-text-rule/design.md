@@ -45,6 +45,18 @@ an earlier release wrote.
   U+200B–U+200D, U+FEFF) affect neither line breaks nor order; a private-use
   codepoint (category `Co`) renders as one unknown glyph. Both are accepted.
   This is a deliberate boundary, not an oversight.
+- **What the accepted set means for a prompt, not only a transcript.** These
+  fields are rendered into briefs and review prompts as well as transcripts, and
+  some accepted characters are invisible to a reader while still reaching a
+  model: the tag block U+E0020–U+E007F encodes ASCII text that way. The
+  printability test refused them as a side effect. Accepting them follows the
+  contract — refuse what can break a line, reorder text or fail to encode,
+  accept the rest — and it is a narrower guarantee than "a reader and a model
+  see the same text". That is a different rule with a different threat model,
+  and it deserves its own decision rather than a silent extension of this set.
+  Category `Cn`, an unassigned codepoint, is accepted for one more reason:
+  refusing it would make a journal's validity depend on the Unicode version each
+  reader ships.
 - **An unpaired surrogate is refused** (category `Cs`). The printability test
   refused it as a side effect and that side effect is worth keeping on purpose:
   such a value cannot be encoded as UTF-8, so a record carrying one could not be

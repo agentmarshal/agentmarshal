@@ -492,9 +492,9 @@ def _validate_finding_record(data: Mapping[str, object]) -> None:
 # break; Cs is an unpaired surrogate, which cannot be encoded as UTF-8 at all,
 # so a record carrying one could not be written back out.
 # `str.isprintable()` used to stand in for all of this and was stricter than the
-# purpose: it is false for every Zs space separator except U+0020 — U+00A0,
-# U+2007, U+2009, U+202F — none of which can end a line (CR-114, reported by an
-# adopter whose journal 0.4.0 refused over U+202F).
+# purpose: it is false for all sixteen Zs space separators except U+0020 — among
+# them U+00A0, U+2007, U+2009, U+202F and U+3000 — none of which can end a line
+# (CR-114, reported by an adopter whose journal 0.4.0 refused over U+202F).
 _FORGEABLE_CATEGORIES = frozenset({"Cc", "Cs", "Zl", "Zp"})
 # The bidirectional marks, embeddings, overrides and isolates. All are category
 # Cf, so no category rule catches them, and each can make displayed text read in

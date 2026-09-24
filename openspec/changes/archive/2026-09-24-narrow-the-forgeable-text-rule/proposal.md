@@ -1,9 +1,9 @@
 ## Why
 
 A record's string fields are refused when they contain a character for which
-`str.isprintable()` is false. That test is false for every `Zs` space separator
-except U+0020 — U+00A0, U+2007, U+2009, U+202F — and none of those can end a
-line, which is the only thing the rule exists to prevent: a value must not be
+`str.isprintable()` is false. That test is false for all sixteen `Zs` space separators
+except U+0020 — among them U+00A0, U+2007, U+2009, U+202F and U+3000 — and none
+of those can end a line, which is the only thing the rule exists to prevent: a value must not be
 able to add a line to generated text, including one that reads as an approval.
 
 An adopter hit this on the published 0.4.0. Eleven occurrences of U+202F, used

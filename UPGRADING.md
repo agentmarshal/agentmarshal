@@ -14,7 +14,8 @@ validate: journal invalid
 0.4.0 refused a finding id, an acceptance field, a finding summary, an artifact
 reference or a contract header entry carrying a character that Python's
 `str.isprintable()` calls unprintable. That test is false for every space
-separator except a plain space — U+00A0, U+2007, U+2009, U+202F — and none of
+separator except a plain space — sixteen of them, among which U+00A0, U+2007,
+U+2009, U+202F and U+3000 IDEOGRAPHIC SPACE — and none of
 them can end a line, which is all the rule was ever meant to prevent. A journal
 written by an earlier release could hold one, in a finding id whose text is a
 sentence, and the records of a closed task cannot be repaired: the journal is

@@ -79,6 +79,13 @@ def _review(finding: str) -> dict[str, object]:
 
 
 def _contract(entry: str) -> None:
+    """Parse a header whose `decisions` entry is written as TOML source.
+
+    The entry arrives escaped, which is how a contract file carries a character
+    a raw form could not: `tomllib` unescapes it and the rule sees the character
+    itself.
+    """
+
     parse_contract_text(
         "+++\n"
         'schema = 2\nid = "CR-001"\ntitle = "Task"\n'
@@ -179,16 +186,21 @@ def test_a_journal_an_earlier_release_accepted_stays_valid(
     assert any("OK: CR-001" in line for line in report.lines)
 
 
-@pytest.mark.parametrize("character", (*_BIDIRECTIONAL, "\ud800"))
+_TOML_ESCAPES = ("\\n", "\\r", "\\u2028", "\\u2029")
+
+
+@pytest.mark.parametrize("character", (*_BIDIRECTIONAL, *_TOML_ESCAPES))
 def test_the_rule_holds_the_same_on_both_sides(character: str) -> None:
     """Scenario: the rule holds the same on both sides.
 
-    Two classes never reach this check on the contract side: TOML refuses a raw
-    newline or carriage return inside a string, and the header is split with
-    `str.splitlines()` (`contracts.py:125`), which treats U+2028 and U+2029 as
-    line breaks and so breaks the `+++` fence before the header parses. Both are
-    pinned on the record side instead. What is left is valid TOML and reaches
-    the rule.
+    Every class the record side refuses reaches this check too. A line breaker
+    reaches it in the escaped form a contract file uses: a raw one would not,
+    because the header is split with `str.splitlines()` (`contracts.py:125`),
+    which treats U+2028 and U+2029 as line breaks, and TOML refuses a raw
+    newline inside a single-line string. Escaped, `tomllib` unescapes it and the
+    rule refuses the character itself; the bidirectional characters are valid
+    TOML as they stand. An unpaired surrogate is pinned on the record side only:
+    TOML refuses its escape as invalid, so no contract file can carry one.
     """
 
     with pytest.raises(JournalContractError) as refusal:
