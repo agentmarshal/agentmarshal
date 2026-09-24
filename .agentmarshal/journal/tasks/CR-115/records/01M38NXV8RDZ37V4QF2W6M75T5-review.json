@@ -1,0 +1,34 @@
+{
+  "advisory_findings": [
+    "docs-install-pins-0-4-0",
+    "contributing-example-names-0-5-0-as-next",
+    "upgrading-paragraph-not-reflowed",
+    "changelog-refused-write-sentence-unclear"
+  ],
+  "artifacts": [
+    {
+      "hash": "76b2df5c2a2e9f901c11a3b91c0c7be8c4f50aec935b123127b37e2d0fd48344",
+      "ref": ".agentmarshal/journal/tasks/CR-115/artifacts/01M38NXV8RDZ37V4QF2W6M75T5-review.md"
+    }
+  ],
+  "created_at": "2026-09-24T03:04:14.360930Z",
+  "findings": [
+    "readme-shipped-to-pypi-still-pins-0-4-0"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "a0496d896f730b8430dd0edbc2e06de87f2884fc",
+  "reviewed_contract": "23e17764c72888b22100bc18013d2e58bc9989cbaf9500766c41a4ee431c8a71",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-115",
+  "tool_version": "0.4.1",
+  "verdict": "changes_required"
+}

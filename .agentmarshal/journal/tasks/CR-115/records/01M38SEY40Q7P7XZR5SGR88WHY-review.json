@@ -1,0 +1,30 @@
+{
+  "advisory_findings": [
+    "upgrading-redirect-points-at-wrong-section-and-leaves-version-verify-step-at-0-4-0",
+    "proposals-index-019-row-states-absence-relative-to-0-4-0"
+  ],
+  "artifacts": [
+    {
+      "hash": "ff28dc2d3ba0b89f8ba1b5c0d76157e6a1e7beb608077945b81b309760b2522e",
+      "ref": ".agentmarshal/journal/tasks/CR-115/artifacts/01M38SEY40Q7P7XZR5SGR88WHY-review.md"
+    }
+  ],
+  "created_at": "2026-09-24T04:06:00.064959Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "da1bb6b778f885455cd0692847ffec6093a0644c",
+  "reviewed_contract": "31195478eacbbba98b0610f8a6e0872fdb8c03d170839fdbb9055242a2c1ac7f",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-115",
+  "tool_version": "0.4.1",
+  "verdict": "approved"
+}

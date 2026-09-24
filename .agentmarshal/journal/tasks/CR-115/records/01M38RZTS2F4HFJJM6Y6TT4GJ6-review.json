@@ -1,0 +1,30 @@
+{
+  "advisory_findings": [
+    "quickstart-041-wheel-run-unverified",
+    "prose-lines-unwrapped-in-contributing-and-upgrading"
+  ],
+  "artifacts": [
+    {
+      "hash": "ca67d40a40e81d1336d2ab5b05f1cfe82bbfec773ba43e76f51db53a0a93de74",
+      "ref": ".agentmarshal/journal/tasks/CR-115/artifacts/01M38RZTS2F4HFJJM6Y6TT4GJ6-review.md"
+    }
+  ],
+  "created_at": "2026-09-24T03:57:45.122703Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "e2f86c676683f035dac392b4a10bd48409c77fde",
+  "reviewed_contract": "31195478eacbbba98b0610f8a6e0872fdb8c03d170839fdbb9055242a2c1ac7f",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-115",
+  "tool_version": "0.4.1",
+  "verdict": "approved"
+}

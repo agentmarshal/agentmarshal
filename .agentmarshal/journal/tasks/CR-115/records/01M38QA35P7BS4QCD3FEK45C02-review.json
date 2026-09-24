@@ -1,0 +1,32 @@
+{
+  "advisory_findings": [
+    "quickstart-wheel-claim-unverified",
+    "shipped-version-statements-left-at-0-4-0"
+  ],
+  "artifacts": [
+    {
+      "hash": "707c6f95c8ad3301a80bc30cf4361621f41634ff6ab7ce98ee46aaa12ed15773",
+      "ref": ".agentmarshal/journal/tasks/CR-115/artifacts/01M38QA35P7BS4QCD3FEK45C02-review.md"
+    }
+  ],
+  "created_at": "2026-09-24T03:28:24.246668Z",
+  "findings": [
+    "contributing-names-an-unplanned-0-5-0"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "8c2bbd3833bad565f359210e1a7a73285e9080b7",
+  "reviewed_contract": "47cbf0b97e2b7c892e938ffe908d3950fef9e9bc797e48a1173c87d2b239cc89",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-115",
+  "tool_version": "0.4.1",
+  "verdict": "changes_required"
+}
