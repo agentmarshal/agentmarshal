@@ -1,10 +1,23 @@
 # Upgrading
 
-## After 0.4.0: a review record refused over a space separator
+## 0.4.0 → 0.4.1
+
+Nothing in this release requires action beyond installing it. Its one behaviour
+change is the refusal below; the rest of what landed is documentation and the
+release machinery of this repository.
+
+**Coming from 0.3.0? Go straight to 0.4.1.** The section below it describes the
+step from 0.3.0 and names `==0.4.0` throughout, because that is the release it
+was written for; everything it says about coordinating the cutover holds for
+0.4.1 as well. Pin `==0.4.1` instead: a journal an earlier release wrote can
+carry a record 0.4.0 refuses, and the records of a closed task cannot be
+repaired.
+
+### A review record refused over a space separator
 
 **If 0.4.0's `validate` refused a review record your earlier release accepted,
-upgrade to the release that carries CR-114; it reads that record again.** The
-refusal looks like this, and it fails the whole journal:
+upgrade to 0.4.1; it reads that record again.** The refusal looks like this, and
+it fails the whole journal:
 
 ```
 FAIL: CR-145: review record finding id must not contain control characters: …-review.json
@@ -24,11 +37,13 @@ refuses — categories `Cc`, `Cs`, `Zl`, `Zp` and the bidirectional marks,
 embeddings, overrides and isolates (U+061C, U+200E, U+200F, U+202A–U+202E,
 U+2066–U+2069) — and accepts the rest (CR-114).
 
-Nothing to migrate: upgrade every place that runs `validate`, `status`, `gate`
-or `complete`, and the journal reads as it did before 0.4.0. There is no
-allowlist for a record refused this way, and none is planned; if `validate`
-still refuses a record afterwards, the character in it is in the set above, and
-that is worth reporting.
+Nothing to migrate: change the pin if you have one — the install commands in
+this repository's documentation now name `agentmarshal==0.4.1` — then upgrade
+every place that runs `validate`, `status`, `gate` or `complete`, and the
+journal reads as it did before 0.4.0. There is no allowlist for a record
+refused this way, and none is planned; if `validate` still refuses a record
+afterwards, the character in it is in the set above, and that is worth
+reporting.
 
 Records written on 0.4.0 are unaffected — a refused write wrote nothing.
 

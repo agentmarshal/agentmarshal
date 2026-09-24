@@ -143,10 +143,10 @@ task is already closed.
 
 ## Direction (roadmap)
 
-The design is broader than the shipped 0.4.0 repository version; the honest
+The design is broader than the shipped 0.4.1 repository version; the honest
 boundary is stated in the ADRs and
 [migration-v1-to-v2.md](migration-v1-to-v2.md). What is **not active in
-0.4.0**, in rough order (features land in later releases — `agentmarshal
+0.4.1**, in rough order (features land in later releases — `agentmarshal
 --version` shows yours). Entries say whether a published design exists:
 
 - **Verifiable attestation** — projecting records to an in-toto Statement and
@@ -154,7 +154,7 @@ boundary is stated in the ADRs and
   not just recorded. Adjacent to (not a claim of) SLSA Source; not yet emitted.
   ADR-0005 designs the Statement projection; it names signing as a later slice
   without specifying it.
-- **Capture policy** — the `reviews` class is read in 0.4.0: its default
+- **Capture policy** — the `reviews` class is read in 0.4.1: its default
   `hash` level keeps a reviewer's standard output out of the journal in a named
   local temporary file until the private store exists, while
   `capture.overrides.reviews = "commit"` pins it as a journal artifact. The
@@ -162,7 +162,7 @@ boundary is stated in the ADRs and
   existing behaviour whatever their levels say. Prompt text and raw session
   transcripts still have no policy-driven writer or private store. Designed in
   ADR-0005.
-- **Mandatory leak-scan enforcement** — 0.4.0 ships a standalone `leak-scan`
+- **Mandatory leak-scan enforcement** — 0.4.1 ships a standalone `leak-scan`
   command and an advisory merge-time scan that warns on possible leaks in a
   candidate's additions. Making a match block is roadmap. The scan is
   best-effort by design (ADR-0005) — never a guarantee. The blocking mode is

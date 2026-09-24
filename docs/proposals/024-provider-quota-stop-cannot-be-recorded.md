@@ -69,5 +69,5 @@ any published release yet.
 
 ## Where
 
-The statement and the vocabulary are on the default branch and ship with the
-next release. The field waits for the accounting rework.
+The statement and the vocabulary ship in 0.4.1. The field waits for the
+accounting rework.

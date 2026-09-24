@@ -120,13 +120,15 @@ governance check in CI.
 
 ### Versions
 
-The default branch always carries the **next** release's version with a
-`.dev0` suffix — after 0.4.0 it reads `0.5.0.dev0` — so anything built from it
-reports a version that sorts after the last release, before the next one, and
-says it is a development build. The task that prepares a release removes the
-suffix; the first task after its tag is pushed restores it for the following
-release. The release workflow refuses to publish a development or local
-version.
+Between releases the default branch carries a version with a `.dev0` suffix, so
+a build from it never reports a published release's version and sorts before
+the version it names. The number it names is the release expected next, which
+is a guess the branch is free to be wrong about: this branch carried
+`0.5.0.dev0` while a patch release was being prepared instead. The task that
+prepares a release sets the version it publishes, replacing whatever the branch
+carried; the first task after the tag is pushed sets a `.dev0` version again.
+The release workflow refuses to publish a development or local version, so a
+branch version cannot reach PyPI by accident.
 
 ## Licence
 

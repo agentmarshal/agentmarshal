@@ -102,7 +102,7 @@ is a model that avoids cross-branch mutation, not a database.
    session double-opt-in are **planned, not implemented** (`capture.py`
    writes nothing). ADR-0005 marks the same capture boundary.
 
-   **Status in 0.4.0.** The historical boundary still applies to durable
+   **Status in 0.4.1.** The historical boundary still applies to durable
    private capture: there is no private store. The capture policy's `reviews`
    class is read (CR-111): at `commit` an accepted reviewer's output is
    preserved once as a hash-pinned journal artifact; at the default `hash` it

@@ -72,7 +72,7 @@ schema. There is no "lite" build.
 The placement is in the published release, so an ordinary install has it:
 
 ```sh
-pip install agentmarshal==0.4.0
+pip install agentmarshal==0.4.1
 ```
 
 Pin it rather than taking the latest: this surface is experimental, and a shared
@@ -122,7 +122,7 @@ is `.agentmarshal/project.json`:
 ```json
 {
   "framework": {
-    "version": "0.4.0"
+    "version": "0.4.1"
   },
   "host": "/home/you/src/work-repo",
   "placement": "sidecar",
