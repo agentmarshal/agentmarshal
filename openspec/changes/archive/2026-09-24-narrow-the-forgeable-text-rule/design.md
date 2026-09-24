@@ -4,9 +4,16 @@
 has `isprintable() is False` and is not U+0020. It guards review finding ids and
 advisory finding ids, acceptance fields and finding ids, a finding record's
 summary, and an artifact reference. `reject_control_characters` in
-`contracts.py` applies the same test, without the space exception, to `scope`
-and `documents` entries (through `validate_scope_entry`) and to the `decisions`
-and `extensions` header entries. Both raise
+`contracts.py` applies the same test, without the space exception, to
+`documents` entries (through `validate_scope_entry`), to the `decisions` and
+`extensions` header entries, and — through the same helper — to an extension
+manifest's footprint entries. A contract's `scope` entries are **not** checked:
+`parse_contract_text` reads them with `_require_string_array` and nothing
+validates them per entry, though the gate joins them into one output line. That
+is a gap this change neither closes nor widens: adding a check there would
+refuse contracts that earlier releases accepted, which is the retroactive
+tightening this task exists to undo. It is recorded as an open question, not
+decided here. Both raise
 `… must not contain control characters`. A third copy of the test, written
 inline, guards a review artifact's `ref` in `validate.py` — on the read side,
 where this task's retroactivity applies. Two further callers reach the record
@@ -53,7 +60,8 @@ an earlier release wrote.
   contract — refuse what can break a line, reorder text or fail to encode,
   accept the rest — and it is a narrower guarantee than "a reader and a model
   see the same text". That is a different rule with a different threat model,
-  and it deserves its own decision rather than a silent extension of this set.
+  and it deserves its own decision rather than a silent extension of this set. No
+decision record covers it yet, and this change does not pretend otherwise.
   Category `Cn`, an unassigned codepoint, is accepted for one more reason:
   refusing it would make a journal's validity depend on the Unicode version each
   reader ships.

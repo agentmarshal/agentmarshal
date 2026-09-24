@@ -12,8 +12,8 @@ cost an adopter a journal an earlier release had accepted.
 Where this rule is applied — a review record's finding and advisory finding
 ids, an acceptance record's fields and finding ids, a finding record's summary
 and artifact references, a review artifact's pinned reference, an artifact's or
-an extension's name, and a contract header's `scope`, `documents`, `decisions`
-and `extensions` entries — the value
+an extension's name, a contract header's `documents`, `decisions` and
+`extensions` entries, and an extension manifest's footprint entries — the value
 is rendered into transcripts, briefs and prompts. Such a value SHALL be refused
 when it contains a character of Unicode
 category `Cc`, `Cs`, `Zl` or `Zp`, or a bidirectional mark, embedding, override
