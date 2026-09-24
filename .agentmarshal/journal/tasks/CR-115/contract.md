@@ -9,6 +9,10 @@ scope = [
   "uv.lock",
   "src/agentmarshal/__init__.py",
   "tests/test_smoke.py",
+  "README.md",
+  "docs/quickstart.md",
+  "docs/sidecar.md",
+  "CONTRIBUTING.md",
 ]
 acceptance = [
   "CHANGELOG.md has a 0.4.1 section dated the day of the release in which every entry names the task it comes from and describes only merged behaviour; the three tasks landed since v0.4.0 — CR-112, CR-113, CR-114 — each appear, and the entry for the fix says what an installation that hit the refusal does",
@@ -44,6 +48,21 @@ release notes that this is the release to move to.
 ## Acceptance Criteria
 
 As in the header.
+
+## Amended 2026-09-24
+
+Four files join the scope, all of them naming the release a reader installs.
+`README.md` pins `agentmarshal==0.4.0` and is the package description PyPI
+shows, so as it stands the release would tell a new reader to install the
+version this release fixes; `docs/quickstart.md` and `docs/sidecar.md` carry the
+same pin, and the quickstart also states which wheel its transcript was recorded
+against, so the pin and the claim move together; `CONTRIBUTING.md` illustrates
+the versioning rule with "after 0.4.0 it reads 0.5.0.dev0", which this release
+contradicts.
+
+Added criterion: every install command a reader can follow names 0.4.1, and the
+quickstart's statement about the wheel it was verified against stays true of the
+wheel named.
 
 ## Non-Goals
 
