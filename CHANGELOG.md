@@ -18,15 +18,15 @@ and release machinery that landed with it.
 0.4.0 refused a finding id, an acceptance field, a finding summary, an artifact
 reference or a contract header entry containing any character Python's
 `str.isprintable()` calls unprintable. That test is false for every space
-separator but a plain space, so a journal an earlier release had written could be
-refused for a narrow no-break space inside a finding id — and the records of a
-closed task cannot be repaired. The rule now names what it refuses: Unicode
+separator but a plain space, so a journal an earlier release had written could
+be refused for a narrow no-break space inside a finding id — and the records of
+a closed task cannot be repaired. The rule now names what it refuses: Unicode
 categories `Cc`, `Cs`, `Zl`, `Zp` and the bidirectional marks, embeddings,
 overrides and isolates. One predicate decides it for records, contract headers
-and the artifact reference `validate` checks, so the three cannot drift.
-**If 0.4.0's `validate` refused a record your earlier release accepted, this
-release reads it again** — see [UPGRADING.md](UPGRADING.md). Records written on
-0.4.0 are unaffected: where the rule refused a write, nothing was written.
+and the artifact reference `validate` checks, so the three cannot drift. **If
+0.4.0's `validate` refused a record your earlier release accepted, this release
+reads it again** — see [UPGRADING.md](UPGRADING.md). Records written on 0.4.0
+are unaffected: where the rule refused a write, nothing was written.
 
 ### The default branch says it is not a release (CR-112)
 
