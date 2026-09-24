@@ -7,6 +7,7 @@ import re
 import secrets
 import threading
 import time
+import unicodedata
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
@@ -485,6 +486,38 @@ def _validate_finding_record(data: Mapping[str, object]) -> None:
         )
 
 
+# What a value may not carry, named as a set rather than tested by proxy.
+# Cc is the C0/C1 controls, so a newline and a carriage return are in it; Zl is
+# U+2028 and Zp is U+2029, the two separators a renderer may treat as a line
+# break. `str.isprintable()` used to stand in for this and was stricter than the
+# purpose: it is false for every Zs space separator except U+0020 — U+00A0,
+# U+2007, U+2009, U+202F — none of which can end a line (CR-114, reported by an
+# adopter whose journal 0.4.0 refused over U+202F).
+_FORGEABLE_CATEGORIES = frozenset({"Cc", "Zl", "Zp"})
+# Category Cf, so no category rule catches them, and they can make displayed
+# text read in an order its bytes do not have: the same harm as forging a line.
+# The other Cf characters (U+00AD, U+200B-U+200D, U+FEFF) can do neither and are
+# accepted — a deliberate boundary, stated here because it is the kind of line
+# a reader will ask about.
+_BIDIRECTIONAL_CONTROLS = frozenset(
+    "\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069"
+)
+
+
+def forges_rendered_text(value: str) -> bool:
+    """Whether *value* could add a line to rendered output or reorder it.
+
+    One predicate for both sides of the journal: records here, contract text in
+    ``contracts.py``, which calls this rather than keeping its own test.
+    """
+
+    return any(
+        unicodedata.category(character) in _FORGEABLE_CATEGORIES
+        or character in _BIDIRECTIONAL_CONTROLS
+        for character in value
+    )
+
+
 def _reject_control_characters(value: str, what: str) -> None:
     """Refuse a value that could add lines to a rendered transcript.
 
@@ -502,9 +535,7 @@ def _reject_control_characters(value: str, what: str) -> None:
     faithfully should not be written.
     """
 
-    if any(
-        character.isprintable() is False and character != " " for character in value
-    ):
+    if forges_rendered_text(value):
         raise JournalRecordError(f"{what} must not contain control characters")
 
 

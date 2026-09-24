@@ -1,5 +1,34 @@
 # Upgrading
 
+## 0.4.0 → 0.4.1
+
+**If 0.4.0's `validate` refused a review record your earlier release accepted,
+this is the release that reads it again.** The refusal looks like this, and it
+fails the whole journal:
+
+```
+FAIL: CR-145: review record finding id must not contain control characters: …-review.json
+validate: journal invalid
+```
+
+0.4.0 refused any string field carrying a character that Python's
+`str.isprintable()` calls unprintable. That test is false for every space
+separator except a plain space — U+00A0, U+2007, U+2009, U+202F — and none of
+them can end a line, which is all the rule was ever meant to prevent. A journal
+written by an earlier release could hold one, in a finding id whose text is a
+sentence, and the records of a closed task cannot be repaired: the journal is
+append-only and the gate refuses changes to them. 0.4.1 refuses the characters
+that can add a line or reorder text — categories `Cc`, `Zl`, `Zp` and the
+bidirectional controls — and accepts the rest (CR-114).
+
+Nothing to migrate: upgrade every place that runs `validate`, `status`, `gate`
+or `complete`, and the journal reads as it did before 0.4.0. There is no
+allowlist for a record refused this way, and none is planned; if `validate`
+still refuses a record after this release, the character in it can break a line,
+and that is worth reporting.
+
+Records written on 0.4.0 are unaffected — a refused write wrote nothing.
+
 ## 0.3.0 → 0.4.0
 
 ### Upgrade every reader before the first new record schema
