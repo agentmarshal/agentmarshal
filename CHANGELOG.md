@@ -41,8 +41,8 @@ Proposal 024 is published with its disposition: a session the provider refused
 to continue is recorded with the outcome `provider-limit`, a documented value
 that the tool neither checks nor counts, and the quickstart and README no longer
 present token counts as what a task cost. The reset time a provider states in
-its refusal still has no field; that waits for the accounting rework proposal
-018 deferred.
+its refusal still has no field: it waits for the same rework of accounting that
+proposal 018's cost field waits for.
 
 ## 0.4.0 — 2026-09-18
 

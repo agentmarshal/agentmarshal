@@ -122,7 +122,7 @@ is `.agentmarshal/project.json`:
 ```json
 {
   "framework": {
-    "version": "0.4.0"
+    "version": "0.4.1"
   },
   "host": "/home/you/src/work-repo",
   "placement": "sidecar",

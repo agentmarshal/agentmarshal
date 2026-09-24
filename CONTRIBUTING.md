@@ -120,11 +120,12 @@ governance check in CI.
 
 ### Versions
 
-The default branch always carries the **next** release's version with a
-`.dev0` suffix — after 0.4.1 it reads the next release's version with that
-suffix — so anything built from it
-reports a version that sorts after the last release, before the next one, and
-says it is a development build. The task that prepares a release removes the
+The default branch always carries the version of the release being prepared,
+with a `.dev0` suffix: after 0.4.1 it reads `0.5.0.dev0`, because 0.5.0 is the
+release being prepared, and it would read `0.4.2.dev0` if another patch came
+first instead. So anything built from the branch reports a version that sorts
+after the last release, before the one being prepared, and says it is a
+development build. The task that prepares a release removes the
 suffix; the first task after its tag is pushed restores it for the following
 release. The release workflow refuses to publish a development or local
 version.
