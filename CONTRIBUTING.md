@@ -118,6 +118,10 @@ uv run mypy
 `agentmarshal validate` checks the whole journal for integrity and is the
 governance check in CI.
 
+If an agent does the implementation work, [AGENTS.md](AGENTS.md) states the
+rules it follows — how to read the task's contract, what it may not touch,
+this same check sequence and what to report.
+
 ### Versions
 
 Between releases the default branch carries a version with a `.dev0` suffix, so
