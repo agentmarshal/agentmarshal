@@ -19,10 +19,11 @@ candidate's task, never saw these records, while whole-journal `validate`
 walks every task. `validate` reports every violation it finds; this refusal,
 though, ends a task's read at its first bad record, so here it printed one
 failure line per task and moved to the next. That is the shape of the run's
-output: three records carry the character, across two tasks, and the run
-refused the first such record in each task — the record in the second row
-of the table below, the other one in the first task, sorted behind the
-refused record in that task's records directory, was never read by it.
+output: three records carry the character, across two tasks — they are
+the table listing the three records below. The run refused the first such
+record in each task: that table's first and third rows. Its second row,
+the first task's other record, is sorted behind the refused record in
+that task's records directory, and the run never read it.
 
 The check behind the refusal is `_reject_control_characters` in
 `src/agentmarshal/journal/records.py`. It existed before 0.4.0, where it
@@ -32,7 +33,7 @@ summary and artifact references, fields no earlier release could have
 written. Its test was `str.isprintable()`, which is false for every space
 separator except a plain space — U+00A0, U+2007, U+2009 and U+202F among them
 — none of which can end a line, which is all the check exists to prevent. The
-three records are `changes_required` verdicts by the model reviewer whose
+three records are `changes_required` verdicts by a model reviewer whose
 finding ids are whole sentences, and in that prose U+202F separates thousands
 (`71<U+202F>415`).
 
