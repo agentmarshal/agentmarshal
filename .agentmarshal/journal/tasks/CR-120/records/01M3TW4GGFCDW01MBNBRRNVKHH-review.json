@@ -1,0 +1,30 @@
+{
+  "advisory_findings": [
+    "manifest-remove-opsx-ambiguity",
+    "strict-validate-evidence-unverifiable"
+  ],
+  "artifacts": [
+    {
+      "hash": "d93cd5dbc0bdf54418875e091d4906133d18cca9975450dbb90b0f3d2b6208cd",
+      "ref": ".agentmarshal/journal/tasks/CR-120/artifacts/01M3TW4GGFCDW01MBNBRRNVKHH-review.md"
+    }
+  ],
+  "created_at": "2026-10-01T04:39:03.951494Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "2442953f15f17319336573a85f99f73c5fe96077",
+  "reviewed_contract": "7fda6d2f187cf42a4ef166afd54a289a6c60585be077c962ccd506ac9353c279",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-120",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "approved"
+}
