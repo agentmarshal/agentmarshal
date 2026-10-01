@@ -1,0 +1,33 @@
+{
+  "advisory_findings": [
+    "digest-027-gate-one-bit-overstated",
+    "digest-028-ci-required-leaves-no-mark-either",
+    "digest-027-carries-reporter-code-identifiers"
+  ],
+  "artifacts": [
+    {
+      "hash": "2e6f658bd0ec8dbb5b531df8909ed5d1273116053bef2f34504b2f970e248bc6",
+      "ref": ".agentmarshal/journal/tasks/CR-123/artifacts/01M3V3RJTF3KQKVE9114XT6QA8-review.md"
+    }
+  ],
+  "created_at": "2026-10-01T06:52:21.711514Z",
+  "findings": [
+    "digest-028-misstates-the-record-vocabulary"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "9d1686f2e8d88eeed526ddef77cb87fefa05d521",
+  "reviewed_contract": "a5d5d3cf8e9b7f154a0747fc89842409e4cee456f28d0c02cf10369aa75a64e0",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-123",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "changes_required"
+}
