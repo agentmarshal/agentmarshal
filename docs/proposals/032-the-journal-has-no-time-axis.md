@@ -81,15 +81,24 @@ field at a time; a start-time or duration field is also a record schema
 change, the same reason proposal 024's field is in that rework. Accepted;
 not shipped yet.
 
-**The `gate` mode** that would let a check recognise a journal-only change
-is accepted too — into the journal-transactions work of proposals 019 and
-035, where telling a journal-only diff from a code change is already the
-question on the table. Accepted; not shipped yet.
+**The journal-only lane** needs less than was asked, because the gate
+already computes it: a candidate whose changes all sit under the journal
+prefix takes a deterministic lane — the transcript reads `PASS:
+journal-only transaction (deterministic lane; review not required)` —
+skipping the scope and review checks entirely. In a sidecar placement
+the gate forces the lane off: the evidence lives in the sidecar, so a
+host candidate is work whatever paths it touches. What is missing is that a
+required check cannot ask for that answer without running the whole gate:
+the lane exists inside the verdict, not as a signal the check can read
+early and run light on. The accepted part is exposing the lane the gate
+already has to the required check — into the journal-transactions work of
+proposals 019 and 035, where telling a journal-only diff from a code
+change is already the question on the table. Accepted; not shipped yet.
 
 ## Where
 
 Nothing here is shipped yet. The documentation sentence is accepted, to be
 written; session duration and lead time are accepted into the accounting
 rework, alongside the cost field of proposal 018 and the reset-time field
-of proposal 024; the journal-only `gate` mode goes with the
-journal-transactions work of proposals 019 and 035.
+of proposal 024; exposing the gate's journal-only lane to the required
+check goes with the journal-transactions work of proposals 019 and 035.
