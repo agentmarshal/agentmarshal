@@ -1,0 +1,29 @@
+{
+  "advisory_findings": [
+    "design-md-anaphora-points-at-records-wrapper-not-shared-predicate"
+  ],
+  "artifacts": [
+    {
+      "hash": "8971fd72727311c5c815d30c8b90d13261264a5733ad86257dc5578c98657fd2",
+      "ref": ".agentmarshal/journal/tasks/CR-116/artifacts/01M3TT5S21DDA3HTHSR6BAMKR4-review.md"
+    }
+  ],
+  "created_at": "2026-10-01T04:04:48.321339Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "90dc36fe0e85ebad7318f2b9454ff068713a43b9",
+  "reviewed_contract": "d29ad0833c5f866b33d98a1c9abdebbaf012d4093b17de3a83481f3c2509298f",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-116",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "approved"
+}

@@ -1,0 +1,17 @@
+Проверил контракт и дифф против рабочего дерева снапшота.
+
+**Что сошлось**
+
+- Версия `0.5.0.dev0` стоит во всех трёх местах: `pyproject.toml:3`, `src/agentmarshal/__init__.py:3`, `uv.lock:11` (единственная запись пакета `agentmarshal`; `[package.metadata]` версию не дублирует). `tests/test_smoke.py:48` обновлён, а `--version` печатает именно `__version__` (`src/agentmarshal/cli.py:86-88`), так что критерий 1 выполнен целиком. Других мест, где версия зашита статически, в `src/` нет — все остальные обращения идут через `__version__` (`submit_review.py`, `session.py`, `complete.py`, `open_task.py`, `project.py`, `migrate.py`, `backfill.py`).
+- `UPGRADING.md:9-15` теперь называет секцию по заголовку (`0.3.0 → 0.4.0`, совпадает дословно с `UPGRADING.md:47`) и добавляет ровно то, чего просил критерий 2: где та секция требует убедиться, что установлена `0.4.0` (`UPGRADING.md:70`), такая установка проверяет `0.4.1`. Сама историческая секция не тронута — non-goal соблюдён.
+- Утверждения в архивном design.md сверил с кодом: `src/agentmarshal/journal/extensions.py:10-12` импортирует `reject_control_characters` из `contracts.py` и вызывает его на `extensions.py:75`, а `artifacts.py:9-13` импортирует `_reject_control_characters` из `records.py` и вызывает на `:66`. Переписанная фраза про «name, becoming a single path component on disk, checked separately» тоже верна: отдельная проверка одного компонента есть в обоих местах (`artifacts.py:67-68`, `extensions.py:78-81`). Больше ни одно предложение документа диффом не затронуто.
+- Ни одно утверждение про 0.4.0/0.4.1 как историю не поехало: README, `docs/overview.md`, `docs/quickstart.md`, `docs/sidecar.md`, CHANGELOG остались на 0.4.1. Правило версий из `CONTRIBUTING.md:122-131` новой версией не нарушено — `0.5.0.dev0` сортируется после опубликованной `0.4.1` и до ожидаемой `0.5.0`.
+- Связанности с версией в тестах, кроме обновлённой, нет: `tests/test_smoke.py:77` берёт версию динамически, а pin `0.4.1` в `docs/quickstart.md:26` лежит в секции `## Install`, тогда как `tests/test_quickstart.py:26-28` читает блоки только из `## The governed loop` (там строк с версией нет). Проверка версии в `.github/workflows/release.yml:28-46` срабатывает лишь на тег.
+
+**Оговорка по проверке:** полный CI-прогон (`uv sync --locked`, `pytest`, `ruff`, `mypy`) запустить не удалось — песочница не даёт выполнить `uv sync`, а готового `.venv` в снапшоте нет. Вывод по критерию 4 в части «CI passes» сделан статически: изменения — две строки версии в Python, запись в локе и markdown; тестов, завязанных на `0.4.1`, в дереве не осталось.
+
+Advisory: в `openspec/changes/archive/2026-09-24-narrow-the-forgeable-text-rule/design.md:19-23` местоимение «it» во второй половине фразы («`extensions.py` reaches **it** through `contracts.py`'s `reject_control_characters` wrapper») синтаксически отсылает к «the record predicate» из первой половины, то есть к `_reject_control_characters`; но contracts-обёртка к этой функции не ведёт — она вызывает общий предикат `forges_rendered_text` (`contracts.py:64`). Критерий говорил «reaches the shared predicate», и при чтении «the record predicate» как «предикат, живущий в `records.py`» всё верно, поэтому это не блокер, а неточность на одно слово.
+
+AGENTMARSHAL_VERDICT_BEGIN
+{"reviewed_commit": "90dc36fe0e85ebad7318f2b9454ff068713a43b9", "verdict": "approved", "findings": [], "advisory_findings": ["design-md-anaphora-points-at-records-wrapper-not-shared-predicate"]}
+AGENTMARSHAL_VERDICT_END
