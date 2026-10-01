@@ -84,8 +84,38 @@ def test_brief_prints_complete_contract_and_governance(
     assert "- prints the body" in captured.out
     assert "- names every rule" in captured.out
     assert "only these paths may change" in captured.out
-    assert "the journal is not the implementer's to edit" in captured.out
+    assert (
+        "Nothing under .agentmarshal/journal/ is the implementer's to edit; "
+        "the evidence journal is append-only and is written by agentmarshal "
+        "commands. Another file under .agentmarshal/ may change only when the "
+        "task's scope names it." in captured.out
+    )
     assert "they are the definition of done" in captured.out
+
+
+def test_brief_states_the_journal_rule_as_the_gate_holds_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The .agentmarshal/ rule is the project's rule, not a claimed enforcement."""
+
+    repo = _repo(tmp_path, monkeypatch)
+    _write_contract(repo)
+    capsys.readouterr()
+
+    assert main(["brief", "--task", "CR-001"]) == 0
+
+    briefing = capsys.readouterr().out
+    assert "Do not edit anything under .agentmarshal/" not in briefing
+    enforced = briefing.split("Rules enforced by AgentMarshal:\n", 1)[1].split(
+        "\n\n", 1
+    )[0]
+    assert ".agentmarshal/" not in enforced
+    project_rules = briefing.split("Rules the project follows:\n", 1)[1].split(
+        "\n\n", 1
+    )[0]
+    assert "Nothing under .agentmarshal/journal/" in project_rules
 
 
 def _record_amendment(
