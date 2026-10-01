@@ -272,7 +272,7 @@ delegating it to the provider's required checks; in a sidecar over a repository
 whose branch protection you do not control, that delegation is a claim you
 cannot back, so prefer attesting the commit yourself.
 
-### Complete, and record what it cost
+### Complete, and record what it consumed
 
 ```sh
 AGENTMARSHAL_PIPELINE_OK_SHA="$IMPL" \
@@ -294,7 +294,7 @@ agentmarshal record-session --task CR-001 --role implementer \
   --actor your/model --activity implementation --outcome implemented \
   --input-tokens 1200 --output-tokens 300 \
   --usage-provider your-provider --usage-method reported
-git add -A && git commit -m "review, complete and cost CR-001"
+git add -A && git commit -m "review, complete and record CR-001 economics"
 ```
 
 ### Inspect the evidence
@@ -399,7 +399,8 @@ projected across them — a projection with two sources would be a guess.
 | `leak-scan` | Scans the **host's** added content, with the private markers read from the sidecar's own `project.json` |
 | `finding` | Journal-owned: writes to the sidecar, and its artifacts must resolve under the sidecar repository, not the host |
 | `review` | A finding review (`--reviewed-finding`) decides sidecar evidence without requiring a reachable host; commit review behaviour is unchanged |
-| `submit-review`, `accept`, `amend`, `reopen`, `abandon`, `record-session`, `validate` | Unchanged, writing to the sidecar and reading host git facts where needed |
+| `submit-review`, `accept` | Unchanged under `--commit`; bound to a finding instead — `--reviewed-finding`, `--accepted-finding` — they record over the sidecar's own evidence, like the rest of the findings lane |
+| `amend`, `reopen`, `abandon`, `record-session`, `validate` | Unchanged, writing to the sidecar and reading host git facts where needed |
 
 ## Research findings loop
 

@@ -261,6 +261,14 @@ stated disposition, under a pseudonym for the reporter.
 
 See the upstream project's CONTRIBUTING for the language convention and how to
 send a batch.
+
+## After sending
+
+The `Source:` line of each published digest is the sha256 of the file you
+sent, as sent, in full and in lowercase hex. Hash the outbox file you sent —
+`sha256sum` — and search the digests for the result: that entry is yours,
+whatever upstream numbered or titled it. The proposals index describes the
+rest of the protocol under "Tracking what happened to yours".
 """
 
 
