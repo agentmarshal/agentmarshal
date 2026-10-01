@@ -71,14 +71,14 @@ accepted for a later release.
 
 ## Batch of 2026-09-24
 
-One finding from the reporter of the first batch — proposals 001, 002, 005,
-006, 007 and 010 came from the same journal. Before upgrading a pinned
-installation from 0.3.0 to 0.4.0 they ran the new wheel's `validate`
-read-only over that journal, and it refused three review records 0.1.0 had
-written: their finding ids are sentences in which a narrow no-break space
-separates thousands, and the check refused every space separator but a plain
-space. The defect was reproduced the day it was reported and the fix shipped
-as 0.4.1.
+One finding from the reporter of the first batch — Adopter A, named there on
+001 through 007, 010 and 012. Before upgrading a pinned installation from
+0.3.0 to 0.4.0 they ran the new wheel's `validate` read-only over their
+journal, and it refused records 0.1.0 had written: one failure line for each
+of two tasks, over review records whose finding ids are sentences in which a
+narrow no-break space separates thousands, and the check refused every space
+separator but a plain space. The defect was reproduced the day it was
+reported and the fix shipped as 0.4.1.
 
 | # | Theme | Reporter | Disposition | Where |
 |---|---|---|---|---|

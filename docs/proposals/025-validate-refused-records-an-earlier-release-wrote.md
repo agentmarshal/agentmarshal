@@ -6,16 +6,22 @@
 
 Before upgrading a pinned installation from 0.3.0 to 0.4.0, the reporter ran
 the 0.4.0 wheel's `agentmarshal validate`, read-only, over their journal. The
-same journal passes under 0.3.0; under 0.4.0 it refused three review records
-written by an earlier release, one failure line per affected task, ending in
-`validate: journal invalid`. The upgrade was halted: nothing of schemas 4, 5
-or 6 was written, and the pinned installation stayed on 0.3.0.
+same journal passes under 0.3.0; under 0.4.0 it printed one failure line for
+each of two tasks — `review record finding id must not contain control
+characters`, naming a review record an earlier release had written — and
+ended in `validate: journal invalid`. The upgrade was halted: nothing of
+schemas 4, 5 or 6 was written, and the pinned installation stayed on 0.3.0.
 
 The mechanism, as the code has it. A record is validated when it is read —
-`read_records` runs each record through the schema validator as it loads — so
-the gate, which reads only the candidate's task, never saw these records,
-while whole-journal `validate` reads every record a release ever wrote and
-refused them. The check behind the refusal is `_reject_control_characters` in
+`read_records` runs each record through the schema validator as it loads and
+raises on the first invalid one — so the gate, which reads only the
+candidate's task, never saw these records, while whole-journal `validate`
+walks every task, prints one failure line per task and moves to the next.
+That is the shape of the run's output: three records carry the character,
+across two tasks, and the run refused the first such record in each task —
+the third, sorted behind it in the same task's records directory, was never
+read by it.
+The check behind the refusal is `_reject_control_characters` in
 `src/agentmarshal/journal/records.py`. It existed before 0.4.0, where it
 guarded the acceptance record's fields and finding ids; 0.4.0 extended it to
 review `findings` and `advisory_findings` — and to the finding record's
@@ -23,9 +29,9 @@ summary and artifact references, fields no earlier release could have
 written. Its test was `str.isprintable()`, which is false for every space
 separator except a plain space — U+00A0, U+2007, U+2009 and U+202F among them
 — none of which can end a line, which is all the check exists to prevent. The
-three refused records are `changes_required` verdicts by the model reviewer
-whose finding ids are whole sentences, and in that prose U+202F separates
-thousands (`71<U+202F>415`).
+three records are `changes_required` verdicts by the model reviewer whose
+finding ids are whole sentences, and in that prose U+202F separates thousands
+(`71<U+202F>415`).
 
 Measurements, as reported — counted over the journal as it stood before the
 finding was filed, 282 task directories; the remaining 280 tasks were
@@ -79,9 +85,10 @@ categories `Cc`, `Cs`, `Zl` and `Zp`, and the bidirectional marks, embeddings,
 overrides and isolates — and accepts the rest, space separators included. One
 predicate, `forges_rendered_text`, decides it for records, contract headers
 and the artifact references `validate` checks, so the three cannot drift
-(CR-114). The shipped set adds `Cs` to the reporter's list: an unpaired
-surrogate cannot encode as UTF-8 at all, so a record carrying one could not
-be written back out.
+(CR-114). The shipped set adds two classes to the reporter's list: `Cs`, an
+unpaired surrogate, which cannot encode as UTF-8 at all, so a record carrying
+one could not be written back out; and three more bidirectional marks —
+U+061C, U+200E and U+200F — which reorder displayed text as the overrides do.
 
 **Not tightening a rule over records an earlier release wrote** is accepted
 as a principle and not yet decided as a mechanism. The principle is what this
@@ -94,9 +101,10 @@ bundled into this intake.
 
 **The release check** is accepted and was done for the release at hand:
 before 0.4.1 was published, its `validate` ran read-only over the journal
-0.4.0 had refused, and passed (CR-115). The check answered for the journal
-that raised the finding; a standing form of it — whose journals, at what
-point in a release — is not yet settled.
+0.4.0 had refused, and passed — the run is recorded in CR-115's completion
+transaction. The check answered for the journal that raised the finding; a
+standing form of it — whose journals, at what point in a release — is not yet
+settled.
 
 **The allowlist** is declined, on the journal's own reasoning: an allowlist
 declares a record acceptable around the gate. The exception would be a claim
