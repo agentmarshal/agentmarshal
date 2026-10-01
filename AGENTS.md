@@ -26,9 +26,10 @@ change's delta — the archive command leaves it as a placeholder otherwise.
 - Change only the paths in the contract's scope. If the work needs a path
   outside it, do not change that path — name it in the final report as a
   departure instead.
-- Create, change or delete nothing under `.agentmarshal/` — the evidence
-  journal is append-only and is written by `agentmarshal` commands, never by
-  the implementer.
+- Create, change or delete nothing under `.agentmarshal/journal/` — the
+  evidence journal is append-only and is written by `agentmarshal` commands,
+  never by the implementer. Change another file under `.agentmarshal/` only
+  when the contract's scope names it.
 - When a harness commits the result for you, run no `git commit`, `push`,
   branch switch or history rewrite.
 - Check every statement you make about what code or a document does against
