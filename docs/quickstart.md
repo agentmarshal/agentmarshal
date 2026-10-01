@@ -459,11 +459,11 @@ git add .agentmarshal && git commit -m "record CR-001 economics"
 That commit is a **journal-only additive candidate**, which the gate accepts
 against a task that is already closed — its measurements-only lane exists for
 exactly this. Leaving the record uncommitted would defeat the point: the
-measurement would live in a working tree instead of in git, which is the thing this project
-exists to stop.
+measurement would live in a working tree instead of in git, which is the thing
+this project exists to stop.
 
-Nothing calls this for you. Recording the measurement is a step of your loop — put it
-in whatever wrapper runs the loop, or it will not happen.
+Nothing calls this for you. Recording the measurement is a step of your loop —
+put it in whatever wrapper runs the loop, or it will not happen.
 
 ### 8. Inspect the evidence
 

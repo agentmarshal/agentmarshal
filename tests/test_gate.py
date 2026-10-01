@@ -34,10 +34,13 @@ def released_030() -> Path | None:
     """Locate the released 0.3.0 without naming anyone's home directory.
 
     Looked up in order: ``AGENTMARSHAL_RELEASED_030``, ``agentmarshal`` on
-    PATH, the default user-tool location. The version string cannot tell the
-    release from this build, which prints the same one until the release bumps
-    it; the ``finding`` command can — 0.3.0 predates it. A candidate counts only
-    if it reports 0.3.0 and does not know that command.
+    PATH, the default user-tool location. Since CR-112 a build of this
+    repository reports a ``.dev0`` version, so the version check already
+    excludes this build. The ``finding`` probe still excludes a candidate that
+    reports 0.3.0 without being the release: a checkout built while the tree
+    still carried that version already knew the command, and the published
+    0.3.0 predates it. A candidate counts only if it reports 0.3.0 and does
+    not know that command.
     """
 
     candidates = [
