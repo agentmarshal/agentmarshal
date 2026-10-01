@@ -92,7 +92,7 @@ from an earlier file of the same batch and took it back.
 | # | Theme | Reporter | Disposition | Where |
 |---|---|---|---|---|
 | [027](027-advisory-findings-have-no-lifecycle.md) | Advisory findings have no lifecycle | D | accepted *(in part; the verdict rename declined)* | the dispositions with the finding-lifecycle decision, and the documentation stating what `approved` means — both accepted, not shipped yet |
-| [028](028-check-outcomes-are-not-evidence.md) | Check outcomes are not evidence | D | accepted *(as a piece of work; deferred)* | the review- and check-evidentiality decision |
+| [028](028-check-outcomes-are-not-evidence.md) | Check outcomes are not evidence | D | accepted *(as a piece of work; deferred)* | the review-evidentiality decision |
 | [029](029-outbox-has-no-scaffold-and-its-name-is-taken.md) | The outbox has no scaffold, and `finding` is taken | D | accepted | one command group with 023 — scaffold, validation, send, status; not shipped yet |
 | [030](030-review-verdicts-do-not-say-what-was-executed.md) | A verdict does not say what was executed | D | accepted *(as a piece of work; deferred)* | the review-evidentiality decision |
 | [031](031-the-contract-is-written-by-an-agent-and-nothing-governs-it.md) | The contract is written by an agent and judged by no one | D | accepted *(in part; agreement record deferred, third suggestion withdrawn by the reporter)* | the contract hashes accepted, not shipped; the agreement record with the contract-governance decision |

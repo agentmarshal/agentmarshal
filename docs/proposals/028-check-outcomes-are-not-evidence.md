@@ -4,15 +4,19 @@
 
 ## Finding
 
-The journal records five kinds of things — `opened`, `amendment`, `session`,
-`review`, `completed`. All five describe what someone *said* or *did*; none
-describes what the code *does*. The required check is the one party in the
-loop that answers that question, and the one the journal does not hear from.
-`gate` accepts `--attestation ci-required`, so a *passing* pipeline leaves a
-mark on the way to `completed`; a failing one leaves nothing — no record, no
-reason, no count. Run the same candidate through CI three times, fail three
-times, and the journal is byte-identical to a candidate that was never
-submitted.
+The reporter's journal, forty governed tasks in, contains five record types
+— `opened`, `amendment`, `session`, `review`, `completed` — of the nine the
+vocabulary defines; the four that never appear (`acceptance`, `finding`,
+`abandoned`, `reopened`) carry no check outcome either. None of the nine
+describes what the code *does*: each records what someone *said* or *did*.
+The required check is the one party in the loop that answers that question,
+and the one the journal does not hear from. `gate` accepts
+`--attestation commit`, under which the invoker attests a green pipeline on
+the way to `completed`; a failing run leaves nothing — no record, no reason,
+no count — and under `ci-required` the gate delegates the attestation to the
+provider's required checks and records neither outcome. Run the same
+candidate through CI three times, fail three times, and the journal is
+byte-identical to a candidate that was never submitted.
 
 Two consequences follow, and the reporter hit both in one task. The
 implementer is not told why its work was rejected: `brief` assembles the
@@ -61,14 +65,15 @@ Make a check outcome a record, and let `brief` read it:
 
 ## Disposition — accepted as a piece of work, deferred
 
-Real, measured, and an asymmetry the journal should not carry: success is
-evidence, failure is nothing at all — not a record, not a count, not a line
-in `report`. A journal that can prove the pipeline passed but cannot show it
-ever ran and refused is not neutral about failure; it is silent about it.
+Real, measured, and an asymmetry the journal should not carry: a pass can be
+attested on the way to `completed`; a fail cannot be recorded anywhere — not
+a record, not a count, not a line in `report`. A gate that can be told the
+pipeline passed, in a journal that cannot show the pipeline ever ran and
+refused, is not neutral about failure; it is silent about it.
 
 It is also a new record type, and this project decides record types in an
-architecture decision before it builds them. This one goes into the decision
-on the evidentiality of reviews and checks — where the `evidence` field
+architecture decision before it builds them. This one goes into
+the review-evidentiality decision — where the `evidence` field
 deferred in proposal 026 and the executed-versus-read field of proposal 030
 already wait: what a record should say about how a claim was checked is one
 question, and it should be answered once. Accepted; not shipped yet.

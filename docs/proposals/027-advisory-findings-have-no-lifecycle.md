@@ -5,10 +5,11 @@
 ## Finding
 
 A review record carries two lists: `findings` and `advisory_findings`. The
-gate reads one bit from the record — whether the verdict is `approved` — and
-ignores the second list entirely. Nothing in the journal ever says what
-happened to an advisory finding: no record of the decision, no reason
-attached to it, no way to find the deferred ones later.
+gate reads the verdict — and, when it does not approve, whether the latest
+acceptance record covers exactly the blocking list. Neither path reads the
+second list. Nothing in the journal ever says what happened to an advisory
+finding: no record of the decision, no reason attached to it, no way to find
+the deferred ones later.
 
 The verdict word makes this worse. `approved` reads as "this is fine"; what
 it means is "the acceptance criteria are met". A review can approve a
@@ -36,11 +37,11 @@ Measurements, as reported, from the reporter's last ten governed tasks:
 
 Three of those rounds, described in the reviewer's own words at the time:
 
-- a migration snapshot whose `prevId` pointed at a zero UUID, breaking the
-  snapshot chain for every later migration;
-- a verification script that read only `response.status` and never consumed
-  the body, so the process kept the socket alive and the command hung
-  indefinitely — in the tool whose whole purpose is to be run during an
+- a migration snapshot whose link back to its predecessor held a zero UUID,
+  breaking the snapshot chain for every later migration;
+- a verification script that read only the response's status code and never
+  consumed the body, so the process kept the socket alive and the command
+  hung indefinitely — in the tool whose whole purpose is to be run during an
   incident;
 - an editorial workflow where unpublishing a document promoted an
   unreviewed draft on the next publish, defeating the guarantee the task was

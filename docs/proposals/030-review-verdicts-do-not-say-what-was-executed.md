@@ -68,7 +68,7 @@ being unable to say so. Both are legitimate work — but only one is evidence
 about behaviour, and a merge gate that cannot tell them apart is weaker than
 it looks.
 
-The field is accepted, into the decision on review evidentiality — the same
+The field is accepted, into the review-evidentiality decision — the same
 decision the `evidence` field deferred in proposal 026 and the `check`
 record of proposal 028 wait on. What a record should say about how a claim
 was checked is one question, and it should be answered once rather than one
