@@ -14,9 +14,12 @@ the decisions and documents the contract names; run it for the full picture.
 
 If the contract names an OpenSpec change — a directory under
 `openspec/changes/` in its scope or its documents — the task implements that
-change: work through the change's tasks and tick them off. It does not
-archive the change and does not edit `openspec/specs/`; archiving is a
-separate governed step.
+change: work through the change's tasks and tick them off. Archive the
+change only when the contract's scope names `openspec/changes/archive/` and
+the affected `openspec/specs/<capability>/` directory, and then only with
+the archive command (`openspec archive`); never edit a file under
+`openspec/specs/` by hand. A new capability's Purpose is written in the
+change's delta — the archive command leaves it as a placeholder otherwise.
 
 ## Boundaries
 
