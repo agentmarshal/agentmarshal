@@ -1,0 +1,22 @@
+Проверил diff против контракта CR-118 на снапшоте `d8d91c796faa27bd5cc7b52c14364126b14125d4`.
+
+Что сошлось (сверял с кодом и опубликованными текстами, а не только с прозой):
+
+- **Механизм** описан так, как он в коде: `_reject_control_characters` реально живёт в `src/agentmarshal/journal/records.py:526`, вызывается для `findings` (`records.py:364`), `advisory_findings` (`:383`), полей и finding id acceptance-записи (`:414`, `:426`), summary и artifact ref finding-записи (`:470`, `:481`); валидация идёт на чтении — `read_records` (`records.py:1079-1128`) прогоняет каждую запись через `_validate_record` и падает на первой невалидной, а `load_task_status` (`status.py:135`) её зовёт. Строка «gate читает только задачу кандидата» подтверждается `gate.py:94,583,890` (всегда по `task_id`), а «одна строка отказа на задачу» — `validate_journal` (`validate.py:181-210`): исключение из `load_task_status` даёт один `FAIL:` и `continue`, поэтому «OK» для такой задачи не печатается — отсюда и 282 − 2 = 280 `OK`.
+- **Сообщение и исход** цитируются точно: текст `review record finding id must not contain control characters` (`records.py:364,544`) и `validate: journal invalid` (`cli.py:766`).
+- **Disposition** по всем четырём предложениям на месте, и шипнутый набор сверен с кодом: `_FORGEABLE_CATEGORIES = {Cc, Cs, Zl, Zp}` + bidi-набор (`records.py:498-509`), один предикат `forges_rendered_text` на records / `contracts.py:64` / `validate.py:72` — «не могут разойтись» правда. Отказ от allowlist согласован с UPGRADING.md («There is no allowlist for a record refused this way, and none is planned»), а «маршрут мимо 0.4.0» — с «Coming from 0.3.0? Go straight to 0.4.1».
+- **Индекс и карта**: батч `## Batch of 2026-09-24` с таблицей, disposition и колонкой «Where» добавлен выше батча 2026-09-18, строка в `docs/README.md:55` по стилю совпадает с соседями. «Adopter A, named there on 001 through 007, 010 and 012» сходится с таблицей батча 2026-08-30 (A стоит на 001–007, 010 и 012). Source-строка с sha256 оформлена как у 023/024.
+- **Арифметика таблиц** внутренне согласована: 6 + 3 + 2 = 11 вхождений, три записи в двух задачах, U+202F — категория Zs, поэтому «Cc/Cf/Zl/Zp = 0» не противоречит.
+- **Приватность**: ни одного идентификатора задач репортёра, ни продукта, ни клиента.
+
+Две оговорки по проверяемости, а не дефекты: прогон `validate` 0.4.1 по журналу адоптера заявлен в сообщении completion-коммита CR-115 — в снапшоте git-истории нет, но запись `completed` с `completed_commit da1bb6b…` есть, а критерий приёмки CR-115 этого прогона прямо требовал, и обзоры задачи закрылись `approved`; и сам приватный оригинал в снапшот не входит, так что «verbatim» по измерениям не перепроверяем здесь. Полную последовательность CI (`uv run agentmarshal validate`, `pytest`, `ruff`, `mypy`) запустить не удалось — в этой песочнице запуск python/uv не разрешён; дифф при этом только документационный, и ни один тест на `docs/proposals/` или карту `docs/README.md` не опирается (`tests/test_quickstart.py` читает только `docs/quickstart.md`).
+
+Теперь то, что стоит поправить, но не блокирует:
+
+`ambiguous-table-reference-in-mechanism-paragraph` — в `docs/proposals/025-validate-refused-records-an-earlier-release-wrote.md:23` фраза «the record in the second row of the table below» ведёт не туда: ниже идут две таблицы, и первая из них — таблица измерений, где вторая строка это «Review records | 732», а не запись. Имеется в виду вторая строка таблицы трёх записей (строка 58). Плюс само предложение (строки 21–25) нагружено тремя приложениями подряд, и «was never read by it» отрывается от своего подлежащего — читателю приходится разбирать его дважды.
+
+`reporter-profile-shortened-vs-index` — в заголовке `docs/proposals/025-…md:3` профиль дан старой короткой формой «Python web service on Linux», тогда как таблица Reporters в `docs/proposals/README.md:158` описывает A как «Python web service, Git hosting provider, Linux runner, vendored wheel», и свежая конвенция (023, 024 для Adopter D) переносит профиль из индекса целиком. Выпавшие детали здесь как раз по делу: находка про прогон wheel'а и про pinned-установку. Форма согласована с собственными файлами A (001–007, 010, 012), поэтому это вопрос выбора конвенции, а не ошибка факта.
+
+AGENTMARSHAL_VERDICT_BEGIN
+{"reviewed_commit": "d8d91c796faa27bd5cc7b52c14364126b14125d4", "verdict": "approved", "findings": [], "advisory_findings": ["ambiguous-table-reference-in-mechanism-paragraph", "reporter-profile-shortened-vs-index"]}
+AGENTMARSHAL_VERDICT_END
