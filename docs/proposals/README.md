@@ -71,18 +71,23 @@ accepted for a later release.
 
 ## Batch of 2026-09-24
 
-One finding from the reporter of the first batch — Adopter A, named there on
-001 through 007, 010 and 012. Before upgrading a pinned installation from
-0.3.0 to 0.4.0 they ran the new wheel's `validate` read-only over their
-journal, and it refused records 0.1.0 had written: one failure line for each
-of two tasks, over review records whose finding ids are sentences in which a
-narrow no-break space separates thousands, and the check refused every space
-separator but a plain space. The defect was reproduced the day it was
-reported and the fix shipped as 0.4.1.
+Two findings from Adopter A — one of the first batch's three reporters, named
+there on 001 through 007, 010 and 012. The first: before upgrading a pinned
+installation from 0.3.0 to 0.4.0 they ran the new wheel's `validate`
+read-only over their journal, and it refused records 0.1.0 had written: one
+failure line for each of two tasks, over review records whose finding ids are
+sentences in which a narrow no-break space separates thousands, and the check
+refused every space separator but a plain space. The defect was reproduced
+the day it was reported and the fix shipped as 0.4.1. The second file carries
+four findings from one task's eight review rounds: a reviewer asserting
+external facts it could not check, findings arriving on lines unchanged since
+the first round, cost written after `complete` needing idempotency, and a
+leak scan a single binary file in the diff switches off.
 
 | # | Theme | Reporter | Disposition | Where |
 |---|---|---|---|---|
 | [025](025-validate-refused-records-an-earlier-release-wrote.md) | `validate` refused records an earlier release wrote | A | accepted *(in part; the allowlist declined)* | the narrowed rule and the release check in 0.4.1; retroactivity accepted as a principle, mechanism undecided |
+| [026](026-reviewer-facts-round-convergence-and-two-gaps.md) | Unchecked reviewer facts, unconverging review rounds, and two further gaps | A | accepted *(in part; the `evidence` field and `review --since` deferred)* | the protocol wording, `record-session --if-missing` and the per-file leak scan accepted, not yet shipped; the deferred parts with the review-evidentiality and finding-lifecycle decisions |
 
 ## Batch of 2026-09-18
 
