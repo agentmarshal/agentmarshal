@@ -1,0 +1,29 @@
+{
+  "advisory_findings": [
+    "agents-md-omits-actor-declaration"
+  ],
+  "artifacts": [
+    {
+      "hash": "ea8d47cddd88a5b3ec4ba3c2b4accb5df2cf9aa7b666446c738818f82ea6fa89",
+      "ref": ".agentmarshal/journal/tasks/CR-117/artifacts/01M3TTZKZ11YCC7M1Q1WDTA7BM-review.md"
+    }
+  ],
+  "created_at": "2026-10-01T04:18:55.073965Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "bb80247d1566e7d03f9c232e380625a1d8aaae7e",
+  "reviewed_contract": "21fcd16987e50a4c7bc3d602b60301fa43f8e6063e1b57252c5dc8fe22af4f5b",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-117",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "approved"
+}
