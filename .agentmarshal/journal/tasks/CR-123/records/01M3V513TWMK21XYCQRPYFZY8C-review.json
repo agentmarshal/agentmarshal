@@ -1,0 +1,30 @@
+{
+  "advisory_findings": [
+    "batch-intro-enumerates-thirteen-of-fourteen",
+    "where-section-omitted-on-027-030"
+  ],
+  "artifacts": [
+    {
+      "hash": "7721c0b6c0ccbe6ae7bd5716c239ca1463d9065a1f5d19f1d207ba146c80c86d",
+      "ref": ".agentmarshal/journal/tasks/CR-123/artifacts/01M3V513TWMK21XYCQRPYFZY8C-review.md"
+    }
+  ],
+  "created_at": "2026-10-01T07:14:29.852026Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "b06e6d2e2f85b0864dbd1df8cc57bd9dc023773e",
+  "reviewed_contract": "a5d5d3cf8e9b7f154a0747fc89842409e4cee456f28d0c02cf10369aa75a64e0",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-123",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "approved"
+}
