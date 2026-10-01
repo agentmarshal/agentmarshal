@@ -71,7 +71,7 @@ accepted for a later release.
 
 ## Batch of 2026-09-24
 
-Two findings from Adopter A — one of the first batch's three reporters, named
+Two files from Adopter A — one of the first batch's three reporters, named
 there on 001 through 007, 010 and 012. The first: before upgrading a pinned
 installation from 0.3.0 to 0.4.0 they ran the new wheel's `validate`
 read-only over their journal, and it refused records 0.1.0 had written: one
