@@ -1,6 +1,6 @@
 # 033 — Reviewing the contract before implementation does not pay off: a measured withdrawal
 
-- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.4.0 · **Source:** `sha256:46fcb32756b8597a687760e1fc23f4f4424d582034d32bf2cca87c17552df136` · **Disposition:** recorded *(the withdrawal is the reporter's own — of proposal 031's third suggestion)*
+- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.4.0 · **Source:** `sha256:46fcb32756b8597a687760e1fc23f4f4424d582034d32bf2cca87c17552df136` · **Disposition:** accepted *(the withdrawal of proposal 031's third suggestion)*
 
 ## Finding
 
@@ -79,14 +79,16 @@ giving the implementer the checks the coordinator's environment lacks.
   data, so another adopter does not repeat the experiment as a gate.
 - Keep its first two suggestions open.
 
-## Disposition — the withdrawal is recorded
+## Disposition — the withdrawal is accepted
 
-This file asks for no mechanism; it retracts one. The suggestion's fate
-is therefore not a disposition of ours but the reporter's: they built it,
-measured it, and took it back, and the measurements above travel with the
-retraction so the next adopter does not have to rerun the experiment.
-Proposal 031 names this digest where it speaks of the withdrawn
-suggestion; its first two suggestions keep the dispositions stated there.
+This file asks for no mechanism; it retracts one. The retraction is the
+reporter's own — they built the suggestion, measured it, and took it back —
+and what is accepted here is the amendment the file proposes: the earlier
+file's third suggestion stands withdrawn, with the measurements above
+travelling with the retraction so the next adopter does not have to rerun
+the experiment. Proposal 031 names this digest where it speaks of the
+withdrawn suggestion; its first two suggestions keep the dispositions
+stated there.
 
 The narrower observation the reporter leaves — that a pre-implementation
 check worth having looks at facts with definite answers, once, advisory —

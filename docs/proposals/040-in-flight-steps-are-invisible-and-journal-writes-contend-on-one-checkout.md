@@ -79,11 +79,14 @@ waited on for 45 minutes. Accepted; to be written.
 
 **The visibility of stuck steps** — the need is accepted, and it is met by a
 watcher template the project supplies rather than by a record type in the
-journal. The reason is the journal's own mechanics: a journal write is a
-transaction through a pull request and its required check, so a record
-saying "this step is running" could only appear once that transaction had
-cleared — minutes late, queued behind the very convoy it is meant to expose.
-A step's liveness lives where the step does — the run, the lock, the
+journal. The reason is the workflow the project recommends for a protected
+base branch — the pattern of proposal 019 — not the journal's mechanics:
+the tool writes records into the working tree and leaves committing to the
+adopter, but under that workflow every journal write is a transaction
+through a pull request and its required check, so a record saying "this
+step is running" could only appear once that transaction had cleared —
+minutes late, queued behind the very convoy it is meant to expose. A
+step's liveness lives where the step does — the run, the lock, the
 provider's API — so the project supplies a watcher for those places as a
 template, checked against its own cycle the same way the adopter layer of
 proposal 038 is supplied. Not shipped yet.

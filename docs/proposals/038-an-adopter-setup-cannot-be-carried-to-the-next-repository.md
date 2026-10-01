@@ -32,9 +32,9 @@ to the first project.
 
 Measurements, as reported — from the first project, after about 130 tasks:
 
-- the adopter layer is **16 wrapper scripts, about 2 700 lines**, plus **about
-  3 800 lines of regression tests** for them, **2 hooks** and a **governance
-  workflow of about 1 000 lines** with its fast lane;
+- the adopter layer is **16 wrapper scripts, about 2,700 lines**, plus **about
+  3,800 lines of regression tests** for them, **2 hooks** and a **governance
+  workflow of about 1,000 lines** with its fast lane;
 - almost all of it is project-independent — repository paths are derived from
   the repository location, the framework version read from the project file;
   the project-specific parts are few and concrete: role e-mail addresses
@@ -92,7 +92,7 @@ a newer layout or profile format.
 ## Disposition — the need is accepted, met by a supplied adopter kit; the profile commands are deferred
 
 The measurement answers the design question before it is asked: **16 wrapper
-scripts, about 2 700 lines**, **3 800** lines of tests, six places, and every
+scripts, about 2,700 lines**, **3,800** lines of tests, six places, and every
 adopter growing the same layer from scratch — the transaction helper of
 proposal 019 and the outbox scaffold of proposal 029 are two more pieces of
 it. A second repository inheriting "a layout nobody designed" is what a

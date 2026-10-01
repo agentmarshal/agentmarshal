@@ -1,6 +1,6 @@
 # 039 — Review findings do not feed back: repeat rounds dominate, and one-new-instance-per-round spirals have no brake
 
-- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.4.0 · **Source:** `sha256:26238693adf96972caa832831eccf810d4d29aebcfb72f65568006c4d26e052b` · **Disposition:** accepted *(in part; the executor self-check and the findings base are deferred)*
+- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.4.0 · **Source:** `sha256:26238693adf96972caa832831eccf810d4d29aebcfb72f65568006c4d26e052b` · **Disposition:** accepted *(in part; the executor self-check and the findings base are deferred, the plugin interface declined)*
 
 ## Finding
 
@@ -72,14 +72,15 @@ carry no duration (proposal 032):
    task's findings are untriaged — which would also give proposal 027's
    advisory findings their lifecycle. The file names the two anchors 0.4.0
    already has: `finding` records a hash-pinned finding, per task and only
-   for research, and `brief` builds the implementer briefing, from the
-   contract only.
+   for research, and `brief` builds the implementer briefing from the
+   contract, its amendment history and the decisions and documents the
+   contract names — review findings are not among its inputs.
 7. **If the maintainers consider a lifecycle step outside the tool** — a
    plugin interface for lifecycle steps: declared hooks at named points with
    a documented contract, each run recorded with its command and output
    hash, on which such a step could be built instead of yet another wrapper.
 
-## Disposition — classes, the principle and the count accepted; the self-check and the base deferred
+## Disposition — classes, the principle and the count accepted; the self-check and the base deferred, the plugin interface declined
 
 **Finding classes and their aggregation** are accepted, into the
 finding-lifecycle work where proposal 027's dispositions and the
@@ -99,25 +100,31 @@ set — the counter-case's lesson — is the same kind of contract guidance, a
 pattern to document rather than a mechanism to build. Accepted for
 documentation; not shipped yet.
 
-**The `changes_required` count in `status`** is accepted, with the same
-lifecycle work. `status` today projects only the lifecycle state — a task is
-open, done or abandoned — and prints no verdict counts at all; the count the
-reporter asks the tool to surface is a fact the finding lifecycle already
-has to track. Accepted; not shipped yet.
+**The `changes_required` count** is accepted — in both places the reporter
+names, `status` and the gate output — with the same lifecycle work. `status`
+already prints every review record with its `verdict=`, `findings=N` and
+`advisory=N`; what is missing is the count of `changes_required` verdicts
+itself — the brake the tool can see — and that count is a fact the finding
+lifecycle already has to track. The same count, printed in both. Accepted;
+not shipped yet.
 
 **The executor self-check and the findings base** are deferred — by us. Both
 presuppose the lifecycle machinery they would hang from: a self-check built
 on recurring classes needs the classes to exist, and a project-level base of
 triaged findings is the lifecycle's own storage question, so they wait for
-the same decision rather than arriving before it. The plugin interface was
-the reporter's fallback for the case that a lifecycle step sits outside the
-tool; the base is deferred, not declined, so the fallback is not taken up.
+the same decision rather than arriving before it.
+
+**The plugin interface** for lifecycle steps — the reporter's fallback for
+the case that a lifecycle step sits outside the tool — is declined, by us:
+code that runs at the gate boundary becomes something the gate trusts,
+which is the line ADR-0010 draws.
 
 ## Where
 
 Nothing here is shipped yet. Finding classes and their aggregation, and the
-`changes_required` count in `status`, go with the finding-lifecycle work of
-proposals 027 and 026's second finding; the contract principles — the
-edge-case principle and the whole-set check — are accepted as documentation,
-to be written. The executor self-check and the findings base are deferred by
-us, waiting on the same decision.
+`changes_required` count in `status` and the gate output, go with the
+finding-lifecycle work of proposals 027 and 026's second finding; the
+contract principles — the edge-case principle and the whole-set check — are
+accepted as documentation, to be written. The executor self-check and the
+findings base are deferred by us, waiting on the same decision; the plugin
+interface is declined by us, for the trust boundary ADR-0010 draws.
