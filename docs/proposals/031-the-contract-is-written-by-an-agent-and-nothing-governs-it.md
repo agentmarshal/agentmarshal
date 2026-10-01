@@ -90,7 +90,7 @@ yet.
 
 **The agreement record** is accepted. It is a new record type, and
 this project decides record types in an architecture decision before it
-builds them — this one belongs to the contract-governance decision that
+builds them — this one belongs to the decision on contract governance that
 this batch's later files also wait on. Accepted; not
 shipped yet.
 
