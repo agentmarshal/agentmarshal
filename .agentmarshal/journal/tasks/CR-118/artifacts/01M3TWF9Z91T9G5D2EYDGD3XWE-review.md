@@ -1,0 +1,22 @@
+Проверил диff против контракта CR-118 и против того, что реально лежит в репозитории.
+
+**Что сошлось.**
+
+- Шапка 025 — `Adopter A (Python web service on Linux)`, ровно та форма, которой уже пользуются 001/002/003 для A; sha256 источника `4b86c6dd…` на месте, в том же формате `sha256:…`, что у 014/020/024. Собственные task id репортёра нигде не названы — только «across two tasks».
+- Механизм совпадает с кодом. `read_records` (`src/agentmarshal/journal/records.py:1103-1129`) валидирует каждую запись внутри цикла по `sorted(...)` и падает на первой невалидной, суффиксом дописывая путь — отсюда и «naming a review record»; `validate_journal` (`src/agentmarshal/journal/validate.py:182-188`) ловит это в `_VALIDATION_ERRORS`, печатает одну строку `FAIL: {task}: …` и идёт дальше, так что третья запись, отсортированная позади, действительно не читается. Gate читает только задачу кандидата (`gate.py:94`). Строка `validate: journal invalid` — `cli.py:766`.
+- Историческая атрибуция верна: проверка пришла с CR-066 («an acceptance record carrying a control character in a field the surfaces render inline is refused as invalid»), а расширение на review `findings`/`advisory_findings` в 0.4.0 зафиксировано в архивном `openspec/changes/archive/2026-09-24-narrow-the-forgeable-text-rule/proposal.md` теми же словами. Поля finding-записи (summary, artifact ref) — схема 4, новая в 0.4.0, то есть «no earlier release could have written» корректно.
+- Описание шипнутого набора сходится с `_FORGEABLE_CATEGORIES = {"Cc","Cs","Zl","Zp"}` и `_BIDIRECTIONAL_CONTROLS` (`records.py:498-509`), предикат `forges_rendered_text` один. Утверждение про «upgrade notes route a pinned 0.3.0 installation straight to 0.4.1» подтверждается `UPGRADING.md:9-14`, а отказ от allowlist — `UPGRADING.md:43-44` («There is no allowlist … and none is planned»).
+- Арифметика измерений внутренне согласована: 6+3+2 = 11 вхождений, 282 − 2 = 280 задач `OK`. Диспозиции даны по всем четырём предложениям с нужной формулировкой отказа. Индекс: секция `## Batch of 2026-09-24` вставлена перед 2026-09-18, таблица несёт disposition и «where»; «001 through 007, 010 and 012» сверяется с таблицей батча 2026-08-30. Карта в `docs/README.md` на месте и в правильном порядке. Непубликованных релизов/задач/документов не названо; 0.5.0 не упомянут.
+- Непроверяемое: verbatim-совпадение измерений и sha256 — оригинал staged приватно, его в снапшоте нет. Полную CI-последовательность (`validate`, `pytest`, `ruff`, `mypy`) выполнить не дали права в песочнице; диff чисто markdown и не задевает ничего, что читают тесты, но сам прогон я не делал.
+
+Дальше — три advisory, ни одна не блокирует.
+
+`paragraph-break-missing` — в `docs/proposals/025-validate-refused-records-an-earlier-release-wrote.md:23-24` между «…was never read by it.» и «The check behind the refusal is…» нет пустой строки, поэтому абзац про форму вывода прогона и абзац про историю самой проверки склеиваются в один блок при рендере; во всех остальных файлах `docs/proposals/` смысловые абзацы разделены.
+
+`adopter-record-ids-published` — `docs/proposals/025-…md:51-55` публикует три record ULID из приватного журнала адоптера (`01M0QN0YTPC71EQJM1HRVF9A2K-review.json` и далее). Контракт запрещал только task identifiers, так что буква соблюдена, но `docs/proposals/README.md:19-22` описывает digest как документ, из которого downstream-специфика убирается, а CONTRIBUTING напоминает, что из публичного репозитория ничего не отозвать; ни один из 001–024 таких идентификаторов не печатает. Таблица несёт ту же доказательную силу без колонки с именами файлов (schema, `tool_version`, дата, счётчик).
+
+`cr-115-completion-pointer-not-in-the-records` — `docs/proposals/025-…md:103-105` отправляет читателя за доказательством прогона в «CR-115's completion transaction», но в опубликованном журнале `.agentmarshal/journal/tasks/CR-115/records/01M38SSKHMQS9FQ2YYTM0TDHMZ-completed.json` нет ничего, кроме `completed_commit` и метаданных, и ни одна запись CR-115 прогон по журналу адоптера не упоминает. Критерий 5 контракта CR-115 этот отчёт требовал, так что он, видимо, в сообщении completion-коммита — но смысл digest'а в том, чтобы репортёр мог проследить путь своей заявки по журналу, а по файлам журнала след не находится.
+
+AGENTMARSHAL_VERDICT_BEGIN
+{"reviewed_commit": "588445e947c77fbaaf29bab90a219595e386ecee", "verdict": "approved", "findings": [], "advisory_findings": ["paragraph-break-missing", "adopter-record-ids-published", "cr-115-completion-pointer-not-in-the-records"]}
+AGENTMARSHAL_VERDICT_END

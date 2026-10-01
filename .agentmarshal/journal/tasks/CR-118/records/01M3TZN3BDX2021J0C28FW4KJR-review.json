@@ -1,0 +1,30 @@
+{
+  "advisory_findings": [
+    "025-mechanism-sentence-garbled",
+    "index-first-batch-single-reporter"
+  ],
+  "artifacts": [
+    {
+      "hash": "b7587caa3335efd12647e8d757fde18db3caf62bf5d48ae3ef981d33be52ceec",
+      "ref": ".agentmarshal/journal/tasks/CR-118/artifacts/01M3TZN3BDX2021J0C28FW4KJR-review.md"
+    }
+  ],
+  "created_at": "2026-10-01T05:40:33.261359Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "f28ec091ab9a53bce4b3c349cc7489c754e7aeb4",
+  "reviewed_contract": "165f13c5d1129926078e9f229c6ded1014a7b425ad0f22c7522b5afe0be934ca",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-118",
+  "tool_version": "0.4.1",
+  "verdict": "approved"
+}
