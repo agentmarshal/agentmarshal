@@ -1,0 +1,29 @@
+{
+  "advisory_findings": [
+    "outbox-readme-overstates-source-line-coverage"
+  ],
+  "artifacts": [
+    {
+      "hash": "8b33231b126c383bc089e51ffe19499c39db69b2ee27732e847f70a0644d5bc1",
+      "ref": ".agentmarshal/journal/tasks/CR-119/artifacts/01M3TVNPG8B0GY4EXQ3T8JS250-review.md"
+    }
+  ],
+  "created_at": "2026-10-01T04:30:58.568564Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "c058320f0ac0250e0592db45d5313f808c65321d",
+  "reviewed_contract": "f95adb1b31192073534cecbc33b55b8555acd6ad6c4fe05fd7a62d76cd8568ff",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-119",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "approved"
+}
