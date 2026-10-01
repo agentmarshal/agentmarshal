@@ -16,11 +16,13 @@ The mechanism, as the code has it. A record is validated when it is read —
 `read_records` runs each record through the schema validator as it loads and
 raises on the first invalid one — so the gate, which reads only the
 candidate's task, never saw these records, while whole-journal `validate`
-walks every task, prints one failure line per task and moves to the next.
-That is the shape of the run's output: three records carry the character,
-across two tasks, and the run refused the first such record in each task —
-the third, sorted behind it in the same task's records directory, was never
-read by it.
+walks every task. `validate` reports every violation it finds; this refusal,
+though, ends a task's read at its first bad record, so here it printed one
+failure line per task and moved to the next. That is the shape of the run's
+output: three records carry the character, across two tasks, and the run
+refused the first such record in each task — the third, sorted behind it in
+the same task's records directory, was never read by it.
+
 The check behind the refusal is `_reject_control_characters` in
 `src/agentmarshal/journal/records.py`. It existed before 0.4.0, where it
 guarded the acceptance record's fields and finding ids; 0.4.0 extended it to
@@ -46,13 +48,14 @@ reported `OK`:
 | Field they occur in | `findings`, in all 11 cases |
 | Characters of category Cc, Cf, Zl or Zp in any string value of any record | 0 |
 
-The three records, across two tasks:
+The three records, across two tasks — the first two rows are one closed
+task's, the third another's:
 
-| Record | Schema | `tool_version` | Written | U+202F |
-|---|---|---|---|---|
-| `01M0QN0YTPC71EQJM1HRVF9A2K-review.json` | 2 | 0.1.0 | 2026-08-23 | 6 |
-| `01M0QP28340A3VHGPE1KXEDBR7-review.json` | 2 | 0.1.0 | 2026-08-23 | 3 |
-| `01M15Q3NGXV5JD9BPKHP2RB6A4-review.json` | 2 | 0.1.0 | 2026-08-29 | 2 |
+| Schema | `tool_version` | Written | U+202F |
+|---|---|---|---|
+| 2 | 0.1.0 | 2026-08-23 | 6 |
+| 2 | 0.1.0 | 2026-08-23 | 3 |
+| 2 | 0.1.0 | 2026-08-29 | 2 |
 
 Because the journal is append-only and both tasks are closed, the gate
 refuses changes to these records: the only local remedy would be rewriting
@@ -101,10 +104,11 @@ bundled into this intake.
 
 **The release check** is accepted and was done for the release at hand:
 before 0.4.1 was published, its `validate` ran read-only over the journal
-0.4.0 had refused, and passed — the run is recorded in CR-115's completion
-transaction. The check answered for the journal that raised the finding; a
-standing form of it — whose journals, at what point in a release — is not yet
-settled.
+0.4.0 had refused, and passed — the run is reported in the message of
+CR-115's completion commit (`git log --grep "complete CR-115"` finds it), not
+in a journal record. The check answered for the journal that raised the
+finding; a standing form of it — whose journals, at what point in a release —
+is not yet settled.
 
 **The allowlist** is declined, on the journal's own reasoning: an allowlist
 declares a record acceptable around the gate. The exception would be a claim
