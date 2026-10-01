@@ -267,9 +267,12 @@ send a batch.
 Since the batch of 2026-09-16, each published digest carries a `Source:`
 line — the sha256 of the file you sent, as sent, in full and in lowercase
 hex. Hash the outbox file you sent — `sha256sum` — and search the digests
-for the result: that entry is yours, whatever upstream numbered or
-titled it. The proposals index describes the rest of the protocol under
-"Tracking what happened to yours".
+for the result: that entry is yours, whatever upstream numbered or titled
+it. The digests live in the proposals index, `docs/proposals/README.md` in
+the upstream repository —
+https://github.com/agentmarshal/agentmarshal/blob/master/docs/proposals/README.md
+— whose section "Tracking what happened to yours" describes the rest of
+the protocol.
 """
 
 

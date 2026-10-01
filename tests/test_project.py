@@ -24,7 +24,8 @@ def test_outbox_readme_excludes_non_evidence_from_journal_staging(
 
 
 def test_outbox_readme_says_how_a_sent_finding_is_matched(tmp_path: Path) -> None:
-    """CR-119: the README says how to match a sent finding to its digest."""
+    """CR-119: the README says how to match a sent finding to its digest,
+    and where the digests live."""
 
     outbox, error = _scaffold_outbox(tmp_path)
 
@@ -33,3 +34,8 @@ def test_outbox_readme_says_how_a_sent_finding_is_matched(tmp_path: Path) -> Non
     assert "sha256" in readme
     assert "Source:" in readme
     assert "Tracking what happened to yours" in readme
+    assert "docs/proposals/README.md" in readme
+    assert (
+        "https://github.com/agentmarshal/agentmarshal"
+        "/blob/master/docs/proposals/README.md"
+    ) in readme
