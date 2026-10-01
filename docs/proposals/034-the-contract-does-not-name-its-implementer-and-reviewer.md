@@ -1,6 +1,6 @@
 # 034 — The contract does not name its implementer and reviewer, so the assignment lives in the wrapper
 
-- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.4.0 · **Source:** `sha256:ab8c047da4d9d621125d69e88cab29deeb07bd79b1a5c4e8f3a034270dd69502` · **Disposition:** accepted *(in part; the header fields and the gate checks are deferred)*
+- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.4.0 · **Source:** `sha256:ab8c047da4d9d621125d69e88cab29deeb07bd79b1a5c4e8f3a034270dd69502` · **Disposition:** accepted
 
 ## Finding
 
@@ -60,9 +60,11 @@ A switch to a fallback would be recorded by the tool rather than
 inferred: `record-session` with an outcome naming the limit the failed
 run hit, and the next session naming which fallback condition it used.
 Limits are the most common reason for a switch in a multi-agent setup,
-the reporter's measurements say, and today the tool has no outcome value
-for them at all — proposal 024 asked for the provider stop to be
-recorded, and this is the same event seen from the assignment side.
+the reporter's measurements say. On the release the reporter observed
+the tool had no outcome value for them; proposal 024 asked for the
+provider stop to be recorded, and its `provider-limit` has been a
+documented outcome since 0.4.1 — a stop on the output limit still has
+none.
 
 And for `gate` to check the recorded sessions and review against the
 declared assignment: the review that makes the candidate mergeable must
@@ -73,27 +75,33 @@ the agreement — which the reporter notes is exactly the trace missing
 today. `status` would show the declared assignment next to what actually
 ran.
 
-## Disposition — accepted for the outcome values; the fields and checks are deferred
+## Disposition — accepted
 
 **The outcome values** — for a session that ended on a provider limit and
-for one that ended on an output-limit truncation — are accepted: they
-extend the vocabulary proposal 024 established, where `provider-limit`
-names a session the provider refused to continue. Why a run stopped is
-the same kind of fact as that refusal, and the journal should say it in
-words journals share. Accepted; not shipped yet.
+for one that ended on an output-limit truncation: the first is already
+shipped, because `provider-limit` has been the documented outcome for a
+session the provider refused to continue since 0.4.1 — the vocabulary
+proposal 024 established — so an adopter can write it today. The second
+is accepted on the same grounds: why a run stopped is the same kind of
+fact as that refusal, and the journal should say it in words journals
+share. Accepted; not shipped yet.
 
-**The header fields and the gate checks** are accepted and deferred, into
-the decision on contract governance — the same decision proposal 031's
-agreement record waits on. What the contract should declare about who
-does and who checks the work is one question with whether the agreement
-is recorded at all, and it should be settled once. Where the assignment
-lives is a decision not yet made: the reporter's header schema is on the
-table, and so are shapes that leave the contract unchanged and declare
-the assignment elsewhere the gate can read. Accepted; not shipped yet.
+**The header fields, the gate checks and the `status` display** — the
+declared assignment next to what actually ran is the read side of the same
+declaration — are accepted together. Where the assignment lives is a
+decision on the tool's boundary that is not yet made: the reporter's
+header schema is on the table, and so are shapes that leave the contract
+unchanged and declare the assignment elsewhere the gate can read. It is
+the same contract-governance question the agreement record of proposal 031
+waits on — what the contract should declare about who does and who checks
+the work is one question with whether the agreement is recorded at all,
+and it should be settled once. Accepted; not shipped yet.
 
 ## Where
 
-Nothing here is shipped yet. The outcome values extend the vocabulary of
-proposal 024; the header fields and the gate checks wait on the
-contract-governance decision — where the assignment will live is
-undecided.
+`provider-limit` is already shipped, a documented outcome since 0.4.1;
+the outcome value for an output-limit truncation is accepted, not shipped
+yet. The header fields, the gate checks and the `status` display of the
+declared assignment next to what ran are accepted, not shipped yet —
+they go with the decision on the tool's boundary, and where the
+assignment will live is undecided.

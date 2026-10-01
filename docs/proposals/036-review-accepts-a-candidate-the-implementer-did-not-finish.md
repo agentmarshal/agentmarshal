@@ -57,9 +57,10 @@ session ended, and the journal already records sessions:
 - `status` shows, for the candidate head, which session produced it and
   how that session ended.
 
-The reporter relates it to proposal 024, where the same limit has no
-outcome value, and to proposal 034, where the same stop is what a
-fallback switch is made of.
+The reporter relates it to their earlier file — published here as
+proposal 024, whose `provider-limit` outcome for this stop has been
+documented since 0.4.1 — and to proposal 034, where the same stop is
+what a fallback switch is made of.
 
 ## Disposition — accepted
 
@@ -74,12 +75,16 @@ is the link the rest needs, and it turns a wrapper's commit-subject
 convention into evidence. With it, `review` and the gate refuse a
 candidate whose producing session did not end `implemented`; the shape of
 the operator's way through — the explicit override or the recorded
-acceptance the reporter proposed — is part of that work. When no session
-names the commit, behaviour is as today: a candidate produced by a runner
-that wrote no session is judged as it is now. Accepted; not shipped yet.
+acceptance the reporter proposed — is part of that work. **The `status`
+display** — which session produced the candidate head and how that
+session ended — is accepted with the `commit` field: it is the read side
+of the same link. When no session names the commit, behaviour is as
+today: a candidate produced by a runner that wrote no session is judged
+as it is now. Accepted; not shipped yet.
 
 ## Where
 
 Nothing here is shipped yet. The `commit` field on the implementer's
-session record and the refusal in `review` and `gate` are accepted; the
-release that carries them will say so in its changelog.
+session record, the refusal in `review` and `gate`, and the `status`
+display of the producing session are accepted; the release that carries
+them will say so in its changelog.

@@ -27,10 +27,12 @@ there a few minutes later inside a pull request titled for a different
 task.
 
 Nothing in the tool notices. `validate` accepts the records, because they
-are valid wherever they come from; `gate` on a journal-only branch named
-for one task checks that task — its records and the paths of its own
-journal subtree — and does not look at records of other tasks in the same
-diff.
+are valid wherever they come from; `gate` validates every record a
+transaction adds — its schema, that the record's `task` matches the
+directory it sits in, that its path does not collide with the base, that
+no task gains a second `opened` — across every task the diff touches.
+What it does not require is that a record belong to the task the
+transaction names.
 
 Measurements, as reported — counted with a small read-only script over
 the reporter's git history: every commit whose subject is a journal

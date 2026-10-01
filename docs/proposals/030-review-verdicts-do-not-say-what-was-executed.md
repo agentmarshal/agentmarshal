@@ -1,6 +1,6 @@
 # 030 — A verdict does not say what the reviewer executed and what it only read
 
-- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.4.0 for the mechanism and 0.3.0 for the historical measurements · **Source:** `sha256:100633253ea653cd4523320fb9c4ff5cf096ea20cbe1d402ad0574855b15aed3` · **Disposition:** deferred
+- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.4.0 for the mechanism and 0.3.0 for the historical measurements · **Source:** `sha256:100633253ea653cd4523320fb9c4ff5cf096ea20cbe1d402ad0574855b15aed3` · **Disposition:** accepted
 
 ## Finding
 
@@ -60,22 +60,23 @@ criteria cannot be checked, and then records the result as if it had been.
 - Optionally, an adopter-declared preparation command for the snapshot, so
   execution becomes possible where the adopter wants it and pays for it.
 
-## Disposition — accepted as a piece of work, deferred
+## Disposition — accepted
 
 Two false blocking findings in a hundred-odd reviews is not carelessness; it
 is the environment doing exactly what it was built to do, and the record
-being unable to say so. Both are legitimate work — but only one is evidence
-about behaviour, and a merge gate that cannot tell them apart is weaker than
+being unable to say so. Confirmation by execution and confirmation by
+reading are both legitimate work — but only one is evidence about
+behaviour, and a merge gate that cannot tell them apart is weaker than
 it looks.
 
-The field is accepted, into the review-evidentiality decision — the same
-decision the `evidence` field deferred in proposal 026 and the `check`
-record of proposal 028 wait on. What a record should say about how a claim
+The field is accepted into the review-evidentiality decision — the same
+decision the `evidence` field of proposal 026 and the `check`
+record of proposal 028 are in. What a record should say about how a claim
 was checked is one question, and it should be answered once rather than one
 field at a time. Accepted; not shipped yet.
 
 ## Where
 
-Deferred, and nothing here is shipped yet. The executed-versus-read field
-waits on the review-evidentiality decision — with the `evidence` field of
+Accepted; not shipped yet. The executed-versus-read field goes with the
+review-evidentiality decision — with the `evidence` field of
 proposal 026 and the `check` record of proposal 028.

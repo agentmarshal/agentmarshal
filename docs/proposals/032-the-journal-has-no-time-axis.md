@@ -1,6 +1,6 @@
 # 032 — The journal has no time axis: lead time and the CI cost of the loop are invisible
 
-- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.4.0 · **Source:** `sha256:1949fe976c09a02900788374ce713df63af005c42085abff153582d1776aff5d` · **Disposition:** accepted *(in part; the session duration and the lead-time report are deferred)*
+- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.4.0 · **Source:** `sha256:1949fe976c09a02900788374ce713df63af005c42085abff153582d1776aff5d` · **Disposition:** accepted
 
 ## Finding
 
@@ -66,27 +66,30 @@ reconstruction.
    journal-only change (a `gate` mode or a documented marker), so adopters
    can run a lighter check on it without weakening the gate on code.
 
-## Disposition — accepted for the documentation, deferred for the time axis
+## Disposition — accepted
 
 **The sentence** about what a journal transaction costs in CI is accepted
 — it is the kind of fact the workflow documentation should state, and the
 reporter's count gives it the number. Accepted; not shipped yet.
 
 **Session duration and lead time** are accepted, into the rework of
-accounting — deferred, alongside the cost field deferred in proposal 018
-and the reset-time field deferred in proposal 024. What a session record
+accounting — where the cost field of proposal 018 and the reset-time field
+of proposal 024 already sit. What a session record
 should say about a run — its tokens, the provider's meter, its wall-clock
 time — is one question, and it should be answered once rather than one
 field at a time; a start-time or duration field is also a record schema
-change, the same reason 024's field waits.
+change, the same reason proposal 024's field is in that rework. Accepted;
+not shipped yet.
 
 **The `gate` mode** that would let a check recognise a journal-only change
-is a behaviour change rather than a sentence, and waits with the same
-rework rather than arriving ahead of it.
+is accepted too — into the journal-transactions work of proposals 019 and
+035, where telling a journal-only diff from a code change is already the
+question on the table. Accepted; not shipped yet.
 
 ## Where
 
 Nothing here is shipped yet. The documentation sentence is accepted, to be
-written; session duration, lead time and the journal-only `gate` mode wait
-on the accounting rework, with the deferred parts of proposals 018 and
-024.
+written; session duration and lead time are accepted into the accounting
+rework, alongside the cost field of proposal 018 and the reset-time field
+of proposal 024; the journal-only `gate` mode goes with the
+journal-transactions work of proposals 019 and 035.

@@ -7,12 +7,12 @@
 The reporter's earlier file — published here as
 [proposal 031](031-the-contract-is-written-by-an-agent-and-nothing-governs-it.md)
 — made three suggestions. The third was that the reviewer could
-optionally be pointed at the contract before implementation, which that
-file called the cheapest of the three to try and the only one that would
-have caught its motivating case before a round was spent. The reporter
-tried it, measured it, and withdraws that part. The first two suggestions
-— pin the contract hash where it is written, and a record for agreement —
-are not affected.
+optionally be pointed at the contract before implementation — the
+reporter's original file called it the cheapest of the three to try and
+the only one that would have caught its motivating case before a round
+was spent. The reporter tried it, measured it, and withdraws that part.
+The first two suggestions — pin the contract hash where it is written, and
+a record for agreement — are not affected.
 
 What the reporter built: a launcher that ran the same model reviewer
 against the contract text with a checklist — statements about the code
@@ -53,8 +53,8 @@ stage-verification script the change would have broken; an integration
 test placed on a database another test recreates; a missing prohibition
 on publishing draft data; a menu address the coordinator had changed
 against a recorded operator decision. All four are factual — about the
-code, the data or recorded decisions — as were the six specification
-defects that motivated the earlier file.
+code, the data or recorded decisions — as were the specification defects,
+about six by the earlier file's count, that motivated it.
 
 The reporter's diagnosis of why it cannot pay off: the implementation is
 checked against the contract; the contract has nothing to be checked
