@@ -1,0 +1,33 @@
+{
+  "advisory_findings": [
+    "039-status-already-prints-each-verdict",
+    "039-gate-output-half-of-the-brake-undisposed",
+    "index-rows-compress-headers-unevenly-038-040"
+  ],
+  "artifacts": [
+    {
+      "hash": "6c0f24be5eb4a6ef8e9356d1476336104bc8447bd0253cd5117be372fe78fa77",
+      "ref": ".agentmarshal/journal/tasks/CR-125/artifacts/01M3VBZTW1TMD6D18RMXW8YS6B-review.md"
+    }
+  ],
+  "created_at": "2026-10-01T09:16:07.937172Z",
+  "findings": [
+    "033-disposition-recorded-not-in-index-vocabulary"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "08c548805b8178f5c10257b0d55b46beba429ae1",
+  "reviewed_contract": "e15b0fc2fccb9c8cf3e290821aaa0adf53a6419f6165c6bf3b331f310c3da775",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-125",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "changes_required"
+}
