@@ -84,13 +84,6 @@ def test_brief_prints_complete_contract_and_governance(
     assert "- prints the body" in captured.out
     assert "- names every rule" in captured.out
     assert "only these paths may change" in captured.out
-    assert (
-        "Nothing under .agentmarshal/journal/ is the implementer's to edit; "
-        "the evidence journal is append-only and is written by agentmarshal "
-        "commands. Another file under .agentmarshal/ may change only when the "
-        "task's scope names it." in captured.out
-    )
-    assert "they are the definition of done" in captured.out
 
 
 def test_brief_states_the_journal_rule_as_the_gate_holds_it(
@@ -111,7 +104,12 @@ def test_brief_states_the_journal_rule_as_the_gate_holds_it(
     project_rules = briefing.split("Rules the project follows:\n", 1)[1].split(
         "\n\n", 1
     )[0]
-    assert "Nothing under .agentmarshal/journal/" in project_rules
+    assert (
+        "Nothing under .agentmarshal/journal/ is the implementer's to edit; "
+        "the evidence journal is append-only and is written by agentmarshal "
+        "commands. Another file under .agentmarshal/ may change only when the "
+        "task's scope names it." in project_rules
+    )
 
 
 def test_brief_lists_each_rule_under_its_heading(
@@ -136,18 +134,24 @@ def test_brief_lists_each_rule_under_its_heading(
     )[0]
 
     scope_rule = "- Change only paths declared in the scope above."
+    append_only_rule = "- Journal records and artifacts are append-only."
+    review_rule = "- Merging requires an approving review of this exact commit."
     acceptance_rule = (
         "- Satisfy every acceptance criterion; they are the definition of done."
     )
     journal_rule = "- Nothing under .agentmarshal/journal/"
 
     assert scope_rule in enforced
-    assert acceptance_rule in enforced
+    assert append_only_rule in enforced
+    assert review_rule in enforced
+    assert acceptance_rule not in enforced
     assert journal_rule not in enforced
 
+    assert acceptance_rule in project_rules
     assert journal_rule in project_rules
     assert scope_rule not in project_rules
-    assert acceptance_rule not in project_rules
+    assert append_only_rule not in project_rules
+    assert review_rule not in project_rules
 
 
 def _record_amendment(
