@@ -69,6 +69,34 @@ command that reads your outbox, hashes each finding and reports its state back
 to you is proposed in [023](023-upstream-outbox-has-no-transaction.md) and
 accepted for a later release.
 
+## Batch of 2026-10-01
+
+Fourteen files from Adopter D — the reporter of the 2026-09-16 and
+2026-09-18 batches — observed on 0.3.0 and 0.4.0 in the agent-driven loop
+their earlier reports describe, where a coordinating agent writes the
+contract, launches the implementer and the reviewer, and records
+completion. They are published in parts, a few files at a time; the table
+below gains rows as the parts land.
+
+The recurring theme is facts that never become records: advisory findings
+with no fate, check outcomes the journal never hears, verdicts that do not
+say what was executed, a contract written by an agent and judged by no one
+— and around them, an outbox with no scaffold, a journal with no time axis,
+transactions that sweep other tasks' records, a review that accepts an
+unfinished candidate, a crash on a non-UTF-8 diff, an adopter setup that
+cannot be carried to the next repository, findings that do not feed back
+into the next round, and in-flight steps the journal cannot see. One file
+in the batch is itself a withdrawal: the reporter measured a suggestion
+from an earlier file of the same batch and took it back.
+
+| # | Theme | Reporter | Disposition | Where |
+|---|---|---|---|---|
+| [027](027-advisory-findings-have-no-lifecycle.md) | Advisory findings have no lifecycle | D | accepted *(in part; the verdict rename declined)* | the dispositions with the finding-lifecycle decision, and the documentation stating what `approved` means — both accepted, not shipped yet |
+| [028](028-check-outcomes-are-not-evidence.md) | Check outcomes are not evidence | D | accepted *(as a piece of work; deferred)* | the review-evidentiality decision |
+| [029](029-outbox-has-no-scaffold-and-its-name-is-taken.md) | The outbox has no scaffold, and `finding` is taken | D | accepted | one command group with 023 — scaffold, validation, send, status; not shipped yet |
+| [030](030-review-verdicts-do-not-say-what-was-executed.md) | A verdict does not say what was executed | D | accepted *(as a piece of work; deferred)* | the review-evidentiality decision |
+| [031](031-the-contract-is-written-by-an-agent-and-nothing-governs-it.md) | The contract is written by an agent and judged by no one | D | accepted *(in part; agreement record deferred, third suggestion withdrawn by the reporter)* | the contract hashes accepted, not shipped; the agreement record with the contract-governance decision |
+
 ## Batch of 2026-09-24
 
 Two files from Adopter A — one of the first batch's three reporters, named
