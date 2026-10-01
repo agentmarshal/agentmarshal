@@ -53,6 +53,7 @@
 - [proposals/023-upstream-outbox-has-no-transaction.md](proposals/023-upstream-outbox-has-no-transaction.md) — review the finding on an outbox without a transaction.
 - [proposals/024-provider-quota-stop-cannot-be-recorded.md](proposals/024-provider-quota-stop-cannot-be-recorded.md) — review the finding on a provider quota stop the journal cannot record.
 - [proposals/025-validate-refused-records-an-earlier-release-wrote.md](proposals/025-validate-refused-records-an-earlier-release-wrote.md) — review the finding on `validate` refusing records an earlier release wrote.
+- [proposals/026-reviewer-facts-round-convergence-and-two-gaps.md](proposals/026-reviewer-facts-round-convergence-and-two-gaps.md) — review the digest of unchecked reviewer facts, unconverging review rounds, and two further gaps.
 
 ## Contribute a change
 

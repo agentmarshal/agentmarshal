@@ -19,11 +19,11 @@ candidate's task, never saw these records, while whole-journal `validate`
 walks every task. `validate` reports every violation it finds; this refusal,
 though, ends a task's read at its first bad record, so here it printed one
 failure line per task and moved to the next. That is the shape of the run's
-output: three records carry the character, across two tasks — they are
-the table listing the three records below. The run refused the first such
-record in each task: that table's first and third rows. Its second row,
-the first task's other record, is sorted behind the refused record in
-that task's records directory, and the run never read it.
+output. Three records carry the character, across two tasks; they are the
+three rows of the table below. The run refused the first such record in each
+task — the table's first and third rows. The second row, the first task's
+other record, sorts behind the refused record in that task's records
+directory, and the run never read it.
 
 The check behind the refusal is `_reject_control_characters` in
 `src/agentmarshal/journal/records.py`. It existed before 0.4.0, where it
@@ -99,10 +99,10 @@ U+061C, U+200E and U+200F — which reorder displayed text as the overrides do.
 as a principle and not yet decided as a mechanism. The principle is what this
 finding proves: a stricter check applied to records a closed task cannot
 repair is a breaking change to an adopter's history, and the rules a record
-was written under should be the rules it is read under. The open question is
-how a reader knows which rules a record was written under — nothing in a
-record says so today — and that decision is its own piece of work, not
-bundled into this intake.
+was written under should be the rules it is read under. Every record carries
+`schema` and `tool_version`, so a record does say what wrote it; the open
+question is which rules a reader should apply to that, and the decision is
+its own piece of work, not bundled into this intake.
 
 **The release check** is accepted and was done for the release at hand:
 before 0.4.1 was published, its `validate` ran read-only over the journal
