@@ -20,8 +20,9 @@ walks every task. `validate` reports every violation it finds; this refusal,
 though, ends a task's read at its first bad record, so here it printed one
 failure line per task and moved to the next. That is the shape of the run's
 output: three records carry the character, across two tasks, and the run
-refused the first such record in each task — the third, sorted behind it in
-the same task's records directory, was never read by it.
+refused the first such record in each task — the record in the second row
+of the table below, the other one in the first task, sorted behind the
+refused record in that task's records directory, was never read by it.
 
 The check behind the refusal is `_reject_control_characters` in
 `src/agentmarshal/journal/records.py`. It existed before 0.4.0, where it
