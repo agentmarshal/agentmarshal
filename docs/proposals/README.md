@@ -69,6 +69,21 @@ command that reads your outbox, hashes each finding and reports its state back
 to you is proposed in [023](023-upstream-outbox-has-no-transaction.md) and
 accepted for a later release.
 
+## Batch of 2026-09-24
+
+One finding from the reporter of the first batch — Adopter A, named there on
+001 through 007, 010 and 012. Before upgrading a pinned installation from
+0.3.0 to 0.4.0 they ran the new wheel's `validate` read-only over their
+journal, and it refused records 0.1.0 had written: one failure line for each
+of two tasks, over review records whose finding ids are sentences in which a
+narrow no-break space separates thousands, and the check refused every space
+separator but a plain space. The defect was reproduced the day it was
+reported and the fix shipped as 0.4.1.
+
+| # | Theme | Reporter | Disposition | Where |
+|---|---|---|---|---|
+| [025](025-validate-refused-records-an-earlier-release-wrote.md) | `validate` refused records an earlier release wrote | A | accepted *(in part; the allowlist declined)* | the narrowed rule and the release check in 0.4.1; retroactivity accepted as a principle, mechanism undecided |
+
 ## Batch of 2026-09-18
 
 One finding from the reporter of the batch below, after twelve governed tasks
