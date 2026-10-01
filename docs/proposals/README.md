@@ -75,7 +75,7 @@ Fourteen files from Adopter D — the reporter of the 2026-09-16 and
 2026-09-18 batches — observed on 0.3.0 and 0.4.0 in the agent-driven loop
 their earlier reports describe, where a coordinating agent writes the
 contract, launches the implementer and the reviewer, and records
-completion. They are published in parts, as 027 through 040; the table
+completion. They are published in parts, a few files at a time; the table
 below gains rows as the parts land.
 
 The recurring theme is facts that never become records: advisory findings
@@ -91,7 +91,7 @@ from an earlier file of the same batch and took it back.
 
 | # | Theme | Reporter | Disposition | Where |
 |---|---|---|---|---|
-| [027](027-advisory-findings-have-no-lifecycle.md) | Advisory findings have no lifecycle | D | accepted *(in part; the verdict rename declined)* | the dispositions with the finding-lifecycle decision, not shipped yet; the documentation states what `approved` means |
+| [027](027-advisory-findings-have-no-lifecycle.md) | Advisory findings have no lifecycle | D | accepted *(in part; the verdict rename declined)* | the dispositions with the finding-lifecycle decision, and the documentation stating what `approved` means — both accepted, not shipped yet |
 | [028](028-check-outcomes-are-not-evidence.md) | Check outcomes are not evidence | D | accepted *(as a piece of work; deferred)* | the review- and check-evidentiality decision |
 | [029](029-outbox-has-no-scaffold-and-its-name-is-taken.md) | The outbox has no scaffold, and `finding` is taken | D | accepted | one command group with 023 — scaffold, validation, send, status; not shipped yet |
 | [030](030-review-verdicts-do-not-say-what-was-executed.md) | A verdict does not say what was executed | D | accepted *(as a piece of work; deferred)* | the review-evidentiality decision |

@@ -4,16 +4,17 @@
 
 ## Finding
 
-The outbox is described in three documents and implemented in none of them.
-`CONTRIBUTING.md` gives the shape of a report — Symptom, Measurements,
-Version, Environment, Expected — and names `.agentmarshal/upstream/` as the
-convention for collecting findings until a batch is ready;
-`docs/proposals/README.md` explains how to follow a sent proposal afterwards
-by hashing the file. Between those documents sits everything an adopter
-does, and the tool touches none of it: nothing creates the directory,
-nothing writes a skeleton carrying the five fields, nothing looks at a draft
-before a batch leaves. The shape survives exactly as long as someone
-remembers it.
+The outbox is described in three documents. `CONTRIBUTING.md` gives the
+shape of a report — Symptom, Measurements, Version, Environment, Expected —
+and names `.agentmarshal/upstream/` as the convention for collecting
+findings until a batch is ready; `docs/proposals/README.md` explains how to
+follow a sent proposal afterwards by hashing the file; and `init` itself
+creates the directory and writes a README into it describing what belongs
+there, as it has since 0.2.0. Between those documents sits everything an
+adopter does with a finding, and the tool touches none of it: nothing
+writes a skeleton carrying the five fields into a new file, and nothing
+looks at a draft before a batch leaves. The shape survives exactly as long
+as someone remembers it.
 
 The name an adopter reaches for is already taken by something else.
 `agentmarshal finding` records a hash-pinned research finding **inside a

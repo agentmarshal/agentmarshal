@@ -28,8 +28,8 @@ record types present are exactly `opened`, `amendment`, `review`, `session`,
 concrete (importing research data into the CMS):
 
 - The candidate passed the reviewer twice and passed `gate` twice.
-- Both times the required check failed in CI on the same assertion: `POST
-  /api/resources (500)`.
+- Both times the required check failed in CI on the same assertion on one
+  API endpoint, which returned 500.
 - Both times the implementer's next round was driven by the reviewer's prose
   only. It fixed six advisory findings across the two rounds and never
   touched the defect, because it did not know the defect existed.
