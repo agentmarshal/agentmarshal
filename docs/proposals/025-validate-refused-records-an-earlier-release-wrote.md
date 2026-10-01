@@ -1,6 +1,6 @@
 # 025 — `validate` refused records an earlier release wrote
 
-- **Reporter:** Adopter A (Python web service, Git hosting provider, Linux runner, vendored wheel) · **Observed on:** 0.4.0 · **Source:** `sha256:4b86c6ddfac756a2270d29c2b8041c680d82606ecb0806e41023307029c84ce6` · **Disposition:** accepted *(in part; the allowlist is declined)*
+- **Reporter:** Adopter A (Python web service on Linux) · **Observed on:** 0.4.0 · **Source:** `sha256:4b86c6ddfac756a2270d29c2b8041c680d82606ecb0806e41023307029c84ce6` · **Disposition:** accepted *(in part; the allowlist is declined)*
 
 ## Finding
 
