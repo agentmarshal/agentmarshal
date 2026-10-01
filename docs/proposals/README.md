@@ -98,7 +98,7 @@ same batch and took it back.
 | [031](031-the-contract-is-written-by-an-agent-and-nothing-governs-it.md) | The contract is written by an agent and judged by no one | D | accepted *(in part; the third suggestion withdrawn by the reporter)* | the contract hashes accepted, not shipped; the agreement record accepted, not shipped, with the contract-governance decision; the withdrawal in [033](033-contract-review-before-implementation-does-not-pay-off.md) |
 | [032](032-the-journal-has-no-time-axis.md) | The journal has no time axis | D | accepted | the documentation sentence on the CI cost of a journal transaction, session duration and lead time with the accounting rework alongside 018 and 024, and exposing the gate's existing journal-only lane to the required check with the journal-transactions work of 019 and 035 — all not shipped yet |
 | [033](033-contract-review-before-implementation-does-not-pay-off.md) | Contract review before implementation does not pay off — a measured withdrawal | D | accepted *(the withdrawal of [031](031-the-contract-is-written-by-an-agent-and-nothing-governs-it.md)'s third suggestion)* | nothing to ship; 031 names it |
-| [034](034-the-contract-does-not-name-its-implementer-and-reviewer.md) | The contract does not name its implementer and reviewer | D | accepted | `provider-limit` already documented since 0.4.1; the output-limit outcome value, the header fields, the gate checks and the `status` display accepted, not shipped yet — where the assignment lives sits with the undecided decision on the contract's roles |
+| [034](034-the-contract-does-not-name-its-implementer-and-reviewer.md) | The contract does not name its implementer and reviewer | D | accepted | `provider-limit` already documented since 0.4.1; the output-limit outcome value, the header fields, the gate checks and the `status` display accepted, not shipped yet — where the assignment lives sits with the undecided contract-governance decision |
 | [035](035-journal-transactions-sweep-records-of-other-tasks.md) | Journal transactions sweep other tasks' records | D | accepted | the per-task staging with 019's transaction helper, and the gate warning on another task's `opened`/`amendment` records and the `status` listing of unpublished records with it; not shipped yet |
 | [036](036-review-accepts-a-candidate-the-implementer-did-not-finish.md) | Review accepts a candidate the implementer did not finish | D | accepted | the session `commit` field, the refusal in `review` and `gate`, and the `status` display of the producing session; not shipped yet |
 | [037](037-review-crashes-on-a-diff-that-is-not-utf-8.md) | `review` crashes on a diff that is not UTF-8 | D | accepted *(a defect; the diff-size limit deferred)* | the decode fix shared with the leak scan of 026's fourth finding — root cause reproduced upstream from the scan side; not shipped yet |
@@ -131,7 +131,8 @@ leak scan a single binary file in the diff switches off.
 One finding from the reporter of the batch below, after twelve governed tasks
 with three executor models: the journal measures tokens, while the provider
 stopped work on an allowance of its own, so the evidence pointed away from the
-decision it was supposed to support. Accepted in part.
+decision it was supposed to support. Accepted; the part deferred at
+intake was accepted on 2026-10-01.
 
 | # | Theme | Reporter | Disposition | Where |
 |---|---|---|---|---|

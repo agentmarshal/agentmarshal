@@ -85,7 +85,9 @@ not shipped yet.
 already computes it: a candidate whose changes all sit under the journal
 prefix takes a deterministic lane — the transcript reads `PASS:
 journal-only transaction (deterministic lane; review not required)` —
-skipping the scope and review checks entirely. What is missing is that a
+skipping the scope and review checks entirely. In a sidecar placement
+the gate forces the lane off: the evidence lives in the sidecar, so a
+host candidate is work whatever paths it touches. What is missing is that a
 required check cannot ask for that answer without running the whole gate:
 the lane exists inside the verdict, not as a signal the check can read
 early and run light on. The accepted part is exposing the lane the gate
