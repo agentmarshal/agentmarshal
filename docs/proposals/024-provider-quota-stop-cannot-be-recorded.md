@@ -64,8 +64,8 @@ proposal 018's cost field waits for. What a session record should say about a
 provider's meter — its units, its window, when it refills — is one question,
 and it should be answered once rather than one field at a time. A new session
 field is also a record schema change, and 0.4.0 has just asked every adopter
-for a coordinated upgrade over three new schemas. That rework is not
-scheduled in any published release yet.
+for a coordinated upgrade over three new schemas. That rework is not scheduled
+in any published release yet.
 
 ## Where
 
