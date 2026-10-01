@@ -1,0 +1,15 @@
+Я прочитал контракт, весь диф и проверил утверждения дифа по коду и по уже опубликованным файлам.
+
+**Что проверено и сходится:**
+- Строка транскрипта `PASS: journal-only transaction (deterministic lane; review not required)` действительно есть в `src/agentmarshal/journal/gate.py:740`, и ветка `journal_only` пропускает contract/scope/review целиком (`gate.py:650`, `gate.py:737`) — поправка CR-124 в 032 фактически верна, как и то, что у `gate` нет флага, который отвечал бы на этот вопрос без полного прогона (`cli.py:206-253`).
+- Строгий декод в `review` сидит ровно там, куда указывает traceback 037: `review.py:198-215`, `encoding="utf-8"` без `errors=`; у гейта — `gate.py:252-257` с деградацией в WARN. Утверждение 037 про общий корень с четвёртой находкой 026 подтверждается текстом 026.
+- Утверждения 039 про `status` (`verdict=`/`findings=N`/`advisory=N` — `cli.py:547-551`), про отсутствие агрегации `changes_required`, про якоря `finding`/`brief` в 0.4.0 и про границу доверия ADR-0010 — верны.
+- Индексная строка 035 перечисляет все три принятые части; заголовок 033 согласован с телом; 024/026 несут одну и ту же диспозицию в header, Disposition, Where и строке индекса; карта документации получила все четыре строки; введение батча 2026-10-01 закрыто на четырнадцати файлах (027–040 — ровно 14 строк). Ссылок на неопубликованные релизы, документы или номера предложений в новых дайджестах нет. Изменение чисто документационное, последовательность CI (pytest/ruff/mypy/validate) им не затрагивается — запустить её здесь не дал sandbox, тесты содержимого proposals не проверяют.
+
+**Блокирующее:** введение батча 2026-09-18 в `docs/proposals/README.md:134` по-прежнему заканчивается словами «Accepted in part», тогда как эта же правка делает 024 принятым целиком — строка таблицы двумя строками ниже (`README.md:138`) и сам дайджест теперь говорят, что отложенного поля больше нет. Вступление противоречит диспозиции, которую задаёт эта задача, в файле, входящем в scope.
+
+**Совещательное:** 032 (`docs/proposals/032-the-journal-has-no-time-axis.md:84-86`) утверждает безоговорочно, что кандидат, все изменения которого лежат под journal prefix, уходит в детерминированную полосу, — в sidecar-размещении гейт принудительно ставит `journal_only = False` (`gate.py:651-657`), и оговорки об этом в дайджесте нет. И 034 (`docs/proposals/034-the-contract-does-not-name-its-implementer-and-reviewer.md:91-92,106`, строка индекса `README.md:101`) вводит второе имя для того же нерешённого вопроса — «the decision on the contract's roles», хотя тело тут же называет его «the contract-governance question», а строка 031 в индексе — «the contract-governance decision»; читатель, идущий по колонке Where, видит два разных решения.
+
+AGENTMARSHAL_VERDICT_BEGIN
+{"reviewed_commit": "9e42d80d3739dee4df570912d88627b5907aa964", "verdict": "changes_required", "findings": ["batch-2026-09-18-intro-still-says-accepted-in-part"], "advisory_findings": ["032-journal-only-lane-claim-omits-sidecar-exception", "034-second-name-for-the-contract-governance-decision"]}
+AGENTMARSHAL_VERDICT_END

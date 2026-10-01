@@ -1,0 +1,22 @@
+Проверил контракт и дифф против кода и опубликованных документов.
+
+**Что сошлось (проверено):**
+
+- **032** — ключевая правка из CR-124 верна по коду: `src/agentmarshal/journal/gate.py:651` вычисляет `journal_only = all(path.startswith(_JOURNAL_PREFIX) ...)`, строка транскрипта на `gate.py:740` совпадает дословно с цитатой в дижесте, `gate.py:652-654` действительно принудительно выключает lane в sidecar, а ветка `else` пропускается целиком — вместе со scope- и review-проверками. Флага, которым required check мог бы спросить про lane, не дёшево, у `gate` нет (`cli.py:206-245`), так что «the lane exists inside the verdict» — точно.
+- **037** — трассировка сверяется с деревом один в один: `cli.py:1349` это `return _run_review(...)` внутри `main`, `_run_review` на `cli.py:673`, `launch_review` на `review.py:1040`, диффовый вызов на `review.py:1096`, `subprocess.run(..., encoding="utf-8")` на `review.py:202` — строгий декод, ловится только `OSError`, то есть `UnicodeDecodeError` действительно улетает трассировкой. Со стороны gate — `gate.py:254` → `GateError` → `WARN: leak-scan skipped (...)` на `gate.py:1148`, скан пропускается целиком. Описание дефекта и то, что воспроизведено/не воспроизведено, сформулировано корректно.
+- **039** — `status` печатает `verdict= findings=N advisory=N` (`cli.py:550-551`) ✓; `brief` собирается из контракта, истории поправок, decisions и documents (`brief.py:176-341`), review-findings среди входов нет ✓; `finding` — hash-pinned research-запись (`records.py:845`) ✓; ADR-0010 опубликован и действительно рисует именно эту границу доверия.
+- **035**, **033**, **034** — остальные правки из CR-124 на месте: строка индекса 035 перечисляет все три принятые части, `034` Where теперь указывает на contract-governance decision (терм уже опубликован в 031), заголовок 033 согласован с телом.
+- **024/026** — диспозиции совпадают в заголовке, Disposition, Where и строке индекса; 028 и 030 говорят про `evidence` field «в review-evidentiality decision», без слова deferred, так что противоречия не возникло.
+- Индекс: 14 строк (027-040), введение батча финальное, карта `docs/README.md` получила четыре строки, все ссылки ведут на существующие файлы, незаопубликованных релизов/номеров/документов не нашёл.
+
+**Ограничения проверки:** исходных файлов репортёра 022-025 в снапшоте нет, поэтому дословность цитируемых измерений и соответствие диспозиций документу координатора я подтвердить не могу. Запуск `pytest`/`ruff`/`mypy` песочница не разрешила; дифф — только документация, ни один тест эти файлы не читает, так что риск по CI минимален, но «full CI sequence passes» я не исполнял.
+
+Ниже — два неблокирующих замечания.
+
+**advisory-031-contradicts-033-disposition** — `docs/proposals/031-the-contract-is-written-by-an-agent-and-nothing-governs-it.md:104` прямо говорит «We record the withdrawal rather than a disposition», а 033 теперь даёт отзыву именно диспозицию: заголовок `docs/proposals/033-contract-review-before-implementation-does-not-pay-off.md:3` — «accepted *(the withdrawal of proposal 031's third suggestion)*», секция — «Disposition — the withdrawal is accepted». Критерий «033's header agrees with its body» выполнен, но два опубликованных дижеста теперь расходятся. 031 не входит в scope этой задачи, поэтому починить его здесь нельзя — нужна поправка scope или отдельная задача. Побочно: Where у 033 остался «Nothing to ship: the file is a retraction», без слова accepted.
+
+**advisory-040-doctor-reads-no-records** — `docs/proposals/040-in-flight-steps-are-invisible-and-journal-writes-contend-on-one-checkout.md` в Disposition утверждает «since `status` and `doctor` read records straight from the working tree, such a record is visible in the same checkout at once». Про `status` это верно (`status.py:134-135`), про `doctor` — нет: `doctor.py:243` → `run_doctor()` выполняет проверки git, инициализации проекта, схемы, actor-переменной, reviewer-команды и CI-определения и не читает записи задач вообще. Утверждение той же природы, что и ошибка в 032, которую эта задача как раз исправляла; несущая мысль абзаца (запись в рабочем дереве видна без транзакции) остаётся верной, поэтому advisory, а не блокер.
+
+AGENTMARSHAL_VERDICT_BEGIN
+{"reviewed_commit": "3de8f919b7eeff0ae96a3bfa91029345051ace74", "verdict": "approved", "findings": [], "advisory_findings": ["advisory-031-contradicts-033-disposition", "advisory-040-doctor-reads-no-records"]}
+AGENTMARSHAL_VERDICT_END

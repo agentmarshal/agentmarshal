@@ -1,0 +1,35 @@
+{
+  "advisory_findings": [
+    "vocabulary-split-persists-018-cost-field-deferred",
+    "037-039-reporter-parts-without-explicit-disposition",
+    "038-init-scaffolds-the-outbox-reads-against-029",
+    "sources-and-dispositions-document-not-in-snapshot",
+    "ci-sequence-not-executed-uv-blocked"
+  ],
+  "artifacts": [
+    {
+      "hash": "dbfefc9945168fe66f8e0ec9a48d0c6c35a15fbd00b0e52a1ccf2bd89d5a4adc",
+      "ref": ".agentmarshal/journal/tasks/CR-125/artifacts/01M3VFB02K0Y0XBN6PMFJXHYAJ-review.md"
+    }
+  ],
+  "created_at": "2026-10-01T10:14:39.443105Z",
+  "findings": [
+    "040-visibility-reason-contradicts-working-tree-reads"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "7c040d88ac3f1ab3fb8ab04ec3b1a1e9edd31bcd",
+  "reviewed_contract": "e15b0fc2fccb9c8cf3e290821aaa0adf53a6419f6165c6bf3b331f310c3da775",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-125",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "changes_required"
+}
