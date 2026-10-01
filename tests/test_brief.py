@@ -108,14 +108,46 @@ def test_brief_states_the_journal_rule_as_the_gate_holds_it(
 
     briefing = capsys.readouterr().out
     assert "Do not edit anything under .agentmarshal/" not in briefing
-    enforced = briefing.split("Rules enforced by AgentMarshal:\n", 1)[1].split(
-        "\n\n", 1
-    )[0]
-    assert ".agentmarshal/" not in enforced
     project_rules = briefing.split("Rules the project follows:\n", 1)[1].split(
         "\n\n", 1
     )[0]
     assert "Nothing under .agentmarshal/journal/" in project_rules
+
+
+def test_brief_lists_each_rule_under_its_heading(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Each rule sits under the heading that matches who holds it."""
+
+    repo = _repo(tmp_path, monkeypatch)
+    _write_contract(repo)
+    capsys.readouterr()
+
+    assert main(["brief", "--task", "CR-001"]) == 0
+
+    briefing = capsys.readouterr().out
+    enforced = briefing.split("Rules enforced by AgentMarshal:\n", 1)[1].split(
+        "\n\n", 1
+    )[0]
+    project_rules = briefing.split("Rules the project follows:\n", 1)[1].split(
+        "\n\n", 1
+    )[0]
+
+    scope_rule = "- Change only paths declared in the scope above."
+    acceptance_rule = (
+        "- Satisfy every acceptance criterion; they are the definition of done."
+    )
+    journal_rule = "- Nothing under .agentmarshal/journal/"
+
+    assert scope_rule in enforced
+    assert acceptance_rule in enforced
+    assert journal_rule not in enforced
+
+    assert journal_rule in project_rules
+    assert scope_rule not in project_rules
+    assert acceptance_rule not in project_rules
 
 
 def _record_amendment(
