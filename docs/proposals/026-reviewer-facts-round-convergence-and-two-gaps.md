@@ -1,6 +1,6 @@
 # 026 — Unchecked reviewer facts, unconverging review rounds, and two further gaps
 
-- **Reporter:** Adopter A (Python web service on Linux) · **Observed on:** 0.3.0 · **Source:** `sha256:e84a6250930b3145f82be59bcce626562bbd439c048eb13cded9d38f92246d44` · **Disposition:** accepted *(in part; the `evidence` field and `review --since` are deferred)*
+- **Reporter:** Adopter A (Python web service on Linux) · **Observed on:** 0.3.0 · **Source:** `sha256:e84a6250930b3145f82be59bcce626562bbd439c048eb13cded9d38f92246d44` · **Disposition:** accepted *(in part; `review --since` is deferred)*
 
 One file, four findings, each with its own disposition below. All four were
 observed on a single task — a research document evaluating third-party Python
@@ -102,19 +102,21 @@ files, and keep the warning for the skipped files alone.
 **The unverifiable-fact wording** (finding 1) is accepted, to be done: a
 finding about a fact the reviewer could not check is stated as unconfirmed and
 lands as advisory, rather than asserting the fact and carrying
-`changes_required`. The `evidence` field is deferred — not refused: what a
-review record should say about how a claim was checked is the question of
-review evidentiality, where the same ask arrives from another adopter, and it
-should be answered once rather than one field at a time.
+`changes_required`. The `evidence` field was deferred at intake and moved to
+accepted on 2026-10-01 — into the same question of review evidentiality it
+waited on, where the same ask arrives from another adopter: what a review
+record should say about how a claim was checked is to be answered once
+rather than one field at a time. Not shipped yet.
 
 **Converging rounds** (finding 2) is accepted, into the decision on the
 finding lifecycle — the link between a task's review records, the
 new/persisting/resolved status of a finding, and the per-round count the
 reporter asks the gate to print are one machinery, and two further reports
-from another adopter land in the same decision. `review --since` is deferred:
-handing the reviewer a bounded diff and its own history is the right shape,
-and also the one most likely to change under whatever the lifecycle decision
-settles, so it waits for it rather than arriving first.
+from another adopter land in the same decision. `review --since` stays
+deferred: handing the reviewer a bounded diff and its own history is the
+right shape, and also the one most likely to change under whatever the
+lifecycle decision settles — whether rounds link at all is that decision's
+to settle, so the flag waits for it rather than arriving first.
 
 **Idempotent cost recording** (finding 3) is accepted. A write that is safe to
 repeat is the difference between a record and a trap, and a no-op with a
@@ -130,6 +132,7 @@ reporter proposes, so a binary file costs its own scan and not every file's.
 
 Nothing here is shipped yet. The protocol wording, `record-session
 --if-missing`, and the per-file leak scan are accepted; the release that
-carries them will say so in its changelog. The `evidence` field waits on the
-review-evidentiality decision, the lifecycle machinery on the
-finding-lifecycle decision, and `review --since` is deferred.
+carries them will say so in its changelog. The `evidence` field is accepted
+into the review-evidentiality decision, the lifecycle machinery waits on the
+finding-lifecycle decision, and `review --since` is deferred until it
+settles whether rounds link at all.

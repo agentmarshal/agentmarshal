@@ -1,6 +1,6 @@
 # 024 — A provider quota stop cannot be recorded, so a model choice rests on inference
 
-- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.3.0 · **Source:** `sha256:8c807aabe08af886625fdf8abefc02c7cdca2813d7ed1a06437b44e8717be135` · **Disposition:** accepted *(in part; the reset-time field is deferred)*
+- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.3.0 · **Source:** `sha256:8c807aabe08af886625fdf8abefc02c7cdca2813d7ed1a06437b44e8717be135` · **Disposition:** accepted *(the reset-time field deferred at intake, accepted 2026-10-01)*
 
 ## Finding
 
@@ -38,7 +38,7 @@ Measurements, as reported:
 3. Say plainly in the documentation that tokens are not cost for an executor
    metered in provider units.
 
-## Disposition — accepted for the vocabulary and the statement, deferred for the field
+## Disposition — accepted
 
 The finding is right about what the journal measures. A session record carries
 tokens and their provenance; the thing that stopped the reporter's work, and
@@ -59,15 +59,16 @@ that. Agreeing on the word is what lets two journals be compared; making the
 tool enforce or aggregate it is a change of behaviour, and belongs with the
 accounting rework below.
 
-**The reset-time field** is deferred, to the same rework of accounting that
-proposal 018's cost field waits for. What a session record should say about a
-provider's meter — its units, its window, when it refills — is one question,
-and it should be answered once rather than one field at a time. A new session
-field is also a record schema change, and 0.4.0 has just asked every adopter
-for a coordinated upgrade over three new schemas. That rework is not scheduled
-in any published release yet.
+**The reset-time field** was deferred at intake and moved to accepted on
+2026-10-01, into the same rework of accounting that proposal 018's cost
+field waits for. What a session record should say about a provider's meter
+— its units, its window, when it refills — is one question, to be answered
+once rather than one field at a time; and a new session field is a record
+schema change, which is why it lands in the rework rather than arriving
+alone. Accepted; not shipped yet.
 
 ## Where
 
-The statement and the vocabulary ship in 0.4.1. The field waits for the
-accounting rework.
+The statement and the vocabulary ship in 0.4.1. The reset-time field is
+accepted into the accounting rework, alongside proposal 018's cost field;
+not shipped yet.

@@ -64,6 +64,10 @@
 - [proposals/034-the-contract-does-not-name-its-implementer-and-reviewer.md](proposals/034-the-contract-does-not-name-its-implementer-and-reviewer.md) — review the finding on the contract that does not name its implementer and reviewer.
 - [proposals/035-journal-transactions-sweep-records-of-other-tasks.md](proposals/035-journal-transactions-sweep-records-of-other-tasks.md) — review the finding on journal transactions that sweep other tasks' records.
 - [proposals/036-review-accepts-a-candidate-the-implementer-did-not-finish.md](proposals/036-review-accepts-a-candidate-the-implementer-did-not-finish.md) — review the finding on review accepting an unfinished candidate.
+- [proposals/037-review-crashes-on-a-diff-that-is-not-utf-8.md](proposals/037-review-crashes-on-a-diff-that-is-not-utf-8.md) — review the finding on `review` crashing on a diff that is not UTF-8.
+- [proposals/038-an-adopter-setup-cannot-be-carried-to-the-next-repository.md](proposals/038-an-adopter-setup-cannot-be-carried-to-the-next-repository.md) — review the finding on an adopter setup that cannot be carried to the next repository.
+- [proposals/039-review-findings-do-not-feed-back-into-the-next-round.md](proposals/039-review-findings-do-not-feed-back-into-the-next-round.md) — review the finding on review findings that do not feed back into the next round.
+- [proposals/040-in-flight-steps-are-invisible-and-journal-writes-contend-on-one-checkout.md](proposals/040-in-flight-steps-are-invisible-and-journal-writes-contend-on-one-checkout.md) — review the finding on in-flight steps invisible to the journal and journal writes contending on one checkout.
 
 ## Contribute a change
 

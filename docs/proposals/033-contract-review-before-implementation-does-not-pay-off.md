@@ -1,6 +1,6 @@
 # 033 — Reviewing the contract before implementation does not pay off: a measured withdrawal
 
-- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.4.0 · **Source:** `sha256:46fcb32756b8597a687760e1fc23f4f4424d582034d32bf2cca87c17552df136` · **Disposition:** accepted *(it is the reporter's own measured withdrawal of proposal 031's third suggestion)*
+- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.4.0 · **Source:** `sha256:46fcb32756b8597a687760e1fc23f4f4424d582034d32bf2cca87c17552df136` · **Disposition:** recorded *(the withdrawal is the reporter's own — of proposal 031's third suggestion)*
 
 ## Finding
 

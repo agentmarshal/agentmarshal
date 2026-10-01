@@ -88,8 +88,8 @@ share. Accepted; not shipped yet.
 
 **The header fields, the gate checks and the `status` display** — the
 declared assignment next to what actually ran is the read side of the same
-declaration — are accepted together. Where the assignment lives is a
-decision on the tool's boundary that is not yet made: the reporter's
+declaration — are accepted together. Where the assignment lives sits with
+the decision on the contract's roles, which is not yet made: the reporter's
 header schema is on the table, and so are shapes that leave the contract
 unchanged and declare the assignment elsewhere the gate can read. It is
 the same contract-governance question the agreement record of proposal 031
@@ -103,5 +103,5 @@ and it should be settled once. Accepted; not shipped yet.
 the outcome value for an output-limit truncation is accepted, not shipped
 yet. The header fields, the gate checks and the `status` display of the
 declared assignment next to what ran are accepted, not shipped yet —
-they go with the decision on the tool's boundary, and where the
-assignment will live is undecided.
+where the assignment will live sits with the decision on the contract's
+roles, which is not yet made.
