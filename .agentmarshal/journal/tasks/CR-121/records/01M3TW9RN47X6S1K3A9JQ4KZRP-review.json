@@ -1,0 +1,28 @@
+{
+  "artifacts": [
+    {
+      "hash": "274f18d1a3c1398dba4b76719e8c6938d419cc4b71f79044fb3f1c3cc28cb334",
+      "ref": ".agentmarshal/journal/tasks/CR-121/artifacts/01M3TW9RN47X6S1K3A9JQ4KZRP-review.md"
+    }
+  ],
+  "created_at": "2026-10-01T04:41:56.132554Z",
+  "findings": [
+    "CR-121-acceptance-bullet-demoted"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "7856f82872af4a36cdd76dc64af570503c660de8",
+  "reviewed_contract": "31e2ff53ebcf63d9298d6e6d594d6538f3885cec656235bf2ed1f214f00dc991",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-121",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "changes_required"
+}
