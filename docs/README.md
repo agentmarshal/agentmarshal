@@ -54,6 +54,11 @@
 - [proposals/024-provider-quota-stop-cannot-be-recorded.md](proposals/024-provider-quota-stop-cannot-be-recorded.md) — review the finding on a provider quota stop the journal cannot record.
 - [proposals/025-validate-refused-records-an-earlier-release-wrote.md](proposals/025-validate-refused-records-an-earlier-release-wrote.md) — review the finding on `validate` refusing records an earlier release wrote.
 - [proposals/026-reviewer-facts-round-convergence-and-two-gaps.md](proposals/026-reviewer-facts-round-convergence-and-two-gaps.md) — review the digest of unchecked reviewer facts, unconverging review rounds, and two further gaps.
+- [proposals/027-advisory-findings-have-no-lifecycle.md](proposals/027-advisory-findings-have-no-lifecycle.md) — review the finding on advisory findings having no lifecycle.
+- [proposals/028-check-outcomes-are-not-evidence.md](proposals/028-check-outcomes-are-not-evidence.md) — review the finding on check outcomes the journal does not record.
+- [proposals/029-outbox-has-no-scaffold-and-its-name-is-taken.md](proposals/029-outbox-has-no-scaffold-and-its-name-is-taken.md) — review the finding on the missing outbox scaffold and the taken `finding` name.
+- [proposals/030-review-verdicts-do-not-say-what-was-executed.md](proposals/030-review-verdicts-do-not-say-what-was-executed.md) — review the finding on verdicts that do not say what was executed.
+- [proposals/031-the-contract-is-written-by-an-agent-and-nothing-governs-it.md](proposals/031-the-contract-is-written-by-an-agent-and-nothing-governs-it.md) — review the finding on the agent-written contract nothing governs.
 
 ## Contribute a change
 
