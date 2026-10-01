@@ -91,7 +91,8 @@ same commit without the binary file reported the string. The gate decodes the
 entire `git diff` output strictly as UTF-8, so one file's undecodable bytes
 fail the decode and every file in the diff goes unscanned. The same root cause
 — strict decoding of git's output — reached us from another adopter, whose
-`agentmarshal review` run died on it; the two reports are one defect.
+`agentmarshal review` run died on it (proposal 037); the two reports are one
+defect.
 
 The reporter proposes scanning per file: skip what `git diff --numstat` marks
 with `-`, or what `Binary files differ` reports, with a note, scan the text
@@ -125,8 +126,9 @@ reporter's three attempts converge on.
 
 **The skipped leak scan** (finding 4) is accepted as a defect, reproduced
 upstream on 2026-10-01 as described above, and sharing its root cause with the
-other adopter's report from `review`: the fix is the per-file scan the
-reporter proposes, so a binary file costs its own scan and not every file's.
+other adopter's report from `review`, proposal 037: the fix is the per-file
+scan the reporter proposes, so a binary file costs its own scan and not every
+file's.
 
 ## Where
 

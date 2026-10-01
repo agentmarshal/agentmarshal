@@ -112,7 +112,9 @@ not shipped yet.
 presuppose the lifecycle machinery they would hang from: a self-check built
 on recurring classes needs the classes to exist, and a project-level base of
 triaged findings is the lifecycle's own storage question, so they wait for
-the same decision rather than arriving before it.
+the same decision rather than arriving before it. The refusal the proposal
+asks `gate` and `complete` to make while a task's findings are untriaged is
+that base read at the gate, so it waits on the same decision too.
 
 **The plugin interface** for lifecycle steps — the reporter's fallback for
 the case that a lifecycle step sits outside the tool — is declined, by us:

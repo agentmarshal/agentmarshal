@@ -70,9 +70,9 @@ by reading the code — the strict decode sits in the git helper where the
 traceback puts it — but the reporter's crash itself was not re-run.
 
 The fix is one question for both commands: a diff that is not wholly text must
-still reach the reviewer, or be refused, per file — a file that does not
-decode should cost its own readability, not every file's review and not the
-whole scan. Accepted; not shipped yet.
+still reach the reviewer, or be refused — per file, and naming it; a file
+that does not decode should cost its own readability, not every file's
+review and not the whole scan. Accepted; not shipped yet.
 
 **The diff-size limit** is deferred — by us. Whether the tool should refuse a
 diff on size at all, and at what size, is a policy it would be choosing for

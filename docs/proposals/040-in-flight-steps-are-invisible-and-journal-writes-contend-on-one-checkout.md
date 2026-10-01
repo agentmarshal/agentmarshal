@@ -1,6 +1,6 @@
 # 040 — In-flight steps are invisible to the journal, and journal writes contend on one checkout
 
-- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.4.0 · **Source:** `sha256:4121e437dc67e47481e9bd1347a06844accc3306fed1a011f71da2b490287dd8` · **Disposition:** accepted *(in part; the stuck-step visibility is met by a supplied watcher template, not a record type)*
+- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.4.0 · **Source:** `sha256:4121e437dc67e47481e9bd1347a06844accc3306fed1a011f71da2b490287dd8` · **Disposition:** accepted *(in part; whether the stuck-step visibility is met by a record or a supplied watcher template is not yet decided)*
 
 ## Finding
 
@@ -69,7 +69,7 @@ project:
    wait for checks itself, but the recommended workflow makes every adopter
    write such a wait.
 
-## Disposition — the fail-fast rule and the checkout-free write accepted; the visibility need met by a supplied template
+## Disposition — the fail-fast rule and the checkout-free write accepted; how the visibility need is met is not yet decided
 
 **The fail-fast rule** for waits on provider checks is accepted as
 documentation: the workflow this project publishes is what makes every
@@ -77,18 +77,17 @@ adopter write such a wait, and the reporter's first stall is the failure
 mode the rule exists for — a pull request that can never start its check was
 waited on for 45 minutes. Accepted; to be written.
 
-**The visibility of stuck steps** — the need is accepted, and it is met by a
-watcher template the project supplies rather than by a record type in the
-journal. The reason is the workflow the project recommends for a protected
-base branch — the pattern of proposal 019 — not the journal's mechanics:
-the tool writes records into the working tree and leaves committing to the
-adopter, but under that workflow every journal write is a transaction
-through a pull request and its required check, so a record saying "this
-step is running" could only appear once that transaction had cleared —
-minutes late, queued behind the very convoy it is meant to expose. A
-step's liveness lives where the step does — the run, the lock, the
-provider's API — so the project supplies a watcher for those places as a
-template, checked against its own cycle the same way the adopter layer of
+**The visibility of stuck steps** — the need is accepted; whether it is met
+by a record type in the journal or by a watcher template the project
+supplies is not yet decided, and is settled with the decision on what the
+tool does itself. The record is the reporter's own shape: a started record
+with a deadline that the step's normal record closes, the overdue ones
+shown by `status` and `doctor` — and since `status` and `doctor` read
+records straight from the working tree, such a record is visible in the
+same checkout at once; a journal transaction is needed only for other
+checkouts and the base branch. The template watches a step's liveness where
+the step lives — the run, the lock, the provider's API — supplied and
+checked against the project's own cycle the same way the adopter layer of
 proposal 038 is supplied. Not shipped yet.
 
 **Journal writes without the working tree** are accepted, into the
@@ -100,7 +99,7 @@ question answered further. Accepted; not shipped yet.
 ## Where
 
 Nothing here is shipped yet. The fail-fast rule for waits on provider checks
-is accepted as documentation, to be written; the stuck-step watcher is
-accepted as a template the project supplies, not a record type; the
-checkout-free journal write goes with the transaction helper of proposals
-019 and 035.
+is accepted as documentation, to be written; the stuck-step visibility need
+is accepted, with a record or a supplied watcher template not yet decided;
+the checkout-free journal write goes with the transaction helper of
+proposals 019 and 035.

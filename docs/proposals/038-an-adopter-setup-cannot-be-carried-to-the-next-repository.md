@@ -4,7 +4,7 @@
 
 ## Finding
 
-`init` writes the project file and scaffolds the outbox; the journal has its
+`init` writes the project file and creates the outbox; the journal has its
 fixed path from the first record written into it. Everything else that makes
 the governed loop work in practice lives outside the tool, in the adopter's
 repository, grown there task by task. The reporter's inventory of that
@@ -92,7 +92,7 @@ a newer layout or profile format.
 ## Disposition — the need is accepted, met by a supplied adopter kit; the profile commands are deferred
 
 The measurement answers the design question before it is asked: **16 wrapper
-scripts, about 2,700 lines**, **3,800** lines of tests, six places, and every
+scripts, about 2,700 lines**, **about 3,800** lines of tests, six places, and every
 adopter growing the same layer from scratch — the transaction helper of
 proposal 019 and the outbox scaffold of proposal 029 are two more pieces of
 it. A second repository inheriting "a layout nobody designed" is what a
