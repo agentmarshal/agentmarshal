@@ -6,12 +6,13 @@ Nothing in this release requires action beyond installing it. Its one behaviour
 change is the refusal below; the rest of what landed is documentation and the
 release machinery of this repository.
 
-**Coming from 0.3.0? Go straight to 0.4.1.** The section below it describes the
-step from 0.3.0 and names `==0.4.0` throughout, because that is the release it
-was written for; everything it says about coordinating the cutover holds for
-0.4.1 as well. Pin `==0.4.1` instead: a journal an earlier release wrote can
-carry a record 0.4.0 refuses, and the records of a closed task cannot be
-repaired.
+**Coming from 0.3.0? Go straight to 0.4.1.** The `0.3.0 → 0.4.0` section below
+describes the step from 0.3.0 and names `==0.4.0` throughout, because that is
+the release it was written for; everything it says about coordinating the
+cutover holds for 0.4.1 as well, and where it asks to verify the installed
+version is `0.4.0`, such an installation verifies `0.4.1`. Pin `==0.4.1`
+instead: a journal an earlier release wrote can carry a record 0.4.0 refuses,
+and the records of a closed task cannot be repaired.
 
 ### A review record refused over a space separator
 

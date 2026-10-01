@@ -16,10 +16,11 @@ tightening this task exists to undo. It is recorded as an open question, not
 decided here. Both raise
 `… must not contain control characters`. A third copy of the test, written
 inline, guards a review artifact's `ref` in `validate.py` — on the read side,
-where this task's retroactivity applies. Two further callers reach the record
-predicate through its own name: `artifacts.py` checks an artifact's `name` and
-`extensions.py` an extension's, and both of those become a single path component
-on disk, checked separately for exactly that.
+where this task's retroactivity applies. Two further callers guard a name that
+becomes a single path component on disk, checked separately for exactly that:
+`artifacts.py` reaches the record predicate through its own name for an
+artifact's `name`, and `extensions.py` reaches it through `contracts.py`'s
+`reject_control_characters` wrapper for an extension's.
 
 Validation runs on read as well as on write: `validate` loads every task, and
 loading validates each record. So a rule tightened in a release reaches records
