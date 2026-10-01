@@ -8,9 +8,9 @@ scope = [
 ]
 acceptance = [
   "the rule `agentmarshal brief` prints about .agentmarshal/ says that nothing under .agentmarshal/journal/ is the implementer's to edit, and that another file under .agentmarshal/ may change only when the task's scope names it — the rule AGENTS.md states",
-  "every rule the brief lists under its heading of rules the tool enforces is one the gate actually checks; a rule the gate does not check is either removed from that list or moved under a heading that does not claim enforcement, checked against src/agentmarshal/journal/gate.py",
+  "each rule the brief lists sits under a heading that says truthfully whether the gate checks it, verified against src/agentmarshal/journal/gate.py: under the heading of rules the gate checks — the candidate stays within the scope; journal records and artifacts are append-only; merging requires an approving review of this exact commit; under the heading of rules the project follows — satisfy every acceptance criterion, which the gate does not check and the reviewer judges; and the journal rule of criterion 1",
   "a test asserts the new rule's text, and a test asserts the old wording 'Do not edit anything under .agentmarshal/' no longer appears in a brief",
-  "the brief's other content and order are unchanged, and the full CI sequence passes",
+  "the brief's content outside its lists of rules is unchanged, each rule's text is asserted by one test rather than repeated across several, and the full CI sequence passes",
 ]
 +++
 
@@ -38,6 +38,19 @@ enforcement only for what the gate enforces.
 ## Acceptance Criteria
 
 As in the header.
+
+## Amended 2026-10-01
+
+Criteria 2 and 4 contradicted each other on one line. Criterion 2 required every
+rule under the enforcement heading to be one the gate checks; criterion 4 kept
+the brief's order and content unchanged — and the line "Satisfy every
+acceptance criterion" sat under that heading. The gate does not check
+acceptance criteria; it requires an approving review, and the reviewer judges
+the criteria. Two review rounds pulled the line in opposite directions. The
+criteria now give the classification itself: what the gate checks — scope,
+append-only evidence, an approving review of the exact commit — and what the
+project asks without the gate checking it. Criterion 4 now freezes only the
+brief outside its rule lists, and asks for one test per rule text.
 
 ## Non-Goals
 

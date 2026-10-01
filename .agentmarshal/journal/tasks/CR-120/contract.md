@@ -21,7 +21,6 @@ acceptance = [
   "the full CI sequence passes",
 ]
 decisions = ["ADR-0010"]
-documents = ["openspec/specs/"]
 +++
 
 # CR-120: OpenSpec 1.12.0 -> 1.13.2
@@ -48,6 +47,16 @@ relies on changed.
 ## Acceptance Criteria
 
 As in the header.
+
+## Amended 2026-10-01
+
+The header named `openspec/specs/` as a document of this task, and the gate
+holds a named document to being touched; the Non-Goals forbid changing any
+baseline spec. A correct candidate satisfies one or the other, never both, and
+the gate refused the implementation on exactly that line. The documents field
+goes: this task upgrades the tool and leaves every spec as it is. The context
+also miscounted the versions published since 1.12.0 — there are four (1.13.0,
+1.13.1, 1.13.2, 1.14.0), not three.
 
 ## Non-Goals
 
