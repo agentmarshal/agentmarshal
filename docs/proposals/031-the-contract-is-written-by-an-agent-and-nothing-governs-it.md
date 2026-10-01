@@ -1,6 +1,6 @@
 # 031 — In an agent-driven loop the contract is written by an agent, and nothing governs it
 
-- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.4.0 · **Source:** `sha256:078b04248fd260856bb44ad4d893de8ef9d61360200bc065e9a1c144b77884f0` · **Disposition:** accepted *(in part; the agreement record is deferred, and the reporter withdrew the third suggestion)*
+- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.4.0 · **Source:** `sha256:078b04248fd260856bb44ad4d893de8ef9d61360200bc065e9a1c144b77884f0` · **Disposition:** accepted *(in part; the reporter withdrew the third suggestion)*
 
 ## Finding
 
@@ -12,9 +12,11 @@ coordinating agent that then launches the implementer, launches the
 reviewer and records completion. The party that defines what "correct"
 means is inside the loop being measured.
 
-The tool has one control here and it is real: a review record pins the
-contract it judged with a sha256, so "the reviewer judged this exact text"
-is verifiable. Everything around that is unrecorded — the `opened` record
+The tool has one control here and it is real: `review` writes a sha256 of
+the contract it judged into the review record, so "the reviewer judged
+this exact text" is verifiable for the reviews the launcher ran —
+`submit-review`, which records a verdict arrived at outside it, carries
+no such pin. Everything around that is unrecorded — the `opened` record
 carries no hash of the contract it opens; the `amendment` record carries a
 free-text reason written by the same actor that writes the contract, and no
 hash of either the old or the new text, so the journal cannot show how the
@@ -64,9 +66,10 @@ subject.**
 ## Proposed
 
 - **Pin the contract wherever it is written, not only where it is read** — a
-  sha256 in the `opened` record and in each `amendment`, exactly as the
-  review record already does, so the measure's history is auditable and
-  `brief` and `report` can say which version a candidate was built against.
+  sha256 in the `opened` record and in each `amendment`, exactly as
+  `review` already does in the record it writes, so the measure's history
+  is auditable and `brief` and `report` can say which version a candidate
+  was built against.
 - **A record for agreement** — an actor states approval of a named contract
   hash. The gate need not require it by default; what matters is that its
   absence becomes visible instead of invisible, so an adopter whose rules
@@ -79,19 +82,22 @@ subject.**
 
 ## Disposition — each part on its own
 
-**The contract hashes** are accepted. The review record already proves the
-primitive works — "the reviewer judged this exact text" is verifiable — and
-the same pin on `opened` and each `amendment` makes the measure's history
-auditable for the same reason. Accepted; not shipped yet.
+**The contract hashes** are accepted. The records `review` writes already
+prove the primitive works — "the reviewer judged this exact text" is
+verifiable — and the same pin on `opened` and each `amendment` makes the
+measure's history auditable for the same reason. Accepted; not shipped
+yet.
 
-**The agreement record** is accepted, deferred. It is a new record type, and
+**The agreement record** is accepted. It is a new record type, and
 this project decides record types in an architecture decision before it
 builds them — this one belongs to the decision on contract governance that
-the deferred parts of this batch's later files also wait on. Accepted; not
+this batch's later files also wait on. Accepted; not
 shipped yet.
 
 **The pre-implementation contract review** — the reporter withdrew it in a
-later file of this batch, with measurements. They built it, ran it against
+later file of this batch, published as
+[proposal 033](033-contract-review-before-implementation-does-not-pay-off.md),
+with measurements. They built it, ran it against
 one contract, and measured seven review passes costing more than a whole
 candidate-review cycle, without the task ever reaching an implementer:
 a contract has nothing to be checked against, so the review has no stopping
@@ -102,5 +108,6 @@ in that file's own digest. The first two parts stand unaffected.
 ## Where
 
 Nothing here is shipped yet. The contract hashes in `opened` and `amendment`
-are accepted; the agreement record waits on the contract-governance
-decision; the third suggestion is withdrawn by the reporter.
+are accepted; the agreement record is accepted, with the contract-governance
+decision; the third suggestion is withdrawn by the reporter
+([033](033-contract-review-before-implementation-does-not-pay-off.md)).

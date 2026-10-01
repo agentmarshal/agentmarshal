@@ -1,6 +1,6 @@
 # 028 — Check outcomes are not evidence: a candidate can fail CI repeatedly and leave no trace
 
-- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.3.0 · **Source:** `sha256:32dacfd47249e16b2ac1f76656f4ef7f585019a8f405d5bcbe58542920dd9bf7` · **Disposition:** accepted *(as a piece of work; deferred — it is a new record type)*
+- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.3.0 · **Source:** `sha256:32dacfd47249e16b2ac1f76656f4ef7f585019a8f405d5bcbe58542920dd9bf7` · **Disposition:** accepted
 
 ## Finding
 
@@ -63,7 +63,7 @@ Make a check outcome a record, and let `brief` read it:
 - `report` counts rejected candidates alongside rounds and cost, so "how
   much did CI rejection cost us" becomes answerable.
 
-## Disposition — accepted as a piece of work, deferred
+## Disposition — accepted
 
 Real, measured, and an asymmetry the journal should not carry: a pass can be
 attested on the way to `completed`; a fail cannot be recorded anywhere — not
@@ -73,7 +73,13 @@ refused, is not neutral about failure; it is silent about it.
 
 It is also a new record type, and this project decides record types in an
 architecture decision before it builds them. This one goes into
-the review-evidentiality decision — where the `evidence` field
-deferred in proposal 026 and the executed-versus-read field of proposal 030
-already wait: what a record should say about how a claim was checked is one
+the review-evidentiality decision — the same one the `evidence` field of
+proposal 026 and the executed-versus-read field of proposal 030 are in:
+what a record should say about how a claim was checked is one
 question, and it should be answered once. Accepted; not shipped yet.
+
+## Where
+
+Accepted; not shipped yet. The `check` record goes with the
+review-evidentiality decision — the same one the `evidence` field of
+proposal 026 and the executed-versus-read field of proposal 030 are in.

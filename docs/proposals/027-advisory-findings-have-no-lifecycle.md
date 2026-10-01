@@ -82,10 +82,17 @@ shape — the gate checks that an answer exists, not which answer; accepting a
 defect stays a cheap, legitimate decision, and silence stops being one.
 Accepted; not shipped yet.
 
-**The rename** is declined. `approved` is a word in the record vocabulary,
+**The rename** is declined — by us, upstream: the reporter proposed it and
+we are the ones refusing it. `approved` is a word in the record vocabulary,
 written into every review record every journal holds and read by every
 wrapper that consumes them; renaming it rewrites the meaning of evidence
 already recorded. The reporter's fallback is taken instead: the
 documentation will state that `approved` means "the acceptance criteria are
 met", so the misreading stops costing each adopter a defect to learn.
 Accepted for documentation; not shipped yet.
+
+## Where
+
+Nothing here is shipped yet. The advisory-finding dispositions wait on the
+finding-lifecycle decision; the documentation stating what `approved` means
+is accepted, to be written. The rename is declined by us.
