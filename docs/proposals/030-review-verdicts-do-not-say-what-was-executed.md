@@ -1,6 +1,6 @@
 # 030 — A verdict does not say what the reviewer executed and what it only read
 
-- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.4.0 for the mechanism and 0.3.0 for the historical measurements · **Source:** `sha256:100633253ea653cd4523320fb9c4ff5cf096ea20cbe1d402ad0574855b15aed3` · **Disposition:** accepted *(as a piece of work; deferred — a field on the review record)*
+- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.4.0 for the mechanism and 0.3.0 for the historical measurements · **Source:** `sha256:100633253ea653cd4523320fb9c4ff5cf096ea20cbe1d402ad0574855b15aed3` · **Disposition:** deferred
 
 ## Finding
 
@@ -73,3 +73,9 @@ decision the `evidence` field deferred in proposal 026 and the `check`
 record of proposal 028 wait on. What a record should say about how a claim
 was checked is one question, and it should be answered once rather than one
 field at a time. Accepted; not shipped yet.
+
+## Where
+
+Deferred, and nothing here is shipped yet. The executed-versus-read field
+waits on the review-evidentiality decision — with the `evidence` field of
+proposal 026 and the `check` record of proposal 028.

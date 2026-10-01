@@ -1,6 +1,6 @@
 # 028 — Check outcomes are not evidence: a candidate can fail CI repeatedly and leave no trace
 
-- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.3.0 · **Source:** `sha256:32dacfd47249e16b2ac1f76656f4ef7f585019a8f405d5bcbe58542920dd9bf7` · **Disposition:** accepted *(as a piece of work; deferred — it is a new record type)*
+- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.3.0 · **Source:** `sha256:32dacfd47249e16b2ac1f76656f4ef7f585019a8f405d5bcbe58542920dd9bf7` · **Disposition:** deferred
 
 ## Finding
 
@@ -77,3 +77,9 @@ the review-evidentiality decision — where the `evidence` field
 deferred in proposal 026 and the executed-versus-read field of proposal 030
 already wait: what a record should say about how a claim was checked is one
 question, and it should be answered once. Accepted; not shipped yet.
+
+## Where
+
+Deferred, and nothing here is shipped yet. The `check` record waits on the
+review-evidentiality decision — the same one the `evidence` field of
+proposal 026 and the executed-versus-read field of proposal 030 wait on.

@@ -59,6 +59,11 @@
 - [proposals/029-outbox-has-no-scaffold-and-its-name-is-taken.md](proposals/029-outbox-has-no-scaffold-and-its-name-is-taken.md) — review the finding on the missing outbox scaffold and the taken `finding` name.
 - [proposals/030-review-verdicts-do-not-say-what-was-executed.md](proposals/030-review-verdicts-do-not-say-what-was-executed.md) — review the finding on verdicts that do not say what was executed.
 - [proposals/031-the-contract-is-written-by-an-agent-and-nothing-governs-it.md](proposals/031-the-contract-is-written-by-an-agent-and-nothing-governs-it.md) — review the finding on the agent-written contract nothing governs.
+- [proposals/032-the-journal-has-no-time-axis.md](proposals/032-the-journal-has-no-time-axis.md) — review the finding on the journal's missing time axis.
+- [proposals/033-contract-review-before-implementation-does-not-pay-off.md](proposals/033-contract-review-before-implementation-does-not-pay-off.md) — review the measured withdrawal of contract review before implementation.
+- [proposals/034-the-contract-does-not-name-its-implementer-and-reviewer.md](proposals/034-the-contract-does-not-name-its-implementer-and-reviewer.md) — review the finding on the contract that does not name its implementer and reviewer.
+- [proposals/035-journal-transactions-sweep-records-of-other-tasks.md](proposals/035-journal-transactions-sweep-records-of-other-tasks.md) — review the finding on journal transactions that sweep other tasks' records.
+- [proposals/036-review-accepts-a-candidate-the-implementer-did-not-finish.md](proposals/036-review-accepts-a-candidate-the-implementer-did-not-finish.md) — review the finding on review accepting an unfinished candidate.
 
 ## Contribute a change
 

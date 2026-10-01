@@ -73,3 +73,11 @@ command group covering the whole life of a finding — scaffold, validation,
 batching and sending, and reporting back the disposition of what was sent —
 the intake half here, the delivery half there, sharing the file and the
 hash. Its name will not be `finding`. Accepted; not shipped yet.
+
+## Where
+
+Nothing here is shipped yet. The scaffold and the outbox validation are
+accepted into the command group proposal 023 asked for — one group covering
+the life of a finding: scaffold, validation, batching and sending, and
+reporting back the disposition of what was sent. Its name will not be
+`finding`.

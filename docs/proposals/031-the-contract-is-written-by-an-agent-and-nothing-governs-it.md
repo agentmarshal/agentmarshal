@@ -91,7 +91,9 @@ the deferred parts of this batch's later files also wait on. Accepted; not
 shipped yet.
 
 **The pre-implementation contract review** — the reporter withdrew it in a
-later file of this batch, with measurements. They built it, ran it against
+later file of this batch, published as
+[proposal 033](033-contract-review-before-implementation-does-not-pay-off.md),
+with measurements. They built it, ran it against
 one contract, and measured seven review passes costing more than a whole
 candidate-review cycle, without the task ever reaching an implementer:
 a contract has nothing to be checked against, so the review has no stopping
@@ -103,4 +105,5 @@ in that file's own digest. The first two parts stand unaffected.
 
 Nothing here is shipped yet. The contract hashes in `opened` and `amendment`
 are accepted; the agreement record waits on the contract-governance
-decision; the third suggestion is withdrawn by the reporter.
+decision; the third suggestion is withdrawn by the reporter
+([033](033-contract-review-before-implementation-does-not-pay-off.md)).
