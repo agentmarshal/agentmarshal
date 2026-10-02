@@ -1,0 +1,26 @@
+## Review of CR-127 — per-file leak scan
+
+I read the implementation (`capture.py`'s `decode_diff_per_file` / `_decode_section_lossy` / `_undecodable_section_name`, `gate.py`'s `_run_git_bytes` + `leak_scan_diff`, `cli.py`'s `_run_leak_scan`), the archived change, the merged live spec, and the new tests.
+
+The core of the change is right. The per-section split on a zero-width `^(?=diff --git )` lookahead is sound — hunk bodies are always prefixed, so no content line can open a false section, and `"".join` of strictly-decoded sections reproduces the old whole-stream decode byte for byte, so a clean diff takes exactly the old path. The `backslashreplace`-for-headers / `replace`-for-content split is the right call and the reasoning in design.md about U+FFFD keeping `\b` intact for `\b(?:ghp|…)_[A-Za-z0-9]{36}\b` holds. All six delta-spec scenarios have a test whose docstring names them, the deliberate behaviour replacement in `tests/test_leak_scan.py` is the only existing test touched, `_run_git`'s refactor is a strict improvement (a failing git command with non-UTF-8 stderr now reports the failure rather than the decode), the duplicated flag list is gone, and `test_gate_refuses_non_utf8_git_output` still holds because `_changed_with_status` keeps its strict `_run_git`.
+
+One thing blocks.
+
+**The new undecodable-file names are printed raw, bypassing `safe_path` — so a path that itself carries a secret now reaches the operator's terminal and CI log.** `src/agentmarshal/journal/gate.py:1190` and `src/agentmarshal/cli.py:1303` both interpolate the names straight out of `decode_diff_per_file`. Every other path the scan prints goes through `safe_path(path, private_markers)` inside `scan_diff_for_leaks` (`capture.py:592`, `capture.py:607`), which is exactly why `tests/test_capture.py:420` pins `configs/<private marker #1>/one.json`. `decode_diff_per_file` is pure and marker-free so it cannot redact, and neither caller redacts afterwards even though `markers` is in scope at both sites. Concretely: a project declaring the private marker `internal.corp.example` and a candidate adding a binary asset at `vendor/internal.corp.example/logo.png` — non-UTF-8 under `--text`, so it lands in `undecodable` — makes the gate print `WARN: leak-scan could not decode as UTF-8 (added bytes still searched): vendor/internal.corp.example/logo.png`, and `leak-scan` print the same on stderr. The marker's value is the sensitive string. Same for a built-in signature in a filename (`keys/AKIAIOSFODNN7EXAMPLE.bin`). This contradicts contract criterion 4 ("no private marker's value and no path carrying a secret is printed"), the live spec's Purpose at `openspec/specs/leak-scan/spec.md:5` ("the scan's own output must never carry the thing it is looking for, including in a path"), and the standing requirement at `openspec/specs/leak-scan/spec.md:17` ("A path that carries a secret SHALL NOT be printed either … and SHALL be described the way that marker or signature is named") — a requirement the change neither modifies nor mentions. No test covers it in either caller, which is how it got through; the fix is `safe_path` at both print sites plus a test on each, in the shape of `tests/test_capture.py:420`.
+
+Two smaller, non-blocking points.
+
+**The comment block introducing `_run_leak_scan` still claims every git call is funnelled through `_leak_scan_git` and that non-UTF-8 content is a clean refusal.** `src/agentmarshal/cli.py:1222-1223` reads "Every git call goes through `_leak_scan_git`, so non-UTF-8 paths/content are a clean refusal, never a traceback". After this change the diff goes through `leak_scan_diff`, only the merge-base resolution still uses `_leak_scan_git`, and non-UTF-8 content is deliberately no longer a refusal — it is a per-file lossy decode. The claim is now the opposite of what the function does, in a repo that otherwise keeps its rationale comments exact.
+
+**The gate re-implements the "and N more not shown" bounding inline instead of reusing the one renderer.** `src/agentmarshal/journal/gate.py:1185-1191` hand-rolls the slice-and-count that `render_leak_hits` exists to own — and that renderer's own docstring (`capture.py:340`) says it is shared precisely so "warning detail therefore cannot silently diverge between their two call sites". The bounded-gate / unbounded-command split is an intentional design.md decision, but the rendering of the bound is now duplicated prose that can drift.
+
+I could not run the CI sequence (`pytest`, `ruff check`, `ruff format --check`, `mypy`) — this sandbox declined the invocations. I found no evidence of a failure: line lengths in the changed files are within the 88-char limit, the `try/append/continue`-`except/pass` form in `decode_diff_per_file` has a two-statement body so `SIM105` does not fire, and the new `test_gate.py` test's use of `main` is satisfied by the existing import at `tests/test_gate.py:11`. Criterion 5 is unverified rather than failing.
+
+AGENTMARSHAL_VERDICT_BEGIN
+{
+  "reviewed_commit": "46fafafa890c8e996644905a50c3408bc16eb585",
+  "verdict": "changes_required",
+  "findings": ["undecodable-names-bypass-safe-path"],
+  "advisory_findings": ["stale-leak-scan-git-comment", "duplicated-bounded-render-in-gate"]
+}
+AGENTMARSHAL_VERDICT_END
