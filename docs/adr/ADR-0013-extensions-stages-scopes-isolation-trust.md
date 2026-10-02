@@ -9,7 +9,9 @@ extensions with a declared footprint) and
 [ADR-0012](ADR-0012-what-the-tool-does-and-what-it-supplies.md) (an extension
 may drive the process), and on a separate decision on where local state lives.
 **It partly revisits ADR-0010:** the refusal of lifecycle hooks is lifted; the
-refusal of an installer stands. It answers
+refusal of an installer stands; and the shared switches file is excepted from
+"configuration is reviewed" — it alone changes without review, while a
+manifest still takes the diff lane with review. It answers
 [proposal 009](../proposals/009-lifecycle-extension-points.md).
 
 This ADR records a decision. The stages, manifest fields, commands, lanes and
@@ -170,8 +172,10 @@ after the merge.
     - a shared one — **only by an operational CR**: neither a flag nor a
       local setting can switch it off for a run.
 17. **An operational CR is a gate lane of its own**, next to the journal one:
-    the diff touches only `.agentmarshal/extensions/switches.toml` (name →
-    on/off, reason) and its own task's records; no review is required;
+    the diff touches only `.agentmarshal/switches.toml` (name →
+    on/off, reason) and its own task's records; no review is required — the
+    one file excepted from ADR-0010's rule that configuration is reviewed,
+    while a manifest still takes the diff lane with review;
     extensions' `pre-gate` stages do not run on it — otherwise a broken
     extension blocks its own switching off; the reason is mandatory; `status`
     and `doctor` show "switched off since CR so-and-so, reason". An adopter
@@ -188,7 +192,7 @@ after the merge.
     checks the envelope; a kind no manifest declares draws a warning —
     "addressee not found", not a refusal. What the body means is for the
     extension itself to check. Only a shared extension may write `ext`. The
-    envelope's schema belongs to the decision on the records model.
+    envelope's schema is decided separately.
 19. `doctor` lists the active extensions by scope: mode; isolation declared
     and enforced; the grant (hash, when granted); whether the directory
     matches the approved one; dependencies against the lock; the switch.
@@ -216,8 +220,8 @@ kinds = ["openspec/change-archived@1"] # ext kinds; a personal one has none
 
 [isolation]
 network = false
-env = []                               # always empty for pre-gate
-writes = "none"                        # none | process-log (post-gate only)
+env = []                               # variable names; no provider secrets at pre-gate
+writes = "none"                        # none | process-log (on a workstation; CI has no process log)
 timeout_seconds = 120
 ```
 
@@ -241,8 +245,9 @@ findings.
 - ADR-0010's refusal of an installer stands; approval, the directory-hash
   check, the dependency lock and switches are added.
 - Operator acceptance extends from review findings to extension pauses.
-- The gate gains a third lane — operational — alongside the regular and the
-  journal lanes.
+- The gate gains another lane — operational — alongside the regular, journal
+  and findings
+  ([ADR-0009](ADR-0009-research-findings-lifecycle.md)) lanes.
 - Switching off a shared check becomes easy, but not silent.
 - A "paused for me, not for my colleague" divergence is possible with
   personal extensions, and is always marked.

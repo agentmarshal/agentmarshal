@@ -56,8 +56,9 @@ A measured adopter need is met **by the tool** if it is a durable fact about
 the task, checkable against the repository's records with no live process;
 otherwise it is met by a **supplied compatible replacement**. The ADR-0001
 boundary holds for the core: it does not execute, does not schedule and holds
-no live state. An extension may drive the process; a separate decision on how
-extensions run governs that.
+no live state. An extension may drive the process;
+[ADR-0013](ADR-0013-extensions-stages-scopes-isolation-trust.md) governs how
+extensions run.
 
 ### 2. No refusal without a replacement
 
@@ -76,8 +77,9 @@ obligations:
   requests; a full task cycle passes under it; the gate refuses where it
   must; removal is clean; `validate` and `leak-scan` show no false positives;
 - a pinned version with a package-integrity value — the pin lives in the
-  extension's manifest, a form the separate decision on how extensions run
-  extends beyond ADR-0010's `version` field, which is informational and
+  extension's manifest, a form
+  [ADR-0013](ADR-0013-extensions-stages-scopes-isolation-trust.md) extends
+  beyond ADR-0010's `version` field, which is informational and
   pins nothing;
 - the pin re-reviewed with each release;
 - a `doctor` warning when the installed version is not the one checked —
@@ -150,7 +152,8 @@ imports no optional module; a test checks that.
 ### 7. What the core does not do
 
 The core does not run someone else's code in a way that could permit a merge
-— that belongs to the separate decision on how extensions run. It does not
+— that belongs to
+[ADR-0013](ADR-0013-extensions-stages-scopes-isolation-trust.md). It does not
 launch or schedule agents. It does not accept another execution
 environment's records in place of its own — revisited when an adopter asks.
 
