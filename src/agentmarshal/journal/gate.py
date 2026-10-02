@@ -24,6 +24,7 @@ from agentmarshal.journal.actors import finding_reviewer_identity_refusal
 from agentmarshal.journal.artifacts import artifact_path as artifact_path
 from agentmarshal.journal.capture import (
     CaptureError,
+    decode_diff_per_file,
     private_markers_from_project,
     render_leak_hits,
     scan_diff_for_leaks,
@@ -238,7 +239,7 @@ def run_findings_gate(journal_root: Path, task_id: str) -> GateReport:
     return GateReport(violations == 0, lines, "", finding_id or None)
 
 
-def _run_git(project_root: Path, arguments: list[str]) -> str:
+def _run_git_bytes(project_root: Path, arguments: list[str]) -> bytes:
     try:
         result = subprocess.run(
             ["git", *arguments],
@@ -248,17 +249,22 @@ def _run_git(project_root: Path, arguments: list[str]) -> str:
         )
     except OSError as error:
         raise GateError(f"cannot run git: {error}") from error
+    if result.returncode != 0:
+        stderr = result.stderr.decode("utf-8", errors="replace")
+        stdout = result.stdout.decode("utf-8", errors="replace")
+        detail = stderr.strip() or stdout.strip()
+        raise GateError(f"git {' '.join(arguments)} failed: {detail}")
+    return result.stdout
+
+
+def _run_git(project_root: Path, arguments: list[str]) -> str:
+    stdout = _run_git_bytes(project_root, arguments)
     try:
-        stdout = result.stdout.decode("utf-8")
-        stderr = result.stderr.decode("utf-8")
+        return stdout.decode("utf-8")
     except UnicodeDecodeError as error:
         # git permits arbitrary non-NUL bytes in path names; a non-UTF-8
         # path is a controlled refusal, never a traceback.
         raise GateError(f"git produced non-UTF-8 output: {error}") from error
-    if result.returncode != 0:
-        detail = stderr.strip() or stdout.strip()
-        raise GateError(f"git {' '.join(arguments)} failed: {detail}")
-    return stdout
 
 
 def _resolve_commit(project_root: Path, reference: str) -> str:
@@ -523,6 +529,46 @@ def markers_from_tree(project_root: Path, tree_ref: str) -> tuple[str, ...]:
     if not isinstance(data, dict):
         raise ValueError("project.json is not a JSON object")
     return private_markers_from_project(data)
+
+
+def leak_scan_diff(
+    project_root: Path, merge_base: str, commit: str
+) -> tuple[str, list[str]]:
+    """Return the candidate diff decoded per file, and the files it could not decode.
+
+    The gate's advisory scan and the ``leak-scan`` command share this helper so
+    the two cannot degrade differently: ``_run_git_bytes`` captures the diff as
+    bytes and :func:`decode_diff_per_file` decodes one file section at a time,
+    so a single file's non-UTF-8 bytes no longer discard the whole scan
+    (proposal 026's fourth finding).
+
+    Pin raw text patch output: ``--text`` forces content even for files a repo
+    marks binary/non-diffable (otherwise git emits "Binary files differ" and
+    the added content is never scanned); ``--no-textconv`` / ``--no-ext-diff``
+    stop the repo's own diff drivers from rewriting or redacting what the
+    scanner sees, which could hide a secret. The prefix flags fix the
+    destination prefix the parser strips ("b/"): with diff.mnemonicPrefix the
+    header reads "+++ c/…" and with diff.dstPrefix anything at all, and the
+    suppression key would stop matching the project file silently. The flags
+    win over all four config knobs (noprefix, mnemonicPrefix, srcPrefix,
+    dstPrefix), which "-c diff.noprefix=false" alone does not.
+    core.quotePath is left alone on purpose: a quoted path still decodes, and
+    an unquoted one is escaped per file rather than skipping the whole scan.
+    """
+
+    raw = _run_git_bytes(
+        project_root,
+        [
+            "diff",
+            "--src-prefix=a/",
+            "--dst-prefix=b/",
+            "--text",
+            "--no-textconv",
+            "--no-ext-diff",
+            f"{merge_base}..{commit}",
+        ],
+    )
+    return decode_diff_per_file(raw)
 
 
 ATTESTATION_MODES = ("commit", "ci-required")
@@ -1110,30 +1156,12 @@ def run_gate(
             if sidecar and journal_root is not None
             else markers_from_tree(project_root, merge_base)
         )
-        # Pin raw text patch output: --text forces content even for files a
-        # repo marks binary/non-diffable (otherwise git emits "Binary files
-        # differ" and the added content is never scanned); --no-textconv /
-        # --no-ext-diff stop the repo's own diff drivers from rewriting or
-        # redacting what the scanner sees, which could hide a secret. The
-        # prefix flags fix the destination prefix the parser strips ("b/"):
-        # with diff.mnemonicPrefix the header reads "+++ c/…" and with
-        # diff.dstPrefix anything at all, and the suppression key would stop
-        # matching the project file silently. The flags win over all four
-        # config knobs (noprefix, mnemonicPrefix, srcPrefix, dstPrefix), which
-        # "-c diff.noprefix=false" alone does not. core.quotePath is left
-        # alone on purpose: unquoted output puts raw non-UTF-8 path bytes
-        # through a strict decode and skips the whole scan.
-        diff_text = _run_git(
-            project_root,
-            [
-                "diff",
-                "--src-prefix=a/",
-                "--dst-prefix=b/",
-                "--text",
-                "--no-textconv",
-                "--no-ext-diff",
-                f"{merge_base}..{resolved_commit}",
-            ],
+        # The pinned diff comes back as text decoded file section by file
+        # section (leak_scan_diff carries the flag rationale); a file whose
+        # section did not decode is named in `undecodable`, and only a git
+        # failure itself still skips the whole scan.
+        diff_text, undecodable = leak_scan_diff(
+            project_root, merge_base, resolved_commit
         )
         # The declaration that a marker may match is the project file the
         # markers were read from. In a sidecar that file is the sidecar's and
@@ -1152,6 +1180,15 @@ def run_gate(
                 "WARN: possible leak in candidate additions "
                 "(advisory, not blocking): "
                 f"{render_leak_hits(leak_hits, limit=_LEAK_HIT_RENDER_LIMIT)}"
+            )
+        if undecodable:
+            shown = undecodable[:_LEAK_HIT_RENDER_LIMIT]
+            unread = ", ".join(shown)
+            if len(undecodable) > len(shown):
+                unread += f", and {len(undecodable) - len(shown)} more not shown"
+            lines.append(
+                "WARN: leak-scan could not decode as UTF-8 "
+                f"(added bytes still searched): {unread}"
             )
 
     return GateReport(

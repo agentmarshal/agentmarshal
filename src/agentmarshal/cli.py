@@ -29,6 +29,7 @@ from agentmarshal.journal.complete import (
 )
 from agentmarshal.journal.gate import (
     GateError,
+    leak_scan_diff,
     markers_from_config,
     markers_from_tree,
     run_findings_gate,
@@ -1277,26 +1278,12 @@ def _run_leak_scan(args: argparse.Namespace, stderr: TextIO) -> int:
     except (GateError, ValueError, CaptureError) as error:
         print(f"leak-scan: cannot read project config: {error}", file=stderr)
         return 1
-    # Pin raw text patch output: --text forces content even for files a repo
-    # marks binary/non-diffable (otherwise git emits "Binary files differ"
-    # and the added content is never scanned); --no-textconv / --no-ext-diff
-    # stop the repo's own diff drivers from rewriting what the scanner sees.
-    # The prefix flags are the gate's, for the gate's reason: the parser
-    # strips a "b/" prefix, and a repository can configure another one.
+    # The pinned diff is the gate's, fetched and decoded per file by the same
+    # helper, so the command cannot degrade where the gate does not: a file
+    # whose bytes are not UTF-8 is named rather than sinking the whole scan.
     try:
-        diff_text = _leak_scan_git(
-            scan_root,
-            [
-                "diff",
-                "--src-prefix=a/",
-                "--dst-prefix=b/",
-                "--text",
-                "--no-textconv",
-                "--no-ext-diff",
-                f"{merge_base}..{args.commit}",
-            ],
-        )
-    except _LeakScanGitError as error:
+        diff_text, undecodable = leak_scan_diff(scan_root, merge_base, args.commit)
+    except GateError as error:
         print(f"leak-scan: git diff failed: {error}", file=stderr)
         return 1
     # The same reasoning the gate applies: the declaration a marker may match
@@ -1308,6 +1295,15 @@ def _run_leak_scan(args: argparse.Namespace, stderr: TextIO) -> int:
         markers,
         config_path="" if sidecar_config is not None else PROJECT_CONFIG_RELPATH,
     )
+    # Files that did not decode are a caveat about the scan, printed beside
+    # the best-effort note rather than as hits: their bytes were still
+    # searched, and an ordinary binary file must not fail the run on its own.
+    if undecodable:
+        print(
+            "leak-scan: could not decode as UTF-8 "
+            f"(added bytes still searched): {', '.join(undecodable)}",
+            file=stderr,
+        )
     if hits:
         print(
             "leak-scan: possible leaks in added content "

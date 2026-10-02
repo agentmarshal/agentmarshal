@@ -2099,6 +2099,74 @@ def test_gate_leak_scan_degrades_to_warning_on_bad_config(
     assert "WARN: leak-scan skipped" in output
 
 
+def test_one_undecodable_file_does_not_switch_the_scan_off(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: one file that does not decode does not switch the scan off.
+
+    The reproduction published as proposal 026's fourth finding: a commit
+    adding a text file holding a GitHub-token-shaped string and a file of
+    random bytes must report the string — the binary file no longer leaves
+    every other file unscanned."""
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    src = repo / "src"
+    src.mkdir(exist_ok=True)
+    (src / "secret.py").write_text(f"key = 'ghp_{'A1' * 18}'\n", encoding="utf-8")
+    (src / "blob.bin").write_bytes(bytes(range(256)))
+    head = _commit_all(repo, "secret plus binary")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    assert passed, output
+    assert "src/secret.py: github-token" in output
+    assert "leak-scan skipped" not in output
+
+
+def test_a_file_that_does_not_decode_is_named_not_passed_over_in_silence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a file that does not decode is named, not passed over in
+    silence."""
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    src = repo / "src"
+    src.mkdir(exist_ok=True)
+    (src / "blob.bin").write_bytes(b"\xff\xfe\x00\x01 binary content \x80")
+    head = _commit_all(repo, "binary only")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+    capsys.readouterr()
+    assert main(["leak-scan", "--base", base, "--commit", head]) == 0
+    command = capsys.readouterr()
+
+    assert passed, output
+    assert "could not decode" in output
+    assert "src/blob.bin" in output
+    assert "could not decode" in command.err
+    assert "src/blob.bin" in command.err
+
+
+def test_the_gates_scan_stays_advisory_over_undecodable_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: the gate's scan stays advisory over undecodable files."""
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    src = repo / "src"
+    src.mkdir(exist_ok=True)
+    (src / "blob.bin").write_bytes(b"\xff\xfe\x00\x01 binary content \x80")
+    head = _commit_all(repo, "binary only")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    assert passed, output
+    assert output.count("FAIL") == 0
+    assert "WARN: leak-scan could not decode" in output
+
+
 def test_gate_judges_the_latest_acceptance_and_does_not_hunt_for_a_fitting_one(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
