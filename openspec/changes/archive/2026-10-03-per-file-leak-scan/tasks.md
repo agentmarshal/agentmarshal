@@ -27,3 +27,19 @@
 
 - [x] 3.1 Existing leak-scan and gate tests pass unmodified except the one
   whose behaviour this change deliberately replaces — verify: pytest.
+
+## 4. Fix round 1 — the scan reads all of an added line, and names stay safe
+
+- [x] 4.1 `scan_diff_for_leaks` splits on `"\n"` only: a control byte inside
+  an added line no longer ends the hunk early — verify: capture test with the
+  token after `\x0c`, and a real-git command test with the token appended
+  after `bytes(range(256))`.
+- [x] 4.2 Only a section that lost bytes the scan reads is named — an
+  undecodable deletion is not — verify: adjusted capture test.
+- [x] 4.3 Undecodable names go through `safe_path` via one shared renderer
+  (`render_undecodable_files`) at both callers, which also owns the bounded
+  "and N more" phrasing — verify: marker-path and key-path tests on the gate
+  and on the command.
+- [x] 4.4 Refresh the stale `_run_leak_scan` comment (diff goes through
+  `leak_scan_diff`; non-UTF-8 content is a named degradation, not a refusal)
+  — verify: read the comment against the code.

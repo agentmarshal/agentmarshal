@@ -353,6 +353,27 @@ def render_leak_hits(hits: list[LeakHit], limit: int | None) -> str:
     return rendered
 
 
+def render_undecodable_files(
+    names: list[str], private_markers: tuple[str, ...], limit: int | None
+) -> str:
+    """Render the names of files the scan could not decode, location-safe.
+
+    Sibling of :func:`render_leak_hits` for the reported-beside-the-hits
+    list: a name can itself be the secret — a key-named file that also failed
+    decode, or an asset under a marker-named directory — so each name goes
+    through :func:`safe_path` exactly like every path a hit carries. Both
+    callers render through this one function so the masking and the bounded
+    caller's "and N more" phrasing cannot drift between them.
+    """
+
+    shown = names if limit is None else names[:limit]
+    rendered = ", ".join(safe_path(name, private_markers) for name in shown)
+    remaining = len(names) - len(shown)
+    if remaining > 0:
+        return f"{rendered}, and {remaining} more not shown"
+    return rendered
+
+
 def scan_for_leaks(text: str, private_markers: tuple[str, ...] = ()) -> list[str]:
     """Return the sorted leak categories found in *text*.
 
@@ -435,7 +456,7 @@ def _undecodable_section_name(section: str) -> str:
     """
 
     header_line = ""
-    for line in section.splitlines():
+    for line in section.split("\n"):
         if line.startswith("diff --git ") and not header_line:
             header_line = line
         elif line.startswith("+++ "):
@@ -444,7 +465,7 @@ def _undecodable_section_name(section: str) -> str:
     return _header_name(header_line)
 
 
-def _decode_section_lossy(section: bytes) -> str:
+def _decode_section_lossy(section: bytes) -> tuple[str, bool]:
     """Decode one undecodable ``diff --git`` section without losing either job.
 
     Header lines carry paths, so they are escape-decoded: a non-UTF-8 path is
@@ -453,20 +474,33 @@ def _decode_section_lossy(section: bytes) -> str:
     marker running right up against an undecodable byte still has its word
     boundary — escape-decoding the content would glue ``\\xNN`` hex digits
     onto it and hide it.
+
+    Returns the decoded text plus whether the section must be named: naming
+    covers what the scan can no longer fully read — the file's own identity
+    (an undecodable pre-hunk line carries its path) or bytes it added. A
+    section whose undecodable bytes sit only in removed or context lines — a
+    deleted binary — gave the scan nothing to read, so it is not named.
     """
 
     decoded: list[str] = []
     in_hunks = False
+    must_name = False
     for line in section.split(b"\n"):
         if line.startswith(b"@@ "):
             in_hunks = True
         # File headers precede the hunks; a "--- "/"+++ " line inside a hunk
         # body is content and stays content.
-        if not in_hunks and line.startswith((b"diff --git ", b"--- ", b"+++ ")):
-            decoded.append(line.decode("utf-8", errors="backslashreplace"))
-        else:
-            decoded.append(line.decode("utf-8", errors="replace"))
-    return "\n".join(decoded)
+        header = not in_hunks and line.startswith((b"diff --git ", b"--- ", b"+++ "))
+        try:
+            decoded.append(line.decode("utf-8"))
+            continue
+        except UnicodeDecodeError:
+            decoded.append(
+                line.decode("utf-8", errors="backslashreplace" if header else "replace")
+            )
+        if not in_hunks or line.startswith(b"+"):
+            must_name = True
+    return "\n".join(decoded), must_name
 
 
 def decode_diff_per_file(raw_diff: bytes) -> tuple[str, list[str]]:
@@ -483,8 +517,11 @@ def decode_diff_per_file(raw_diff: bytes) -> tuple[str, list[str]]:
 
     Returns ``(text, undecodable)``: the reassembled diff for
     :func:`scan_diff_for_leaks`, and the names of the files whose sections
-    did not decode cleanly, for the caller to name in its output. Pure like
-    the scanner it feeds: it parses bytes and runs nothing.
+    lost bytes the scan reads — added content or the headers carrying the
+    path — for the caller to name in its output. The names are raw section
+    names: this function holds no markers, so masking them is the caller's
+    job (:func:`render_undecodable_files`). Pure like the scanner it feeds:
+    it parses bytes and runs nothing.
     """
 
     decoded: list[str] = []
@@ -497,8 +534,9 @@ def decode_diff_per_file(raw_diff: bytes) -> tuple[str, list[str]]:
             continue
         except UnicodeDecodeError:
             pass
-        text = _decode_section_lossy(section)
-        undecodable.append(_undecodable_section_name(text))
+        text, must_name = _decode_section_lossy(section)
+        if must_name:
+            undecodable.append(_undecodable_section_name(text))
         decoded.append(text)
     return "".join(decoded), undecodable
 
@@ -555,7 +593,12 @@ def scan_diff_for_leaks(
     # Added lines are collected per file and matched together: a signature may
     # span more than one line, and attribution still needs the file.
     added_by_path: dict[str, list[str]] = {}
-    lines = unified_diff.splitlines()
+    # Split on "\n" only — the one separator git uses in patch output.
+    # str.splitlines() also breaks on \x0b, \x0c, \x1c-\x1e, \x85, U+2028/29;
+    # those survive the lossy decode inside a "+" line, and a prefix-less
+    # fragment drains both hunk counters as a context line, ending the body
+    # early and silently leaving the rest of the added bytes unscanned.
+    lines = unified_diff.split("\n")
     index = 0
     total = len(lines)
     while index < total:

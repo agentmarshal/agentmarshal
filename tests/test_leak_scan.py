@@ -266,6 +266,71 @@ def test_an_undecodable_files_bytes_are_still_searched(
     assert "ghp_" not in captured.out
 
 
+def test_an_undecodable_path_that_carries_a_marker_is_described_not_printed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: an undecodable path that carries a marker is described, not
+    printed."""
+    repo, _ = _repo(tmp_path, monkeypatch)
+    project_file = repo / ".agentmarshal" / "project.json"
+    data = json.loads(project_file.read_text(encoding="utf-8"))
+    data["leak_scan"] = {"private_markers": ["internal.corp.invalid"]}
+    project_file.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    base = _commit_all(repo, "configure markers")
+    asset = repo / "vendor" / "internal.corp.invalid"
+    asset.mkdir(parents=True)
+    (asset / "logo.bin").write_bytes(b"\xff\xfe\x00\x01 \x80")
+    head = _commit_all(repo, "binary asset under a marker-named directory")
+
+    code = main(["leak-scan", "--base", base, "--commit", head])
+
+    captured = capsys.readouterr()
+    assert code == 0
+    assert "internal.corp.invalid" not in captured.err
+    assert "vendor/<private marker #1>/logo.bin" in captured.err
+
+
+def test_an_undecodable_path_that_is_itself_a_key_is_described_not_printed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: an undecodable path that is itself a key is described, not
+    printed."""
+    repo, base = _repo(tmp_path, monkeypatch)
+    keys = repo / "keys"
+    keys.mkdir()
+    (keys / "AKIAIOSFODNN7EXAMPLE.bin").write_bytes(b"\xff\xfe\x00\x80")
+    head = _commit_all(repo, "key-named binary")
+
+    code = main(["leak-scan", "--base", base, "--commit", head])
+
+    captured = capsys.readouterr()
+    assert code == 0
+    assert "AKIAIOSFODNN7EXAMPLE" not in captured.err
+    assert "AKIAIOSFODNN7EXAMPLE" not in captured.out
+    assert "keys/<aws-access-key-id>.bin" in captured.err
+
+
+def test_bytes_after_a_non_separator_control_byte_are_still_searched(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: bytes after a non-separator control byte are still searched.
+
+    The reproduction fixture with the token placed after the control bytes:
+    git emits bytes(range(256)) as two "+" lines, and a reader that treats
+    \x0c and its neighbours as line separators ends the hunk early and never
+    reaches the token appended after them."""
+    repo, base = _repo(tmp_path, monkeypatch)
+    (repo / "blob.bin").write_bytes(bytes(range(256)) + f"ghp_{'A1' * 18}".encode())
+    head = _commit_all(repo, "binary holding a token after control bytes")
+
+    code = main(["leak-scan", "--base", base, "--commit", head])
+
+    captured = capsys.readouterr()
+    assert code == 1
+    assert "blob.bin: github-token" in captured.out
+    assert "ghp_" not in captured.out
+
+
 def test_leak_scan_works_in_plain_git_repo_without_agentmarshal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

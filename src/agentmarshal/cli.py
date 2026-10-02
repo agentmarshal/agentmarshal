@@ -18,6 +18,7 @@ from agentmarshal.journal.capture import (
     CaptureError,
     CaptureLevel,
     render_leak_hits,
+    render_undecodable_files,
     review_capture_level_from_journal,
     scan_diff_for_leaks,
 )
@@ -1219,9 +1220,10 @@ def _run_leak_scan(args: argparse.Namespace, stderr: TextIO) -> int:
     # repo from binding to an ancestor AgentMarshal repo's project.json. An
     # AgentMarshal project supplies configured private markers (from the base
     # tree); without one the built-in secret signatures still run, so any CI
-    # can call it on a plain checkout. Every git call goes through
-    # _leak_scan_git, so non-UTF-8 paths/content are a clean refusal, never a
-    # traceback (as in the gate's own git helper).
+    # can call it on a plain checkout. Merge-base resolution goes through
+    # _leak_scan_git and the diff through leak_scan_diff — failures surface as
+    # a clean 1, and non-UTF-8 content is a named per-file degradation, not a
+    # refusal; either way, never a traceback.
     # find_git_root refuses through AgentMarshalProjectError when git is missing
     # or reports an undecodable path (CR-053); either way there is no repository
     # to scan from here.
@@ -1301,7 +1303,8 @@ def _run_leak_scan(args: argparse.Namespace, stderr: TextIO) -> int:
     if undecodable:
         print(
             "leak-scan: could not decode as UTF-8 "
-            f"(added bytes still searched): {', '.join(undecodable)}",
+            "(added bytes still searched): "
+            + render_undecodable_files(undecodable, markers, limit=None),
             file=stderr,
         )
     if hits:

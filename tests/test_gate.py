@@ -2167,6 +2167,51 @@ def test_the_gates_scan_stays_advisory_over_undecodable_files(
     assert "WARN: leak-scan could not decode" in output
 
 
+def test_an_undecodable_path_that_carries_a_marker_is_described_not_printed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: an undecodable path that carries a marker is described, not
+    printed."""
+    repo, _ = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    project_file = repo / ".agentmarshal" / "project.json"
+    data = json.loads(project_file.read_text(encoding="utf-8"))
+    data["leak_scan"] = {"private_markers": ["internal.corp.invalid"]}
+    project_file.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    base = _commit_all(repo, "configure private markers")
+    asset = repo / "src" / "vendor" / "internal.corp.invalid"
+    asset.mkdir(parents=True)
+    (asset / "logo.bin").write_bytes(b"\xff\xfe\x00\x01 \x80")
+    head = _commit_all(repo, "binary asset under a marker-named directory")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    assert passed, output
+    assert "WARN: leak-scan could not decode" in output
+    assert "internal.corp.invalid" not in output
+    assert "src/vendor/<private marker #1>/logo.bin" in output
+
+
+def test_an_undecodable_path_that_is_itself_a_key_is_described_not_printed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: an undecodable path that is itself a key is described, not
+    printed."""
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    keys = repo / "src" / "keys"
+    keys.mkdir(parents=True)
+    (keys / "AKIAIOSFODNN7EXAMPLE.bin").write_bytes(b"\xff\xfe\x00\x80")
+    head = _commit_all(repo, "key-named binary")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    assert passed, output
+    assert "WARN: leak-scan could not decode" in output
+    assert "AKIAIOSFODNN7EXAMPLE" not in output
+    assert "src/keys/<aws-access-key-id>.bin" in output
+
+
 def test_gate_judges_the_latest_acceptance_and_does_not_hunt_for_a_fitting_one(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

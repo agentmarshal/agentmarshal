@@ -27,6 +27,7 @@ from agentmarshal.journal.capture import (
     decode_diff_per_file,
     private_markers_from_project,
     render_leak_hits,
+    render_undecodable_files,
     scan_diff_for_leaks,
 )
 from agentmarshal.journal.contracts import (
@@ -1182,13 +1183,12 @@ def run_gate(
                 f"{render_leak_hits(leak_hits, limit=_LEAK_HIT_RENDER_LIMIT)}"
             )
         if undecodable:
-            shown = undecodable[:_LEAK_HIT_RENDER_LIMIT]
-            unread = ", ".join(shown)
-            if len(undecodable) > len(shown):
-                unread += f", and {len(undecodable) - len(shown)} more not shown"
             lines.append(
                 "WARN: leak-scan could not decode as UTF-8 "
-                f"(added bytes still searched): {unread}"
+                "(added bytes still searched): "
+                + render_undecodable_files(
+                    undecodable, markers, limit=_LEAK_HIT_RENDER_LIMIT
+                )
             )
 
     return GateReport(

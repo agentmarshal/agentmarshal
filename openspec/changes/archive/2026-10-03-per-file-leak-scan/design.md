@@ -51,6 +51,17 @@ is given and runs nothing. The decode failure happens before it ever runs.
   signature split by an invalid byte, or a secret held in a non-UTF-8
   encoding — which is exactly why the file is still *named* as not fully
   readable rather than treated as clean.
+- **The scanner splits on "\n" only.** git's patch output uses "\n" as the
+  sole line separator, so `scan_diff_for_leaks` splits the decoded text on
+  it — not `str.splitlines()`, which also breaks on `\x0b`, `\x0c`,
+  `\x1c`–`\x1e`, `\x85`, U+2028/29. Those bytes are valid UTF-8 and survive
+  the lossy decode inside a `+` line; a split there produces a prefix-less
+  fragment that drains both hunk counters as a context line, ends the body
+  early, and leaves every later added byte unscanned while the output claims
+  they were searched. Neutralising the characters in the lossy decode was
+  the alternative and was rejected: it rewrites content before matching —
+  one more lossy transformation, where keeping git's framing verbatim loses
+  nothing.
 - **The same decode names the file.** The section's header lines
   (`diff --git`, `---`, `+++` — which always precede the hunks) are decoded
   with `backslashreplace` before the text reaches the scanner, so an
@@ -58,6 +69,20 @@ is given and runs nothing. The decode failure happens before it ever runs.
   against the file and the not-decoded note name it the same way. Escaping —
   not `replace` — is what makes "named" rather than "mangled" true for a path
   whose bytes are not UTF-8.
+- **A file is named only when it lost bytes the scan reads.** Naming covers
+  undecodable added lines and undecodable pre-hunk lines (which carry the
+  path). A section whose undecodable bytes sit only in removed or context
+  lines — a deleted binary — gave the scan nothing to read, so it is not
+  named: warning about it would report a file the scan never needed, on
+  every diff that deletes an image.
+- **Undecodable names are rendered like hit paths.** A name can itself be
+  the secret — a key-named file that failed decode, or an asset under a
+  marker-named directory — so both callers render the list through one
+  helper, `render_undecodable_files` in `capture.py`, a sibling of
+  `render_leak_hits`: it passes each name through `safe_path` and owns the
+  bounded caller's "and N more not shown" phrasing, so the gate's transcript
+  and the command's stderr cannot drift apart. `decode_diff_per_file` stays
+  marker-free; masking is the caller's job at the one shared render site.
 - **A file that only fails decode is not a hit.** Undecodable files are
   collected as a separate list beside the scan's hits, not folded into
   `LeakHit`s: they are places the scan could not fully read, not places a
