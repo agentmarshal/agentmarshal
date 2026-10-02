@@ -3,19 +3,27 @@
 Status: Accepted
 Date: 2026-10-03
 
-Builds on [ADR-0007](ADR-0007-operator-acceptance.md) (operator acceptance
-over the blocking findings of a non-approving review),
+Builds on [ADR-0001](ADR-0001-governance-plane.md) (a governance plane, not
+an execution plane), [ADR-0007](ADR-0007-operator-acceptance.md) (operator
+acceptance over the blocking findings of a non-approving review),
 [ADR-0010](ADR-0010-process-extensions.md) (process extensions with a
 declared footprint) and
 [ADR-0012](ADR-0012-what-the-tool-does-and-what-it-supplies.md) (an extension
 may drive the process), and on a separate decision on where local state lives.
-**It partly revisits ADR-0010 and ADR-0007.** In ADR-0010: the refusal of
-lifecycle hooks is lifted; the refusal of an installer stands; and the shared
-switches file is excepted from "configuration is reviewed" — it alone changes
-without review, while a manifest still takes the diff lane with review. In
-ADR-0007: an acceptance stood only over the blocking findings of a
-non-approving review; here it also covers an extension pause, which raises no
-review finding, and an operational CR, which has no review at all. It answers
+**It partly revisits ADR-0010 and ADR-0007, and clarifies ADR-0001.** In
+ADR-0010: the refusal of lifecycle hooks is lifted; the rejected "a sandbox"
+alternative is revised — Decision 8 restricts the extension processes the
+core launches itself; and the shared switches file is excepted from
+"configuration is reviewed" — it alone changes without review, while a
+manifest still takes the diff lane with review. The revision clarifies
+ADR-0001: the isolation of agents and of execution stays with the harness.
+ADR-0010 did not refuse an installer — it deferred `extension add/remove` to
+be decided after the dogfood, by its numbers; this ADR keeps installation
+out of the tool and replaces that deferred trigger with the sign "Left
+open" gives. In ADR-0007: an acceptance stood only over the blocking
+findings of a non-approving review; here it also covers an extension pause,
+which raises no review finding, and an operational CR, which has no review
+at all. It answers
 [proposal 009](../proposals/009-lifecycle-extension-points.md).
 
 This ADR records a decision. The stages, manifest fields, commands, lanes and
@@ -95,7 +103,9 @@ or after the implementation merges.
    snapshot is read-only, no provider secrets, the timeout no higher than the
    core's limit. Network is allowed when declared and approved. The core
    enforces what is declared as far as the platform allows, and names in its
-   output what it cannot enforce.
+   output what it cannot enforce. It restricts only the extension processes
+   it launches itself; the isolation of agents and of execution stays with
+   the harness, as [ADR-0001](ADR-0001-governance-plane.md) assigns it.
 
 ### C. Where an extension lives and who sees it
 
@@ -129,16 +139,19 @@ or after the implementation merges.
     the working tree nor to the journal — only to the process log and to its
     own state under `.git/agentmarshal/`. `doctor` refuses a personal
     manifest that declares a footprint.
-11. **Local state lives outside the working tree.** Personal extensions,
-    dependencies, local grants and switches live in `.git/agentmarshal/`, the
-    location the separate decision on where local state lives defines: shared
-    by all worktrees, never committed. **The implementer-launch template in
-    the adopter kit (ADR-0012) runs the executor with no write access to any
-    local-state place the scope table names — `.git/agentmarshal/`,
-    `~/.config/agentmarshal/`, `~/.local/share/agentmarshal/` (Windows:
-    `%APPDATA%\agentmarshal\`)** — otherwise a managed agent could switch off
-    the extension that checks it, grant itself a shared one, or plant a
-    personal one.
+11. **Local state lives outside the working tree.** The clone's local state
+    — extensions of the personal-in-clone scope, dependencies, local grants
+    and switches — lives in `.git/agentmarshal/`, the location the separate
+    decision on where local state lives defines: shared by all worktrees,
+    never committed. The user scope lives outside the repository altogether
+    — `~/.config/agentmarshal/extensions/`,
+    `~/.local/share/agentmarshal/deps/` — as the scope table above gives.
+    **The implementer-launch template in the adopter kit (ADR-0012) runs the
+    executor with no write access to any local-state place the scope table
+    names — `.git/agentmarshal/`, `~/.config/agentmarshal/`,
+    `~/.local/share/agentmarshal/` (Windows: `%APPDATA%\agentmarshal\`)** —
+    otherwise a managed agent could switch off the extension that checks
+    it, grant itself a shared one, or plant a personal one.
 
 ### D. Installation and trust: what runs is what was approved
 
@@ -206,8 +219,11 @@ or after the implementation merges.
     kind carries a namespace and a version and is declared in the manifest;
     the body is opaque to the core, hash-pinned and size-limited. `validate`
     checks the envelope; a kind no manifest declares draws a warning —
-    "addressee not found", not a refusal. What the body means is for the
-    extension itself to check. Only a shared extension may write `ext`, and
+    "addressee not found", not a refusal. Reading the declared kinds for
+    that warning makes `validate` another reader of manifests, after
+    `brief`, the gate and `doctor` — where ADR-0010 D4 counted two. What the
+    body means is for the extension itself to check. Only a shared
+    extension may write `ext`, and
     never to the journal directly: the record goes through the core's
     command, which writes the envelope. The envelope's schema is decided
     separately.
@@ -251,7 +267,9 @@ implementation work.
 A thin installer (`extension add | remove | upgrade`: show the directory,
 install dependencies from the lock, place it into the scope). The sign:
 adopters ask to automate installation, or manual install errors surface in
-findings.
+findings. That sign replaces the trigger ADR-0010 left for the decision —
+`extension add/remove` was deferred there to be decided after the dogfood,
+by its numbers.
 
 ## Consequences
 
@@ -260,8 +278,10 @@ findings.
   nothing from an extension's run.
 - The stage interface is a promise for years, so it is minimal: in — a commit
   and a snapshot; out — "pause / no" plus text.
-- ADR-0010's refusal of an installer stands; approval, the directory-hash
-  check, the dependency lock and switches are added.
+- Installation stays out of the tool — ADR-0010 had deferred `extension
+  add/remove`, not refused it, and this ADR replaces that deferred trigger;
+  approval, the directory-hash check, the dependency lock and switches are
+  added.
 - Operator acceptance extends from review findings to extension pauses.
 - The gate gains another lane — operational — alongside the regular, journal
   and findings
