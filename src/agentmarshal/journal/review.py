@@ -35,6 +35,11 @@ from agentmarshal.journal.extensions import (
     ExtensionManifestMissing,
     read_extension_manifest,
 )
+from agentmarshal.journal.gate import (
+    GateError,
+    markers_from_config,
+    markers_from_tree,
+)
 
 # The allowed verdicts have one definition, in records.py, which validation
 # uses. The prompt renders that same set so it cannot drift from what the
@@ -916,6 +921,11 @@ def _launch_review_tail(
                 _reviewer_command(reviewer_model, prompt_file), snapshot, prompt
             )
         except ReviewLaunchError as error:
+            # A bare re-raise when there is no note: _with_diagnostics would
+            # return the same object, and `raise error from error` makes an
+            # exception its own cause.
+            if operator_note is None:
+                raise
             raise _with_diagnostics(error, operator_note) from error
         diagnostics_note = _keep_diagnostics(raw_diagnostics)
         if operator_note is not None:
@@ -940,6 +950,8 @@ def _launch_review_tail(
                 expected_field=expected_subject_field,
             )
         except ReviewLaunchError as error:
+            if diagnostics_note is None:
+                raise
             raise _with_diagnostics(error, diagnostics_note) from error
         if subject_field != expected_subject_field or subject != expected_subject:
             raise _with_diagnostics(
@@ -1155,21 +1167,50 @@ def launch_review(
     merge_base = _run_git(project_root, ["merge-base", base, resolved_commit]).strip()
     # The diff is bytes decoded one file section at a time by the helper the
     # leak scan already uses: a strict whole-stream decode made one file's
-    # non-UTF-8 bytes cost the whole review (proposal 037). The diff's own
-    # arguments stay what they were — a binary file still arrives as "Binary
-    # files differ", which already tells the reviewer what it is.
+    # non-UTF-8 bytes cost the whole review (proposal 037). The section
+    # prefixes are pinned — the name parser strips "b/", which a repo's
+    # diff.mnemonicPrefix or diff.dstPrefix would otherwise bend — while the
+    # rendering stays what it was: no --text, so a binary file still arrives
+    # as "Binary files differ", which already tells the reviewer what it is.
+    # The reviewer reads every line of the decoded text, so every section
+    # that lost bytes is named — the scan's narrower rule covers only the
+    # added bytes and headers it reads.
     diff, undecodable = decode_diff_per_file(
-        _run_git_bytes(project_root, ["diff", f"{merge_base}..{resolved_commit}"])
+        _run_git_bytes(
+            project_root,
+            [
+                "diff",
+                "--src-prefix=a/",
+                "--dst-prefix=b/",
+                f"{merge_base}..{resolved_commit}",
+            ],
+        ),
+        name_all_losses=True,
     )
     diff_note = None
     if undecodable:
-        # Review reads no private-marker configuration; the names reach the
-        # reviewer inside the diff text anyway, while a signature-shaped name
-        # is still masked by the shared renderer.
+        # The names print on the operator's stderr, where the leak scan's
+        # rule applies: a path can itself be the secret, so the configured
+        # markers mask them exactly as the gate's warning does — read from
+        # the same trusted source (a sidecar's own config, else the
+        # merge-base tree). Naming is required, so a marker read that fails
+        # refuses rather than prints the names unmasked. The prompt's names
+        # stay raw: they must match the names inside the diff text the
+        # reviewer is shown, which masking cannot change anyway.
+        try:
+            markers = (
+                markers_from_config(journal_root.parents[1])
+                if sidecar_journal is not None
+                else markers_from_tree(project_root, merge_base)
+            )
+        except (CaptureError, GateError, ValueError) as error:
+            raise ReviewLaunchError(
+                f"cannot read configured private markers: {error}"
+            ) from error
         diff_note = (
             "diff sections that did not decode as UTF-8 (the reviewer is "
             "shown what decoded and told): "
-            + render_undecodable_files(undecodable, (), limit=None)
+            + render_undecodable_files(undecodable, markers, limit=None)
         )
 
     def prompt_builder(snapshot: Path) -> tuple[str, str]:

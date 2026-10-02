@@ -680,6 +680,26 @@ def test_an_undecodable_deletion_is_not_named() -> None:
     assert undecodable == []
 
 
+def test_a_removed_line_loss_is_named_when_the_caller_reads_everything() -> None:
+    """The same removal is named when the caller shows the text whole.
+
+    The scan's rule leaves a removed-only loss unnamed because the scan
+    never reads `-` lines. A caller that hands the decoded diff to a reader
+    — the reviewer — passes ``name_all_losses`` so its U+FFFD marks are not
+    mistaken for the file's real content."""
+    diff = (
+        b"diff --git a/old.bin b/old.bin\n"
+        b"--- a/old.bin\n"
+        b"+++ /dev/null\n"
+        b"@@ -1 +0,0 @@\n"
+        b"-\xff\xfe\n"
+    )
+
+    _, undecodable = decode_diff_per_file(diff, name_all_losses=True)
+
+    assert undecodable == ["old.bin"]
+
+
 def test_an_undecodable_section_falls_back_to_the_diff_header() -> None:
     # No '+++' destination exists for a section like this; the name falls
     # back to the 'diff --git' line's b-side.

@@ -23,7 +23,8 @@ control character rather than an escape.
   section does not decode costs its own readability, not the launch.
 - The reviewer is told what it could not be shown: the prompt names each file
   that did not decode and says how its unreadable bytes are marked, and the
-  command's own output names the same files.
+  command's own output names the same files, masked with the project's
+  configured markers the way the leak scan's warning masks them.
 - Every other git output the launch reads — merge-base, ls-tree, rev-parse,
   error text — decodes with escapes rather than strictly, so a path whose
   bytes are not UTF-8 is named in printable form and no traceback escapes.

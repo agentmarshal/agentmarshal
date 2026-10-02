@@ -34,3 +34,26 @@
 - [x] 4.2 Archive with `openspec archive` into
   `openspec/specs/reviewer-adapter/` — verify: the command's own output and
   the merged spec.
+
+## 5. Review round one
+
+- [x] 5.1 `decode_diff_per_file` grows `name_all_losses` so a caller that
+  shows the text whole names every section that lost bytes, while the leak
+  scan keeps its added-lines-and-headers rule; `review` passes it —
+  verify: a capture test on a removed-line loss, and a launcher test whose
+  diff loses bytes only in a removed line still names the file in the
+  prompt and on stderr.
+- [x] 5.2 `review`'s `git diff` pins `--src-prefix=a/ --dst-prefix=b/` so a
+  repo's `diff.mnemonicPrefix`/`diff.dstPrefix` cannot bend the names the
+  parser strips `b/` from — verify: a launcher test under
+  `diff.mnemonicPrefix` names the file plainly; `_diff_path`'s docstring is
+  true again.
+- [x] 5.3 The stderr note's names are masked with the project's configured
+  markers, read as the leak scan reads them — verify: a launcher test with
+  a marker-named directory holding an undecodable file.
+- [x] 5.4 `docs/sidecar.md` bounds only the lines that are bounded, and the
+  diagnostics-note re-raise no longer makes an exception its own cause —
+  verify: `pytest -q` and a read of the doc page.
+- [x] 5.5 Re-archive: the spec is restored to master, the change moves back
+  to `openspec/changes/review-diff-per-file/`, and `openspec archive` folds
+  it in again — verify: the command's own output and the merged spec.

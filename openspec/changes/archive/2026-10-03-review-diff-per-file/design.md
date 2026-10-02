@@ -34,9 +34,21 @@ undecodable content, escaped header names, `safe_path` for printed names.
   repository marks binary; a reviewer's diff is better served by git's usual
   rendering, where a binary file is already named as binary ("Binary files
   differ") instead of arriving as pages of U+FFFD. `review` therefore keeps
-  the `git diff` arguments it always used — what reaches the reviewer is
-  unchanged in shape — and shares only the per-file decode. This also keeps
-  the gate's `GateError` out of the launcher's `ReviewLaunchError` surface.
+  the rendering it always used — no `--text` — and shares the per-file
+  decode. What it no longer keeps is the unpinned prefixes: the name parser
+  strips `b/`, which `diff.mnemonicPrefix` or `diff.dstPrefix` would bend
+  into `c/name` or worse in the prompt and the note, so `review` pins
+  `--src-prefix=a/ --dst-prefix=b/` exactly as the leak scan does — under
+  default configuration the emitted diff is byte-identical to what it was.
+- **A file is named whenever its section lost bytes, not only when the scan
+  would have read them.** The helper's default rule is the scan's: name a
+  section only when the loss hit headers or added lines, because a
+  removed-only loss gave the scanner nothing to read. That rule is wrong
+  for `review`, which shows the whole decoded text — a latin-1 line a
+  commit removes still reaches the reviewer as a U+FFFD-marked `-` line and
+  could be read as the file's real content. `decode_diff_per_file` grows a
+  `name_all_losses` flag that names every section that lost bytes; the leak
+  scan keeps the default rule, `review` passes the flag.
 - **A file that does not decode is shown as the lossy text the helper
   produced, with a note naming it.** The open question — lossy text, a named
   placeholder with its size, or both — is settled by what the reviewer is
@@ -50,14 +62,21 @@ undecodable content, escaped header names, `safe_path` for printed names.
   marked — the text stays, and it cannot be mistaken for a faithful copy.
   Nothing is dropped in silence: the file is in the diff, is named in the
   prompt, and is named on stderr.
-- **The operator is told through the diagnostics channel.** `cli.py` prints
+- **The operator is told through the diagnostics channel, with the names
+  masked as the gate masks them.** `cli.py` prints
   `LaunchedReview.diagnostics_note` to stderr; the launcher composes the
   undecodable-file note into it ahead of any kept-stderr note, and attaches
   it to later launch rejections the way kept diagnostics already ride. The
-  names render through `render_undecodable_files` with no private markers —
-  review reads no marker configuration, the same names already reach the
-  reviewer inside the diff text, and a signature-shaped name is still masked
-  by the shared renderer.
+  names render through `render_undecodable_files`, and the markers it masks
+  with are read as the leak scan reads them — the sidecar's own config in a
+  sidecar, the merge-base tree's `project.json` otherwise — because a file
+  name can itself be the secret and stderr is where CR-127's no-secret-paths
+  guarantee holds. The prompt's names stay raw: they must match the names
+  inside the diff text the reviewer is shown, which masking could not change
+  anyway. A marker read that fails is a named refusal rather than unmasked
+  names on stderr — naming is required, so "cannot read the marker config"
+  is the honest out. The gate's `GateError` is caught and re-raised as
+  `ReviewLaunchError`, so the launcher's error surface is unchanged.
 - **Every remaining git read decodes with escapes.** `_run_git` captures
   bytes and decodes stdout and stderr detail with `backslashreplace`: a SHA
   is unaffected, a listing or error message that carries a non-UTF-8 path

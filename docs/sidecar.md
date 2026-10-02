@@ -248,9 +248,10 @@ no such line; on a hit it adds `WARN: possible leak in candidate additions
 (advisory, not blocking): <file>: <what matched>`; when a file's bytes did
 not decode as UTF-8 it adds `WARN: leak-scan could not decode as UTF-8
 (added bytes still searched): <file>, ...`; and on a scan it could not
-perform, `WARN: leak-scan skipped (<reason>)`. None of them blocks. Each is
-one line of a transcript, so it shows at most twenty entries, and only when
-there are more than twenty does it end `, and N more not shown`.
+perform, `WARN: leak-scan skipped (<reason>)`. None of them blocks. A line
+that lists entries is one line of a transcript, so it shows at most twenty
+entries, and only when there are more than twenty does it end `, and N more
+not shown`.
 `agentmarshal leak-scan`, whose whole output is the list of places to look,
 shows every hit and every file it could not decode.
 
