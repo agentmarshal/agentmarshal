@@ -1,0 +1,31 @@
+{
+  "advisory_findings": [
+    "docs-readme-still-labels-009-deferred",
+    "039-supersession-note-not-under-section-heading",
+    "039-adr-0013-enumeration-and-command-hash-coverage-incomplete"
+  ],
+  "artifacts": [
+    {
+      "hash": "fb13d2e41d5bc2a73a77c925d4138b83ad6a53a8e968abff8983bc50de913a06",
+      "ref": ".agentmarshal/journal/tasks/CR-130/artifacts/01M3YWFSHQ4Q3H8CNBRS339BNQ-review.md"
+    }
+  ],
+  "created_at": "2026-10-02T18:02:11.383263Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "2c496180248d673f0d68d15acf48725ab944b9c9",
+  "reviewed_contract": "565c0e5fd55fdf2c2a76ecb48fa5d17df3b9f14074af89c64d0b4eb64c8f5dce",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-130",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "approved"
+}
