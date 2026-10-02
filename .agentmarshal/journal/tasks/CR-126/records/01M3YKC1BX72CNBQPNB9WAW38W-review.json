@@ -1,0 +1,30 @@
+{
+  "advisory_findings": [
+    "adr0012-d6-proposal040-contention-half-unapplied",
+    "adr0012-l135-process-log-clause-hard-to-parse"
+  ],
+  "artifacts": [
+    {
+      "hash": "b6319d19ecf344a19c895ec97b260454b73816f676c3a7d15c251164aac86bbe",
+      "ref": ".agentmarshal/journal/tasks/CR-126/artifacts/01M3YKC1BX72CNBQPNB9WAW38W-review.md"
+    }
+  ],
+  "created_at": "2026-10-02T15:22:51.133716Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "4c780484589f8a6573ecf2f56c267dc503cbe56e",
+  "reviewed_contract": "1bd9286dd843415d1b9cb3000ebf81d2b6505f37e4d30860ae3d441db1118fbc",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-126",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "approved"
+}
