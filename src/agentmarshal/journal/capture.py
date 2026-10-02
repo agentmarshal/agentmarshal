@@ -439,8 +439,11 @@ def _header_name(header_line: str) -> str:
     for marker in (' "b/', " b/"):
         _, separator, destination = tail.rpartition(marker)
         if separator:
-            token = marker.strip() + destination
-            return token[2:] if token.startswith("b/") else token
+            # `destination` already follows the marker's "b/". A C-quoted
+            # path keeps its opening quote, so the name prints the way git
+            # wrote it; rebuilding "b/…" first would leave the quote before
+            # the prefix and the "b/" would survive.
+            return f'"{destination}' if '"' in marker else destination
     return tail or "(unknown file)"
 
 

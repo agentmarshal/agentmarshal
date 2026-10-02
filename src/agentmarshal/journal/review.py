@@ -25,6 +25,8 @@ from agentmarshal.journal.brief import (
 from agentmarshal.journal.capture import (
     CaptureError,
     CaptureLevel,
+    decode_diff_per_file,
+    render_undecodable_files,
     review_capture_level_from_journal,
 )
 from agentmarshal.journal.contracts import parse_contract_text
@@ -76,7 +78,7 @@ No other key is accepted.
 Task contract:
 {contract}
 
-Diff:
+{diff_note}Diff:
 {diff}
 """
 _FINDING_REVIEW_PROMPT = (
@@ -113,7 +115,12 @@ class ReviewLaunchError(Exception):
 
 @dataclass(frozen=True)
 class LaunchedReview:
-    """A recorded review plus any successful-command diagnostics kept locally."""
+    """A recorded review plus notes the operator should read.
+
+    ``diagnostics_note`` carries what survived a successful command's error
+    stream, and anything else the launch must not drop in silence — files
+    the diff decode could not fully read are named through it.
+    """
 
     record_path: Path
     artifact_ref: str | None
@@ -195,23 +202,43 @@ def _verdict_protocol(subject_field: str, subject_description: str) -> str:
     )
 
 
-def _run_git(project_root: Path, arguments: list[str]) -> str:
-    """Run git and return its standard output, or raise a launcher error."""
+def _run_git_bytes(project_root: Path, arguments: list[str]) -> bytes:
+    """Run git and return its standard output as bytes, or raise a launcher error.
+
+    Bytes, not text: a diff is not wholly UTF-8 when a file's content or path
+    is not, and even diagnostics can carry a path's raw bytes. Callers decode
+    for their own purpose — the diff per file section — rather than a strict
+    whole-stream decode here raising mid-launch (proposal 037).
+    """
 
     try:
         result = subprocess.run(
             ["git", *arguments],
             cwd=project_root,
             capture_output=True,
-            encoding="utf-8",
             check=False,
         )
     except OSError as error:
         raise ReviewLaunchError(f"cannot run git: {error}") from error
     if result.returncode != 0:
-        detail = result.stderr.strip() or result.stdout.strip()
+        # Error text can quote a path whose bytes are not UTF-8; escaping
+        # keeps that path printable instead of mangling it or raising.
+        detail = (
+            result.stderr.decode("utf-8", "backslashreplace").strip()
+            or result.stdout.decode("utf-8", "backslashreplace").strip()
+        )
         raise ReviewLaunchError(f"git {' '.join(arguments)} failed: {detail}")
     return result.stdout
+
+
+def _run_git(project_root: Path, arguments: list[str]) -> str:
+    """Run git and return its standard output, or raise a launcher error.
+
+    Decoded with escapes: a SHA is unaffected, while a non-UTF-8 path in a
+    listing is named ``\\xNN``-escaped rather than raising UnicodeDecodeError.
+    """
+
+    return _run_git_bytes(project_root, arguments).decode("utf-8", "backslashreplace")
 
 
 def _resolve_commit(project_root: Path, commit: str) -> str:
@@ -232,10 +259,26 @@ def _review_prompt(
     documents: tuple[str, ...] = (),
     absent_extensions: tuple[str, ...] = (),
     amendment_history: str = "",
+    undecodable_files: tuple[str, ...] = (),
 ) -> str:
-    """Build the reviewer prompt with its required machine-verdict protocol."""
+    """Build the reviewer prompt with its required machine-verdict protocol.
+
+    ``undecodable_files`` names the diff sections the per-file decode could
+    not fully read: the reviewer still sees what decoded — U+FFFD marks the
+    content bytes that did not — but is told, so the marked spans are not
+    mistaken for the file's real content.
+    """
 
     contract_material = append_amendment_history(contract, amendment_history)
+    diff_note = ""
+    if undecodable_files:
+        diff_note = (
+            "Diff sections that did not decode as UTF-8 — what decoded is "
+            "shown below, with U+FFFD marking each content byte that did not "
+            "and \\xNN escapes in the header lines: "
+            + ", ".join(undecodable_files)
+            + "\n\n"
+        )
     return _REVIEW_PROMPT.format(
         commit=commit,
         named_material=_named_contract_material(
@@ -251,6 +294,7 @@ def _review_prompt(
             "reviewed_commit", "the exact reviewed commit SHA"
         ),
         contract=contract_material,
+        diff_note=diff_note,
         diff=diff,
     )
 
@@ -657,7 +701,7 @@ def _extract_snapshot(project_root: Path, commit: str, snapshot: Path) -> None:
     except OSError as error:
         raise ReviewLaunchError(f"cannot run git: {error}") from error
     if result.returncode != 0:
-        detail = result.stderr.decode("utf-8", "replace").strip()
+        detail = result.stderr.decode("utf-8", "backslashreplace").strip()
         raise ReviewLaunchError(f"git archive failed: {detail}")
     snapshot.mkdir()
     try:
@@ -846,8 +890,15 @@ def _launch_review_tail(
     reviewed_commit: str | None = None,
     reviewed_finding: str | None = None,
     prose_capture_level: CaptureLevel,
+    operator_note: str | None = None,
 ) -> LaunchedReview:
-    """Run, parse, and record either kind of review after its setup is known."""
+    """Run, parse, and record either kind of review after its setup is known.
+
+    ``operator_note`` is something the launch already knows the operator
+    should read — the diff decode naming files it could not fully read. It
+    rides the diagnostics channel so it survives both a recorded review and
+    every later rejection.
+    """
 
     raw_output = b""
     reviewer_output = ""
@@ -857,13 +908,22 @@ def _launch_review_tail(
         temporary_root = Path(temporary_directory)
         snapshot = temporary_root / "snapshot"
         prompt_file = temporary_root / "review-prompt.txt"
-        snapshot_builder(snapshot)
-        prompt, contract = prompt_builder(snapshot)
-        prompt_file.write_text(prompt, encoding="utf-8")
-        raw_output, raw_diagnostics = _run_reviewer(
-            _reviewer_command(reviewer_model, prompt_file), snapshot, prompt
-        )
+        try:
+            snapshot_builder(snapshot)
+            prompt, contract = prompt_builder(snapshot)
+            prompt_file.write_text(prompt, encoding="utf-8")
+            raw_output, raw_diagnostics = _run_reviewer(
+                _reviewer_command(reviewer_model, prompt_file), snapshot, prompt
+            )
+        except ReviewLaunchError as error:
+            raise _with_diagnostics(error, operator_note) from error
         diagnostics_note = _keep_diagnostics(raw_diagnostics)
+        if operator_note is not None:
+            diagnostics_note = (
+                f"{operator_note}\n{diagnostics_note}"
+                if diagnostics_note is not None
+                else operator_note
+            )
         # The verdict is parsed from a decoded copy; the artifact pins the
         # bytes the reviewer wrote, so nothing is normalised on the way.
         reviewer_output = raw_output.decode("utf-8", errors="replace")
@@ -985,7 +1045,7 @@ def _launch_finding_review(
     contract_path = journal_root / "tasks" / task.task_id / "contract.md"
     try:
         contract = contract_path.read_text(encoding="utf-8")
-    except OSError as error:
+    except (OSError, UnicodeDecodeError) as error:
         raise ReviewLaunchError(
             f"cannot read task contract for review: {error}"
         ) from error
@@ -1093,7 +1153,24 @@ def launch_review(
         raise ReviewLaunchError(str(error)) from error
     resolved_commit = _resolve_commit(project_root, commit)
     merge_base = _run_git(project_root, ["merge-base", base, resolved_commit]).strip()
-    diff = _run_git(project_root, ["diff", f"{merge_base}..{resolved_commit}"])
+    # The diff is bytes decoded one file section at a time by the helper the
+    # leak scan already uses: a strict whole-stream decode made one file's
+    # non-UTF-8 bytes cost the whole review (proposal 037). The diff's own
+    # arguments stay what they were — a binary file still arrives as "Binary
+    # files differ", which already tells the reviewer what it is.
+    diff, undecodable = decode_diff_per_file(
+        _run_git_bytes(project_root, ["diff", f"{merge_base}..{resolved_commit}"])
+    )
+    diff_note = None
+    if undecodable:
+        # Review reads no private-marker configuration; the names reach the
+        # reviewer inside the diff text anyway, while a signature-shaped name
+        # is still masked by the shared renderer.
+        diff_note = (
+            "diff sections that did not decode as UTF-8 (the reviewer is "
+            "shown what decoded and told): "
+            + render_undecodable_files(undecodable, (), limit=None)
+        )
 
     def prompt_builder(snapshot: Path) -> tuple[str, str]:
         contract_path = (
@@ -1108,7 +1185,7 @@ def launch_review(
         )
         try:
             contract = contract_path.read_text(encoding="utf-8")
-        except OSError as error:
+        except (OSError, UnicodeDecodeError) as error:
             source = (
                 "for review" if sidecar_journal is not None else "from reviewed commit"
             )
@@ -1140,6 +1217,7 @@ def launch_review(
             documents=tuple(dict.fromkeys(documents)),
             absent_extensions=tuple(absent),
             amendment_history=amendment_history,
+            undecodable_files=tuple(undecodable),
         )
         return prompt, contract
 
@@ -1162,4 +1240,5 @@ def launch_review(
         ),
         reviewed_commit=resolved_commit,
         prose_capture_level=prose_capture_level,
+        operator_note=diff_note,
     )
