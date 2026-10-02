@@ -24,6 +24,7 @@
 - [adr/ADR-0011-contract-amendment-visibility.md](adr/ADR-0011-contract-amendment-visibility.md) — understand visible contract amendments and review binding.
 - [adr/ADR-0012-what-the-tool-does-and-what-it-supplies.md](adr/ADR-0012-what-the-tool-does-and-what-it-supplies.md) — understand what the tool does itself and what it supplies as compatible replacements.
 - [adr/ADR-0013-extensions-stages-scopes-isolation-trust.md](adr/ADR-0013-extensions-stages-scopes-isolation-trust.md) — understand how extensions run: stages, scopes, isolation, trust, switches and records.
+- [adr/ADR-0014-where-things-live.md](adr/ADR-0014-where-things-live.md) — understand where things live: the journal, the process log, and CI output.
 - [migration-v1-to-v2.md](migration-v1-to-v2.md) — see what did not carry from the v1 rails into the v2 journal.
 - [incidents/2026-08-31-scope-warning-scope-creep.md](incidents/2026-08-31-scope-warning-scope-creep.md) — study the scope-warning change that grew into scope creep and was rolled back.
 
