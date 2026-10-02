@@ -2,6 +2,10 @@
 
 Status: Accepted
 Date: 2026-10-03
+Amended 2026-10-03 (extension forms; the shared-extension language and the
+wrapped runtime's PATH exception; the wrapper directory, its two locks and
+the manifest example; the wrapped product's verified version; what the gate
+reads from where)
 
 Builds on [ADR-0001](ADR-0001-governance-plane.md) (a governance plane, not
 an execution plane), [ADR-0007](ADR-0007-operator-acceptance.md) (operator
@@ -17,10 +21,13 @@ core launches itself; and the shared switches file is excepted from
 "configuration is reviewed" — it alone changes without review, while a
 manifest still takes the diff lane with review. The revision clarifies
 ADR-0001: the isolation of agents and of execution stays with the harness.
-ADR-0010 did not refuse an installer — it deferred `extension add/remove` to
-be decided after the dogfood, by its numbers; this ADR keeps installation
-out of the tool and replaces that deferred trigger with the sign "Left
-open" gives. In ADR-0007: an acceptance stood only over the blocking
+ADR-0010 refused the plugin platform — installer, sandbox, SDK, registry —
+and deferred `extension add/remove` to be decided after the dogfood, by its
+numbers *(amended 2026-10-03: the earlier reading, "ADR-0010 did not refuse
+an installer", overstated — the platform refusal named an installer; what
+was deferred is the `extension add/remove` command pair)*; this ADR keeps
+installation out of the tool and replaces that deferred trigger with the
+sign "Left open" gives. In ADR-0007: an acceptance stood only over the blocking
 findings of a non-approving review; here it also covers an extension pause,
 which raises no review finding, and an operational CR, which has no review
 at all. It answers
@@ -89,6 +96,20 @@ or after the implementation merges.
    the code of shared extensions** are taken from the base commit; a pull
    request cannot weaken them for itself, tailor the check code to itself, or
    gain pause rights for an extension it adds itself.
+
+   Amended 2026-10-03: the same rule stated exactly, and extended to the
+   gate's own reading. "From the base" names the base side of the history
+   the candidate belongs to. In the embedded placement it covers, beside
+   the extension inputs above, the contract, the manifests, the leak-scan
+   markers and the lifecycle state at the base; the journal's records the
+   gate projects and compares — reviews, acceptances, the rest of the
+   projection — it reads from the calling checkout's working tree, where
+   the review attesting the candidate may still be uncommitted. In a
+   sidecar there is no shared history to pin to: all of the above come
+   from the journal repository's working tree — the transcript says so on
+   its scope line — and the gate advises and decides no merge, the
+   findings lane excepted
+   ([ADR-0008](ADR-0008-journal-placements.md) D5).
 7. **No silence.** Every extension gets a result line: checked / failed
    (reason) / addressee not found / did not finish (timeout) / switched off
    (by whom and why) / not run (changed after approval, dependencies do not
@@ -113,6 +134,25 @@ or after the implementation merges.
    everything runnable; `lock/` — the dependency lock with hashes, if there
    are dependencies). An extension without commands — a declared footprint
    only — stays a single `<name>.toml` file, as in ADR-0010.
+
+   Amended 2026-10-03: the two shapes above are the ends of a distinction
+   of **form**, which has three members — and form is not obligation:
+   [ADR-0012](ADR-0012-what-the-tool-does-and-what-it-supplies.md)'s
+   "declared" and "supplied" are obligation classes that cut across all
+   three.
+
+   - **manifest only** — the ADR-0010 shape: no `[[stage]]` and no
+     `command`, a single `<name>.toml`; its `install`/`remove` strings
+     stay recorded declarations the tool never runs;
+   - **wrapper** — a thin adapter around another product: a directory
+     whose manifest carries a `[wraps]` section naming the product, the
+     verified version, the ecosystem, the product lock, the required
+     runtime and the license; the footprint is the product's — the paths
+     the product owns in the repository;
+   - **native** — a directory holding the extension's own logic in full.
+
+   A wrapper's `lock/` holds two locks: the adapter's (Python) and the
+   product's. The manifest example below shows the shape.
 
    | Scope | Extension directory | Dependencies installed to | Seen by |
    |---|---|---|---|
@@ -139,6 +179,13 @@ or after the implementation merges.
     the working tree nor to the journal — only to the process log and to its
     own state under `.git/agentmarshal/`. `doctor` refuses a personal
     manifest that declares a footprint.
+
+    Amended 2026-10-03: "its own state" lives in the local-state place of
+    its scope — `.git/agentmarshal/` for the personal-in-clone scope, and
+    at user scope under the user directories the scope table names
+    (`~/.config/agentmarshal/`, `~/.local/share/agentmarshal/`; Windows:
+    `%APPDATA%\agentmarshal\`, `%LOCALAPPDATA%\agentmarshal\`), as
+    Decision 11 places them.
 11. **Local state lives outside the working tree.** The clone's local state
     — extensions of the personal-in-clone scope, dependencies, local grants
     and switches — lives in `.git/agentmarshal/`, the location the separate
@@ -163,9 +210,33 @@ or after the implementation merges.
     no dependencies. `doctor` compares the installed dependencies with the
     lock. Changing what is installed happens only through new directory
     content.
+
+    Amended 2026-10-03: for a wrapper the verified version of the wrapped
+    product lives in the extension itself — the version named in `[wraps]`,
+    the package hashes in the product lock it points at — and `doctor`
+    reads both from the extension's directory. Raising the pin is an
+    extension release, not a core one. This revises
+    [ADR-0012](ADR-0012-what-the-tool-does-and-what-it-supplies.md)'s
+    Decision 3, where the pin lives in the extension's manifest: the
+    manifest names the version; the integrity value lives in the lock.
 13. **`command` names only a file in the `bin/` of its own directory.** `PATH`
     lookup is forbidden; an external tool is invoked through a `bin/`
     launcher and comes only from dependencies installed from the lock.
+
+    Amended 2026-10-03: this revises the `PATH` ban for one named case.
+    Shared extension code — a native extension's own logic and a wrapper's
+    adapter alike — is Python and runs as a separate process under
+    AgentMarshal's own interpreter: not a shebang line the platform
+    resolves, and not inside the core's process — the "extension code
+    inside the gate's process" alternative below stays rejected. Python
+    dependencies come only from the adapter lock with hashes; the standard
+    library alone is preferred. The one exception to the `PATH` ban is the
+    runtime a wrapped product needs — `node` for a JavaScript product: the
+    manifest declares its name and a minimum version, the core finds it on
+    `PATH`, and `doctor` and the stage output name the path and version
+    found. The wrapped product itself still comes only from its own lock,
+    installed under `deps/` — the exception is the runtime, never the
+    product. A personal extension may be written in any language.
 14. **A local grant covers the hash of the whole directory** — the manifest,
     `bin/`, the lock: `agentmarshal extension trust | untrust | list`. A
     shared extension with a command runs on a workstation only under a valid
@@ -238,16 +309,24 @@ or after the implementation merges.
 # .agentmarshal/extensions/openspec/manifest.toml
 schema = 2
 name = "openspec"
-version = "1.13.2"
-footprint = ["openspec/", "..."]       # a personal one has none
+version = "1.0.0"                      # the extension's own version
+footprint = ["openspec/", "..."]       # the wrapped product's paths; a personal one has none
 documents = ["openspec/specs/"]
 
 [[stage]]
 phase = "pre-gate-stop"                # post-gate | pre-gate-warn | pre-gate-stop
-command = "bin/validate"               # only from this directory's bin/
+command = "bin/validate.py"            # only from this directory's bin/; run by the core's interpreter
 
 [dependencies]
-lock = "lock/package-lock.json"        # package hashes; installed by the ecosystem
+lock = "lock/adapter-lock.json"        # the adapter's Python dependencies, hashed; stdlib alone preferred
+
+[wraps]
+product = "openspec"
+version = "1.13.2"                     # the verified version; raising it is an extension release
+ecosystem = "npm"
+lock = "lock/package-lock.json"        # the product's own lock, hashed; installed under deps/
+runtime = "node >= 20"                 # the one PATH exception: the wrapped product's runtime
+license = "MIT"
 
 [records]
 kinds = ["openspec/change-archived@1"] # ext kinds; a personal one has none
@@ -258,6 +337,15 @@ env = []                               # variable names; no provider secrets at 
 writes = "none"                        # none | process-log (on a workstation; CI has no process log)
 timeout_seconds = 120
 ```
+
+Amended 2026-10-03: the example above is the wrapper form — an adapter
+script under `bin/`, the adapter's lock and the product's lock side by side
+under `lock/`, and the product described in `[wraps]`. `schema = 2` is the
+manifest schema moving with this form; a schema-1 manifest stays valid and
+reads as what it already is — a manifest-only extension — under
+[ADR-0015](ADR-0015-a-rule-applies-from-the-schema-that-introduced-it.md)'s
+rule that a file is checked at read time by the schema that introduced each
+rule.
 
 The full template with defaults, the schema and manifest validation are
 implementation work.

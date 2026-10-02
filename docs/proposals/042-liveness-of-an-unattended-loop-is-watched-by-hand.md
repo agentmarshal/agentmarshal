@@ -1,6 +1,6 @@
 # 042 — The liveness of an unattended loop is watched by hand: a step watchdog and a loop monitor the reporter offers to contribute
 
-- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.4.0 · **Source:** `sha256:6bf1b733ad6a4f83bbddf67f935a47dd61008ce745d5c7aa9f4a72e3d7d48ca6` · **Disposition:** accepted *(in part; actions through the tool declined for the core and met elsewhere; the offered code accepted in principle, its route undecided)*
+- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.4.0 · **Source:** `sha256:6bf1b733ad6a4f83bbddf67f935a47dd61008ce745d5c7aa9f4a72e3d7d48ca6` · **Disposition:** accepted *(in part; actions through the tool declined for the core and met elsewhere; the offered code accepted in principle; it arrives through the reporter's outbox under an explicit Apache-2.0 license line, decided 2026-10-03)*
 
 ## Finding
 
@@ -156,8 +156,13 @@ itself does.
 plugin — is accepted with thanks, in principle, as a supplied extension
 under ADR-0012: the project recommends it, a compatibility test in the
 project's CI checks it against a full task cycle, and the pin is re-reviewed
-with each release. The route by which the code reaches the project is not
-yet decided.
+with each release. The route by which the code reaches the project is
+decided 2026-10-03, with
+[ADR-0012](../adr/ADR-0012-what-the-tool-does-and-what-it-supplies.md)'s
+amendment: it arrives through the reporter's own findings outbox carrying
+an explicit Apache-2.0 license line — a new use of that channel the ADR
+names — and is adapted into a supplied extension by an ordinary task that
+names its source.
 
 ## Where
 
@@ -169,4 +174,6 @@ of a later decision, the events and the progress in the process log.
 Actions through the tool are declined for the core by us — a pause is
 proposal 041's plan file, a stop or a resume is the watchdog's own. The
 offered watchdog and monitor are accepted in principle as a supplied
-extension; how the code arrives is not yet decided.
+extension; the code arrives through the reporter's outbox under an
+explicit Apache-2.0 license line and is adapted by a project task naming
+its source (decided 2026-10-03).

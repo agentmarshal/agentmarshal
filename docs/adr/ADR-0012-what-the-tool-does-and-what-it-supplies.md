@@ -2,6 +2,9 @@
 
 Status: Accepted
 Date: 2026-10-02
+Amended 2026-10-03 (the extensions-repository exception; supplied extensions
+as optional; the pin's hashes in the lock; "no heartbeats" read as "in the
+core")
 
 Builds on [ADR-0001](ADR-0001-governance-plane.md) (a governance plane, not an
 execution plane) and [ADR-0010](ADR-0010-process-extensions.md) (process
@@ -89,6 +92,16 @@ obligations:
   `doctor` joins `brief` and the gate as a reader of manifests;
 - removal from the supplied set is announced.
 
+Amended 2026-10-03: the pin's integrity value lives in the extension's
+lock, not its manifest —
+[ADR-0013](ADR-0013-extensions-stages-scopes-isolation-trust.md)'s wrapper
+form gives the manifest a `[wraps]` section that names the verified
+version, and the product lock it points at carries the package hashes;
+`doctor` reads both from the extension's directory. And "the project's CI"
+in the first bullet resolves by where the supplied extensions live: this
+repository's CI before the move "Left open" names, and the extensions
+repository's CI — against the supported core versions — after it.
+
 The guarantee is compatibility with the task cycle at the pinned version —
 **not** the quality or the security of the tool. Supplying is not bundling: a
 supplied extension is installed only at the adopter's choice, and ADR-0010's
@@ -111,6 +124,9 @@ their schema, `validate`, `gate`, the trusted path that writes a review.
 Everything else — accounting and `report`, the outbox, the reviewer launcher,
 the v1 migration, `prune`, the process templates — is optional. Gate code
 imports no optional module; a test checks that.
+
+Amended 2026-10-03: the supplied extensions of Decision 3 join the optional
+list — the gate decides without them.
 
 ### 6. Application to the findings
 
@@ -147,7 +163,13 @@ imports no optional module; a test checks that.
   [proposal 035](../proposals/035-journal-transactions-sweep-records-of-other-tasks.md).
   And **a watcher template** for waits at the provider — an unmergeable
   pull request, a quota refusal — together with a fail-fast rule. There are
-  no heartbeats and no mutual-exclusion locks.
+  no heartbeats and no mutual-exclusion locks. Amended 2026-10-03: in the
+  core — an extension may do either; the watchdog extension of
+  [proposal 042](../proposals/042-liveness-of-an-unattended-loop-is-watched-by-hand.md)
+  writes its heartbeat to the process log, and the merge slot of
+  [proposal 043](../proposals/043-review-before-integration-makes-every-merge-stale.md)
+  is a supplied extension's lock, as that proposal's disposition already
+  reads this sentence.
 - The living system description — **a supplied OpenSpec extension**, the
   first under Decision 3: a manifest, a method for wiring it in, the
   pitfalls, an example contract.
@@ -171,6 +193,29 @@ three required:
   core (for example, it follows a third-party tool's releases); an adopter
   directly asks not to install it together with the core;
 - the core interface the component uses is declared stable.
+
+Amended 2026-10-03: one named exception, with its reason — the supplied
+extensions leave for **a repository of their own right after 0.5.0**,
+because a wrapper has a release rhythm of its own that core releases cannot
+hold — a wrapped product can ship every week or two, and the verified
+version that lives in the extension cannot wait on the core. The signs
+above stay the rule for the other optional components; the extensions meet
+them anyway — the Decision-5 boundary has held a release, and the interface
+the supplied extensions use is declared stable — but what moves them is the
+rhythm, not the signs.
+
+Until the move, the supplied extensions live in `extensions/` at the root
+of this repository — not to be confused with an adopter's
+`.agentmarshal/extensions/`, where the manifests of
+[ADR-0010](ADR-0010-process-extensions.md) live.
+
+An adopter's own extension code reaches the project through the outbox
+their findings already travel (`.agentmarshal/upstream/`), each file
+carrying an explicit Apache-2.0 license line — a new use of that channel,
+named here — and is adapted into a supplied extension by an ordinary task
+that names its source.
+[Proposal 042](../proposals/042-liveness-of-an-unattended-loop-is-watched-by-hand.md)'s
+offered watchdog and monitor take this route.
 
 ## Consequences
 
