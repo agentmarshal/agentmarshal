@@ -1,0 +1,33 @@
+{
+  "advisory_findings": [
+    "docs-readme-map-still-calls-009-deferred",
+    "039-covered-overstates-run-recording"
+  ],
+  "artifacts": [
+    {
+      "hash": "e38622251e8ac3d275a927a1f0b68611d509aa8f1f8ac4dd869c7c34845af26e",
+      "ref": ".agentmarshal/journal/tasks/CR-130/artifacts/01M3YVXQJB2SRRW8EH7C6JGDB2-review.md"
+    }
+  ],
+  "created_at": "2026-10-02T17:52:19.531428Z",
+  "findings": [
+    "readme-partial-disposition-example-no-longer-holds",
+    "batch-2026-08-30-intro-calls-dated-dispositions-re-reads"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "3ba3ed040a91cfe00f804738095544c648e233ec",
+  "reviewed_contract": "565c0e5fd55fdf2c2a76ecb48fa5d17df3b9f14074af89c64d0b4eb64c8f5dce",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-130",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "changes_required"
+}
