@@ -38,7 +38,7 @@
 - [proposals/006-contract-repair-path.md](proposals/006-contract-repair-path.md) — review the finding on repairing a defective contract.
 - [proposals/007-accepting-work-over-findings.md](proposals/007-accepting-work-over-findings.md) — review the finding on operator acceptance over findings.
 - [proposals/008-session-and-token-accounting.md](proposals/008-session-and-token-accounting.md) — review the proposal for durable session and token accounting.
-- [proposals/009-lifecycle-extension-points.md](proposals/009-lifecycle-extension-points.md) — review the deferred lifecycle-extension proposal.
+- [proposals/009-lifecycle-extension-points.md](proposals/009-lifecycle-extension-points.md) — review the lifecycle-extension proposal, deferred at intake and accepted 2026-10-03.
 - [proposals/010-executor-artifacts-lifecycle.md](proposals/010-executor-artifacts-lifecycle.md) — review the finding on external-executor artifact lifecycle.
 - [proposals/011-windows-journal-directory-acl.md](proposals/011-windows-journal-directory-acl.md) — review the Windows journal-directory access-control finding.
 - [proposals/012-upstream-feedback-channel.md](proposals/012-upstream-feedback-channel.md) — review the finding that established the upstream feedback convention.
@@ -70,6 +70,9 @@
 - [proposals/038-an-adopter-setup-cannot-be-carried-to-the-next-repository.md](proposals/038-an-adopter-setup-cannot-be-carried-to-the-next-repository.md) — review the finding on an adopter setup that cannot be carried to the next repository.
 - [proposals/039-review-findings-do-not-feed-back-into-the-next-round.md](proposals/039-review-findings-do-not-feed-back-into-the-next-round.md) — review the finding on review findings that do not feed back into the next round.
 - [proposals/040-in-flight-steps-are-invisible-and-journal-writes-contend-on-one-checkout.md](proposals/040-in-flight-steps-are-invisible-and-journal-writes-contend-on-one-checkout.md) — review the finding on in-flight steps invisible to the journal and journal writes contending on one checkout.
+- [proposals/041-the-next-step-of-a-task-is-decided-outside-the-tool.md](proposals/041-the-next-step-of-a-task-is-decided-outside-the-tool.md) — review the finding on the next step of a task decided outside the tool.
+- [proposals/042-liveness-of-an-unattended-loop-is-watched-by-hand.md](proposals/042-liveness-of-an-unattended-loop-is-watched-by-hand.md) — review the finding on the liveness of an unattended loop watched by hand, and the offered watchdog and monitor.
+- [proposals/043-review-before-integration-makes-every-merge-stale.md](proposals/043-review-before-integration-makes-every-merge-stale.md) — review the finding on review before integration making every merge stale.
 
 ## Contribute a change
 
