@@ -1,0 +1,33 @@
+{
+  "advisory_findings": [
+    "adr0013-localappdata-attributed-to-scope-table",
+    "adapter-lock-named-json-for-python-deps",
+    "sidecar-transcript-claim-overstates-scope-line",
+    "overview-glossary-left-unamended",
+    "extensions-repository-signs-claim-not-yet-true"
+  ],
+  "artifacts": [
+    {
+      "hash": "971a88d7baa8069d6f5f5981f0a3ee7311819efd968f3407aebf3fa0dda527fd",
+      "ref": ".agentmarshal/journal/tasks/CR-134/artifacts/01M3ZEK99RXC7RR0J7V39Q6R1W-review.md"
+    }
+  ],
+  "created_at": "2026-10-02T23:18:40.184307Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "c6871d508d0b9695952dbe278ca0f69932b092a1",
+  "reviewed_contract": "43934c9baaabedc32f645877900898924d8e6342e9cccb305e020de044a0220c",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-134",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "approved"
+}
