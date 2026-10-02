@@ -1,0 +1,29 @@
+{
+  "advisory_findings": [
+    "decision-9-binds-a-later-decision-to-schema-7-and-is-outside-the-enumerated-points"
+  ],
+  "artifacts": [
+    {
+      "hash": "72132ccb93356cc05f9caf1fbd893a5d6c0c6b60ac645e8dd872d75be621d8bd",
+      "ref": ".agentmarshal/journal/tasks/CR-133/artifacts/01M3ZCHQPM4J7AE7RA5R7JBG1M-review.md"
+    }
+  ],
+  "created_at": "2026-10-02T22:42:52.244790Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "84c69a2a493857720c89db60ab1cbc6c3a82ed29",
+  "reviewed_contract": "ec53438dd873dab516112fe61642081dd9af754c76dbb8ab1743336c5127c7aa",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-133",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "approved"
+}
