@@ -12,8 +12,10 @@ from agentmarshal.journal.capture import (
     LeakHit,
     assert_no_leaks,
     capture_policy_from_project,
+    decode_diff_per_file,
     private_markers_from_project,
     render_leak_hits,
+    render_undecodable_files,
     scan_diff_for_leaks,
     scan_for_leaks,
 )
@@ -569,3 +571,142 @@ def test_private_markers_reject_empty_or_non_string_entry() -> None:
         private_markers_from_project({"leak_scan": {"private_markers": [""]}})
     with pytest.raises(CaptureError):
         private_markers_from_project({"leak_scan": {"private_markers": [3]}})
+
+
+# --- per-file diff decoding ----------------------------------------------
+
+_GITHUB_TOKEN = b"ghp_" + b"A1" * 18
+
+
+def test_decode_diff_per_file_passes_a_clean_diff_through() -> None:
+    diff = b"diff --git a/f b/f\n--- a/f\n+++ b/f\n@@ -0,0 +1 @@\n+clean\n"
+
+    text, undecodable = decode_diff_per_file(diff)
+
+    assert text == diff.decode("utf-8")
+    assert undecodable == []
+
+
+def test_one_undecodable_file_does_not_switch_the_scan_off() -> None:
+    """Scenario: one file that does not decode does not switch the scan off.
+
+    The published reproduction of proposal 026's fourth finding: a text file
+    holding a GitHub-token-shaped string plus a file of random bytes in one
+    commit. The string must be reported either way."""
+    diff = (
+        b"diff --git a/secret.py b/secret.py\n"
+        b"+++ b/secret.py\n"
+        b"@@ -0,0 +1 @@\n"
+        b"+key = '" + _GITHUB_TOKEN + b"'\n"
+        b"diff --git a/blob.bin b/blob.bin\n"
+        b"+++ b/blob.bin\n"
+        b"@@ -0,0 +1 @@\n"
+        b"+\xff\xfe\x00\xc8 binary bytes\n"
+    )
+
+    text, undecodable = decode_diff_per_file(diff)
+
+    assert undecodable == ["blob.bin"]
+    assert scan_diff_for_leaks(text) == [LeakHit("secret.py", "github-token")]
+
+
+def test_an_undecodable_files_bytes_are_still_searched() -> None:
+    """Scenario: an undecodable file's bytes are still searched."""
+    diff = (
+        b"diff --git a/blob.bin b/blob.bin\n"
+        b"+++ b/blob.bin\n"
+        b"@@ -0,0 +1 @@\n"
+        b"+\xff\xfe" + _GITHUB_TOKEN + b"\x80\n"
+    )
+
+    text, undecodable = decode_diff_per_file(diff)
+
+    assert undecodable == ["blob.bin"]
+    assert scan_diff_for_leaks(text) == [LeakHit("blob.bin", "github-token")]
+
+
+def test_a_path_that_does_not_decode_is_named_in_escaped_form() -> None:
+    """Scenario: a path that does not decode is named in escaped form."""
+    diff = (
+        b"diff --git a/\xff.py b/\xff.py\n"
+        b"+++ b/\xff.py\n"
+        b"@@ -0,0 +1 @@\n"
+        b"+key = '" + _GITHUB_TOKEN + b"'\n"
+    )
+
+    text, undecodable = decode_diff_per_file(diff)
+
+    # The escaped path is printable, names the file, and is the same path a
+    # hit against it reports.
+    assert undecodable == ["\\xff.py"]
+    assert scan_diff_for_leaks(text) == [LeakHit("\\xff.py", "github-token")]
+
+
+def test_bytes_after_a_non_separator_control_byte_are_still_searched() -> None:
+    """Scenario: bytes after a non-separator control byte are still searched.
+
+    The reproduction fixture with the token placed after control bytes:
+    \x0c and its neighbours are valid UTF-8, so they survive the lossy decode
+    inside the "+" line. A split that treats them as line separators ends the
+    hunk early and never sees the token."""
+    diff = (
+        b"diff --git a/blob.bin b/blob.bin\n"
+        b"+++ b/blob.bin\n"
+        b"@@ -0,0 +1 @@\n"
+        b"+\xff\xfe\x0b\x0c\x1c" + _GITHUB_TOKEN + b"\x1e\x80\n"
+    )
+
+    text, undecodable = decode_diff_per_file(diff)
+
+    assert undecodable == ["blob.bin"]
+    assert scan_diff_for_leaks(text) == [LeakHit("blob.bin", "github-token")]
+
+
+def test_an_undecodable_deletion_is_not_named() -> None:
+    """Scenario: a file whose undecodable bytes are all removed is not named.
+
+    The scan reads what a diff adds; a deleted binary lost nothing it reads,
+    so it is not named among the files the scan could not read."""
+    diff = (
+        b"diff --git a/old.bin b/old.bin\n"
+        b"--- a/old.bin\n"
+        b"+++ /dev/null\n"
+        b"@@ -1 +0,0 @@\n"
+        b"-\xff\xfe\n"
+    )
+
+    _, undecodable = decode_diff_per_file(diff)
+
+    assert undecodable == []
+
+
+def test_an_undecodable_section_falls_back_to_the_diff_header() -> None:
+    # No '+++' destination exists for a section like this; the name falls
+    # back to the 'diff --git' line's b-side.
+    diff = b"diff --git a/old.bin b/old.bin\n@@ -0,0 +1 @@\n+\xff\xfe\n"
+
+    _, undecodable = decode_diff_per_file(diff)
+
+    assert undecodable == ["old.bin"]
+
+
+def test_undecodable_names_are_masked_like_hit_paths() -> None:
+    """A name that carries a secret is described, not printed.
+
+    The renderer is shared with the hit list for exactly this reason: a file
+    under a marker-named directory, or named after the key it holds, must not
+    put the secret into the output just because it also failed decode."""
+
+    names = [
+        "configs/internal.corp.invalid/logo.bin",
+        "keys/AKIAIOSFODNN7EXAMPLE.bin",
+        "clean.bin",
+    ]
+
+    rendered = render_undecodable_files(names, ("internal.corp.invalid",), limit=2)
+
+    assert "internal.corp.invalid" not in rendered
+    assert "AKIAIOSFODNN7EXAMPLE" not in rendered
+    assert "configs/<private marker #1>/logo.bin" in rendered
+    assert "keys/<aws-access-key-id>.bin" in rendered
+    assert rendered.endswith(", and 1 more not shown")

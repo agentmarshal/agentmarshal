@@ -182,9 +182,10 @@ def test_leak_scan_binds_to_nested_repo_not_ancestor(
     assert "aws-access-key-id" in capsys.readouterr().out
 
 
-def test_leak_scan_handles_non_utf8_diff_without_traceback(
+def test_a_path_that_does_not_decode_is_named_in_escaped_form(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    """Scenario: a path that does not decode is named in escaped form."""
     import os
 
     repo, base = _repo(tmp_path, monkeypatch)
@@ -197,9 +198,137 @@ def test_leak_scan_handles_non_utf8_diff_without_traceback(
 
     code = main(["leak-scan", "--base", base, "--commit", head])
 
-    # A controlled refusal, not a traceback.
+    # The file is named in escaped printable form — no raw path bytes, no
+    # traceback, and nothing decodable fails the run.
+    captured = capsys.readouterr()
+    assert code == 0
+    assert "\\xff.py" in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_one_undecodable_file_does_not_switch_the_scan_off(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: one file that does not decode does not switch the scan off.
+
+    The reproduction published as proposal 026's fourth finding: a commit
+    adding a text file holding a GitHub-token-shaped string and a file of
+    random bytes must report the string — the binary file no longer leaves
+    every other file unscanned."""
+    repo, base = _repo(tmp_path, monkeypatch)
+    (repo / "secret.py").write_text(f"key = 'ghp_{'A1' * 18}'\n", encoding="utf-8")
+    (repo / "blob.bin").write_bytes(bytes(range(256)))
+    head = _commit_all(repo, "secret plus binary")
+
+    code = main(["leak-scan", "--base", base, "--commit", head])
+
+    captured = capsys.readouterr()
     assert code == 1
-    assert "non-UTF-8" in capsys.readouterr().err
+    assert "secret.py: github-token" in captured.out
+    assert "blob.bin" in captured.err
+    assert "ghp_" not in captured.out
+    assert "ghp_" not in captured.err
+
+
+def test_an_undecodable_file_alone_does_not_fail_the_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: an undecodable file alone does not fail the command."""
+    repo, base = _repo(tmp_path, monkeypatch)
+    (repo / "blob.bin").write_bytes(b"\xff\xfe\x00\x01 binary content \x80")
+    head = _commit_all(repo, "binary only")
+
+    code = main(["leak-scan", "--base", base, "--commit", head])
+
+    captured = capsys.readouterr()
+    assert code == 0
+    assert "no known leak signatures" in captured.out
+    assert "could not decode" in captured.err
+    assert "blob.bin" in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_an_undecodable_files_bytes_are_still_searched(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: an undecodable file's bytes are still searched."""
+    repo, base = _repo(tmp_path, monkeypatch)
+    (repo / "blob.bin").write_bytes(
+        b"\xff\xfe" + f"ghp_{'A1' * 18}".encode() + b"\x80\x00"
+    )
+    head = _commit_all(repo, "binary holding a token")
+
+    code = main(["leak-scan", "--base", base, "--commit", head])
+
+    captured = capsys.readouterr()
+    assert code == 1
+    assert "blob.bin: github-token" in captured.out
+    assert "ghp_" not in captured.out
+
+
+def test_an_undecodable_path_that_carries_a_marker_is_described_not_printed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: an undecodable path that carries a marker is described, not
+    printed."""
+    repo, _ = _repo(tmp_path, monkeypatch)
+    project_file = repo / ".agentmarshal" / "project.json"
+    data = json.loads(project_file.read_text(encoding="utf-8"))
+    data["leak_scan"] = {"private_markers": ["internal.corp.invalid"]}
+    project_file.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    base = _commit_all(repo, "configure markers")
+    asset = repo / "vendor" / "internal.corp.invalid"
+    asset.mkdir(parents=True)
+    (asset / "logo.bin").write_bytes(b"\xff\xfe\x00\x01 \x80")
+    head = _commit_all(repo, "binary asset under a marker-named directory")
+
+    code = main(["leak-scan", "--base", base, "--commit", head])
+
+    captured = capsys.readouterr()
+    assert code == 0
+    assert "internal.corp.invalid" not in captured.err
+    assert "vendor/<private marker #1>/logo.bin" in captured.err
+
+
+def test_an_undecodable_path_that_is_itself_a_key_is_described_not_printed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: an undecodable path that is itself a key is described, not
+    printed."""
+    repo, base = _repo(tmp_path, monkeypatch)
+    keys = repo / "keys"
+    keys.mkdir()
+    (keys / "AKIAIOSFODNN7EXAMPLE.bin").write_bytes(b"\xff\xfe\x00\x80")
+    head = _commit_all(repo, "key-named binary")
+
+    code = main(["leak-scan", "--base", base, "--commit", head])
+
+    captured = capsys.readouterr()
+    assert code == 0
+    assert "AKIAIOSFODNN7EXAMPLE" not in captured.err
+    assert "AKIAIOSFODNN7EXAMPLE" not in captured.out
+    assert "keys/<aws-access-key-id>.bin" in captured.err
+
+
+def test_bytes_after_a_non_separator_control_byte_are_still_searched(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: bytes after a non-separator control byte are still searched.
+
+    The reproduction fixture with the token placed after the control bytes:
+    git emits bytes(range(256)) as two "+" lines, and a reader that treats
+    \x0c and its neighbours as line separators ends the hunk early and never
+    reaches the token appended after them."""
+    repo, base = _repo(tmp_path, monkeypatch)
+    (repo / "blob.bin").write_bytes(bytes(range(256)) + f"ghp_{'A1' * 18}".encode())
+    head = _commit_all(repo, "binary holding a token after control bytes")
+
+    code = main(["leak-scan", "--base", base, "--commit", head])
+
+    captured = capsys.readouterr()
+    assert code == 1
+    assert "blob.bin: github-token" in captured.out
+    assert "ghp_" not in captured.out
 
 
 def test_leak_scan_works_in_plain_git_repo_without_agentmarshal(
