@@ -1,6 +1,6 @@
 # 020 — `leak-scan` reports a category but not the file, and a marker list matches its own declaration
 
-- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.3.0 · **Source:** `sha256:dc5f932d5e4712c56b87ee33e48bd9408b98d9c1c2f1d7d1719ced102b7491cb` · **Disposition:** accepted *(in part; the acknowledged-and-proceed path is deferred)*
+- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.3.0 · **Source:** `sha256:dc5f932d5e4712c56b87ee33e48bd9408b98d9c1c2f1d7d1719ced102b7491cb` · **Disposition:** accepted *(the acknowledged-and-proceed path deferred at intake, accepted 2026-10-03)*
 
 ## Finding
 
@@ -43,6 +43,10 @@ acknowledged-and-proceed path that is recorded rather than bypassed.
 
 ## Disposition — accepted for the first two, deferred for the third
 
+> Superseded 2026-10-03 for the third part: **accepted; not shipped yet**.
+> The deferral's reasoning stands below as history; what changed is in the
+> dated section at the end.
+
 An advisory scan that cannot say what it found is not advisory, it is an
 obstacle: the operator's only move is a manual search, and the next operator's
 move is to stop reading the warning. Hits will name the file and the matched
@@ -62,3 +66,12 @@ tooling, and the verification should become evidence rather than a bypass — bu
 it is a new kind of record, and this project decides record types in an
 architecture decision before it builds them. It will be decided that way rather
 than added as a flag.
+
+## Disposition — accepted in full (2026-10-03)
+
+The acknowledged-and-proceed path's deferral is lifted for the reason the
+whole intake moved: the project has taken every adopter finding into the
+next release, and this path is among them. It remains a new kind of record
+— this project still decides record types in an architecture decision
+before it builds them — so it arrives through a decision record rather than
+as a flag. Accepted; not shipped yet.
