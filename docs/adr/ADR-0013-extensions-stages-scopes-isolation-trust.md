@@ -66,14 +66,17 @@ or after the implementation merges.
    declaration, and the mode in it is the policy.
 5. **An extension is a separate step before the gate, not part of the gate.**
    The gate reads neither an extension's output nor its flags; its decision
-   does not depend on whether extensions are installed at all. An extension's
-   stop is a pause of the process before the gate; sorting it out — a fix in
-   a new round, or operator acceptance — does not touch the gate. Acceptance
-   here is the first of two extensions of ADR-0007: a pause raises no review
-   finding, so the acceptance stands over the pause itself rather than over a
-   non-approving review's blocking findings. The merge happens when the gate
-   has passed and no pause stands. An extension cannot push through what the
-   gate refused — by construction.
+   does not depend on whether an extension's code ran or what it reported.
+   The manifests still act as ADR-0010 decided: a named extension's
+   footprint joins the effective scope, its `documents` line can refuse a
+   candidate, and a candidate that deletes a manifest is checked for a
+   complete removal. An extension's stop is a pause of the process before
+   the gate; sorting it out — a fix in a new round, or operator acceptance —
+   does not touch the gate. Acceptance here is the first of two extensions
+   of ADR-0007: a pause raises no review finding, so the acceptance stands
+   over the pause itself rather than over a non-approving review's blocking
+   findings. The merge happens when the gate has passed and no pause stands.
+   An extension cannot push through what the gate refused — by construction.
 6. **Read from the base.** Manifests, modes, isolation, shared switches **and
    the code of shared extensions** are taken from the base commit; a pull
    request cannot weaken them for itself, tailor the check code to itself, or
@@ -130,10 +133,12 @@ or after the implementation merges.
     dependencies, local grants and switches live in `.git/agentmarshal/`, the
     location the separate decision on where local state lives defines: shared
     by all worktrees, never committed. **The implementer-launch template in
-    the adopter kit (ADR-0012) runs the executor with no write access to
-    `.git/agentmarshal/` and `~/.config/agentmarshal/`** — otherwise a
-    managed agent could switch off the extension that checks it, grant itself
-    a shared one, or plant a personal one.
+    the adopter kit (ADR-0012) runs the executor with no write access to any
+    local-state place the scope table names — `.git/agentmarshal/`,
+    `~/.config/agentmarshal/`, `~/.local/share/agentmarshal/` (Windows:
+    `%APPDATA%\agentmarshal\`)** — otherwise a managed agent could switch off
+    the extension that checks it, grant itself a shared one, or plant a
+    personal one.
 
 ### D. Installation and trust: what runs is what was approved
 
@@ -166,7 +171,8 @@ or after the implementation merges.
     produce only a false local pause, a switched-off personal check, or a lie
     in the process log — evidence and the merge decision do not suffer, and
     giving a personal extension authority takes a new ADR; **(b) the executor
-    sandbox** (Decision 11). Shared extension code at `pre-gate` runs from
+    sandbox** (Decision 11, over every local-state place the scope table
+    names). Shared extension code at `pre-gate` runs from
     the base — it passed review and the provider protects it — so a forged
     local grant merely removes the question put to the developer before code
     the process already approved runs.
@@ -201,8 +207,10 @@ or after the implementation merges.
     the body is opaque to the core, hash-pinned and size-limited. `validate`
     checks the envelope; a kind no manifest declares draws a warning —
     "addressee not found", not a refusal. What the body means is for the
-    extension itself to check. Only a shared extension may write `ext`. The
-    envelope's schema is decided separately.
+    extension itself to check. Only a shared extension may write `ext`, and
+    never to the journal directly: the record goes through the core's
+    command, which writes the envelope. The envelope's schema is decided
+    separately.
 19. `doctor` lists the active extensions by scope: mode; isolation declared
     and enforced; the grant (hash, when granted); whether the directory
     matches the approved one; dependencies against the lock; the switch.
@@ -249,7 +257,7 @@ findings.
 
 - [proposal 009](../proposals/009-lifecycle-extension-points.md) gets its
   answer: stages exist; a pause lands before the gate, and the gate takes
-  nothing from extensions.
+  nothing from an extension's run.
 - The stage interface is a promise for years, so it is minimal: in — a commit
   and a snapshot; out — "pause / no" plus text.
 - ADR-0010's refusal of an installer stands; approval, the directory-hash
@@ -273,7 +281,7 @@ adopter's declaration, and the mode in it is the policy.
 **Extension code inside the gate's process.** Rejected.
 
 **A network ban at `pre-gate`.** Rejected: the gate takes nothing from an
-extension; the network is a question of isolation and approval.
+extension's run; the network is a question of isolation and approval.
 
 **Named isolation levels.** Rejected in favour of an explicit list.
 

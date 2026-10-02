@@ -72,10 +72,13 @@ A supplied extension is one the project recommends, and it carries
 obligations:
 
 - a compatibility test in the project's CI — the extension writes only to its
-  own footprint and never to the journal; it does not bypass the gate with
-  hooks or checks; it does not take over branches, worktrees or pull
-  requests; a full task cycle passes under it; the gate refuses where it
-  must; removal is clean; `validate` and `leak-scan` show no false positives;
+  own footprint and writes nothing to the journal directly (an `ext` record
+  reaches the journal only through the core's command, which writes the
+  envelope — [ADR-0013](ADR-0013-extensions-stages-scopes-isolation-trust.md));
+  it does not bypass the gate with hooks or checks; it does not take over
+  branches, worktrees or pull requests; a full task cycle passes under it;
+  the gate refuses where it must; removal is clean; `validate` and
+  `leak-scan` show no false positives;
 - a pinned version with a package-integrity value — the pin lives in the
   extension's manifest, a form
   [ADR-0013](ADR-0013-extensions-stages-scopes-isolation-trust.md) extends
