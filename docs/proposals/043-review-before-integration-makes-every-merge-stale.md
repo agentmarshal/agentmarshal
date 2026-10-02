@@ -1,6 +1,6 @@
 # 043 — Review before integration makes every merge stale: parallel tasks pay a conflict round and a second review
 
-- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider on a free plan — no server-side branch protection, no merge queue, one self-hosted runner — agent-driven loop with three paid roles) · **Observed on:** 0.4.0 · **Source:** `sha256:72032bf8b7aa693b6c4bd2d36a9b40e748c13e14dd20b0f706f4e8fb2caf6b92` · **Disposition:** accepted *(the merge slot and its enforcement a supplied extension; the core unchanged)*
+- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.4.0 · **Source:** `sha256:72032bf8b7aa693b6c4bd2d36a9b40e748c13e14dd20b0f706f4e8fb2caf6b92` · **Disposition:** accepted *(the merge slot and its enforcement a supplied extension; the core unchanged)*
 
 ## Finding
 
@@ -20,8 +20,10 @@ the approved candidate no longer merges:
 
 Nothing in the tool serialises the window between "reviewed" and "merged" —
 nor could it: the gate decides and never merges, the merge itself is the
-provider's. Adopters notice the window as churn: the same task re-reviewed
-two or three times in a day for conflicts it did not cause.
+provider's. The reporter's provider account is a free plan — no server-side
+branch protection, no merge queue — with one self-hosted runner. Adopters
+notice the window as churn: the same task re-reviewed two or three times in
+a day for conflicts it did not cause.
 
 Measurements, as reported:
 
@@ -43,11 +45,12 @@ Measurements, as reported:
   completion, journal transaction, deployment) on one runner. Serialising
   everything removed the conflicts, at the cost of serialising
   implementation and review too, which do not need it.
-- **Hosted merge queues** were checked as an alternative: on both providers
-  we evaluated they are available only on enterprise plans for private
-  repositories. More importantly, they reject a pull request with a textual
-  conflict rather than resolve it, so the fix round and the second review
-  remain; they shorten the stale window, they do not remove it.
+- **Hosted merge queues** — the reporter checked them as an alternative: on
+  both providers it evaluated, they are available only on enterprise plans
+  for private repositories. More importantly, they reject a pull request
+  with a textual conflict rather than resolve it, so the fix round and the
+  second review remain; they shorten the stale window, they do not remove
+  it.
 
 ## Proposed
 
@@ -88,11 +91,13 @@ serialises only the final stage. Accepted; to be written.
 **The merge slot** is accepted as a supplied extension, not the core: a lock
 is live state — who holds it now, until when — and
 [ADR-0012](../adr/ADR-0012-what-the-tool-does-and-what-it-supplies.md)'s rule
-keeps live state out of the core, which holds no live process. The atomic
-remote ref gives fencing, expiry and the compare-and-swap break without any
-service beyond the repository; acquisitions and breaks land in the process
-log the decision on where local state lives defines. Accepted; not shipped
-yet.
+keeps live state out of the core, which holds no live process. That
+decision's application to proposal 040 ends "there are no heartbeats and no
+mutual-exclusion locks" — in the core; the slot is a supplied extension's
+lock, and the core does neither. The atomic remote ref gives fencing,
+expiry and the compare-and-swap break without any service beyond the
+repository; acquisitions and breaks land in the process log the decision on
+where local state lives defines. Accepted; not shipped yet.
 
 **Enforcement where the merge happens** is met through
 [ADR-0013](../adr/ADR-0013-extensions-stages-scopes-isolation-trust.md)
@@ -102,14 +107,14 @@ pauses while the task does not hold the slot. The gate itself reads neither
 an extension's output nor its flags, and it decides and never merges; the
 core does not change. Accepted; not shipped yet.
 
-**The resolution-only review** is accepted, with the decision on the finding
-lifecycle: a review mode bound to the integrated head, with the earlier
+**The resolution-only review** is accepted, with the finding-lifecycle
+decision: a review mode bound to the integrated head, with the earlier
 approval as context — the reviewer sees the approved diff, the base change
 and the resolution. Accepted; not shipped yet.
 
 **The metric** — implementer rounds and reviews caused by integration
 conflicts per day — is accepted: `report` over the journal's time axis, with
-the accounting decision. Accepted; not shipped yet.
+the accounting rework. Accepted; not shipped yet.
 
 ## Where
 
@@ -118,6 +123,6 @@ accepted for the process documentation and the adopter kit's reference
 driver; the merge slot — fencing token, heartbeat renewal, compare-and-swap
 break over an atomic remote ref, its events in the process log — is accepted
 as a supplied extension, enforced by its `pre-gate-stop` pause per ADR-0013
-with the core unchanged; the resolution-only review goes with the decision
-on the finding lifecycle; the conflicts-per-day metric goes with `report`
-and the accounting decision.
+with the core unchanged; the resolution-only review goes with the
+finding-lifecycle decision; the conflicts-per-day metric goes with `report`
+and the accounting rework.

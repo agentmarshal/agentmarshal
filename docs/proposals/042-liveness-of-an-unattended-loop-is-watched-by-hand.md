@@ -1,12 +1,13 @@
 # 042 — The liveness of an unattended loop is watched by hand: a step watchdog and a loop monitor the reporter offers to contribute
 
-- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles — implementers are three agent CLIs run in a sandbox) · **Observed on:** 0.4.0 · **Source:** `sha256:6bf1b733ad6a4f83bbddf67f935a47dd61008ce745d5c7aa9f4a72e3d7d48ca6` · **Disposition:** accepted *(in part; actions through the tool declined for the core and met elsewhere; the offered code accepted in principle, its route undecided)*
+- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.4.0 · **Source:** `sha256:6bf1b733ad6a4f83bbddf67f935a47dd61008ce745d5c7aa9f4a72e3d7d48ca6` · **Disposition:** accepted *(in part; actions through the tool declined for the core and met elsewhere; the offered code accepted in principle, its route undecided)*
 
 ## Finding
 
-An unattended loop fails in two ways the journal cannot see (proposal 040):
-**a step that is alive but slow is killed**, and **a step — or the whole
-loop — that is dead is not noticed**.
+In the reporter's loop the implementers are three agent CLIs run in a
+sandbox. An unattended loop fails in two ways the journal cannot see
+(proposal 040): **a step that is alive but slow is killed**, and **a step —
+or the whole loop — that is dead is not noticed**.
 
 1. **A hard time limit kills live work.** The reporter's wrapper ran each
    implementer under `timeout 3600`; three times in two days the limit
@@ -109,11 +110,16 @@ its fallback), and the loop monitor.
 **Step lifecycle events** are accepted: they are a `step` stage under
 [ADR-0013](../adr/ADR-0013-extensions-stages-scopes-isolation-trust.md)'s
 rule for future stages — new stages are added at an adopter's request, and
-this request arrives with its measurements. The ADR starts with `pre-gate`
-and `post-gate` and lists two further candidates, each with its condition;
-a `step` stage is not among them yet — it is accepted here, to be added to
-the decision. The events land in the process log the decision on where
-local state lives defines. Accepted; not shipped yet.
+this request arrives with its measurements, so the condition is met and
+the stage is accepted, to be added to the decision. The ADR itself starts
+with `pre-gate` and `post-gate` and lists two candidates, each with its
+own condition; `step` is not among them. Under
+[ADR-0012](../adr/ADR-0012-what-the-tool-does-and-what-it-supplies.md)'s
+boundary the core holds no live state: the process handle the request asks
+for is data the harness declares when a step starts, and the core only
+passes the event — handle included — on to the `step`-stage extension.
+The events land in the process log the decision on where local state lives
+defines. Accepted; not shipped yet.
 
 **The activity-probe extension point** is accepted in the manifest's form:
 an extension at the `step` stage declares its probes — the paths this run
@@ -121,14 +127,21 @@ owns, the session id, the process tree — and the core knows no CLI.
 Accepted; not shipped yet.
 
 **The `stalled` / `safety-limit` stop outcomes with a resume handle** are
-accepted: outcome vocabulary is the accounting decision's ground — beside
+accepted: outcome vocabulary is the accounting rework's ground — beside
 `provider-limit`, documented since 0.4.1, and the values proposal 041 adds —
-and the session id is a field the record model gives the session; `next`
-reads it to choose `resume` over a new round. Accepted; not shipped yet.
+and the session record will carry the session id, decided with the records
+of a later decision; `next` reads it to choose `resume` over a new round.
+Accepted; not shipped yet.
 
-**The per-run progress record** is accepted: the heartbeat lands in the
-process log the local-state decision defines, the known place a person or
-another agent can read without attaching to the process. Accepted; not
+**The per-run progress record** is accepted: the heartbeat is written by
+the watchdog extension into the process log the decision on where local
+state lives defines — the known place a person or another agent can read
+without attaching to the process.
+[ADR-0012](../adr/ADR-0012-what-the-tool-does-and-what-it-supplies.md)'s
+application of its rule to proposal 040 ends "there are no heartbeats and
+no mutual-exclusion locks"; that line speaks for the core, and it stands —
+the core does neither: the heartbeat is the watchdog extension's, and the
+merge slot of proposal 043 is a supplied extension's lock. Accepted; not
 shipped yet.
 
 **Actions through the tool** — pause a task until a time, resume a session,
@@ -151,8 +164,9 @@ yet decided.
 Nothing here is shipped yet. The `step` stage with its lifecycle events, the
 manifest-declared activity probes, the `stalled` / `safety-limit` outcomes
 with a session handle and the per-run progress record are accepted — the
-outcomes with the accounting decision and the record model, the events and
-the progress in the process log. Actions through the tool are declined for
-the core by us — a pause is proposal 041's plan file, a stop or a resume is
-the watchdog's own. The offered watchdog and monitor are accepted in
-principle as a supplied extension; how the code arrives is not yet decided.
+outcomes with the accounting rework, the session-id field with the records
+of a later decision, the events and the progress in the process log.
+Actions through the tool are declined for the core by us — a pause is
+proposal 041's plan file, a stop or a resume is the watchdog's own. The
+offered watchdog and monitor are accepted in principle as a supplied
+extension; how the code arrives is not yet decided.

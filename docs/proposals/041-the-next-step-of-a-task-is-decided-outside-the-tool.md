@@ -4,15 +4,15 @@
 
 ## Finding
 
-The tool records what happened to a task — sessions, reviews, the gate's
-verdict, completion — and `gate` says whether a candidate may merge. Nothing
-answers the question an unattended loop asks after every step: **what is the
-next step for this task, and should it be taken now?** So every adopter
-writes a driver. The reporter's is about 60 lines of shell over the
-project's wrappers: for each task in a queue, up to four attempts —
-integrate the base if the candidate conflicts, complete if the newest review
-approves this head, otherwise run a fix round; after the fourth attempt,
-stop the queue and wait for a person.
+The tool's journal records what happened to a task — sessions, reviews
+with their verdicts, completion — and `gate` says whether a candidate may
+merge, writing nothing itself. Nothing answers the question an unattended
+loop asks after every step: **what is the next step for this task, and
+should it be taken now?** So every adopter writes a driver. The reporter's
+is about 60 lines of shell over the project's wrappers: for each task in a
+queue, up to four attempts — integrate the base if the candidate conflicts,
+complete if the newest review approves this head, otherwise run a fix
+round; after the fourth attempt, stop the queue and wait for a person.
 
 The decision part — conflict? approved *this* head? attempts left? — is a
 pure function of the journal and git, the inputs the tool already has. It is
@@ -60,8 +60,12 @@ Measurements, as reported — two days, one project, one coordinating agent:
   approval.
 - Conflict detection with `git merge-tree --write-tree` before each attempt:
   1 conflict found and resolved by a merge-and-fix round, 0 completions
-  stuck waiting for checks on an unmergeable pull request (the previous two
-  days, without it, had 3 such stalls of 30–45 min — proposal 040).
+  stuck waiting for checks on an unmergeable pull request — the reporter's
+  own figure for the previous two days, without it, is 3 such stalls of
+  30–45 min. Proposal 040, from the same reporter, counted one such stall —
+  a completion waiting on a check that could not start on an unmergeable
+  pull request — among the six stalls it reports; the figures differ, and
+  this digest does not reconcile them.
 
 ## Proposed
 
@@ -109,7 +113,7 @@ A new decision record, or a section of an existing one, will carry it.
 Accepted; not shipped yet.
 
 **The failure classes** are accepted: they are outcome vocabulary, which is
-the accounting decision's ground — `provider-limit` is already a documented
+the accounting rework's ground — `provider-limit` is already a documented
 outcome since 0.4.1, and the output-limit value is accepted with proposal
 034 — plus a flag on the session that its report was finished, which is what
 tells a run killed after completing its work from one killed before, the
@@ -132,6 +136,6 @@ proposal 038's layer templates live. Accepted; not shipped yet.
 
 Nothing here is shipped yet. `agentmarshal next` and the session failure
 classes — the new outcome values and the "report finished" flag — are
-accepted into the tool, the classes with the accounting decision; the plan
+accepted into the tool, the classes with the accounting rework; the plan
 is accepted as a supplied file in local state with a documented format; the
 reference driver goes into the adopter kit.
