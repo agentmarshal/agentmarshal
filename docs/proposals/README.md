@@ -34,7 +34,7 @@ Every proposal carries one, with the reasoning:
   the journal, and it applies to incoming proposals too.
 
 A proposal that asks for several things can carry one of these with the part we
-are not taking named in parentheses, as 018 and 020 do. The disposition section
+are not taking named in parentheses, as 027 and 037 do. The disposition section
 of the file itself always says which part is which.
 
 A disposition is our judgement, not a fact about the reporter's setup. Where we
@@ -175,7 +175,10 @@ brought it forward, and 022 put a decision record in front of it.
 
 Landed 2026-08-30, from three adopters running 0.1.0 in production. Twenty-two
 source files digested into thirteen proposals — ten accepted, two deferred,
-one declined. Dispositions dated later than the batch record re-reads. The recurring themes are review protocol robustness, contract
+one declined. A disposition dated later than the batch records a re-read or a
+later decision — 009's date is the day
+[ADR-0013](../adr/ADR-0013-extensions-stages-scopes-isolation-trust.md)
+answered it. The recurring themes are review protocol robustness, contract
 repair, and session/token accounting; the last was raised independently by two
 adopters.
 

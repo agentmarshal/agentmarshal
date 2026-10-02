@@ -54,7 +54,7 @@ not touched: a hook interface is easy to add and hard to remove, and a hook
 that runs during a governed transaction becomes part of what the gate
 implicitly trusts.
 
-## Disposition — accepted (2026-10-03)
+## Disposition — accepted (decision 2026-10-03)
 
 [ADR-0013](../adr/ADR-0013-extensions-stages-scopes-isolation-trust.md)
 answers the ask. It gives an extension a declared stage — `pre-gate` (in CI

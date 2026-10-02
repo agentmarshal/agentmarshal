@@ -141,13 +141,17 @@ flags. The rule for future stages: a hook before a transition may only
 pause; a hook after a transition may only notify and write to the log; new
 stages are added at an adopter's request.
 
-Covered: hooks at named points with a documented contract, and each run
-recorded — every extension gets a result line (checked / failed / did not
-finish / switched off / not run), its output lands in a frame of its own,
-and a shared extension may write hash-pinned `ext` records to the journal.
-Not covered: no extension code runs inside the gate or a governed
-transaction — the trust-boundary reason for the decline is answered by
-keeping the step outside what the gate trusts, not by trusting it.
+Covered: hooks at named points with a documented contract — the stage, its
+mode and its isolation declared in the extension's manifest — and a record
+of each run in the output: every extension gets a result line (checked /
+failed / did not finish / switched off / not run), and its output lands in
+a frame of its own; a shared extension may also write `ext` records to the
+journal, whose bodies are hash-pinned. Not covered: a hash of each run's
+output, recorded by the tool — what ADR-0013 hash-pins is the body of the
+`ext` record an extension writes, not a run's output — and no extension
+code runs inside the gate or a governed transaction: the trust-boundary
+reason for the decline is answered by keeping the step outside what the
+gate trusts, not by trusting it.
 
 Decided; not shipped yet — the ADR's stages follow in their own tasks.
 
