@@ -36,7 +36,8 @@ Four adopter findings with measurements press on this line:
   the adopter's layer (about 2,700 lines of wrappers and 3,800 lines of tests)
   cannot be carried to the next repository without a separate instruction;
 - [proposal 040](../proposals/040-in-flight-steps-are-invisible-and-journal-writes-contend-on-one-checkout.md) —
-  six stalls of 30–45 minutes in two days, every one found by a person.
+  six stalls of 30–45 minutes in two days, every one detected by a person
+  or the coordinating agent polling — none by the tool.
 
 A fifth need comes from the adopter who left for a spec tool: a living
 description of the system, fed into the agent's context.
@@ -74,9 +75,13 @@ obligations:
   hooks or checks; it does not take over branches, worktrees or pull
   requests; a full task cycle passes under it; the gate refuses where it
   must; removal is clean; `validate` and `leak-scan` show no false positives;
-- a pinned version with a package-integrity hash;
+- a pinned version with a package-integrity value — the pin lives in the
+  extension's manifest, a form the separate decision on how extensions run
+  extends beyond ADR-0010's `version` field, which is informational and
+  pins nothing;
 - the pin re-reviewed with each release;
-- a `doctor` warning when the installed version is not the one checked;
+- a `doctor` warning when the installed version is not the one checked —
+  `doctor` joins `brief` and the gate as a reader of manifests;
 - removal from the supplied set is announced.
 
 The guarantee is compatibility with the task cycle at the pinned version —
@@ -86,13 +91,13 @@ refusal of a bundle stands.
 
 ### 4. The adopter kit
 
-The project supplies templates for the harness-layer parts — a journal-
-transaction helper, reviewer selection, implementer launch, a watcher for
-waits at the provider. The adopter copies a template and owns the copy.
-Templates ship with a release and are checked by the project's tests. `init`
-creates the standard adopter-layer layout under `.agentmarshal/`, as it
-already creates the outbox; the layer's manifest lists its files, and
-`doctor` reports discrepancies.
+The project supplies templates for the harness-layer parts — a
+journal-transaction helper, reviewer selection, implementer launch, a
+watcher for waits at the provider. The adopter copies a template and owns
+the copy. Templates ship with a release and are checked by the project's
+tests. `init` creates the standard adopter-layer layout under
+`.agentmarshal/`, as it already creates the outbox; the layer's manifest
+lists its files, and `doctor` reports discrepancies.
 
 ### 5. Core and optional
 
@@ -107,9 +112,18 @@ imports no optional module; a test checks that.
 - [proposal 034](../proposals/034-the-contract-does-not-name-its-implementer-and-reviewer.md) —
   **the tool**: optional contract fields (the allowed implementers and
   reviewers, and the independence rule), a gate check on them, and `status`
-  showing the declared assignment next to the actual one. The tool neither
-  picks nor launches a model. The guarantee is "declared and cross-checked",
-  not "proven": the record of who implemented is written by an agent.
+  showing the declared assignment next to the actual one. The gate already
+  checks one thing about independence: the reviewer e-mail declared in the
+  review record is compared with the author and committer addresses of the
+  candidate's commits — the `merge-base..candidate` range — which refuses a
+  reviewer who wrote the candidate, but cannot tell the intended reviewer
+  from a misconfigured launch or check independence by vendor or model.
+  The fields give that check a declared assignment to check against: the
+  review that makes a candidate mergeable must come from a permitted
+  reviewer and satisfy the independence rule against the implementers
+  whose commits the candidate carries. The tool neither picks nor launches
+  a model. The guarantee is "declared and cross-checked", not "proven":
+  the record of who implemented is written by an agent.
 - [proposal 035](../proposals/035-journal-transactions-sweep-records-of-other-tasks.md) —
   **template and gate**: the transaction helper stages only its own task's
   directory, and the gate warns when a journal transaction carries another
@@ -158,8 +172,11 @@ three required:
 
 ## Alternatives considered
 
-**A strict boundary that refuses 038 and 040.** Leaves a measured need with
-no solution at all.
+**A strict boundary that refuses
+[proposal 038](../proposals/038-an-adopter-setup-cannot-be-carried-to-the-next-repository.md)
+and
+[proposal 040](../proposals/040-in-flight-steps-are-invisible-and-journal-writes-contend-on-one-checkout.md).**
+Leaves a measured need with no solution at all.
 
 **A plugin SDK and registry.** Rejected in ADR-0010; rejected again for the
 same reasons.
