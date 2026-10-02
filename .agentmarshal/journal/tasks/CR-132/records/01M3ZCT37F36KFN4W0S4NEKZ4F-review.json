@@ -1,0 +1,31 @@
+{
+  "advisory_findings": [
+    "adr-0014-rotation-section-states-no-policy",
+    "adr-0014-gate-config-from-base-untrue-in-sidecar",
+    "adr-0014-fragment-bodies-depart-from-adr-0011-0013-prose"
+  ],
+  "artifacts": [
+    {
+      "hash": "51d0d3c4795326f38f8a4cffb824acc294a48a3da339b0776c15ec91be93dc0a",
+      "ref": ".agentmarshal/journal/tasks/CR-132/artifacts/01M3ZCT37F36KFN4W0S4NEKZ4F-review.md"
+    }
+  ],
+  "created_at": "2026-10-02T22:47:26.191289Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "64b98a53381a60bfda28ca81fae91a67250296d0",
+  "reviewed_contract": "0a1d2c8539c9f85fb129ee4458ba724535781e233f9f0d6f2a5b9f23a4d2cc3b",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-132",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "approved"
+}
