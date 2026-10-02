@@ -1,0 +1,32 @@
+{
+  "advisory_findings": [
+    "adr0013-d18-ext-records-conflict-adr0012-compat-test",
+    "adr0013-d11-sandbox-paths-omit-user-scope-and-windows"
+  ],
+  "artifacts": [
+    {
+      "hash": "6f1d0cd3101ed912e9bf8a8d73c495c8454fd24dd63ddeae0286a3725d6d64ed",
+      "ref": ".agentmarshal/journal/tasks/CR-128/artifacts/01M3YNZ7TJ9RWATE7TW7YZQ77B-review.md"
+    }
+  ],
+  "created_at": "2026-10-02T16:08:17.490164Z",
+  "findings": [
+    "adr0013-d5-gate-decision-independent-of-installed-extensions"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "0a6d2c769d564a4f16ebf4546fac7a5cd2b39e6e",
+  "reviewed_contract": "59f850294a656f646959cdbb47f7b11201ad7869d3ffa7d6837881a1b91bcbe9",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-128",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "changes_required"
+}
