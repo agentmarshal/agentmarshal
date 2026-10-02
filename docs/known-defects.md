@@ -50,15 +50,16 @@ before you finish.
    detail that narrows the pseudonym's profile. Avoid: describe it neutrally;
    grep your change for ids, paths and names before you finish.
 8. **Something sensitive printed in output.** Shows up as: a file name that
-   carries a private marker printed without masking. Avoid: every path the
-   tool prints goes through the same masking the leak scan uses.
+   carries a private marker printed without masking. Avoid: a path the tool
+   prints in leak-scan output, or any output that may carry a secret, goes
+   through the leak scan's masking.
 
 ## Code
 
 9. **Text processing that splits on more than it should.** Shows up as:
    `str.splitlines()` breaking on control bytes, so content after them is
-   skipped while the output says it was read. Avoid: split git output on
-   `"\n"` only; test with the bytes that matter.
+   skipped while the output says it was read. Avoid: when splitting git's
+   patch output, split on `"\n"` only; test with the bytes that matter.
 10. **A rule reused where its reason does not hold.** Shows up as: the leak
     scan's "only added lines matter" reused for the reviewer, who must also
     be told about removed lines it cannot read. Avoid: for each reused helper,
