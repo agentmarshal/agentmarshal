@@ -1,0 +1,32 @@
+{
+  "advisory_findings": [
+    "stale-leak-scan-git-comment",
+    "duplicated-bounded-render-in-gate"
+  ],
+  "artifacts": [
+    {
+      "hash": "cd80aa268fc5b8784e86d19cc3faa8dbe19dc80c75d96b5ec4fbafdcb935c9bd",
+      "ref": ".agentmarshal/journal/tasks/CR-127/artifacts/01M3YKZZ5D305SN2ZT97CZ7NXS-review.md"
+    }
+  ],
+  "created_at": "2026-10-02T15:33:44.237709Z",
+  "findings": [
+    "undecodable-names-bypass-safe-path"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "46fafafa890c8e996644905a50c3408bc16eb585",
+  "reviewed_contract": "304328e130947892bf610c05b676ab0ef9e9d5a2ec94972fdaf8ca93a96f9ae9",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-127",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "changes_required"
+}
