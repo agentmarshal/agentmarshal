@@ -72,9 +72,13 @@ Two properties make that trustworthy:
   it does not erase the earlier completion. `prune` reports removable local
   branches and worktrees after work is done.
 
-The gate reads the contract and prior task state from the **base** side, never
-from the candidate, so a change can never widen its own scope or hide that its
-task is already closed.
+The gate reads the contract, the extension manifests, the leak-scan markers
+and the lifecycle state at the base from the **base** side, never from the
+candidate, so a change can never widen its own scope or hide that its task
+is already closed; the journal's records it reads from the calling
+checkout's working tree. In a sidecar all of these come from the journal
+repository's working tree, pinned to no commit — and the gate there advises
+rather than decides, the findings lane excepted.
 
 ## Terminology
 
