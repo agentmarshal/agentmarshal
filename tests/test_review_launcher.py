@@ -3,6 +3,7 @@
 import hashlib
 import importlib
 import json
+import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -2277,3 +2278,369 @@ def test_pinned_prose_keeps_the_reviewer_bytes_including_crlf(
     artifacts = repo / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "artifacts"
     artifact = next(artifacts.iterdir())
     assert artifact.read_bytes().startswith(b"first line\r\nsecond line\r\n")
+
+
+def _commit_a_diff_that_is_not_utf8(repo: Path) -> str:
+    """Commit a text file plus a file of non-UTF-8 bytes; return its SHA.
+
+    The binary-looking file holds no NUL byte, so git treats it as text and
+    emits its raw bytes — a strict decode of the whole diff fails on them
+    (proposal 037).
+    """
+
+    (repo / "notes.txt").write_text("a line of reviewable text\n", encoding="utf-8")
+    (repo / "blob.bin").write_bytes(b"\xe9\xff\x80 not UTF-8 content\n")
+    _git(repo, "add", "-A")
+    _git(
+        repo,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.com",
+        "commit",
+        "--quiet",
+        "-m",
+        "a file that is not UTF-8",
+    )
+    return _git(repo, "rev-parse", "HEAD")
+
+
+def _commit_a_non_utf8_path(repo: Path) -> str:
+    """Commit a file whose name's bytes are not UTF-8; return its SHA.
+
+    ``core.quotepath`` is switched off so the raw bytes — not git's C-quoted
+    form — reach the diff's header lines.
+    """
+
+    _git(repo, "config", "core.quotepath", "false")
+    descriptor = os.open(
+        os.path.join(os.fsencode(repo), b"\xff.bin"),
+        os.O_CREAT | os.O_WRONLY,
+        0o644,
+    )
+    os.write(descriptor, b"payload\n")
+    os.close(descriptor)
+    _git(repo, "add", "-A")
+    _git(
+        repo,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.com",
+        "commit",
+        "--quiet",
+        "-m",
+        "a path that is not UTF-8",
+    )
+    return _git(repo, "rev-parse", "HEAD")
+
+
+def test_a_file_that_does_not_decode_does_not_stop_the_review(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a file that does not decode does not stop the review.
+
+    Proposal 037's reproduction: the strict whole-stream decode used to raise
+    UnicodeDecodeError before the reviewer was launched.
+    """
+
+    repo, _commit = _review_repo(tmp_path, monkeypatch)
+    commit = _commit_a_diff_that_is_not_utf8(repo)
+    prompt_output = tmp_path / "review-prompt.txt"
+    stub = _reviewer_stub(
+        tmp_path,
+        _verdict(commit, "approved", []),
+        prompt_output=prompt_output,
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+    capsys.readouterr()
+
+    assert _run_review(commit) == 0
+
+    prompt = prompt_output.read_text(encoding="utf-8")
+    assert "a line of reviewable text" in prompt
+    assert "blob.bin" in prompt
+
+
+def test_the_reviewer_is_told_what_it_could_not_be_shown(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Scenario: the reviewer is told what it could not be shown."""
+
+    repo, _commit = _review_repo(tmp_path, monkeypatch)
+    commit = _commit_a_diff_that_is_not_utf8(repo)
+    prompt_output = tmp_path / "review-prompt.txt"
+    stub = _reviewer_stub(
+        tmp_path,
+        _verdict(commit, "approved", []),
+        prompt_output=prompt_output,
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert _run_review(commit) == 0
+
+    prompt = prompt_output.read_text(encoding="utf-8")
+    assert "did not decode as UTF-8" in prompt
+    assert "blob.bin" in prompt
+    # What decoded is still shown, with the unreadable bytes marked.
+    assert "\ufffd" in prompt
+
+
+def test_the_command_names_what_the_reviewer_could_not_be_shown(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: the command names what the reviewer could not be shown."""
+
+    repo, _commit = _review_repo(tmp_path, monkeypatch)
+    commit = _commit_a_diff_that_is_not_utf8(repo)
+    stub = _reviewer_stub(tmp_path, _verdict(commit, "approved", []))
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+    capsys.readouterr()
+
+    assert _run_review(commit) == 0
+
+    captured = capsys.readouterr()
+    assert "did not decode as UTF-8" in captured.err
+    assert "blob.bin" in captured.err
+
+
+def test_a_path_that_does_not_decode_is_named_in_escaped_form(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a path that does not decode is named in escaped form."""
+
+    repo, _commit = _review_repo(tmp_path, monkeypatch)
+    commit = _commit_a_non_utf8_path(repo)
+    prompt_output = tmp_path / "review-prompt.txt"
+    stub = _reviewer_stub(
+        tmp_path,
+        _verdict(commit, "approved", []),
+        prompt_output=prompt_output,
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+    capsys.readouterr()
+
+    assert _run_review(commit) == 0
+
+    prompt = prompt_output.read_text(encoding="utf-8")
+    assert "\\xff.bin" in prompt
+    captured = capsys.readouterr()
+    assert "\\xff.bin" in captured.err
+
+
+def test_other_git_output_that_is_not_utf8_never_escapes_as_a_traceback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Scenario: other git output that is not UTF-8 never escapes as a traceback."""
+
+    repo, _commit = _review_repo(tmp_path, monkeypatch)
+    _commit_a_non_utf8_path(repo)
+
+    # ls-tree output carries the raw path bytes; the decode escapes them.
+    listing = review._run_git(repo, ["ls-tree", "HEAD"])
+    assert "\\xff.bin" in listing
+
+    # Error text can carry the same bytes; the failure is a named refusal.
+    with pytest.raises(review.ReviewLaunchError) as caught:
+        review._run_git(repo, ["show", "HEAD:\udcff"])
+    assert "\\xff" in str(caught.value)
+
+
+def _commit_a_non_utf8_removal(repo: Path) -> str:
+    """Commit a latin-1 file, then the commit that rewrites its bad line.
+
+    The fix's diff carries the non-UTF-8 bytes only in a removed line, so
+    the file's section still does not decode — and the reviewer is shown
+    the lossy ``-`` line, which is why review must name the file.
+    """
+
+    (repo / "legacy.txt").write_bytes(b"the old line is \xe9\xff\n")
+    _git(repo, "add", "-A")
+    _git(
+        repo,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.com",
+        "commit",
+        "--quiet",
+        "-m",
+        "a file with a non-UTF-8 line",
+    )
+    (repo / "legacy.txt").write_text("the old line is plain\n", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(
+        repo,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.com",
+        "commit",
+        "--quiet",
+        "-m",
+        "fix the non-UTF-8 line",
+    )
+    return _git(repo, "rev-parse", "HEAD")
+
+
+def test_a_file_that_lost_bytes_outside_its_added_lines_is_still_named(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a file that lost bytes outside its added lines is still named.
+
+    A latin-1 line the commit rewrites lands in the diff as a ``-`` line:
+    the leak scan's naming rule ignores it (the scan never reads removed
+    bytes), but the reviewer is shown the marked line and must be told."""
+
+    repo, _commit = _review_repo(tmp_path, monkeypatch)
+    commit = _commit_a_non_utf8_removal(repo)
+    prompt_output = tmp_path / "review-prompt.txt"
+    stub = _reviewer_stub(
+        tmp_path,
+        _verdict(commit, "approved", []),
+        prompt_output=prompt_output,
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+    capsys.readouterr()
+
+    assert _run_review(commit) == 0
+
+    prompt = prompt_output.read_text(encoding="utf-8")
+    assert "did not decode as UTF-8" in prompt
+    assert "legacy.txt" in prompt
+    assert "\ufffd" in prompt
+    captured = capsys.readouterr()
+    assert "did not decode as UTF-8" in captured.err
+    assert "legacy.txt" in captured.err
+
+
+def test_the_named_files_are_not_bent_by_diff_prefix_config(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A repo's diff.mnemonicPrefix must not bend the names that are parsed.
+
+    The name reader cuts the ``b/`` destination prefix; without the pinned
+    --src-prefix/--dst-prefix flags a commit-to-commit mnemonic diff would
+    name the file ``c/blob.bin`` in the prompt and the note."""
+
+    repo, _commit = _review_repo(tmp_path, monkeypatch)
+    _git(repo, "config", "diff.mnemonicPrefix", "true")
+    commit = _commit_a_diff_that_is_not_utf8(repo)
+    prompt_output = tmp_path / "review-prompt.txt"
+    stub = _reviewer_stub(
+        tmp_path,
+        _verdict(commit, "approved", []),
+        prompt_output=prompt_output,
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+    capsys.readouterr()
+
+    assert _run_review(commit) == 0
+
+    captured = capsys.readouterr()
+    assert "blob.bin" in captured.err
+    assert "c/blob.bin" not in captured.err
+    assert "c/blob.bin" not in prompt_output.read_text(encoding="utf-8")
+
+
+def test_undecodable_names_on_stderr_are_masked_by_configured_markers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The stderr note masks names like the gate's warning does.
+
+    A file under a marker-named directory must not print the marker on the
+    operator's terminal just because it also failed to decode; the markers
+    are read from the merge-base tree, as the leak scan reads them. The
+    prompt keeps the raw name: it must match the name inside the diff text
+    the reviewer is shown."""
+
+    repo, _commit = _review_repo(tmp_path, monkeypatch)
+    project_path = repo / ".agentmarshal" / "project.json"
+    project = json.loads(project_path.read_text(encoding="utf-8"))
+    project["leak_scan"] = {"private_markers": ["internal.corp.invalid"]}
+    project_path.write_text(json.dumps(project), encoding="utf-8")
+    _git(repo, "add", ".agentmarshal")
+    _git(
+        repo,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.com",
+        "commit",
+        "--quiet",
+        "-m",
+        "configure private markers",
+    )
+    marker_dir = repo / "internal.corp.invalid"
+    marker_dir.mkdir()
+    (marker_dir / "logo.bin").write_bytes(b"\xe9\xff\x80 not UTF-8\n")
+    _git(repo, "add", "-A")
+    _git(
+        repo,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.com",
+        "commit",
+        "--quiet",
+        "-m",
+        "a non-UTF-8 file under a marker",
+    )
+    commit = _git(repo, "rev-parse", "HEAD")
+    prompt_output = tmp_path / "review-prompt.txt"
+    stub = _reviewer_stub(
+        tmp_path,
+        _verdict(commit, "approved", []),
+        prompt_output=prompt_output,
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+    capsys.readouterr()
+
+    assert _run_review(commit) == 0
+
+    captured = capsys.readouterr()
+    assert "<private marker #1>/logo.bin" in captured.err
+    assert "internal.corp.invalid" not in captured.err
+    assert "internal.corp.invalid/logo.bin" in prompt_output.read_text(encoding="utf-8")
+
+
+def test_a_rejection_without_a_diagnostics_note_is_not_its_own_cause(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A rejection carrying no note re-raises the error, not `error from error`.
+
+    ``_with_diagnostics`` returns the same object when there is no note, so
+    ``raise error from error`` made the exception its own ``__cause__`` — a
+    meaningless self-reference in the chain."""
+
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    stub = _reviewer_stub(tmp_path, "reviewer prose only\n")
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    with pytest.raises(review.ReviewLaunchError) as caught:
+        review.launch_review(
+            repo,
+            "CR-001",
+            commit,
+            "HEAD~1",
+            "qa",
+            "test",
+            "test-model",
+            "reviewer@test.invalid",
+        )
+
+    assert caught.value.__cause__ is not caught.value

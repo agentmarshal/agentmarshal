@@ -643,7 +643,7 @@ def test_a_path_that_does_not_decode_is_named_in_escaped_form() -> None:
 
 
 def test_bytes_after_a_non_separator_control_byte_are_still_searched() -> None:
-    """Scenario: bytes after a non-separator control byte are still searched.
+    r"""Scenario: bytes after a non-separator control byte are still searched.
 
     The reproduction fixture with the token placed after control bytes:
     \x0c and its neighbours are valid UTF-8, so they survive the lossy decode
@@ -680,6 +680,26 @@ def test_an_undecodable_deletion_is_not_named() -> None:
     assert undecodable == []
 
 
+def test_a_removed_line_loss_is_named_when_the_caller_reads_everything() -> None:
+    """The same removal is named when the caller shows the text whole.
+
+    The scan's rule leaves a removed-only loss unnamed because the scan
+    never reads `-` lines. A caller that hands the decoded diff to a reader
+    — the reviewer — passes ``name_all_losses`` so its U+FFFD marks are not
+    mistaken for the file's real content."""
+    diff = (
+        b"diff --git a/old.bin b/old.bin\n"
+        b"--- a/old.bin\n"
+        b"+++ /dev/null\n"
+        b"@@ -1 +0,0 @@\n"
+        b"-\xff\xfe\n"
+    )
+
+    _, undecodable = decode_diff_per_file(diff, name_all_losses=True)
+
+    assert undecodable == ["old.bin"]
+
+
 def test_an_undecodable_section_falls_back_to_the_diff_header() -> None:
     # No '+++' destination exists for a section like this; the name falls
     # back to the 'diff --git' line's b-side.
@@ -688,6 +708,24 @@ def test_an_undecodable_section_falls_back_to_the_diff_header() -> None:
     _, undecodable = decode_diff_per_file(diff)
 
     assert undecodable == ["old.bin"]
+
+
+def test_a_quoted_diff_header_name_drops_the_destination_prefix() -> None:
+    # A C-quoted 'diff --git' line is pure ASCII; what makes the section
+    # undecodable here is a pre-hunk byte (as in a GIT binary patch body),
+    # so the name falls back to the b-side token — which arrives as
+    # '"b/…"' and must lose its 'b/' like any other destination.
+    diff = (
+        b'diff --git "a/\\303\\251.bin" "b/\\303\\251.bin"\n'
+        b"index 0000000..1111111 100644\n"
+        b"GIT binary patch\n"
+        b"literal 1\n"
+        b"\xff\n"
+    )
+
+    _, undecodable = decode_diff_per_file(diff)
+
+    assert undecodable == ['"\\303\\251.bin"']
 
 
 def test_undecodable_names_are_masked_like_hit_paths() -> None:

@@ -313,7 +313,7 @@ def test_an_undecodable_path_that_is_itself_a_key_is_described_not_printed(
 def test_bytes_after_a_non_separator_control_byte_are_still_searched(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Scenario: bytes after a non-separator control byte are still searched.
+    r"""Scenario: bytes after a non-separator control byte are still searched.
 
     The reproduction fixture with the token placed after the control bytes:
     git emits bytes(range(256)) as two "+" lines, and a reader that treats

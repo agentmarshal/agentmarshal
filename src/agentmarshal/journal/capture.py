@@ -439,8 +439,11 @@ def _header_name(header_line: str) -> str:
     for marker in (' "b/', " b/"):
         _, separator, destination = tail.rpartition(marker)
         if separator:
-            token = marker.strip() + destination
-            return token[2:] if token.startswith("b/") else token
+            # `destination` already follows the marker's "b/". A C-quoted
+            # path keeps its opening quote, so the name prints the way git
+            # wrote it; rebuilding "b/…" first would leave the quote before
+            # the prefix and the "b/" would survive.
+            return f'"{destination}' if '"' in marker else destination
     return tail or "(unknown file)"
 
 
@@ -475,11 +478,13 @@ def _decode_section_lossy(section: bytes) -> tuple[str, bool]:
     boundary — escape-decoding the content would glue ``\\xNN`` hex digits
     onto it and hide it.
 
-    Returns the decoded text plus whether the section must be named: naming
-    covers what the scan can no longer fully read — the file's own identity
-    (an undecodable pre-hunk line carries its path) or bytes it added. A
-    section whose undecodable bytes sit only in removed or context lines — a
-    deleted binary — gave the scan nothing to read, so it is not named.
+    Returns the decoded text plus whether the section must be named under
+    the scan's rule: naming covers what the scan can no longer fully read —
+    the file's own identity (an undecodable pre-hunk line carries its path)
+    or bytes it added. A section whose undecodable bytes sit only in removed
+    or context lines — a deleted binary — gave the scan nothing to read, so
+    it is not named; a caller that shows the text whole asks for those
+    sections too via ``decode_diff_per_file``'s ``name_all_losses``.
     """
 
     decoded: list[str] = []
@@ -503,7 +508,9 @@ def _decode_section_lossy(section: bytes) -> tuple[str, bool]:
     return "\n".join(decoded), must_name
 
 
-def decode_diff_per_file(raw_diff: bytes) -> tuple[str, list[str]]:
+def decode_diff_per_file(
+    raw_diff: bytes, *, name_all_losses: bool = False
+) -> tuple[str, list[str]]:
     """Decode a ``git diff`` byte stream one file section at a time.
 
     A strict decode of the whole stream makes one file's undecodable bytes
@@ -517,11 +524,16 @@ def decode_diff_per_file(raw_diff: bytes) -> tuple[str, list[str]]:
 
     Returns ``(text, undecodable)``: the reassembled diff for
     :func:`scan_diff_for_leaks`, and the names of the files whose sections
-    lost bytes the scan reads — added content or the headers carrying the
-    path — for the caller to name in its output. The names are raw section
-    names: this function holds no markers, so masking them is the caller's
-    job (:func:`render_undecodable_files`). Pure like the scanner it feeds:
-    it parses bytes and runs nothing.
+    lost bytes, for the caller to name in its output. Which sections are
+    named is the caller's choice: the default is the scan's rule — a section
+    is named only when it lost bytes the scan reads, added content or the
+    headers carrying the path — while ``name_all_losses`` names every
+    section that lost bytes, for a caller that shows the decoded text whole
+    and so cannot let U+FFFD in removed or context lines pass as the file's
+    real content. The names are raw section names: this function holds no
+    markers, so masking them is the caller's job
+    (:func:`render_undecodable_files`). Pure like the scanner it feeds: it
+    parses bytes and runs nothing.
     """
 
     decoded: list[str] = []
@@ -535,7 +547,7 @@ def decode_diff_per_file(raw_diff: bytes) -> tuple[str, list[str]]:
         except UnicodeDecodeError:
             pass
         text, must_name = _decode_section_lossy(section)
-        if must_name:
+        if must_name or name_all_losses:
             undecodable.append(_undecodable_section_name(text))
         decoded.append(text)
     return "".join(decoded), undecodable
