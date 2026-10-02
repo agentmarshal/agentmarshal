@@ -1,6 +1,6 @@
 # 018 — `record-session` has no activity for a coordinating role, and no place for cost
 
-- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.3.0 · **Source:** `sha256:c0208b8f26d061716570ce9c2790d3fa7f3ec83c69050a36c83fedaea5164049` · **Disposition:** accepted *(in part; the cost field is deferred)*
+- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.3.0 · **Source:** `sha256:c0208b8f26d061716570ce9c2790d3fa7f3ec83c69050a36c83fedaea5164049` · **Disposition:** accepted *(the cost field deferred at intake, accepted 2026-10-03)*
 
 ## Finding
 
@@ -31,6 +31,10 @@ reported separately from tokens, since providers disagree on what a token costs.
 
 ## Disposition — accepted for the activity, deferred for the cost field
 
+> Superseded 2026-10-03 for the cost field: **accepted; not shipped yet**.
+> The deferral's reasoning stands below as history; what changed is in the
+> dated section at the end.
+
 The activity gap is real and the measurement makes it undeniable: three quarters
 of a task's tokens landing in a bucket named other is not accounting, it is a
 shrug. We see the same proportion in this project's own journal, where the
@@ -44,3 +48,9 @@ cannot attest. It belongs with a rework of accounting that has to answer, first,
 per-task figure is attributed when one agent session spans several tasks; the
 currency question is cheap to add once that is settled, and premature before
 it. That rework is not scheduled in any published release yet.
+
+## Disposition — accepted in full (2026-10-03)
+
+The cost field's deferral is lifted: the project has taken every adopter
+finding into the next release, and this field is among them, still with the
+rework of accounting the deferral named. Accepted; not shipped yet.

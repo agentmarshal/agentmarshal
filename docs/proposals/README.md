@@ -95,7 +95,7 @@ same batch and took it back.
 | [028](028-check-outcomes-are-not-evidence.md) | Check outcomes are not evidence | D | accepted | the `check` record with the review-evidentiality decision; not shipped yet |
 | [029](029-outbox-has-no-scaffold-and-its-name-is-taken.md) | The outbox has no scaffold, and `finding` is taken | D | accepted | one command group with 023 — scaffold, validation, send, status; not shipped yet |
 | [030](030-review-verdicts-do-not-say-what-was-executed.md) | A verdict does not say what was executed | D | accepted | the executed-versus-read field with the review-evidentiality decision; not shipped yet |
-| [031](031-the-contract-is-written-by-an-agent-and-nothing-governs-it.md) | The contract is written by an agent and judged by no one | D | accepted *(in part; the third suggestion withdrawn by the reporter)* | the contract hashes accepted, not shipped; the agreement record accepted, not shipped, with the contract-governance decision; the withdrawal in [033](033-contract-review-before-implementation-does-not-pay-off.md) |
+| [031](031-the-contract-is-written-by-an-agent-and-nothing-governs-it.md) | The contract is written by an agent and judged by no one | D | accepted *(in part; the withdrawal of the third suggestion — accepted in [033](033-contract-review-before-implementation-does-not-pay-off.md))* | the contract hashes accepted, not shipped; the agreement record accepted, not shipped, with the contract-governance decision; the withdrawal accepted in [033](033-contract-review-before-implementation-does-not-pay-off.md) |
 | [032](032-the-journal-has-no-time-axis.md) | The journal has no time axis | D | accepted | the documentation sentence on the CI cost of a journal transaction, session duration and lead time with the accounting rework alongside 018 and 024, and exposing the gate's existing journal-only lane to the required check with the journal-transactions work of 019 and 035 — all not shipped yet |
 | [033](033-contract-review-before-implementation-does-not-pay-off.md) | Contract review before implementation does not pay off — a measured withdrawal | D | accepted *(the withdrawal of [031](031-the-contract-is-written-by-an-agent-and-nothing-governs-it.md)'s third suggestion)* | nothing to ship; 031 names it |
 | [034](034-the-contract-does-not-name-its-implementer-and-reviewer.md) | The contract does not name its implementer and reviewer | D | accepted | `provider-limit` already documented since 0.4.1; the output-limit outcome value, the header fields, the gate checks and the `status` display accepted, not shipped yet — where the assignment lives sits with the undecided contract-governance decision |
@@ -103,7 +103,7 @@ same batch and took it back.
 | [036](036-review-accepts-a-candidate-the-implementer-did-not-finish.md) | Review accepts a candidate the implementer did not finish | D | accepted | the session `commit` field, the refusal in `review` and `gate`, and the `status` display of the producing session; not shipped yet |
 | [037](037-review-crashes-on-a-diff-that-is-not-utf-8.md) | `review` crashes on a diff that is not UTF-8 | D | accepted *(a defect; the diff-size limit deferred)* | the decode fix shared with the leak scan of 026's fourth finding — root cause reproduced upstream from the scan side; not shipped yet |
 | [038](038-an-adopter-setup-cannot-be-carried-to-the-next-repository.md) | An adopter's tuned setup cannot be carried to the next repository | D | accepted *(the need met by a supplied adopter kit; the profile commands deferred)* | the kit: a standard layout `init` creates, layer templates, a manifest, drift in `doctor`; not shipped yet |
-| [039](039-review-findings-do-not-feed-back-into-the-next-round.md) | Review findings do not feed back into the next round | D | accepted *(in part; the self-check and findings base deferred, the plugin interface declined)* | finding classes and the `changes_required` count in `status` and the gate output with the finding-lifecycle work, the contract principles as documentation; not shipped yet |
+| [039](039-review-findings-do-not-feed-back-into-the-next-round.md) | Review findings do not feed back into the next round | D | accepted *(in part; the self-check and findings base deferred, the plugin interface declined at intake — answered by [ADR-0013](../adr/ADR-0013-extensions-stages-scopes-isolation-trust.md))* | finding classes and the `changes_required` count in `status` and the gate output with the finding-lifecycle work, the contract principles as documentation — not shipped yet; the plugin interface: extension stages before the gate per ADR-0013, decided not shipped |
 | [040](040-in-flight-steps-are-invisible-and-journal-writes-contend-on-one-checkout.md) | In-flight steps invisible to the journal; journal writes contend on one checkout | D | accepted *(in part; a record or a supplied watcher template for the stuck-step visibility not yet decided)* | the fail-fast rule as documentation, the checkout-free write with the transaction helper of 019 and 035; not shipped yet |
 
 ## Batch of 2026-09-24
@@ -143,8 +143,9 @@ intake was accepted on 2026-10-01.
 From one adopter who installed the published 0.3.0 on a new repository and ran
 the governed loop on it: the first batch this project has received from a
 from-scratch install, which is why it is dense in onboarding defects. Ten source
-files, ten proposals, all accepted — two of them in part, with the deferred half
-and its reason stated in the proposal. Nine of the ten were still true on the
+files, ten proposals, all accepted — two of them in part at intake, with the
+deferred half and its reason stated in the proposal; both deferred halves were
+accepted on 2026-10-03. Nine of the ten were still true on the
 default branch when the batch was triaged; one had been fixed after the release
 and is waiting for it, which is itself the subject of proposal 016.
 
@@ -163,9 +164,9 @@ brought it forward, and 022 put a decision record in front of it.
 | [015](015-reviewer-command-contract-undocumented.md) | The reviewer command contract is only in the source | D | accepted | 0.4.0, onboarding |
 | [016](016-reviewer-prose-not-durable-in-the-published-release.md) | Reviewer prose is not durable in the published release | D | accepted *(third request met in another shape)* | 0.4.0 carries the fix, opt-in through the capture policy — see its dated note |
 | [017](017-provider-template-gate-check-structurally-red.md) | The shipped template's gate check is red on every implementation PR | D | accepted | 0.4.0, onboarding |
-| [018](018-session-activity-vocabulary-and-cost.md) | No activity for a coordinating role, no place for cost | D | accepted *(cost deferred)* | 0.4.0 for the activity; the cost field with the accounting rework |
+| [018](018-session-activity-vocabulary-and-cost.md) | No activity for a coordinating role, no place for cost | D | accepted *(the cost field accepted 2026-10-03)* | 0.4.0 for the activity; the cost field accepted 2026-10-03, with the accounting rework — not shipped yet |
 | [019](019-journal-transactions-assume-direct-commits.md) | Journal transactions assume direct commits to the base | D | accepted | not in 0.4.0; still accepted, see its dated note |
-| [020](020-leak-scan-names-no-file-and-self-matches.md) | `leak-scan` names no file, and matches its own markers | D | accepted *(third part deferred)* | 0.4.0 for the first two; the third with the decision record that adds the record type |
+| [020](020-leak-scan-names-no-file-and-self-matches.md) | `leak-scan` names no file, and matches its own markers | D | accepted *(the acknowledged-and-proceed path accepted 2026-10-03)* | 0.4.0 for the first two; the third accepted 2026-10-03, through the decision record that adds the record type — not shipped yet |
 | [021](021-reviewer-stderr-discarded-on-success.md) | A reviewer command's stderr is discarded on success | D | accepted | 0.4.0 |
 | [022](022-amendments-invisible-to-the-reviewer.md) | Contract amendments are invisible to the reviewer | D | accepted | decision record, then 0.4.0 |
 | [023](023-upstream-outbox-has-no-transaction.md) | The outbox has a convention but no transaction | D | accepted | 0.4.0 for the documentation; the command not yet shipped |
@@ -173,7 +174,7 @@ brought it forward, and 022 put a decision record in front of it.
 ## Batch of 2026-08-30
 
 Landed 2026-08-30, from three adopters running 0.1.0 in production. Twenty-two
-source files digested into thirteen proposals — nine accepted, three deferred,
+source files digested into thirteen proposals — ten accepted, two deferred,
 one declined. Dispositions dated later than the batch record re-reads. The recurring themes are review protocol robustness, contract
 repair, and session/token accounting; the last was raised independently by two
 adopters.
@@ -188,7 +189,7 @@ adopters.
 | [006](006-contract-repair-path.md) | A defective contract can only be abandoned | A, B | accepted |
 | [007](007-accepting-work-over-findings.md) | The operator cannot accept work over findings | A | accepted |
 | [008](008-session-and-token-accounting.md) | Session/token accounting is not in the core | B, C | accepted |
-| [009](009-lifecycle-extension-points.md) | No lifecycle extension points for evidence storage | C | deferred |
+| [009](009-lifecycle-extension-points.md) | No lifecycle extension points for evidence storage | C | accepted *(2026-10-03, was deferred — answered by [ADR-0013](../adr/ADR-0013-extensions-stages-scopes-isolation-trust.md))* |
 | [010](010-executor-artifacts-lifecycle.md) | External-executor artifacts have no lifecycle | A | accepted |
 | [011](011-windows-journal-directory-acl.md) | Windows: a new task directory can be unreadable | B | accepted |
 | [012](012-upstream-feedback-channel.md) | No convention for sending findings upstream | A, B | accepted |

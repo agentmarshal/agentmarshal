@@ -1,6 +1,6 @@
 # 031 — In an agent-driven loop the contract is written by an agent, and nothing governs it
 
-- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.4.0 · **Source:** `sha256:078b04248fd260856bb44ad4d893de8ef9d61360200bc065e9a1c144b77884f0` · **Disposition:** accepted *(in part; the reporter withdrew the third suggestion)*
+- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.4.0 · **Source:** `sha256:078b04248fd260856bb44ad4d893de8ef9d61360200bc065e9a1c144b77884f0` · **Disposition:** accepted *(in part; the withdrawal of the third suggestion is accepted — [033](033-contract-review-before-implementation-does-not-pay-off.md))*
 
 ## Finding
 
@@ -94,20 +94,21 @@ builds them — this one belongs to the decision on contract governance that
 this batch's later files also wait on. Accepted; not
 shipped yet.
 
-**The pre-implementation contract review** — the reporter withdrew it in a
-later file of this batch, published as
+**The pre-implementation contract review** — the withdrawal of this
+suggestion is accepted. The reporter retracted it in a later file of this
+batch, published as
 [proposal 033](033-contract-review-before-implementation-does-not-pay-off.md),
-with measurements. They built it, ran it against
+with measurements: they built it, ran it against
 one contract, and measured seven review passes costing more than a whole
 candidate-review cycle, without the task ever reaching an implementer:
 a contract has nothing to be checked against, so the review has no stopping
-point. We record the withdrawal rather than a disposition — the suggestion
-is retracted by its author, and the measurements travel with the retraction
-in that file's own digest. The first two parts stand unaffected.
+point. What is accepted here — as in that file — is the withdrawal: the
+suggestion is retracted by its author, and the measurements travel with the
+retraction in that file's own digest. The first two parts stand unaffected.
 
 ## Where
 
 Nothing here is shipped yet. The contract hashes in `opened` and `amendment`
 are accepted; the agreement record is accepted, with the contract-governance
-decision; the third suggestion is withdrawn by the reporter
-([033](033-contract-review-before-implementation-does-not-pay-off.md)).
+decision; the withdrawal of the third suggestion is accepted —
+[033](033-contract-review-before-implementation-does-not-pay-off.md).

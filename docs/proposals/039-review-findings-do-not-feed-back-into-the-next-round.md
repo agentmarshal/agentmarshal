@@ -1,6 +1,6 @@
 # 039 — Review findings do not feed back: repeat rounds dominate, and one-new-instance-per-round spirals have no brake
 
-- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.4.0 · **Source:** `sha256:26238693adf96972caa832831eccf810d4d29aebcfb72f65568006c4d26e052b` · **Disposition:** accepted *(in part; the executor self-check and the findings base are deferred, the plugin interface declined)*
+- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.4.0 · **Source:** `sha256:26238693adf96972caa832831eccf810d4d29aebcfb72f65568006c4d26e052b` · **Disposition:** accepted *(in part; the executor self-check and the findings base are deferred, the plugin interface declined at intake and answered by ADR-0013 on 2026-10-03)*
 
 ## Finding
 
@@ -121,6 +121,36 @@ the case that a lifecycle step sits outside the tool — is declined, by us:
 code that runs at the gate boundary becomes something the gate trusts,
 which is the line ADR-0010 draws.
 
+> Superseded 2026-10-03: **answered by
+> [ADR-0013](../adr/ADR-0013-extensions-stages-scopes-isolation-trust.md)**,
+> which lifts ADR-0010's refusal of lifecycle hooks. The reasoning above
+> stands as history; what the decision gives the ask, and what it does not,
+> is in the dated section after this one.
+
+## Disposition — the plugin interface answered (2026-10-03)
+
+[ADR-0013](../adr/ADR-0013-extensions-stages-scopes-isolation-trust.md)
+answers the fallback the decline refused. An extension has a declared stage
+— `pre-gate` (in CI and at the merge step, before the gate) and `post-gate`
+(after `complete`) — invoked by the tool from the extension's manifest,
+which also declares the mode and the isolation: that is the documented
+contract the ask wanted. An extension is a separate step before the gate,
+not part of it — it can pause the process (`pre-gate-stop`), and that is
+all it can do to it: the gate reads neither an extension's output nor its
+flags. The rule for future stages: a hook before a transition may only
+pause; a hook after a transition may only notify and write to the log; new
+stages are added at an adopter's request.
+
+Covered: hooks at named points with a documented contract, and each run
+recorded — every extension gets a result line (checked / failed / did not
+finish / switched off / not run), its output lands in a frame of its own,
+and a shared extension may write hash-pinned `ext` records to the journal.
+Not covered: no extension code runs inside the gate or a governed
+transaction — the trust-boundary reason for the decline is answered by
+keeping the step outside what the gate trusts, not by trusting it.
+
+Decided; not shipped yet — the ADR's stages follow in their own tasks.
+
 ## Where
 
 Nothing here is shipped yet. Finding classes and their aggregation, and the
@@ -129,4 +159,7 @@ finding-lifecycle work of proposals 027 and 026's second finding; the
 contract principles — the edge-case principle and the whole-set check — are
 accepted as documentation, to be written. The executor self-check and the
 findings base are deferred by us, waiting on the same decision; the plugin
-interface is declined by us, for the trust boundary ADR-0010 draws.
+interface is declined by us, for the trust boundary ADR-0010 draws — the
+decline superseded on 2026-10-03, when
+[ADR-0013](../adr/ADR-0013-extensions-stages-scopes-isolation-trust.md)
+answered it.
