@@ -132,11 +132,17 @@ imports no optional module; a test checks that.
   **the kit** of Decision 4. Export and a profile update with three-way merge
   are deferred until the layout settles.
 - [proposal 040](../proposals/040-in-flight-steps-are-invisible-and-journal-writes-contend-on-one-checkout.md) —
-  **the process log** a separate decision on where local state lives defines:
-  a "step started, deadline" entry, with overdue entries shown in `status`
-  and `doctor`; and **a watcher template** for waits at the provider — an
-  unmergeable pull request, a quota refusal — together with a fail-fast
-  rule. There are no heartbeats and no mutual-exclusion locks.
+  **the process log** that a separate decision on where local state lives
+  defines: it carries a "step started, deadline" entry, and `status` and
+  `doctor` show the overdue ones. Its second half — a journal write that
+  does not need the shared checkout — is accepted into the
+  journal-transactions work of
+  [proposal 019](../proposals/019-journal-transactions-assume-direct-commits.md)
+  and
+  [proposal 035](../proposals/035-journal-transactions-sweep-records-of-other-tasks.md).
+  And **a watcher template** for waits at the provider — an unmergeable
+  pull request, a quota refusal — together with a fail-fast rule. There are
+  no heartbeats and no mutual-exclusion locks.
 - The living system description — **a supplied OpenSpec extension**, the
   first under Decision 3: a manifest, a method for wiring it in, the
   pitfalls, an example contract.
