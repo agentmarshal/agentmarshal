@@ -69,6 +69,28 @@ command that reads your outbox, hashes each finding and reports its state back
 to you is proposed in [023](023-upstream-outbox-has-no-transaction.md) and
 accepted for a later release.
 
+## Batch of 2026-10-03
+
+Three files from Adopter D — the reporter of all three earlier batches —
+observed on 0.4.0 in the same agent-driven loop, now run unattended: a
+coordinating agent drives tasks through implementer → review → gate →
+completion and deployment, with implementers being three agent CLIs. All
+three are published, as proposals 041 through 043.
+
+The recurring theme is the loop around the tool rather than the tool's
+records: the next-step decision every adopter rewrites in a driver that
+misreads why a step failed; the liveness of an unattended run watched by
+hand — where the reporter offers its step watchdog and loop monitor back as
+a reference extension, the route by which the code may arrive not yet
+decided; and the stale-merge window between review and integration that
+makes every approved candidate pay a conflict round and a second review.
+
+| # | Theme | Reporter | Disposition | Where |
+|---|---|---|---|---|
+| [041](041-the-next-step-of-a-task-is-decided-outside-the-tool.md) | The next step of a task is decided outside the tool | D | accepted *(the plan a supplied file, the driver the adopter kit)* | `agentmarshal next` and the failure classes — new outcome values and a "report finished" session flag, with the accounting decision — in the tool; the plan file in local state, the reference driver in the adopter kit; not shipped yet |
+| [042](042-liveness-of-an-unattended-loop-is-watched-by-hand.md) | Liveness of an unattended loop is watched by hand; watchdog and monitor offered | D | accepted *(in part; actions through the tool declined for the core — met by 041's plan file and the watchdog itself; the offered code in principle, route undecided)* | a `step` stage under [ADR-0013](../adr/ADR-0013-extensions-stages-scopes-isolation-trust.md)'s rule for new stages — accepted, to be added — manifest-declared activity probes, `stalled`/`safety-limit` outcomes with the accounting decision and the record model, per-run progress in the process log; not shipped yet |
+| [043](043-review-before-integration-makes-every-merge-stale.md) | Review before integration makes every merge stale | D | accepted *(the merge slot a supplied extension enforced via [ADR-0013](../adr/ADR-0013-extensions-stages-scopes-isolation-trust.md)'s `pre-gate-stop`; the core unchanged)* | the integrate → review → merge order as documentation and in the adopter kit; the slot over an atomic remote ref as a supplied extension; the resolution-only review with the decision on the finding lifecycle; the metric with `report` and the accounting decision; not shipped yet |
+
 ## Batch of 2026-10-01
 
 Fourteen files from Adopter D — the reporter of the 2026-09-16 and
