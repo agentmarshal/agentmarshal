@@ -3,15 +3,19 @@
 Status: Accepted
 Date: 2026-10-03
 
-Builds on [ADR-0007](ADR-0007-operator-acceptance.md) (the operator accepts
-work over findings), [ADR-0010](ADR-0010-process-extensions.md) (process
-extensions with a declared footprint) and
+Builds on [ADR-0007](ADR-0007-operator-acceptance.md) (operator acceptance
+over the blocking findings of a non-approving review),
+[ADR-0010](ADR-0010-process-extensions.md) (process extensions with a
+declared footprint) and
 [ADR-0012](ADR-0012-what-the-tool-does-and-what-it-supplies.md) (an extension
 may drive the process), and on a separate decision on where local state lives.
-**It partly revisits ADR-0010:** the refusal of lifecycle hooks is lifted; the
-refusal of an installer stands; and the shared switches file is excepted from
-"configuration is reviewed" — it alone changes without review, while a
-manifest still takes the diff lane with review. It answers
+**It partly revisits ADR-0010 and ADR-0007.** In ADR-0010: the refusal of
+lifecycle hooks is lifted; the refusal of an installer stands; and the shared
+switches file is excepted from "configuration is reviewed" — it alone changes
+without review, while a manifest still takes the diff lane with review. In
+ADR-0007: an acceptance stood only over the blocking findings of a
+non-approving review; here it also covers an extension pause, which raises no
+review finding, and an operational CR, which has no review at all. It answers
 [proposal 009](../proposals/009-lifecycle-extension-points.md).
 
 This ADR records a decision. The stages, manifest fields, commands, lanes and
@@ -31,9 +35,10 @@ switched on and off — and why none of this touches what the gate trusts.
 A task's states are `open`, `done`, `abandoned`; the transitions are
 `complete`, `abandon`, `reopen`; inside `open` there are events that change no
 state — amendment, review, acceptance, session, finding. The merge itself is
-made not by the tool but by the provider and the merge authority; the gate runs
-in CI, in the merge authority before the merge, and inside `complete` — already
-after the merge.
+made not by the tool but by the provider; the gate — the merge authority —
+decides and never merges. The gate runs in CI, at the merge step — the host's
+merge wrapper — before the merge, and inside `complete`, which may run before
+or after the implementation merges.
 
 ## Decision
 
@@ -43,10 +48,11 @@ after the merge.
    The rest — writing to the journal, writing to the process log, pausing the
    process — are capabilities that depend on the stage, the scope and the
    isolation.
-2. **Two stages to start:** `pre-gate` (in CI and in the merge authority,
-   before the gate) and `post-gate` (after `complete`). Inside `complete`,
-   `pre-gate` extensions run as a warning only: the merge has already
-   happened.
+2. **Two stages to start:** `pre-gate` (in CI and at the merge step, before
+   the gate) and `post-gate` (after `complete`). Inside `complete` — which
+   may run before or after the implementation merges — a `pre-gate-stop`
+   pause applies while the candidate is not yet merged into the target
+   branch, and is reported as a warning once it is.
 3. **The rule for future stages:** a hook before a transition may only pause
    the process; a hook after a transition may only notify and write to the
    log. New stages are added at an adopter's request; the candidates, each
@@ -62,9 +68,12 @@ after the merge.
    The gate reads neither an extension's output nor its flags; its decision
    does not depend on whether extensions are installed at all. An extension's
    stop is a pause of the process before the gate; sorting it out — a fix in
-   a new round, or operator acceptance under ADR-0007 — does not touch the
-   gate. The merge happens when the gate has passed and no pause stands. An
-   extension cannot push through what the gate refused — by construction.
+   a new round, or operator acceptance — does not touch the gate. Acceptance
+   here is the first of two extensions of ADR-0007: a pause raises no review
+   finding, so the acceptance stands over the pause itself rather than over a
+   non-approving review's blocking findings. The merge happens when the gate
+   has passed and no pause stands. An extension cannot push through what the
+   gate refused — by construction.
 6. **Read from the base.** Manifests, modes, isolation, shared switches **and
    the code of shared extensions** are taken from the base commit; a pull
    request cannot weaken them for itself, tailor the check code to itself, or
@@ -108,7 +117,7 @@ after the merge.
    | invoked at its stage | yes | yes |
    | writes to the process log | yes | yes |
    | writes `ext` records to the shared journal | yes | no |
-   | pauses the server-side process (CI, the merge authority) | yes (`pre-gate-stop`) | no |
+   | pauses the server-side process (CI, the merge step) | yes (`pre-gate-stop`) | no |
    | pauses a local run | yes | yes, marked "personal" |
    | post-gate | on the workstation and in CI | on the workstation only |
 
@@ -180,8 +189,9 @@ after the merge.
     extension blocks its own switching off; the reason is mandatory; `status`
     and `doctor` show "switched off since CR so-and-so, reason". An adopter
     may require operator acceptance for an operational CR instead of the fast
-    lane. It is opened with one command: `agentmarshal extension switch off
-    <name> --reason "…"`.
+    lane — the second extension of ADR-0007: an operational CR carries no
+    review at all. It is opened with one command: `agentmarshal extension
+    switch off <name> --reason "…"`.
 
 ### F. Records and overview
 
