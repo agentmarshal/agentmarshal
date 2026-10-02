@@ -71,8 +71,9 @@ accepted for a later release.
 
 ## Batch of 2026-10-03
 
-Three files from Adopter D — the reporter of all three earlier batches —
-observed on 0.4.0 in the same agent-driven loop, now run unattended: a
+Three files from Adopter D — the reporter of the 2026-09-16, 2026-09-18
+and 2026-10-01 batches — observed on 0.4.0 in the same agent-driven
+loop, now run unattended: a
 coordinating agent drives tasks through implementer → review → gate →
 completion and deployment, with implementers being three agent CLIs. All
 three are published, as proposals 041 through 043.

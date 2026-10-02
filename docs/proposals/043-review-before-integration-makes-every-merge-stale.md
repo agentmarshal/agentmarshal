@@ -30,14 +30,16 @@ Measurements, as reported:
 - **One day of parallel chains (about 10 tasks in flight):** 5 conflict
   integrations on approved or nearly approved candidates (one task twice,
   another twice, a third once), each costing a fix round and a new review;
-  3 completions waited ~40 minutes for a check that could not start. Roughly
-  5 extra implementer rounds and 5 extra reviews in one day, plus several
-  hours of chain time.
-- **Where the conflicts were:** not in feature code but in hub files every
-  feature touches — the migration index (two tasks that change the schema
-  conflict there every time), the environment example, shared SEO and
-  catalog helpers, section page layouts. Declared scopes were all `app/`, so
-  scope overlap predicted nothing.
+  3 completions waited ~40 minutes for a check that could not start —
+  proposal 040, from the same reporter, counted one such stall among the
+  six it reports; the figures differ, and this digest does not reconcile
+  them. Roughly 5 extra implementer rounds and 5 extra reviews in one
+  day, plus several hours of chain time.
+- **Where the conflicts were:** not in feature code but in shared files
+  every feature touches — a schema migration index (two tasks that change
+  the schema conflict there every time), configuration examples, shared
+  helpers and layouts. Declared scopes were broad — one top-level
+  directory — so scope overlap predicted nothing.
 - **The same project, strictly one task at a time (the following two
   days):** 1 conflict integration in 12 completed tasks (from work done
   before the switch). End-to-end time of a small task about 55–75 minutes,
