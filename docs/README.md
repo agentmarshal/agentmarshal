@@ -79,3 +79,4 @@
 ## Contribute a change
 
 - [self-hosting-workflow.md](self-hosting-workflow.md) — follow the task lifecycle AgentMarshal uses to govern its own changes.
+- [known-defects.md](known-defects.md) — the defect classes reviews keep finding; an implementer reads it before starting a task and checks the change against it before finishing.
