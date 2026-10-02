@@ -1,0 +1,31 @@
+{
+  "advisory_findings": [
+    "proposal-039-item-5-whole-set-check-unanswered",
+    "review-record-advisory-list-is-optional",
+    "findings-lane-untouched-is-ambiguous"
+  ],
+  "artifacts": [
+    {
+      "hash": "08daad727bf30a25e9238333fd7e1ab595c8faad88af553ecdec7b46038d6464",
+      "ref": ".agentmarshal/journal/tasks/CR-136/artifacts/01M3ZGNR1TB4VT72DKAFV64GZT-review.md"
+    }
+  ],
+  "created_at": "2026-10-02T23:54:57.978027Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "5ecb5d72d73b98ca841cef5287b73995fec25a28",
+  "reviewed_contract": "e3f608a2e11ab6d8c8f262edf81854dc30aa8beea5c809cdd83c7f52f03ea80b",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-136",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "approved"
+}
