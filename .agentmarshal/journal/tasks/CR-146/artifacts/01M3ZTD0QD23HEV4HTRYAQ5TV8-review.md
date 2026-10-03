@@ -1,0 +1,25 @@
+## Что я проверил
+
+Статически, по файлам снапшота (выполнить `uv run pytest` / `ruff` / `mypy` в этой песочнице не удалось — запуск `uv` и `python3` требовал одобрения, которого в неинтерактивной сессии нет; критерий 5 я проверял чтением, а не прогоном).
+
+Сошлось:
+
+- **Архив и спеки.** `openspec/changes/archive/2026-10-03-pin-gate-transcript-by-fixture/` имеет `proposal.md`, `design.md`, `tasks.md` и `specs/{gate-lanes,review-evidence,scope-enforcement}/spec.md` — та же структура, что у соседнего `2026-10-03-per-file-leak-scan`. Рабочая директория изменения в `openspec/changes/` отсутствует. Все три дельты совпадают с итоговыми `openspec/specs/*/spec.md` дословно, включая требования и заголовки сценариев scope-enforcement, которые не менялись.
+- **Сценарии названы тестами.** Три новых сценария gate-lanes → `test_default_run_transcript_matches_the_committed_fixture:465`, `test_a_transcript_difference_is_shown_as_a_readable_diff`, `test_a_fixture_changes_only_when_the_output_changes_on_purpose`. scope-enforcement → `test_a_candidate_without_renames_prints_the_transcript_it_printed_before`, review-evidence → `test_old_journal_reads_as_before`. Прямой вызов `@pytest.mark.parametrize`-функции с явным `case` безопасен: декоратор только пишет марку в `pytestmark` и возвращает ту же функцию.
+- **Больше ни одна опубликованная спека не обещает транскрипт 0.3.0**: `grep` по `openspec/specs/` даёт только три переписанных места; `findings-review` и `contract-history` пинят prompt/brief, а не транскрипт гейта.
+- **Сравнения с релизным бинарём убраны, мёртвого кода не осталось.** `released_030`/`SKIP_030` по-прежнему используются из `test_findings.py:351` и `test_journal.py:462`; `subprocess`, `shutil`, `os` в `test_gate.py` всё ещё нужны — F401 не будет.
+- **Ни один тест не ослаблен.** Уникальный assert удалённого `test_empty_scope_candidate_stays_on_030_diff_lane` (`paths outside contract scope: host-change.py`) сохранён в оставшемся `test_empty_scope_candidate_takes_the_diff_lane_and_is_refused`. `test_old_journal_reads_as_before` стал строже: вместо одной строки `PASS:` он теперь держит весь транскрипт и exit code. `report`/`status` ничего не пишут в журнал, так что его сетап даёт тот же транскрипт, что и кейс фикстуры.
+- **Фикстуры похожи на машинно сгенерированные**, а не написанные от руки: каждая строка трассируется в реальный литерал (`gate.py:767,787,872,1007,1009,1044,1060,1088,1107,1135`, `cli.py:855,867,871`, `placement.py:45`), в том числе «узкие» варианты `added records are valid (none examined: ...)` для сайдкара и `[:12]`-сокращения. `.gitattributes` даёт `eol=lf`, пустые `.stderr` закоммичены как пустой blob.
+- Подстановка корректна: longest-first действительно защищает 12-символьное сокращение, Crockford-алфавит ULID выписан правильно (32 символа, без I/L/O/U), `_transcript_lines("") == []` — пустой поток сравнивается без ложного диффа.
+
+## Замечания (не блокирующие)
+
+Фикстура `sidecar-journal-only` пинит отказ, а не транскрипт journal-only-линии: критерий 2 буквально просит «the journal-only lane ... in the sidecar placement», а в сайдкаре этой линии нет (`run_gate` гасит `journal_only`, ADR-0008 Decision 2), поэтому `_sidecar_journal_only_case` (`tests/test_gate.py:418`) закрепляет refusal-транскрипт. Отступление названо — в design (Non-Goals, Decisions, Risks) и прямо в WHEN-клаузе дельты gate-lanes, — но критерий в буквальном чтении не выполнен, и человеку это стоит увидеть.
+
+Подстановка по шаблону маскирует и детерминированные значения: `_RECORD_ID`/`_TIME` (`tests/test_gate.py:253-254`, применяются на `:279-280`) заменяют любой ULID- или ISO-8601-образный токен независимо от того, меняется он от прогона к прогону. Design утверждает «Everything else compares byte for byte: a changed word, a moved line, a new warning is a failed pin, not a substituted one», и раздел Risks разбирает только обратный случай — значение, которое подстановка *не* перечислила. Если гейт когда-нибудь начнёт печатать фиксированную дату (например, дату поправки контракта) или фиксированный id, пин к её изменению ослепнет. Сегодня ни одна фикстура таких токенов не содержит, так что вреда нет — это долг на будущее.
+
+Регенерация ломается, если запустить набор целиком: `test_default_run_transcript_matches_the_committed_fixture:465` собирается раньше `test_regenerate_the_committed_fixtures:490` и намеренно делает `monkeypatch.delenv`, поэтому `AGENTMARSHAL_UPDATE_GATE_FIXTURES=1 uv run pytest` сначала даёт красный пин (по 4 кейсам), и только потом перезаписывает фикстуры. Design говорит «runs that test once with the flag set», но ни он, ни docstring, ни сообщение `pytest.skip` не называют нужный селектор (`-k regenerate`) — задача, которая меняет вывод намеренно, скорее всего сначала получит непонятный красный прогон.
+
+AGENTMARSHAL_VERDICT_BEGIN
+{"reviewed_commit": "d3ab2dd3aa6604965adee763927f60374fd9986d", "verdict": "approved", "findings": [], "advisory_findings": ["sidecar-journal-only-fixture-pins-a-refusal-not-the-lane", "pattern-substitution-masks-deterministic-time-and-ulid-tokens", "update-flag-fails-the-pin-before-regeneration-rewrites"]}
+AGENTMARSHAL_VERDICT_END

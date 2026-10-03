@@ -1,0 +1,30 @@
+{
+  "advisory_findings": [
+    "design-claims-init-unchanged",
+    "old-git-hard-fails-local-state"
+  ],
+  "artifacts": [
+    {
+      "hash": "0bf44f5adf9474b4c4fd98622d9ee076a0b489aba2f292835e0424539176d64d",
+      "ref": ".agentmarshal/journal/tasks/CR-148/artifacts/01M3ZVQHD2T0JQKPMFG86V2EGV-review.md"
+    }
+  ],
+  "created_at": "2026-10-03T03:08:11.042619Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "6a3fc5fc78cd5783788733a01d816055b8ce6ab3",
+  "reviewed_contract": "6b1fca28bf279a628fd1ef1e07be6680a8645206a39e03d1a8b8bc532108c83d",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-148",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "approved"
+}

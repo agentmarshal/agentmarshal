@@ -1,0 +1,30 @@
+{
+  "advisory_findings": [
+    "normalization-misses-resolved-roots",
+    "placeholder-name-in-lifecycle-test"
+  ],
+  "artifacts": [
+    {
+      "hash": "73a3ad700e5026be5cdbd9f10a3a2f6659544a83e1565240d0cfd08bb86b13ee",
+      "ref": ".agentmarshal/journal/tasks/CR-146/artifacts/01M3ZSXD33GMZ75BSN39QG86GM-review.md"
+    }
+  ],
+  "created_at": "2026-10-03T02:36:26.083035Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "d3ab2dd3aa6604965adee763927f60374fd9986d",
+  "reviewed_contract": "a39fe322ad5ffd673ac030b3adf1ae5a3615098d16dfebd3930f8e8558c37db9",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-146",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "approved"
+}

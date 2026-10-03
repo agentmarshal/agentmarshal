@@ -1,0 +1,20 @@
+Проверил diff статически против контракта CR-146, спеки `openspec/specs/gate-lanes/`, архивного change-пакета и исходников гейта. Сразу оговорю: в этой песочнице `python3 -m pytest`, `ruff` и `mypy` требуют approval и запустить их не дали, поэтому критерий 5 («the full CI sequence passes») проверен чтением, а не прогоном. Строки fixtures я сверил с литералами в `src/agentmarshal/journal/gate.py:767-1135` и `src/agentmarshal/cli.py:794-872` — порядок и текст совпадают, маршрутизация stdout/stderr и коды выхода тоже.
+
+**Что держится.** Четыре fixture-тройки построены теми же хелперами, что и существующие gate-тесты (`_gate_repo`/`_implement`/`_approve`, `_commit`/`_host_and_sidecar` из `test_placement`), внешний бинарник не нужен. Перекрёстный импорт из `test_placement` безопасен — цикла нет, а паттерн уже заведён в `test_findings.py:22`; isort положит его в ту же first-party секцию, потому что `src = ["src", "tests"]`. Подстановка одна и документирована: конкретные значения заменяются longest-first, так что сокращённый SHA не может быть съеден внутри полного, а ULID и ISO-8601 — по шаблону; `_RECORD_ID` действительно описывает Crockford base32 с первым символом 0-7. `.gitattributes` задаёт `* text=auto eol=lf`, так что побайтовое сравнение fixtures не поедет на CRLF. Удаление `test_empty_scope_candidate_stays_on_030_diff_lane` не ослабило покрытие: уникальное утверждение про `paths outside contract scope: host-change.py` живёт в выжившем тесте (`tests/test_gate.py:851`), а `endswith("gate: passed\n")` из второго удалённого теста теперь пинится самой fixture. `released_030`/`SKIP_030` остались и всё ещё используются в `test_findings.py` и `test_journal.py`. Все три сценария дельты имеют тест, чьи docstring их называют.
+
+Теперь то, что нужно поправить.
+
+**BLOCK-1 — опубликованный сценарий в `scope-enforcement` остался утверждать то, что больше ничем не проверяется.** `openspec/specs/scope-enforcement/spec.md:37-39` — сценарий «a candidate without renames prints the transcript it printed before» в THEN говорит: «the gate's transcript is byte-for-byte what 0.3.0 printed for it». Этот change убирает все сравнения с released 0.3.0 и перенаправляет именно тот тест, который демонстрирует этот сценарий (`tests/test_gate.py:713-726`), на сравнение с committed fixture, которая 0.3.0 не спрашивает никогда. После change опубликованное требование держится ни на чём: ни один тест не проверяет «what 0.3.0 printed». При этом change про этот сценарий знает — `proposal.md:38-40` его прямо называет и пишет, что тест «now demonstrates the scenario through the committed fixture rather than the released binary», — но ни дельты для `scope-enforcement`, ни правки текста нет. Починить внутри текущего контракта нельзя: `openspec/specs/scope-enforcement/` не входит в `scope` CR-146, так что нужна поправка к контракту (amendment), а затем дельта, переписывающая THEN на fixture.
+
+**ADV-1 — отсутствующая fixture читается как пустая строка, а не как ошибка.** `tests/test_gate.py:332-341`: `(fixture_root / name).read_text(...) if (fixture_root / name).exists() else ""`. Для трёх пустых `.stderr`-fixtures это значит, что файл можно удалить, и пин продолжит проходить — часть пина исчезает молча. Явная проверка существования (вне ветки обновления) сделала бы пин полным.
+
+**ADV-2 — в самом пиновом тесте флаг обновления не нейтрализован.** `tests/test_gate.py:443-466` не делает `monkeypatch.delenv(UPDATE_FIXTURES_ENV, raising=False)`, хотя два соседних сценарных теста делают именно это (`tests/test_gate.py:481` и `tests/test_gate.py:509`). Если переменная выставлена в окружении, полный прогон перезапишет все четыре committed fixtures и сравнит их с тем, что только что записал, — пин пройдёт вхолостую. Risk-регистр в `design.md` это принимает («git status покажет запись»), но однострочная защита рядом уже написана, и именно здесь молчаливый проход стоит дороже всего.
+
+AGENTMARSHAL_VERDICT_BEGIN
+{
+  "reviewed_commit": "2244618d4bc69e5548a77774e82a39e0cb8fb37e",
+  "verdict": "changes_required",
+  "findings": ["BLOCK-1"],
+  "advisory_findings": ["ADV-1", "ADV-2"]
+}
+AGENTMARSHAL_VERDICT_END

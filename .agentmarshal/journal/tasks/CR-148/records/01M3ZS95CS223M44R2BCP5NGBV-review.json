@@ -1,0 +1,32 @@
+{
+  "advisory_findings": [
+    "localstate-error-cause-not-from-git",
+    "init-comment-overstates-the-fix",
+    "git-common-dir-docstring-contradiction",
+    "tree-snapshot-helper-duplicated"
+  ],
+  "artifacts": [
+    {
+      "hash": "f01f6e849bfee2b049207b5be28bb86277562cc5ab061e8cc00a6161fbed0a9c",
+      "ref": ".agentmarshal/journal/tasks/CR-148/artifacts/01M3ZS95CS223M44R2BCP5NGBV-review.md"
+    }
+  ],
+  "created_at": "2026-10-03T02:25:22.841773Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "df7f28f5d7facb186b02eb456aabeb7a44108550",
+  "reviewed_contract": "6b1fca28bf279a628fd1ef1e07be6680a8645206a39e03d1a8b8bc532108c83d",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-148",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "approved"
+}
