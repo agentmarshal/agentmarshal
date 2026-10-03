@@ -79,7 +79,6 @@ from agentmarshal.journal.submit_review import ReviewSubmitError, submit_review
 from agentmarshal.journal.validate import validate_journal
 from agentmarshal.localstate import LocalState, LocalStateError, local_state
 from agentmarshal.migrate import JournalMigrationError, migrate_journal
-from agentmarshal.process_log import read_events
 from agentmarshal.project import (
     PROJECT_CONFIG_RELPATH,
     AgentMarshalProjectError,
@@ -956,31 +955,6 @@ def _run_report(task_id: str | None, stderr: TextIO) -> int:
     return 0
 
 
-def _read_process_events(state: LocalState, stderr: TextIO) -> list[dict[str, object]]:
-    """Read the process log's events, naming on stderr a log that fails.
-
-    A missing ``log/`` directory is no error — ``read_events`` already
-    reads it as empty. A log that exists but cannot be read — a
-    permission denial, a file where the directory should be — is named
-    and reads as no steps rather than failing the command.
-    """
-
-    try:
-        if state.log.exists() and not state.log.is_dir():
-            reason = "not a directory"
-        else:
-            return read_events(state)
-    except OSError as error:
-        reason = error.strerror or str(error)
-    print(
-        f"status: cannot read the process log "
-        f"{escape_for_display(str(state.log))} ({reason}); "
-        "its steps read as none",
-        file=stderr,
-    )
-    return []
-
-
 def _run_status(task_id: str | None, stderr: TextIO) -> int:
     placement = _placement("status", stderr)
     if placement is None:
@@ -1005,7 +979,9 @@ def _run_status(task_id: str | None, stderr: TextIO) -> int:
     # step events are indexed by task once, so each task's lookup scans
     # only its own slice. A log that cannot be read is named on stderr
     # and reads as no steps.
-    events = _read_process_events(state, stderr) if state is not None else []
+    events = (
+        steps.read_process_events(state, stderr, "status") if state is not None else []
+    )
     events_by_task = steps.step_events_by_task(events)
     try:
         if task_id is None:

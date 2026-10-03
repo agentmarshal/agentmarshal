@@ -9,9 +9,11 @@ start time, and the deadline — and ``step end`` writes one ``step-ended``
 event carrying the step id and, when given, the outcome. Both resolve the
 journal repository's local state, so a sidecar writes its own log and the
 host is never written; neither writes the journal. The module also carries
-the reading half: :func:`open_steps` decides which of a task's steps the
-log and the journal leave open and how far past deadline they run, which
-``status`` shows.
+the reading half: :func:`read_process_events` reads the log for the
+commands that show it, naming a log that cannot be read, and
+:func:`open_steps` decides which of a task's steps the log and the
+journal leave open and how far past deadline they run — which ``status``
+and ``doctor`` show.
 """
 
 from __future__ import annotations
@@ -27,6 +29,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, TextIO
 
+from agentmarshal.journal.display import escape_for_display
 from agentmarshal.journal.placement import (
     PlacementError,
     resolve_placement,
@@ -44,6 +47,7 @@ from agentmarshal.process_log import (
     ProcessLogError,
     ProcessLogWriter,
     open_writer,
+    read_events,
     write_event,
 )
 from agentmarshal.project import find_project_root
@@ -418,6 +422,35 @@ class OpenStep:
     activity: str
     deadline: str
     overdue_by: timedelta | None
+
+
+def read_process_events(
+    state: LocalState, stderr: TextIO, command: str
+) -> list[dict[str, object]]:
+    """Read the process log's events, naming a log that cannot be read.
+
+    The one reader ``status`` and ``doctor`` share, so how a failing log
+    is judged cannot drift between them. A missing ``log/`` directory is
+    no error — ``read_events`` already reads it as empty. A log that
+    exists but cannot be read — a permission denial, a file where the
+    directory should be — is named on *stderr* under *command*'s name
+    and reads as no steps rather than failing the run.
+    """
+
+    try:
+        if state.log.exists() and not state.log.is_dir():
+            reason = "not a directory"
+        else:
+            return read_events(state)
+    except OSError as error:
+        reason = error.strerror or str(error)
+    print(
+        f"{command}: cannot read the process log "
+        f"{escape_for_display(str(state.log))} ({reason}); "
+        "its steps read as none",
+        file=stderr,
+    )
+    return []
 
 
 def step_events_by_task(

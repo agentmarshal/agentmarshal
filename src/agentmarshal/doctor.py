@@ -6,12 +6,20 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import TextIO
 
 from agentmarshal.journal.actors import SOURCE_GIT_IDENTITY, resolve_recorded_by
+from agentmarshal.journal.display import escape_for_display
+from agentmarshal.journal.placement import PlacementError, resolve_placement
 from agentmarshal.journal.review import ReviewLaunchError, _reviewer_command
+from agentmarshal.journal.status import TaskStatusError, list_task_statuses
+from agentmarshal.journal.status_view import print_paths
+from agentmarshal.localstate import LocalState, LocalStateError, local_state
 from agentmarshal.project import (
     GitNotAvailableError,
     find_git_root,
@@ -28,8 +36,24 @@ from agentmarshal.settings import (
     finding_classes,
     require_agreement,
 )
+from agentmarshal.steps import (
+    format_overdue,
+    open_steps,
+    read_process_events,
+    step_events_by_task,
+)
 
 ExecutableResolver = Callable[[str], str | None]
+
+#: The floor local state's ``git rev-parse --path-format=absolute``
+#: sets — the flag git learned at 2.31.
+MINIMUM_GIT_VERSION = (2, 31)
+MINIMUM_GIT_VERSION_TEXT = ".".join(str(part) for part in MINIMUM_GIT_VERSION)
+
+#: The first dotted number ``git --version`` names — the version
+#: itself, the platform suffix (``.windows.1``, ``(Apple Git-…)``)
+#: playing no part.
+_GIT_VERSION_OUTPUT = re.compile(r"(\d+)\.(\d+)(?:\.(\d+))?")
 
 
 @dataclass(frozen=True)
@@ -70,7 +94,48 @@ def _check_git_available(resolver: ExecutableResolver) -> tuple[bool, str]:
         return False, f"cannot run git; install or repair git ({error})"
     if result.returncode != 0:
         return False, "git --version failed; install or repair git"
-    return True, "git executable is available"
+    version = _git_version(result.stdout)
+    if version is None:
+        return (
+            False,
+            "cannot read the installed git version; local state needs git "
+            f"{MINIMUM_GIT_VERSION_TEXT} or newer for git rev-parse "
+            "--path-format=absolute — upgrade git and try again",
+        )
+    if version[:2] < MINIMUM_GIT_VERSION:
+        return (
+            False,
+            f"git {_version_text(version)} is older than "
+            f"{MINIMUM_GIT_VERSION_TEXT}, the minimum local state needs for "
+            "git rev-parse --path-format=absolute; upgrade git and try again",
+        )
+    return (
+        True,
+        f"git executable is available (git {_version_text(version)}, "
+        f"and local state needs {MINIMUM_GIT_VERSION_TEXT} or newer)",
+    )
+
+
+def _git_version(output: str) -> tuple[int, int, int] | None:
+    """The version ``git --version`` reports, or ``None`` when it names none.
+
+    The first dotted number is the version — ``git version
+    2.39.2.windows.1`` reads as 2.39.2, a platform suffix playing no
+    part, and a missing patch level reads as zero.
+    """
+
+    match = _GIT_VERSION_OUTPUT.search(output)
+    if match is None:
+        return None
+    return (
+        int(match.group(1)),
+        int(match.group(2)),
+        int(match.group(3)) if match.group(3) else 0,
+    )
+
+
+def _version_text(version: tuple[int, int, int]) -> str:
+    return ".".join(str(part) for part in version)
 
 
 def _check_git_repository(start: Path) -> tuple[bool, str]:
@@ -289,11 +354,118 @@ def doctor_checks(
     ]
 
 
-def run_doctor(
-    start: Path | None = None, resolver: ExecutableResolver = shutil.which
-) -> Sequence[DoctorResult]:
-    """Run onboarding health checks without changing project state."""
+def _report_locations_and_steps(
+    start: Path, stderr: TextIO, now: datetime | None
+) -> None:
+    """Print the paths in use and the overdue steps, as a report.
 
+    ADR-0014 decisions 9 — as amended — and 13, the ``doctor`` half of
+    what ``status`` already does: the journal, the process log and the
+    local state print on *stderr* through the same
+    ``status_view.print_paths`` call, one line each and escaped like
+    other displayed text, and every overdue step across the project's
+    tasks prints one line naming its task. Nothing here is a check: an
+    overdue step, an unreadable log and an unresolvable path are named,
+    never a failure — the exit status stays the checks'.
+    """
+
+    project_root, discovery_error = _find_project_root(start)
+    placement = None
+    placement_reason: str | None = discovery_error
+    if project_root is not None:
+        try:
+            placement = resolve_placement(project_root)
+        except PlacementError as error:
+            placement_reason = str(error)
+    if placement is None:
+        reason = escape_for_display(placement_reason or "no project found")
+        print(f"journal: unavailable ({reason})", file=stderr)
+        print(f"process log: unavailable ({reason})", file=stderr)
+        print(f"local state: unavailable ({reason})", file=stderr)
+        return
+    state: LocalState | None = None
+    state_error: str | None = None
+    try:
+        state = local_state(placement)
+    except LocalStateError as error:
+        state_error = str(error)
+    print_paths(placement.journal_root, state, state_error, stderr)
+    _report_overdue_steps(placement.journal_root, state, stderr, now)
+
+
+def _report_overdue_steps(
+    journal_root: Path,
+    state: LocalState | None,
+    stderr: TextIO,
+    now: datetime | None,
+) -> None:
+    """Print one line per overdue step across the project's tasks.
+
+    Each line carries the task — the report crosses every task, so the
+    step id alone would not say whose step is late — the step id, the
+    activity, the deadline and how long past it the step is, and says
+    it comes from this machine's process log; the whole line is escaped
+    like other displayed text. The log is read once and its step events
+    grouped under their task once, so each task's ``open_steps`` call
+    scans only its own slice; the moment taken as now is taken once and
+    is injectable, so a test decides what has passed. A log that cannot
+    be read, a journal whose tasks cannot be listed and a local state
+    that did not resolve are named, not failures.
+    """
+
+    if state is None:
+        # The paths lines already named it unavailable with the reason.
+        return
+    try:
+        tasks = list_task_statuses(journal_root)
+    except (OSError, TaskStatusError, ValueError) as error:
+        print(
+            "doctor: cannot list the project's tasks "
+            f"({escape_for_display(str(error))}); "
+            "their steps read as none",
+            file=stderr,
+        )
+        return
+    events = read_process_events(state, stderr, "doctor")
+    events_by_task = step_events_by_task(events)
+    moment = now if now is not None else datetime.now(UTC)
+    for task in tasks:
+        for step in open_steps(
+            task.task_id,
+            task.records,
+            events_by_task.get(task.task_id, ()),
+            now=moment,
+        ):
+            if step.overdue_by is None:
+                continue
+            print(
+                escape_for_display(
+                    "Overdue step (this machine's process log): "
+                    f"task={task.task_id} step={step.step} "
+                    f"activity={step.activity} deadline={step.deadline} "
+                    f"past={format_overdue(step.overdue_by)}"
+                ),
+                file=stderr,
+            )
+
+
+def run_doctor(
+    start: Path | None = None,
+    resolver: ExecutableResolver = shutil.which,
+    *,
+    stderr: TextIO | None = None,
+    now: datetime | None = None,
+) -> Sequence[DoctorResult]:
+    """Run onboarding health checks without changing project state.
+
+    Besides the checks' results, the run prints to *stderr* — the real
+    stderr by default — the paths of the journal, the process log and
+    the local state in use and a report of every overdue step across
+    the project's tasks; neither is a check and neither can make the
+    command fail.
+    """
+
+    search_start = Path.cwd() if start is None else start
     results: list[DoctorResult] = []
     for check in doctor_checks(start, resolver):
         try:
@@ -304,4 +476,15 @@ def run_doctor(
                 f"check could not run; verify repository access and retry ({error})"
             )
         results.append(DoctorResult(check.name, ok, check.precondition, detail))
+    report_stderr = sys.stderr if stderr is None else stderr
+    try:
+        _report_locations_and_steps(search_start, report_stderr, now)
+    except Exception as error:
+        # The report is no check: whatever goes wrong in it is named on
+        # stderr rather than failing the command.
+        print(
+            f"doctor: cannot report paths and overdue steps "
+            f"({escape_for_display(str(error))})",
+            file=report_stderr,
+        )
     return tuple(results)
