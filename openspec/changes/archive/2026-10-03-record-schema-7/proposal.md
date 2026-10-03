@@ -28,12 +28,12 @@ fields or its record type.
   and the registry's reach into `status.py` are pinned equal by tests.
   `finding`'s recorder requirement moves onto the registry flag with no
   change in behaviour.
-- Three shared field validators — text bounded by a number of characters,
-  JSON bounded by a number of bytes after canonical encoding, and the
-  forgeable-text rule — are registered in the rule table as their own
-  entries bound to schema 7, each reading a field registration. No
-  production field uses them yet; tests exercise them through a test-only
-  field.
+- Four shared field validators — text bounded by a number of characters,
+  text bounded by a number of UTF-8-encoded bytes, JSON bounded by a
+  number of bytes after canonical encoding, and the forgeable-text rule —
+  are registered in the rule table as their own entries bound to schema
+  7, each reading a field registration. No production field uses them
+  yet; tests exercise them through a test-only field.
 
 ## Capabilities
 

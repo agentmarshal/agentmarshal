@@ -50,9 +50,9 @@ _RECORD_TYPES_ADMITTED_AFTER_TERMINAL = frozenset(
     for record_type, spec in RECORD_TYPES.items()
     if spec.admitted_after_terminal
 )
-# The types a writer may create through the record guard — the flag has a
-# reader here, so a type declared not writable cannot be written by naming
-# it, however it reached the call site.
+# The types a writer may create — read here by the record guard and in
+# records.py by the write path itself, so a type declared not writable
+# cannot be written by naming it, however it reached the call site.
 _WRITABLE_RECORD_TYPES = frozenset(
     record_type for record_type, spec in RECORD_TYPES.items() if spec.writable
 )

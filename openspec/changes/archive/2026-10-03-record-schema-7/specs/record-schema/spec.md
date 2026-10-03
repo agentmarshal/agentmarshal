@@ -8,11 +8,12 @@ schema 1 except the field gates already bound to schemas 2, 4, 5 and 6,
 which keep their numbers: provenance from 2, the finding record and finding
 bindings from 4, `reviewed_contract` from 5, the coordination activity
 from 6. The shared field validators the schema-7 field families need — a
-text bounded by a number of characters, a JSON value bounded by a number of
-bytes after canonical encoding, and the forgeable-text rule — SHALL each be
-a table entry of their own, bound to schema 7, and SHALL NOT be folded into
-a rule bound to an earlier schema: a tightening hidden inside a schema-1
-rule would apply to old records. A rule SHALL NOT be checked without an
+text bounded by a number of characters, a text bounded by a number of
+UTF-8-encoded bytes, a JSON value bounded by a number of bytes after
+canonical encoding, and the forgeable-text rule — SHALL each be a table
+entry of their own, bound to schema 7, and SHALL NOT be folded into a rule
+bound to an earlier schema: a tightening hidden inside a schema-1 rule
+would apply to old records. A rule SHALL NOT be checked without an
 entry in the table, and a read path SHALL apply no rule whose entry is
 missing. The schema-version check is a precondition of the table itself —
 it is what makes the record's number known — so it runs ahead of every rule
@@ -43,8 +44,8 @@ rule whose placement a path does not supply SHALL NOT be applied there.
   coordination activity (6) and the shared field validators (7)
 
 #### Scenario: the shared validators are entries of their own bound to 7
-- **WHEN** the table's entries for the bounded-text, bounded-JSON and
-  forgeable-text rules are read
+- **WHEN** the table's entries for the bounded-text, bounded-text-bytes,
+  bounded-JSON and forgeable-text rules are read
 - **THEN** each is bound to schema 7, and none is folded into a rule bound
   to an earlier schema
 
@@ -94,18 +95,24 @@ declaration cannot drift into three lists again.
 - **THEN** it is refused
 
 ### Requirement: Shared field validators apply from schema 7
-The field families of schema 7 SHALL share three validators: a text field
-bounded by a number of characters, a JSON field bounded by a number of
-bytes after canonical encoding, and the forgeable-text rule over the new
-displayed strings. Each validator SHALL read a field registration — which
-fields it guards and with what bound — so a field family registers its
-fields into the validators it needs and nothing more. A validator SHALL
-apply only where a field is registered for it, and only to records whose
-own schema reaches the validator's binding.
+The field families of schema 7 SHALL share four validators: a text field
+bounded by a number of characters, a text field bounded by a number of
+UTF-8-encoded bytes, a JSON field bounded by a number of bytes after
+canonical encoding, and the forgeable-text rule over the new displayed
+strings. Each validator SHALL read a field registration — which fields it
+guards and with what bound — so a field family registers its fields into
+the validators it needs and nothing more. A validator SHALL apply only
+where a field is registered for it, and only to records whose own schema
+reaches the validator's binding.
 
 #### Scenario: a registered text field over its character bound is refused
 - **WHEN** a field registered with a character bound carries more
   characters than the bound
+- **THEN** the record is refused
+
+#### Scenario: a registered text field over its byte bound is refused
+- **WHEN** a field registered with a byte bound encodes to more UTF-8
+  bytes than the bound
 - **THEN** the record is refused
 
 #### Scenario: a registered JSON field over its canonical byte bound is refused

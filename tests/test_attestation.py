@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import get_args
 
@@ -109,11 +110,12 @@ def test_the_three_modules_read_the_one_registry() -> None:
         "session": None,
         "finding": None,
     }
-    assert {"completed", "abandoned"} == status_module._TERMINAL_RECORD_TYPES
-    assert {
-        "reopened",
-        "session",
-    } == status_module._RECORD_TYPES_ADMITTED_AFTER_TERMINAL
+    terminal = {"completed", "abandoned"}
+    assert terminal == status_module._TERMINAL_RECORD_TYPES
+    admitted_after_terminal = {"reopened", "session"}
+    assert (
+        admitted_after_terminal == status_module._RECORD_TYPES_ADMITTED_AFTER_TERMINAL
+    )
     writable = {
         "opened",
         "review",
@@ -139,6 +141,33 @@ def test_the_three_modules_read_the_one_registry() -> None:
         for record_type, spec in RECORD_TYPES.items()
         if spec.requires_recorded_by
     } == {"finding"}
+
+
+def test_the_writable_flag_is_what_the_write_path_consults(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A type the registry marks not writable cannot be written.
+
+    The guard is not the flag's only reader — write_record behind
+    validate_record_for_write, and the gate's validate_record_content over
+    a record a candidate adds, refuse the same type — while a record of it
+    already in the journal still reads: the flag decides creation, never
+    history.
+    """
+
+    monkeypatch.setitem(
+        RECORD_TYPES, "opened", replace(RECORD_TYPES["opened"], writable=False)
+    )
+    record = _opened_v2()
+    filename = "01J00000000000000000000000-opened.json"
+    with pytest.raises(JournalRecordError, match="not writable"):
+        write_record(tmp_path / "journal", "CR-001", record)
+    with pytest.raises(JournalRecordError, match="not writable"):
+        validate_record_content(filename, json.dumps(record))
+    records_dir = tmp_path / "journal" / "tasks" / "CR-001" / "records"
+    records_dir.mkdir(parents=True)
+    (records_dir / filename).write_text(json.dumps(record), encoding="utf-8")
+    assert read_records(tmp_path / "journal", "CR-001")[0]["record_type"] == "opened"
 
 
 def test_a_type_requiring_its_recorder_refuses_a_record_naming_none() -> None:

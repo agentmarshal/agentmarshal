@@ -278,19 +278,23 @@ def _allowed_fields(record_type: str, schema: int) -> frozenset[str]:
 
 
 # The field registrations the shared validators read (ADR-0022 section 8):
-# which fields the bounded-text, bounded-JSON and forgeable-text rules
-# guard, and with what bound. A registration keys on the record type whose
-# field it guards — ADR-0022's ``reason`` bound is for the new record types
-# alone, and a bare field-name key could not keep it off the ``reason``
-# fields acceptance, abandoned, reopened and amendment already carry.
-# ``None`` in the record-type slot is the explicit "every type" form, for a
-# field the rule guards on every type that carries it; a name shared with
-# an older record type is never that case. All three tables are dicts, so
-# iteration is registration order and the field a refusal names is stable;
-# all three are empty until a schema-7 field family registers into them,
-# and a field family registers its fields into the validators it needs and
-# nothing more.
+# which fields the bounded-text, bounded-text-bytes, bounded-JSON and
+# forgeable-text rules guard, and with what bound. Two text bounds because
+# the ADR's figures are not all the same measure: ``reason`` is a character
+# count and ``excerpt`` a byte count — a text bounded in bytes is measured
+# on its UTF-8 encoding, the form a record file and a rendered line carry.
+# A registration keys on the record type whose field it guards — ADR-0022's
+# ``reason`` bound is for the new record types alone, and a bare field-name
+# key could not keep it off the ``reason`` fields acceptance, abandoned,
+# reopened and amendment already carry. ``None`` in the record-type slot is
+# the explicit "every type" form, for a field the rule guards on every type
+# that carries it; a name shared with an older record type is never that
+# case. All four tables are dicts, so iteration is registration order and
+# the field a refusal names is stable; all four are empty until a schema-7
+# field family registers into them, and a field family registers its fields
+# into the validators it needs and nothing more.
 _TEXT_CHAR_LIMITS: dict[tuple[str | None, str], int] = {}
+_TEXT_BYTE_LIMITS: dict[tuple[str | None, str], int] = {}
 _JSON_BYTE_LIMITS: dict[tuple[str | None, str], int] = {}
 _FORGEABLE_TEXT_FIELDS: dict[tuple[str | None, str], None] = {}
 
@@ -576,17 +580,38 @@ def _check_finding_binding_target(
             )
 
 
-@_rule("bounded-text")
-def _check_bounded_text(data: Mapping[str, object], _context: _RuleContext) -> None:
+def _check_text_limits(
+    data: Mapping[str, object],
+    limits: Mapping[tuple[str | None, str], int],
+    measure: Callable[[str], int],
+    unit: str,
+) -> None:
     record_type = cast(str, data["record_type"])
-    for (only_type, field), limit in _TEXT_CHAR_LIMITS.items():
+    for (only_type, field), limit in limits.items():
         if (only_type is not None and record_type != only_type) or field not in data:
             continue
         value = data[field]
-        if not isinstance(value, str) or len(value) > limit:
+        if not isinstance(value, str) or measure(value) > limit:
             raise JournalRecordError(
-                f"record field {field!r} must be a string of at most {limit} characters"
+                f"record field {field!r} must be a string of at most {limit} {unit}"
             )
+
+
+@_rule("bounded-text")
+def _check_bounded_text(data: Mapping[str, object], _context: _RuleContext) -> None:
+    _check_text_limits(data, _TEXT_CHAR_LIMITS, len, "characters")
+
+
+@_rule("bounded-text-bytes")
+def _check_bounded_text_bytes(
+    data: Mapping[str, object], _context: _RuleContext
+) -> None:
+    _check_text_limits(
+        data,
+        _TEXT_BYTE_LIMITS,
+        lambda value: len(value.encode("utf-8")),
+        "UTF-8 bytes",
+    )
 
 
 @_rule("bounded-json")
@@ -654,6 +679,7 @@ _RULE_FROM_SCHEMA: dict[str, int] = {
     "filename-record-type": 1,
     "finding-binding-target": 1,
     "bounded-text": 7,
+    "bounded-text-bytes": 7,
     "bounded-json": 7,
     "forgeable-text": 7,
 }
@@ -685,6 +711,12 @@ def _validate_record(
             if bound is None or bound > schema:
                 continue
         check(data, context)
+    if for_write and not RECORD_TYPES[cast(str, data["record_type"])].writable:
+        # The registry's writable flag, consulted on every write path —
+        # validate_record_for_write behind write_record, and the gate's
+        # validate_record_content over a record a candidate adds — never
+        # on read, where it would refuse a record history already holds.
+        raise JournalRecordError(f"record type {data['record_type']!r} is not writable")
     return data
 
 

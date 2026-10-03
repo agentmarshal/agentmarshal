@@ -14,6 +14,11 @@
   `_validate_recorded_by`; the inline check in `_validate_finding_record`
   is removed — verify: `test_findings.py` stays green, the
   resolvable-recorder message is unchanged.
+- [x] 1.4 The write path consults the `writable` flag:
+  `_validate_record` refuses a non-writable type under `for_write`, so
+  `write_record` and the gate's `validate_record_content` enforce it and
+  a read never does — verify: the writable-flag test in
+  `test_attestation.py`.
 
 ## 2. Schema 7 is known, never stamped
 
@@ -26,7 +31,8 @@
 
 ## 3. Shared validators as rules of schema 7
 
-- [x] 3.1 `bounded-text` (`_TEXT_CHAR_LIMITS`), `bounded-json`
+- [x] 3.1 `bounded-text` (`_TEXT_CHAR_LIMITS`), `bounded-text-bytes`
+  (`_TEXT_BYTE_LIMITS`, UTF-8 encoding), `bounded-json`
   (`_JSON_BYTE_LIMITS`, canonical encoding) and `forgeable-text`
   (`_FORGEABLE_TEXT_FIELDS`) registered in `_RULES`, each bound to 7 in
   `_RULE_FROM_SCHEMA`; the tables empty in production — verify: the

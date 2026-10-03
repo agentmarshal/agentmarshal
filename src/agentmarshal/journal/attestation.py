@@ -47,13 +47,18 @@ class RecordTypeSpec:
     requires_recorded_by: bool = False
 
 
-# The one declaration of every record type (ADR-0022). A new record type is
-# added here and nowhere else: `records.py` reads `requires_recorded_by`,
-# `status.py` derives its projection tables, and `PREDICATE_TYPES` below is
-# the predicate view. The predicate URIs are part of the interoperability
-# contract — treat them as append-only: never repurpose an existing URI.
-# The `/v1` suffix versions the predicate shape independently of the
-# record schema.
+# The one declaration of every record type (ADR-0022). What a module knows
+# about a type it reads here: `records.py` reads `requires_recorded_by` and
+# `writable`, `status.py` derives its projection tables, and
+# `PREDICATE_TYPES` below is the predicate view. Two hand-written places
+# still name the types and a new type touches them too — `records.py`'s
+# `_RECORD_FIELDS`, the fields the type may carry, without which the
+# record-type rule refuses it, and `status.py`'s `WritableRecordType`
+# `Literal`, which mypy cannot derive — and a test pins each equal to the
+# registry, so a registration that stops here fails loudly, not silently.
+# The predicate URIs are part of the interoperability contract — treat them
+# as append-only: never repurpose an existing URI. The `/v1` suffix
+# versions the predicate shape independently of the record schema.
 RECORD_TYPES: dict[str, RecordTypeSpec] = {
     "opened": RecordTypeSpec(
         "https://agentmarshal.dev/attestations/opening/v1", "open"

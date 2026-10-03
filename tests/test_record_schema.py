@@ -136,6 +136,7 @@ def test_todays_rules_apply_from_schema_1_except_the_gates() -> None:
         "reviewed-contract": 5,
         "coordination": 6,
         "bounded-text": 7,
+        "bounded-text-bytes": 7,
         "bounded-json": 7,
         "forgeable-text": 7,
     }
@@ -150,7 +151,12 @@ def test_the_shared_validators_are_their_own_entries_bound_to_7() -> None:
     so each validator is its own entry — never part of another rule.
     """
 
-    for name in ("bounded-text", "bounded-json", "forgeable-text"):
+    for name in (
+        "bounded-text",
+        "bounded-text-bytes",
+        "bounded-json",
+        "forgeable-text",
+    ):
         assert records_module._RULE_FROM_SCHEMA[name] == 7
         assert name in records_module._RULES
 
@@ -302,7 +308,7 @@ def test_each_writer_stamps_the_minimum_schema_its_record_needs(
     """
 
     assert record["schema"] == expected
-    assert record["schema"] < 7
+    assert type(record["schema"]) is int and record["schema"] < 7
 
 
 @pytest.mark.parametrize(
@@ -434,6 +440,27 @@ def test_bounded_text_refuses_a_value_over_its_character_bound(
         validate_record_for_write(tmp_path / "journal", "CR-001", record)
 
 
+def test_bounded_text_bytes_refuses_a_value_over_its_byte_bound(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a registered text field over its byte bound is refused.
+
+    Bytes, not characters: ADR-0022 bounds `excerpt` at 4 KiB, and three
+    'é' characters are six UTF-8 bytes — over a bound a character count
+    would pass.
+    """
+
+    _admit_test_field(monkeypatch)
+    monkeypatch.setitem(records_module._TEXT_BYTE_LIMITS, ("opened", _TEST_FIELD), 4)
+    record = _opened(_HIGHEST_SCHEMA) | {_TEST_FIELD: "ééé"}
+    with pytest.raises(JournalRecordError, match="at most 4 UTF-8 bytes"):
+        validate_record_for_write(tmp_path / "journal", "CR-001", record)
+    # A non-string is not a bounded text either.
+    record[_TEST_FIELD] = 5
+    with pytest.raises(JournalRecordError, match="a string of at most"):
+        validate_record_for_write(tmp_path / "journal", "CR-001", record)
+
+
 def test_bounded_json_refuses_a_value_over_its_canonical_byte_bound(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -526,6 +553,7 @@ def test_a_registered_field_within_its_bounds_is_admitted(
 
     _admit_test_field(monkeypatch)
     monkeypatch.setitem(records_module._TEXT_CHAR_LIMITS, ("opened", _TEST_FIELD), 4)
+    monkeypatch.setitem(records_module._TEXT_BYTE_LIMITS, ("opened", _TEST_FIELD), 4)
     monkeypatch.setitem(records_module._JSON_BYTE_LIMITS, ("opened", _TEST_FIELD), 12)
     monkeypatch.setitem(
         records_module._FORGEABLE_TEXT_FIELDS, ("opened", _TEST_FIELD), None
@@ -535,6 +563,11 @@ def test_a_registered_field_within_its_bounds_is_admitted(
     assert data[_TEST_FIELD] == "xxxx"
     journal_root = _journal_with(tmp_path, record)
     assert read_records(journal_root, "CR-001")[0][_TEST_FIELD] == "xxxx"
+    # Two 'é' characters are exactly four UTF-8 bytes — inside the byte
+    # bound while a shorter character count would also pass.
+    record[_TEST_FIELD] = "éé"
+    data = validate_record_for_write(tmp_path / "journal", "CR-001", record)
+    assert data[_TEST_FIELD] == "éé"
 
 
 def test_a_schema_7_validator_does_not_reach_an_earlier_record_on_read(

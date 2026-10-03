@@ -46,7 +46,12 @@ schema, 7; ADR-0015's table is where its rules land.
   `{"done"}` for `reopened`, empty otherwise, so `reopened`'s done-only
   admission is a declaration rather than a special case in
   `record_type_is_admitted_after_terminal`), `writable`, and
-  `requires_recorded_by`.
+  `requires_recorded_by`. The registry comment names the two
+  hand-written places a new type still touches — `_RECORD_FIELDS` in
+  `records.py`, without which the record-type rule refuses the type,
+  and the `WritableRecordType` `Literal` in `status.py` — and the tests
+  that pin each equal to the registry, so "declared once" is what the
+  derivations give, not a claim that one line adds a type.
 - **What can be derived is derived; what cannot is pinned.**
   `PREDICATE_TYPES` becomes a comprehension over the registry in the same
   module. `status.py` derives `_RECORD_TYPE_STATES`,
@@ -56,10 +61,16 @@ schema, 7; ADR-0015's table is where its rules land.
   spec. `WritableRecordType` is a `Literal`: mypy needs the names written
   out, so it stays a literal and a test pins its arguments equal to the
   registry's writable types; the record guard's runtime refusal reads the
-  derived `_WRITABLE_RECORD_TYPES`, so the flag decides what a writer may
-  write, not only what the type checker sees. The same test pins every
-  derived surface — against literals, not values recomputed from the
-  registry, so a shared drift of registry and derivation cannot pass.
+  derived `_WRITABLE_RECORD_TYPES`. And the flag is what the writer path
+  itself consults, not only the guard: `_validate_record` refuses a
+  non-writable type under `for_write`, so `write_record` behind
+  `validate_record_for_write` and the gate's `validate_record_content`
+  over a record a candidate adds enforce it however a record reached the
+  call site — while a read never consults it, so a non-writable record
+  history already holds still reads. The flag decides creation, never
+  what the journal may keep. The same test pins every derived surface —
+  against literals, not values recomputed from the registry, so a shared
+  drift of registry and derivation cannot pass.
 - **`finding` moves onto `requires_recorded_by` inside the recorded-by
   rule.** `_validate_recorded_by` reads the flag off the record's type
   and raises the same "requires a resolvable recorder" message when
@@ -74,22 +85,35 @@ schema, 7; ADR-0015's table is where its rules land.
   6 and every `create_*` stamps what it stamped — the carried advisory
   to derive `_minimum_schema` from one source is not triggered, since the
   function is not touched.
-- **Three shared validators, three rule-table entries bound to 7.**
-  `bounded-text` reads `_TEXT_CHAR_LIMITS` ((record type, field) →
-  maximum characters); `bounded-json` reads `_JSON_BYTE_LIMITS`
-  ((record type, field) → maximum bytes after canonical encoding —
-  `json.dumps` with sorted keys, compact separators, UTF-8 output,
-  non-ASCII unescaped, and `allow_nan=False` so `NaN`/`Infinity` —
-  tokens `json.loads` accepts but JSON does not define — meet the
-  rule's own "must be a JSON value" refusal rather than a 3-byte token
-  a strict parser could not read back); `forgeable-text` reads
-  `_FORGEABLE_TEXT_FIELDS` and applies `forges_rendered_text` to a
-  string the field carries. Each is its own entry in `_RULES` and
-  `_RULE_FROM_SCHEMA` — the carried review advisory: a tightening
-  folded into a schema-1 rule would apply to old records, so nothing
-  is shared but the mechanism. All three tables are empty in
-  production; tests register a test-only field into the validator's
-  table and into `_FIELD_FAMILIES` to exercise the rule end to end.
+- **Four shared validators, four rule-table entries bound to 7.**
+  ADR-0022 section 8's figures are not all the same measure, so the
+  text bound comes in two units: `bounded-text` reads
+  `_TEXT_CHAR_LIMITS` ((record type, field) → maximum characters) and
+  `bounded-text-bytes` reads `_TEXT_BYTE_LIMITS` (the same key shape,
+  the bound measured on the field's UTF-8 encoding — the form a record
+  file and a rendered line carry, and the only reading of the ADR's
+  KiB figures a string can be held to). The field families then map
+  one to one: the new record types' `reason` at 1000 **characters**
+  registers into `bounded-text`; `check`'s `excerpt` at 4 KiB
+  registers into `bounded-text-bytes` (registering a text field into
+  `bounded-json` instead would charge it the two quote bytes plus
+  whatever escaping the encoder chose — not the ADR's bound);
+  `ext`'s `payload` at 64 KiB registers into `bounded-json`, which
+  reads `_JSON_BYTE_LIMITS` ((record type, field) → maximum bytes
+  after canonical encoding — `json.dumps` with sorted keys, compact
+  separators, UTF-8 output, non-ASCII unescaped, and `allow_nan=False`
+  so `NaN`/`Infinity` — tokens `json.loads` accepts but JSON does not
+  define — meet the rule's own "must be a JSON value" refusal rather
+  than a 3-byte token a strict parser could not read back);
+  `forgeable-text` reads `_FORGEABLE_TEXT_FIELDS` and applies
+  `forges_rendered_text` to a string the field carries. The two text
+  bounds share one check over a measure function — characters or UTF-8
+  bytes — but each is its own entry in `_RULES` and `_RULE_FROM_SCHEMA`:
+  the carried review advisory stands, a tightening folded into another
+  rule would apply where that rule applies, so nothing is shared but
+  the mechanism. All four tables are empty in production; tests
+  register a test-only field into the validator's table and into
+  `_FIELD_FAMILIES` to exercise the rule end to end.
 - **`forgeable-text` refuses a non-string — the rule owns the type
   itself.** `bounded-text` already refuses a non-string value;
   `forgeable-text` first skipped one silently on the grounds that the
