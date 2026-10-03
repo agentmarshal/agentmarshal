@@ -6,11 +6,13 @@ ADR-0016 decision 4, and ADR-0018's switch making a contract need a recorded
 agreement. The consumers land in later tasks (the review launcher, status,
 the gate); this module is the one place they all read.
 
-Absent and malformed are different states. An absent key — or an absent
-section — returns the documented default. A present but malformed value
-raises :class:`ProjectSettingsError` naming the key and what it expects:
-``project.json`` is a hand-editable operator surface, and falling back to a
-default for a value someone wrote would hide the mistake.
+Absent and malformed are different states, told apart by key membership:
+an absent key — or an absent section — returns the documented default,
+while a present but malformed value raises :class:`ProjectSettingsError`
+naming the key and what it expects. A JSON ``null`` is a present value,
+not an absent one. ``project.json`` is a hand-editable operator surface,
+and falling back to a default for a value someone wrote would hide the
+mistake.
 """
 
 from __future__ import annotations
@@ -65,9 +67,9 @@ def _section(project: JsonObject, name: str, key: str) -> JsonObject | None:
     wrote.
     """
 
-    section = project.get(name)
-    if section is None:
+    if name not in project:
         return None
+    section = project[name]
     if not isinstance(section, dict):
         raise ProjectSettingsError(
             f"project.json key {key!r} cannot be read: "
@@ -78,9 +80,9 @@ def _section(project: JsonObject, name: str, key: str) -> JsonObject | None:
 
 def _finding_classes(project: JsonObject) -> tuple[str, ...]:
     section = _section(project, "review", FINDING_CLASSES_KEY)
-    value = None if section is None else section.get("finding_classes")
-    if value is None:
+    if section is None or "finding_classes" not in section:
         return DEFAULT_FINDING_CLASSES
+    value = section["finding_classes"]
     expected = (
         "a non-empty list of distinct non-empty strings without control characters"
     )
@@ -111,9 +113,9 @@ def _finding_classes(project: JsonObject) -> tuple[str, ...]:
 
 def _changes_required_threshold(project: JsonObject) -> int:
     section = _section(project, "review", CHANGES_REQUIRED_THRESHOLD_KEY)
-    value = None if section is None else section.get("changes_required_threshold")
-    if value is None:
+    if section is None or "changes_required_threshold" not in section:
         return DEFAULT_CHANGES_REQUIRED_THRESHOLD
+    value = section["changes_required_threshold"]
     # bool is tested before int: isinstance(True, int) is True.
     if isinstance(value, bool) or not isinstance(value, int) or value < 1:
         raise ProjectSettingsError(
@@ -125,9 +127,9 @@ def _changes_required_threshold(project: JsonObject) -> int:
 
 def _require_agreement(project: JsonObject) -> bool:
     section = _section(project, "contract", REQUIRE_AGREEMENT_KEY)
-    value = None if section is None else section.get("require_agreement")
-    if value is None:
+    if section is None or "require_agreement" not in section:
         return DEFAULT_REQUIRE_AGREEMENT
+    value = section["require_agreement"]
     if not isinstance(value, bool):
         raise ProjectSettingsError(
             f"project.json key {REQUIRE_AGREEMENT_KEY!r} must be a boolean"

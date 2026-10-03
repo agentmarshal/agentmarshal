@@ -39,12 +39,16 @@ mistyped value is a real case, not a hypothetical one.
   per-key checks call the three single-key readers the module also
   exposes; each takes the project root the same discovery already found.
 - **Absent and malformed are different states.** Absent — no section, or a
-  section without the key — returns the default. Present and wrong raises
+  section without the key — returns the default; the distinction is key
+  membership (`key in mapping`), never a `None` value. A JSON `null` is
+  present, not absent: a `null` section fails as a non-object and a `null`
+  key fails the key's rule. Present and wrong raises
   `ProjectSettingsError`, a `ValueError`, whose message names the dotted
   key and what it expects. A malformed *section* (present, not an object)
   is a present malformed value too: the error names the key that could not
-  be read. The malformed value itself is never printed — a string carrying
-  a control character would forge output if echoed.
+  be read. A malformed entry may be echoed in `repr` form — `repr`
+  escapes control characters, so a string carrying one cannot forge
+  output.
 - **`other` may be listed, and is never required.** `other` is the
   fallback class: a finding outside the vocabulary is recorded as `other`
   (ADR-0016 decision 3), whether or not the project lists it. Listing it
@@ -60,6 +64,9 @@ mistyped value is a real case, not a hypothetical one.
   so the threshold refuses `bool` before testing `int`, and the flag tests
   `bool` exactly. The threshold also refuses non-integers and anything
   below 1.
+- **Unknown keys inside the sections stay ignored.** Only the three named
+  keys are read; anything else in `review` or `contract` is passed over,
+  so a key a newer release adds does not break this one.
 - **Doctor runs one check per key.** "Each malformed key as a failed
   check" reads literally: three `DoctorCheck`s, one per dotted key, after
   the existing `project schema` check. Each finds the root the way the

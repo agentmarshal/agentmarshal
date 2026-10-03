@@ -62,12 +62,13 @@ def test_absent_key_falls_back_beside_present_ones(tmp_path: Path) -> None:
         tmp_path,
         {
             "schema": 1,
-            "review": {"finding_classes": ["scope"], "require_agreement": True},
+            "review": {"finding_classes": ["scope"]},
         },
     )
     settings = read_project_settings(tmp_path)
     assert settings.finding_classes == ("scope",)
     assert settings.changes_required_threshold == 3
+    assert settings.require_agreement is False
 
 
 @pytest.mark.parametrize(
@@ -138,6 +139,39 @@ def test_malformed_agreement_flag_is_named(tmp_path: Path, value: object) -> Non
     message = str(raised.value)
     assert "contract.require_agreement" in message
     assert "a boolean" in message
+
+
+@pytest.mark.parametrize(
+    ("data", "key"),
+    [
+        ({"review": None}, "review.finding_classes"),
+        ({"review": {"finding_classes": None}}, "review.finding_classes"),
+        (
+            {"review": {"changes_required_threshold": None}},
+            "review.changes_required_threshold",
+        ),
+        ({"contract": None}, "contract.require_agreement"),
+        ({"contract": {"require_agreement": None}}, "contract.require_agreement"),
+    ],
+    ids=[
+        "null-review-section",
+        "null-vocabulary",
+        "null-threshold",
+        "null-contract-section",
+        "null-agreement-flag",
+    ],
+)
+def test_present_null_is_malformed_not_absent(
+    tmp_path: Path, data: dict[str, object], key: str
+) -> None:
+    """Scenario: a present null is malformed, not absent."""
+
+    write_project(tmp_path, {"schema": 1, **data})
+
+    with pytest.raises(ProjectSettingsError) as raised:
+        read_project_settings(tmp_path)
+
+    assert key in str(raised.value)
 
 
 def test_fallback_class_may_be_listed(tmp_path: Path) -> None:

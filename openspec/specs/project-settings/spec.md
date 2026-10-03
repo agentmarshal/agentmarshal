@@ -33,7 +33,9 @@ independently: a present key never changes what an absent one returns.
 
 A key that is present SHALL be validated, and a malformed value SHALL raise
 an error naming the key and what it expects — never be replaced by the
-default. `review.finding_classes` expects a non-empty list of distinct
+default. Presence is decided by key membership: a key or section present
+with the JSON value `null` is present, not absent. `review.finding_classes`
+expects a non-empty list of distinct
 non-empty strings without control characters; `other`, the fallback class
 of the findings lifecycle, MAY be listed but is never required.
 `review.changes_required_threshold` expects an integer of at least 1, and a
@@ -56,6 +58,12 @@ A section holding a key SHALL be an object for the key to be read at all.
 - **WHEN** `contract.require_agreement` is present and is not a boolean
 - **THEN** reading the settings raises an error naming
   `contract.require_agreement` and what it expects
+
+#### Scenario: a present null is malformed, not absent
+- **WHEN** a key — or a section holding one — is present with the JSON
+  value `null`
+- **THEN** reading the settings raises an error naming the key and what
+  it expects
 
 #### Scenario: the fallback class may be listed
 - **WHEN** `review.finding_classes` is a valid vocabulary that lists
