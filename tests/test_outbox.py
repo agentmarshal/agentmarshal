@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import platform
 import re
 import shutil
@@ -345,6 +346,83 @@ def test_a_leak_fails_the_check_even_when_every_draft_conforms(
     )
 
     assert main(["outbox", "check"]) == 1
+
+
+def test_a_file_name_that_carries_a_secret_is_a_hit_even_with_clean_content(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a file name that carries a secret is a hit even with clean
+    content."""
+    repo = _project(tmp_path, monkeypatch)
+    _configure_markers(repo, ["internal.example.invalid"])
+    _conforming_draft(_outbox(repo), name="internal.example.invalid.md")
+
+    assert main(["outbox", "check"]) == 1
+
+    captured = capsys.readouterr()
+    assert "<private marker #1>.md: private-marker #1" in captured.out
+    assert "internal.example.invalid" not in captured.out
+    assert "internal.example.invalid" not in captured.err
+
+
+def test_an_entry_that_is_not_a_regular_file_is_named_as_not_checked(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: an entry that is not a regular file is named as not checked."""
+    repo = _project(tmp_path, monkeypatch)
+    _conforming_draft(_outbox(repo))
+    (_outbox(repo) / "bundled").mkdir()
+    (_outbox(repo) / "linked.md").symlink_to("missing-target")
+
+    assert main(["outbox", "check"]) == 1
+
+    out = capsys.readouterr().out
+    assert "bundled: not a draft, not checked" in out
+    assert "linked.md: not a draft, not checked" in out
+
+
+@pytest.mark.skipif(
+    getattr(os, "geteuid", lambda: -1)() == 0,
+    reason="root can read a permission-denied file",
+)
+def test_an_unreadable_draft_is_named_without_the_errors_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: an unreadable draft is named without the error's path text."""
+    repo = _project(tmp_path, monkeypatch)
+    _configure_markers(repo, ["internal.example.invalid"])
+    draft = _conforming_draft(_outbox(repo), name="internal.example.invalid.md")
+    draft.chmod(0)
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    assert main(["outbox", "check"]) == 1
+
+    captured = capsys.readouterr()
+    assert "<private marker #1>.md: cannot be read: Permission denied" in captured.out
+    assert "internal.example.invalid" not in captured.out
+    assert "internal.example.invalid" not in captured.err
+    assert str(repo) not in captured.out
+    assert str(repo) not in captured.err
+
+
+def test_a_date_prefixed_name_is_not_read_as_a_draft_number(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A hand-written `2026-10-03-note.md` is not number 2026 — only the
+    exact scheme `new` writes counts."""
+    repo = _project(tmp_path, monkeypatch)
+    (_outbox(repo) / "2026-10-03-note.md").write_text("# x\n", encoding="utf-8")
+
+    assert main(["outbox", "new", "gate hangs"]) == 0
+
+    assert (_outbox(repo) / "0001-gate-hangs.md").is_file()
+    assert not (_outbox(repo) / "2027-gate-hangs.md").exists()
 
 
 def test_outbox_requires_an_initialized_project(

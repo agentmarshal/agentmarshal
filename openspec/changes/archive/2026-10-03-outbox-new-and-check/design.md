@@ -55,6 +55,14 @@ markers, not writing another scanner.
   characters and trimmed again; a gist that yields nothing — reports may
   be in any language, and a non-Latin alphabet slugs to empty — falls
   back to `draft`. An empty gist is refused: a draft needs a name.
+- **Only the scheme `new` writes counts toward the number.** A name counts
+  only when it is exactly `NNNN-<slug>.md` — `NNNN` as `new` emits it
+  (four or more digits, no leading zero past the padding) and the slug
+  `[a-z0-9]+(-[a-z0-9]+)*` — and a `-NN-NN-` right after the number reads
+  as a hand-written date prefix, so `2026-10-03-note.md` is not number
+  2026. A scaffolded draft can in principle land on the date shape itself;
+  exclusive creation still yields a free number, so the counter being
+  blind to it costs nothing.
 - **Creation is exclusive.** The file is opened `O_EXCL`; on collision the
   number advances and creation retries, so `new` can never overwrite —
   not by race and not by a manually placed file.
@@ -69,14 +77,18 @@ markers, not writing another scanner.
   `agentmarshal --version` output verbatim. Environment is
   `platform.platform()` plus the Python version — what the machine can
   say; the git provider CONTRIBUTING also lists is the reporter's to add.
-- **Every regular file in the outbox is a draft, except `README.md`.** The
-  outbox is one file per finding: whatever sits there is what would be
-  sent, so a file that does not conform is named rather than reclassified
-  out of the check. A file that is not UTF-8 text is named as such — it
-  cannot carry the fields — and its bytes are still searched: decoded for
-  the scan with U+FFFD for the undecodable spans, the same lossy-search
-  rule the diff scan follows, so an ASCII signature in a binary file still
-  matches.
+- **Every regular file in the outbox is a draft, except `README.md`; every
+  other entry is named as not checked.** The outbox is one file per
+  finding: whatever sits there is what would be sent, so a file that does
+  not conform is named rather than reclassified out of the check, and an
+  entry that is not a regular file at all — a directory, a symlink, a
+  FIFO, anything `lstat` does not report as regular — is named as not a
+  draft and not checked and fails the run: a later `send` would stage it
+  unchecked, and nothing in the outbox passes in silence. A file that is
+  not UTF-8 text is named as such — it cannot carry the fields — and its
+  bytes are still searched: decoded for the scan with U+FFFD for the
+  undecodable spans, the same lossy-search rule the diff scan follows, so
+  an ASCII signature in a binary file still matches.
 - **The scan is content-level, per file, with the diff scan's
   vocabulary.** Each draft's text goes through `scan_for_leaks` for the
   built-in signatures; configured markers are matched by position exactly
@@ -86,17 +98,29 @@ markers, not writing another scanner.
   list of places to look. The diff scan's "only added lines" rule does not
   carry over — its reason (do not re-flag what is already in the tree)
   does not hold for a file whose every byte leaves the repository.
+- **The file name is scanned too.** What leaves with the batch is the
+  file, name included, so a name that contains a configured marker or
+  matches a signature is a hit by itself — same vocabulary, the masked
+  name beside the marker's position or the signature's identifier — even
+  when the content is clean. This holds for every entry, draft or not.
 - **Markers come from the working `project.json`.** The drafts are the
   adopter's own and there is no candidate tree to distrust, so the working
-  configuration is the trusted source — read the way
-  `markers_from_config` reads it, from `project.json` at the project root.
-  In a sidecar that is the operator's own repository, the same side the
-  standalone `leak-scan` trusts.
-- **Every name the check prints goes through `safe_path`.** A draft's
-  file name can itself carry a marker or match a signature, in a
-  conformance line as much as in a hit — so names are masked everywhere,
-  before the markers are even needed for content. An unreadable
-  `project.json` is an error, not a scan with no markers.
+  configuration is the trusted source — read by `markers_from_config`
+  itself, the same helper the standalone `leak-scan` command calls for the
+  sidecar's own repository. In a sidecar that is the operator's own
+  repository, the same side `leak-scan` trusts.
+- **Every name and path the check prints goes through `safe_path`, and no
+  exception's text is printed.** A draft's file name can itself carry a
+  marker or match a signature, in a conformance line as much as in a hit —
+  so names are masked everywhere, before the markers are even needed for
+  content. An unreadable `project.json` is an error, not a scan with no
+  markers. `str(OSError)` carries the path it failed on, so an OS error is
+  described by its errno text (`strerror`, the errno name when there is
+  none) and the path, where one is printed at all, only through
+  `safe_path`; the `GateError` wrapping a failed config read is described
+  the same way, since its text embeds the same path. `new` prints the real
+  path it wrote — the scenario's contract and the operator's own terminal
+  — but its errors follow the same no-exception-text rule.
 - **The report goes to stdout, the refusal and errors to stderr.** Draft
   problems and hits are the report the operator reads; "no outbox",
   "cannot read project config" and the refusal summary are operational
@@ -117,11 +141,16 @@ markers, not writing another scanner.
 - [A marker that is itself a filename-safe word lands in a slug] → the
   slug keeps only `[a-z0-9-]`, so punctuation in a marker cannot survive;
   a marker that is pure filename characters in a gist the operator typed
-  is echoed back at them, and `check` still masks every name it prints.
+  is echoed back at them, and `check` reports it as a hit in the masked
+  name — the name leaves with the batch, so it cannot pass silently.
 - [A whole-file scan flags a marker the adopter quoted deliberately] →
   inherent to content-level scanning; the hit names the file and the
   operator strips it before sending — that refusal point is what the
   check exists to give.
-- [A draft that is a subdirectory or a symlink to one] → only regular
-  files are drafts; anything else sits outside the one-file-per-finding
-  convention and is not named either.
+- [A name-hit can only be resolved by renaming] → the file is named the
+  way the scan describes names, and renaming is the fix a name that is
+  itself the leak needs — the check cannot offer to keep it.
+- [An entry that is a directory, a symlink or a FIFO sits in the outbox] →
+  it is named as not a draft and not checked and fails the run; a later
+  `send` stages whatever the outbox holds, so an unchecked entry cannot
+  be waved through.

@@ -18,6 +18,7 @@ in both placements: in an embedded project it is the host repository's
 from __future__ import annotations
 
 import argparse
+import errno
 import platform
 import re
 from pathlib import Path
@@ -27,17 +28,12 @@ from agentmarshal import __version__
 from agentmarshal.journal.capture import (
     CaptureError,
     LeakHit,
-    private_markers_from_project,
     render_leak_hits,
     safe_path,
     scan_for_leaks,
 )
-from agentmarshal.project import (
-    PROJECT_DIR_NAME,
-    find_project_root,
-    project_file_path,
-    read_project_file,
-)
+from agentmarshal.journal.gate import GateError, markers_from_config
+from agentmarshal.project import PROJECT_DIR_NAME, find_project_root
 
 _UPSTREAM_DIR = "upstream"
 _README = "README.md"
@@ -54,7 +50,14 @@ _FIELD_HINTS = {
     "Expected": "what you expected instead, and why",
 }
 
-_DRAFT_NAME = re.compile(r"^(\d+)-.*\.md$")
+# A name counts toward the next number only in the exact shape `new`
+# writes: `NNNN` as `:04d` emits it — four or more digits, no leading zero
+# past the padding — then `-` and a slug. A `-NN-NN-` right after the
+# number reads as a hand-written date prefix, so `2026-10-03-note.md` is
+# not number 2026.
+_DRAFT_NAME = re.compile(
+    r"^(0\d{3}|[1-9]\d{3,})-(?!\d{2}-\d{2}-)[a-z0-9]+(?:-[a-z0-9]+)*\.md$"
+)
 _HEADING = re.compile(r"^## (.+?)\s*$")
 _SLUG_RUN = re.compile(r"[^a-z0-9]+")
 _SLUG_MAX = 60
@@ -101,9 +104,44 @@ def _locate(command: str, stderr: TextIO) -> tuple[Path, Path] | None:
         return None
     outbox = project_root / PROJECT_DIR_NAME / _UPSTREAM_DIR
     if not outbox.is_dir():
-        print(f"outbox {command}: no outbox at {outbox}", file=stderr)
+        print(
+            f"outbox {command}: no outbox — init scaffolds "
+            f"{PROJECT_DIR_NAME}/{_UPSTREAM_DIR}/ under the project root",
+            file=stderr,
+        )
         return None
     return project_root, outbox
+
+
+def _os_error_text(error: OSError) -> str:
+    """A fixed description of an OS error — never ``str(error)``.
+
+    ``str(OSError)`` carries the path it failed on; ``strerror`` is the
+    system's text for the errno and names nothing.
+    """
+
+    if error.strerror:
+        return error.strerror
+    if error.errno is not None:
+        return errno.errorcode.get(error.errno, type(error).__name__)
+    return type(error).__name__
+
+
+def _config_error_text(error: GateError) -> str:
+    """Describe a failed config read without quoting the GateError's text.
+
+    ``markers_from_config`` wraps the real error in a message carrying the
+    path it failed on; the cause is described by errno text or by name —
+    ``read_project_file``'s own ``ValueError`` embeds the path too, so no
+    exception's text is ever quoted.
+    """
+
+    cause = error.__cause__
+    if isinstance(cause, OSError):
+        return _os_error_text(cause)
+    if cause is not None:
+        return type(cause).__name__
+    return "unreadable"
 
 
 # --- `outbox new` ---------------------------------------------------------
@@ -180,7 +218,10 @@ def _run_new(gist: str, stderr: TextIO) -> int:
     try:
         draft = _write_draft(outbox, _slug(gist), _render_draft(gist))
     except OSError as error:
-        print(f"outbox new: cannot write the draft: {error}", file=stderr)
+        print(
+            f"outbox new: cannot write the draft: {_os_error_text(error)}",
+            file=stderr,
+        )
         return 1
     print(draft)
     return 0
@@ -226,8 +267,26 @@ def _missing_unfilled(text: str) -> tuple[list[str], list[str]]:
     return missing, unfilled
 
 
+def _name_hits(name: str, markers: tuple[str, ...]) -> list[LeakHit]:
+    """Scan one file name: it leaves with the batch, so it is content too.
+
+    A name carrying a marker or matching a signature is a hit by itself,
+    identified the way a content hit is — the masked name beside the
+    marker's position or the signature's identifier.
+    """
+
+    safe_name = safe_path(name, markers)
+    hits = [LeakHit(safe_name, category) for category in scan_for_leaks(name)]
+    hits.extend(
+        LeakHit(safe_name, f"private-marker #{index}")
+        for index, marker in enumerate(markers, start=1)
+        if marker and marker in name
+    )
+    return hits
+
+
 def _draft_hits(name: str, text: str, markers: tuple[str, ...]) -> list[LeakHit]:
-    """Scan one draft's content; the hit vocabulary is the diff scan's.
+    """Scan one draft — its name and its whole content.
 
     Every byte of a draft would be sent, so the whole text is scanned —
     the diff scan's added-lines rule does not carry over: its reason was
@@ -236,7 +295,8 @@ def _draft_hits(name: str, text: str, markers: tuple[str, ...]) -> list[LeakHit]
     """
 
     safe_name = safe_path(name, markers)
-    hits = [LeakHit(safe_name, category) for category in scan_for_leaks(text)]
+    hits = _name_hits(name, markers)
+    hits.extend(LeakHit(safe_name, category) for category in scan_for_leaks(text))
     hits.extend(
         LeakHit(safe_name, f"private-marker #{index}")
         for index, marker in enumerate(markers, start=1)
@@ -245,37 +305,63 @@ def _draft_hits(name: str, text: str, markers: tuple[str, ...]) -> list[LeakHit]
     return hits
 
 
+def _is_regular(entry: Path) -> bool:
+    """Whether *entry* is a regular file — not a symlink to one, not anything
+    else; a failed stat is not a regular file either."""
+
+    try:
+        return not entry.is_symlink() and entry.is_file()
+    except OSError:
+        return False
+
+
 def _run_check(stderr: TextIO) -> int:
     located = _locate("check", stderr)
     if located is None:
         return 1
     project_root, outbox = located
     try:
-        markers = private_markers_from_project(
-            read_project_file(project_file_path(project_root))
-        )
-    except (OSError, ValueError, CaptureError) as error:
+        markers = markers_from_config(project_root)
+    except CaptureError as error:
         print(f"outbox check: cannot read project config: {error}", file=stderr)
         return 1
-    try:
-        drafts = sorted(
-            entry
-            for entry in outbox.iterdir()
-            if entry.is_file() and entry.name != _README
+    except GateError as error:
+        print(
+            f"outbox check: cannot read project config: {_config_error_text(error)}",
+            file=stderr,
         )
+        return 1
+    try:
+        entries = sorted(outbox.iterdir())
     except OSError as error:
-        print(f"outbox check: cannot read the outbox: {error}", file=stderr)
+        print(
+            f"outbox check: cannot read the outbox at "
+            f"{safe_path(str(outbox), markers)}: {_os_error_text(error)}",
+            file=stderr,
+        )
         return 1
 
     refused = False
+    checked = 0
     hits: list[LeakHit] = []
-    for draft in drafts:
+    for entry in entries:
+        is_regular = _is_regular(entry)
+        if is_regular and entry.name == _README:
+            continue
+        if not is_regular:
+            # Not a draft and not checkable, but a later send would stage
+            # it unchecked — nothing in the outbox passes in silence.
+            refused = True
+            hits.extend(_name_hits(entry.name, markers))
+            print(f"{safe_path(entry.name, markers)}: not a draft, not checked")
+            continue
+        checked += 1
         problems: list[str] = []
         text = ""
         try:
-            raw = draft.read_bytes()
+            raw = entry.read_bytes()
         except OSError as error:
-            problems.append(f"cannot be read: {error}")
+            problems.append(f"cannot be read: {_os_error_text(error)}")
         else:
             try:
                 text = raw.decode("utf-8")
@@ -291,10 +377,10 @@ def _run_check(stderr: TextIO) -> int:
                     problems.append("missing " + ", ".join(missing))
                 if unfilled:
                     problems.append("unfilled " + ", ".join(unfilled))
-        hits.extend(_draft_hits(draft.name, text, markers))
+        hits.extend(_draft_hits(entry.name, text, markers))
         if problems:
             refused = True
-            print(f"{safe_path(draft.name, markers)}: {'; '.join(problems)}")
+            print(f"{safe_path(entry.name, markers)}: {'; '.join(problems)}")
     if hits:
         refused = True
         print(
@@ -310,7 +396,7 @@ def _run_check(stderr: TextIO) -> int:
         print("outbox check: refused", file=stderr)
         return 1
     print(
-        f"outbox check: {len(drafts)} draft(s) checked; all conform; "
+        f"outbox check: {checked} draft(s) checked; all conform; "
         "no known leak signatures"
     )
     return 0
