@@ -1,0 +1,33 @@
+{
+  "advisory_findings": [
+    "readme-name-not-scanned",
+    "captureerror-text-printed",
+    "draft-number-reuse-on-date-shaped-slug",
+    "untested-signature-named-file",
+    "duplicated-marker-identification"
+  ],
+  "artifacts": [
+    {
+      "hash": "10f1c4feaf32e25aa5d7fb9dcc5aba246f557a445731fc89723e2271f91f7ebf",
+      "ref": ".agentmarshal/journal/tasks/CR-150/artifacts/01M3ZVMWP7ZKQXVB3FY9DVVA5Z-review.md"
+    }
+  ],
+  "created_at": "2026-10-03T03:06:44.295470Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "86df95385a263b87ad97a36c2b6e2e4cdcd69402",
+  "reviewed_contract": "5decdb133cf4fca602f31f410d08f8bc34e021b85d7daa882a56bc2e8b17ed28",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-150",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "approved"
+}
