@@ -32,6 +32,7 @@ from agentmarshal.journal.complete import (
 from agentmarshal.journal.display import escape_for_display
 from agentmarshal.journal.gate import (
     GateError,
+    _resolve_commit,
     leak_scan_diff,
     markers_from_config,
     markers_from_tree,
@@ -304,6 +305,21 @@ def _build_parser() -> argparse.ArgumentParser:
     session_parser.add_argument("--cache-tokens", type=int, default=0)
     session_parser.add_argument("--usage-provider")
     session_parser.add_argument("--usage-method", choices=("reported", "measured"))
+    session_parser.add_argument(
+        "--commit", help="commit the session produced (any git revision)"
+    )
+    session_parser.add_argument("--model", help="model the session ran")
+    session_parser.add_argument("--trace", help="external link to the run's trace")
+    session_parser.add_argument("--cli-session", help="CLI session id a resume needs")
+    session_parser.add_argument(
+        "--report-ready",
+        action="store_true",
+        default=None,
+        help="the run's report was finished",
+    )
+    session_parser.add_argument(
+        "--fallback-reason", help="why the run moved down the fallback list"
+    )
     finding_parser = subparsers.add_parser(
         "finding", help="record a hash-pinned research finding"
     )
@@ -916,9 +932,18 @@ def _run_record_session(args: argparse.Namespace, stderr: TextIO) -> int:
             "--usage-method is required when --usage-provider is supplied", file=stderr
         )
         return 1
-    placement = _placement("record-session", stderr)
+    placement = _placement(
+        "record-session", stderr, require_host=args.commit is not None
+    )
     if placement is None:
         return 1
+    commit = None
+    if args.commit is not None:
+        try:
+            commit = _resolve_commit(placement.host_root, args.commit)
+        except GateError as error:
+            print(error, file=stderr)
+            return 1
     try:
         record_path = record_session(
             placement.journal_root,
@@ -932,6 +957,12 @@ def _run_record_session(args: argparse.Namespace, stderr: TextIO) -> int:
             args.cache_tokens,
             usage_provider=args.usage_provider,
             usage_method=args.usage_method,
+            commit=commit,
+            model=args.model,
+            trace=args.trace,
+            cli_session=args.cli_session,
+            report_ready=args.report_ready,
+            fallback_reason=args.fallback_reason,
         )
     except SessionRecordError as error:
         print(error, file=stderr)

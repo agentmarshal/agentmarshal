@@ -30,6 +30,12 @@ def record_session(
     *,
     usage_provider: str | None = None,
     usage_method: str | None = None,
+    commit: str | None = None,
+    model: str | None = None,
+    trace: str | None = None,
+    cli_session: str | None = None,
+    report_ready: bool | None = None,
+    fallback_reason: str | None = None,
 ) -> Path:
     """Validate and append an attributed session to a task in any state.
 
@@ -60,6 +66,12 @@ def record_session(
             cache_tokens,
             usage_provider=usage_provider,
             usage_method=usage_method,
+            commit=commit,
+            model=model,
+            trace=trace,
+            cli_session=cli_session,
+            report_ready=report_ready,
+            fallback_reason=fallback_reason,
         )
         return write_record(journal_root, task_id, record)
     except (JournalRecordError, TaskStatusError, OSError, ValueError) as error:
