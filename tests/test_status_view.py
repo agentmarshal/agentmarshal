@@ -250,6 +250,11 @@ def test_status_task_detail_output_is_pinned(
 
     assert main(["status", "CR-001"]) == 0
     assert capsys.readouterr().out == (
+        # CR-162: the paths line prints once ahead of the task output
+        # (ADR-0014 decision 13) — the only line this pin gains.
+        f"Paths: journal={repo.resolve()}/.agentmarshal/journal "
+        f"process-log={repo.resolve()}/.git/agentmarshal/log "
+        f"local-state={repo.resolve()}/.git/agentmarshal\n"
         "ID: CR-001\n"
         "Status: abandoned\n"
         "Title: Pinning task\n"

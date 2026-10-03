@@ -7,6 +7,7 @@ import os
 import subprocess
 import sys
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TextIO
 
@@ -69,10 +70,16 @@ from agentmarshal.journal.status import (
     load_task_for_record,
     load_task_status,
 )
-from agentmarshal.journal.status_view import print_task_detail
+from agentmarshal.journal.status_view import (
+    print_overdue_steps,
+    print_paths_line,
+    print_task_detail,
+)
 from agentmarshal.journal.submit_review import ReviewSubmitError, submit_review
 from agentmarshal.journal.validate import validate_journal
+from agentmarshal.localstate import LocalState, LocalStateError, local_state
 from agentmarshal.migrate import JournalMigrationError, migrate_journal
+from agentmarshal.process_log import read_events
 from agentmarshal.project import (
     PROJECT_CONFIG_RELPATH,
     AgentMarshalProjectError,
@@ -955,16 +962,37 @@ def _run_status(task_id: str | None, stderr: TextIO) -> int:
         return 1
     print(placement.evidence_line, file=stderr)
     journal = placement.journal_root
+    # ADR-0014 decision 13: where everything lives prints once, ahead of
+    # the task output, so the line survives an empty list and a failed
+    # task lookup alike. A local state that cannot be resolved degrades
+    # the line to "unavailable" rather than failing a command that needed
+    # no git before; a missing log/ directory reads as no steps.
+    state: LocalState | None = None
+    state_error: str | None = None
     try:
+        state = local_state(placement)
+    except LocalStateError as error:
+        state_error = str(error)
+    print_paths_line(journal, state, state_error)
+    now = datetime.now(UTC)
+    try:
+        events = read_events(state) if state is not None else []
         if task_id is None:
             tasks = list_task_statuses(journal)
             if not tasks:
                 print("No tasks.")
                 return 0
             for task in tasks:
+                overdue = any(
+                    step.overdue_by is not None
+                    for step in steps.open_steps(
+                        task.task_id, task.records, events, now=now
+                    )
+                )
+                marker = "\toverdue-step" if overdue else ""
                 print(
                     f"{escape_for_display(task.task_id)}\t{task.state}"
-                    f"\t{escape_for_display(task.contract.title)}"
+                    f"\t{escape_for_display(task.contract.title)}{marker}"
                 )
         else:
             task = load_task_status(journal, task_id)
@@ -976,6 +1004,9 @@ def _run_status(task_id: str | None, stderr: TextIO) -> int:
                     return 1
                 placement = checked_placement
             print_task_detail(placement.host_root, task)
+            print_overdue_steps(
+                steps.open_steps(task.task_id, task.records, events, now=now)
+            )
     except (OSError, TaskStatusError, ValueError) as error:
         print(error, file=stderr)
         return 1

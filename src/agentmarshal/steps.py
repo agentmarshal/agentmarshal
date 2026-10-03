@@ -8,7 +8,10 @@ prints, the activity from the session vocabulary, the process and its
 start time, and the deadline — and ``step end`` writes one ``step-ended``
 event carrying the step id and, when given, the outcome. Both resolve the
 journal repository's local state, so a sidecar writes its own log and the
-host is never written; neither writes the journal.
+host is never written; neither writes the journal. The module also carries
+the reading half: :func:`open_steps` decides which of a task's steps the
+log and the journal leave open and how far past deadline they run, which
+``status`` shows.
 """
 
 from __future__ import annotations
@@ -18,6 +21,8 @@ import os
 import re
 import subprocess
 import sys
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, TextIO
@@ -383,3 +388,161 @@ def _elapsed_seconds(text: str) -> int | None:
     if len(parts) == 3:
         seconds += 3600 * int(parts[0])
     return seconds + 86400 * days
+
+
+@dataclass(frozen=True)
+class OpenStep:
+    """A step the log and the journal leave open, with its overdue span.
+
+    ``overdue_by`` is ``None`` while the step is inside its deadline — or
+    when the recorded deadline cannot be read, a step whose lateness
+    cannot be told — and the UTC span past it once the moment taken as
+    now has crossed the deadline.
+    """
+
+    step: str
+    activity: str
+    deadline: str
+    overdue_by: timedelta | None
+
+
+def open_steps(
+    task_id: str,
+    records: Sequence[Mapping[str, object]],
+    events: Sequence[Mapping[str, object]],
+    *,
+    now: datetime | None = None,
+) -> list[OpenStep]:
+    """Return the task's steps the log and the journal leave open.
+
+    A step is open when the log holds its ``step-started`` event for the
+    task and neither its ``step-ended`` event nor a journal record of the
+    matching kind for the same task written after the step started closes
+    it: an implementation step closes with an implementation session, a
+    review step with a review record, and a coordination or other step —
+    or one whose activity the session vocabulary does not know — with a
+    session record of that activity (ADR-0014 decision 9 as amended;
+    ADR-0022 section 7, where ``step end`` is the optional close for a
+    step that ends with no record). ``records`` is the task's journal
+    records and ``events`` the process log's events, both read as data.
+    A step is overdue once it is open and its deadline has passed;
+    ``now`` defaults to the real clock and is injectable so a test
+    decides what has passed.
+    """
+
+    moment_now = now if now is not None else datetime.now(UTC)
+    if moment_now.tzinfo is None:
+        moment_now = moment_now.replace(tzinfo=UTC)
+    moment_now = moment_now.astimezone(UTC)
+    ended = {
+        event["step"]
+        for event in events
+        if event.get("event") == "step-ended"
+        and event.get("task") == task_id
+        and isinstance(event.get("step"), str)
+    }
+    steps: list[OpenStep] = []
+    seen: set[str] = set()
+    for event in events:
+        if event.get("event") != "step-started" or event.get("task") != task_id:
+            continue
+        step = event.get("step")
+        activity = event.get("activity")
+        deadline = event.get("deadline")
+        if (
+            not isinstance(step, str)
+            or not isinstance(activity, str)
+            or not isinstance(deadline, str)
+            or step in seen
+            or step in ended
+        ):
+            continue
+        seen.add(step)
+        # A ``step-started`` event whose ``at`` cannot be read is treated
+        # the way the reader treats it — ordered before the dated events,
+        # so started before any dated record that could close it.
+        started_at = _moment(event.get("at")) or _START_OF_TIME
+        if _closed_by(records, activity, started_at):
+            continue
+        deadline_at = _moment(deadline)
+        overdue_by = (
+            moment_now - deadline_at
+            if deadline_at is not None and deadline_at < moment_now
+            else None
+        )
+        steps.append(OpenStep(step, activity, deadline, overdue_by))
+    return steps
+
+
+def format_overdue(span: timedelta) -> str:
+    """Render a span past a deadline in ``--deadline``'s duration spelling.
+
+    ``90m``, ``2h5m`` and ``1d3h`` are the units a deadline is given in,
+    so "how long past" reads in the same units.
+    """
+
+    seconds = max(0, int(span.total_seconds()))
+    days, seconds = divmod(seconds, 86400)
+    hours, seconds = divmod(seconds, 3600)
+    minutes, seconds = divmod(seconds, 60)
+    parts = [
+        f"{amount}{unit}"
+        for amount, unit in (
+            (days, "d"),
+            (hours, "h"),
+            (minutes, "m"),
+            (seconds, "s"),
+        )
+        if amount
+    ]
+    return "".join(parts) if parts else "0s"
+
+
+_START_OF_TIME = datetime.min.replace(tzinfo=UTC)
+
+
+def _moment(value: object) -> datetime | None:
+    """Read *value* as a UTC instant, or ``None`` when it cannot be read.
+
+    A naive ISO-8601 time reads as UTC, the way the writer reads a naive
+    ``at``; an aware one converts.
+    """
+
+    if isinstance(value, datetime):
+        parsed = value
+    elif isinstance(value, str):
+        try:
+            parsed = datetime.fromisoformat(value)
+        except ValueError:
+            return None
+    else:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _closed_by(
+    records: Sequence[Mapping[str, object]], activity: str, started_at: datetime
+) -> bool:
+    """Whether a journal record of the closing kind postdates the step's start."""
+
+    return any(
+        _closes_step(record, activity)
+        and (created_at := _moment(record.get("created_at"))) is not None
+        and created_at > started_at
+        for record in records
+    )
+
+
+def _closes_step(record: Mapping[str, object], activity: str) -> bool:
+    """Whether a journal record is the kind that ends a step of *activity*.
+
+    A review step ends with the review itself; every other activity ends
+    with a session of that activity — the record a step of it already
+    produces.
+    """
+
+    if activity == "review":
+        return record.get("record_type") == "review"
+    return record.get("record_type") == "session" and record.get("activity") == activity

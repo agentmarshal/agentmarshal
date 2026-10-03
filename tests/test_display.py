@@ -211,7 +211,14 @@ def test_status_task_list_escapes_contract_text(
 
     assert main(["status"]) == 0
 
-    assert capsys.readouterr().out == "CR-001\topen\tTask\\u202e one\n"
+    assert capsys.readouterr().out == (
+        # CR-162: the paths line prints once ahead of the task list
+        # (ADR-0014 decision 13) — the only line this pin gains.
+        f"Paths: journal={repo.resolve()}/.agentmarshal/journal "
+        f"process-log={repo.resolve()}/.git/agentmarshal/log "
+        f"local-state={repo.resolve()}/.git/agentmarshal\n"
+        "CR-001\topen\tTask\\u202e one\n"
+    )
 
 
 def test_a_refused_character_prints_escaped_in_report() -> None:
