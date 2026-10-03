@@ -23,6 +23,7 @@ from agentmarshal.journal.records import (
     create_reopened_record,
     create_review_record,
     create_session_record,
+    generate_ulid,
     read_records,
     write_record,
 )
@@ -1663,6 +1664,53 @@ def test_gate_refuses_invalid_added_records(
     passed, output = _run(repo, head, base, head)
     assert not passed
     assert "does not match its directory" in output
+
+
+def test_the_gate_checks_added_records_by_the_current_rules(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a record a candidate adds is checked by every current rule.
+
+    The gate's check of added records is a write-side check — the author can
+    still fix the input — so a coordination session stamped 3 and a record
+    bound to a finding stamped 3 are refused, while the same records already
+    in the journal are read under their own schema's rules.
+    """
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    records = repo / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "records"
+    session = create_session_record(
+        "CR-001", "test", "role", "actor", "coordination", "done", 1, 2, 3
+    )
+    session["schema"] = 3
+    completed = create_completed_record(
+        "CR-001", "test", None, completed_finding="01J00000000000000000000000"
+    )
+    completed["schema"] = 3
+    added = {
+        f"{generate_ulid()}-session.json": session,
+        f"{generate_ulid()}-completed.json": completed,
+    }
+
+    def add_low_schema_records() -> None:
+        for name, record in added.items():
+            (records / name).write_text(json.dumps(record), encoding="utf-8")
+
+    head = _candidate_head(repo, "low-schema", base, add_low_schema_records)
+    passed, output = _run(repo, head, base, head)
+
+    assert not passed
+    assert "invalid added records" in output
+    assert "requires schema 6" in output
+    assert "require schema 4" in output
+
+    for name, record in added.items():
+        (records / name).write_text(json.dumps(record), encoding="utf-8")
+    journal_root = repo / ".agentmarshal" / "journal"
+    read_types = {
+        record["record_type"] for record in read_records(journal_root, "CR-001")
+    }
+    assert {"session", "completed"} <= read_types
 
 
 def test_gate_reports_malformed_base_contract_without_traceback(
