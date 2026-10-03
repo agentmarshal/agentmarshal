@@ -1,0 +1,33 @@
+{
+  "advisory_findings": [
+    "p041-mixed-proposal-numbering-in-extends-list",
+    "p041-036-links-use-redundant-dotdot-path",
+    "adr-0022-links-not-at-literal-first-citation",
+    "p042-amendment-note-silent-on-the-probes",
+    "proposals-index-row-042-still-says-manifest-declared-probes"
+  ],
+  "artifacts": [
+    {
+      "hash": "9811054d60a51b12acad98eabb70b888cb8eb176825134cb5196c84514448d47",
+      "ref": ".agentmarshal/journal/tasks/CR-144/artifacts/01M3ZPH97GJRRHMZFRP0YH4P0V-review.md"
+    }
+  ],
+  "created_at": "2026-10-03T01:37:23.184490Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "02a3dda9204e0bfd81513ff92bd3706197bf1f48",
+  "reviewed_contract": "d155813941b343ceab32efe5d4c4d3666ebdcd4f23ad24c310c56846f5271e9f",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-144",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "approved"
+}
