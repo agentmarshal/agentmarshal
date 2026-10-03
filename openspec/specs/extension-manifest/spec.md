@@ -17,13 +17,15 @@ at the boundary with a message naming the field and the source.
 A manifest SHALL declare `schema` as the integer 1 or 2; a missing,
 non-integer or other version SHALL be refused as an unknown or missing
 schema version. Every schema-1 rule applies unchanged to schema 2 — the
-declared `name` matching the manifest's file name, `version` a non-empty
-string, `footprint`, `documents` and `artifacts` paths in scope syntax with
-the latter two under the footprint — with one relaxation: `install`,
-`remove` and `artifacts` are OPTIONAL in schema 2 (ADR-0013's example
-carries none of them), where schema 1 requires all three. Every free-text
-string a schema-2 manifest declares — a present `install` or `remove`
-included — SHALL pass the control-character rule.
+declared `name` matching the extension's name — the manifest's file name
+without `.toml` in the file form, the extension directory's name in the
+directory form — `version` a non-empty string, `footprint`, `documents`
+and `artifacts` paths in scope syntax with the latter two under the
+footprint — with one relaxation: `install`, `remove` and `artifacts` are
+OPTIONAL in schema 2 (ADR-0013's example carries none of them), where
+schema 1 requires all three. Every free-text string a schema-2 manifest
+declares — a present `install` or `remove` included — SHALL pass the
+control-character rule.
 
 Each of `stage`, `dependencies`, `wraps`, `records` and `isolation` is a
 schema-2 field: any of them in a schema-1 manifest SHALL be refused with a
@@ -217,7 +219,11 @@ reader reports it today.
 Every refusal the reader applies to a file-form manifest SHALL apply to the
 directory form: a symlink at `<name>/manifest.toml`, a symlink for the
 `<name>` directory itself, and a symlink in any component of the path SHALL
-each be refused as a link.
+each be refused as a link — dangling or not, and before existence is
+decided, since strict resolution would report a link pointing nowhere as
+missing. A component of the file-form path that is not a directory keeps
+the refusal the file-form reader gives it today rather than reporting the
+manifest missing; a `<name>` that is not a directory is simply absent.
 
 #### Scenario: the directory form is found at <name>/manifest.toml
 - **WHEN** `.agentmarshal/extensions/openspec/` holds a `manifest.toml`
@@ -241,6 +247,15 @@ each be refused as a link.
 - **WHEN** `openspec/` is a symlink to a directory holding a
   `manifest.toml`
 - **THEN** the reader refuses it as a link
+
+#### Scenario: a dangling symlink at the extension's directory is refused
+- **WHEN** `openspec/` is a symlink whose target does not exist
+- **THEN** the reader refuses it as a link
+
+#### Scenario: a component of the manifest path that is not a directory is refused
+- **WHEN** a component of `.agentmarshal/extensions/<name>.toml` above the
+  file is not a directory
+- **THEN** the reader refuses rather than reporting the manifest missing
 
 ### Requirement: The directory form requires a manifest of schema 2
 
@@ -302,7 +317,8 @@ SHALL be refused with a message naming the path.
 - **THEN** the manifest is refused as a link naming the path
 
 #### Scenario: a named path under a symlinked directory is refused
-- **WHEN** `bin/` or `lock/` inside the extension's directory is a symlink
+- **WHEN** `bin/` or `lock/` inside the extension's directory is a symlink,
+  dangling or not
 - **THEN** the manifest is refused as a link naming the path
 
 ### Requirement: The parsed manifest exposes the directory it was read from

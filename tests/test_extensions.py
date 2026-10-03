@@ -767,6 +767,60 @@ def test_symlinked_extension_directory_is_refused(tmp_path: Path) -> None:
         read_extension_manifest(tmp_path, "openspec")
 
 
+def test_dangling_symlink_at_the_extension_directory_is_refused(
+    tmp_path: Path,
+) -> None:
+    """Scenario: a dangling symlink at the extension's directory is refused."""
+    link = tmp_path / ".agentmarshal" / "extensions" / "openspec"
+    link.parent.mkdir(parents=True)
+    link.symlink_to(tmp_path / "nowhere", target_is_directory=True)
+
+    with pytest.raises(ExtensionManifestError, match="symlink") as raised:
+        read_extension_manifest(tmp_path, "openspec")
+
+    assert not isinstance(raised.value, ExtensionManifestMissing)
+
+
+def test_dangling_symlinked_manifest_inside_the_directory_is_refused(
+    tmp_path: Path,
+) -> None:
+    """Scenario: a symlinked manifest inside the directory is refused."""
+    path = _write_directory_manifest(tmp_path)
+    path.unlink()
+    path.symlink_to(tmp_path / "nowhere.toml")
+
+    with pytest.raises(ExtensionManifestError, match="symlink") as raised:
+        read_extension_manifest(tmp_path, "openspec")
+
+    assert not isinstance(raised.value, ExtensionManifestMissing)
+
+
+@pytest.mark.parametrize("blocked", [".agentmarshal", ".agentmarshal/extensions"])
+def test_component_of_the_manifest_path_that_is_not_a_directory_is_refused(
+    tmp_path: Path, blocked: str
+) -> None:
+    """Scenario: a component of the manifest path that is not a directory is refused."""
+    blocked_path = tmp_path / blocked
+    blocked_path.parent.mkdir(parents=True, exist_ok=True)
+    blocked_path.write_text("", encoding="utf-8")
+
+    with pytest.raises(ExtensionManifestError, match="cannot resolve") as raised:
+        read_extension_manifest(tmp_path, "openspec")
+
+    assert not isinstance(raised.value, ExtensionManifestMissing)
+
+
+def test_name_that_is_a_regular_file_is_absent_for_the_directory_form(
+    tmp_path: Path,
+) -> None:
+    extensions_dir = tmp_path / ".agentmarshal" / "extensions"
+    extensions_dir.mkdir(parents=True)
+    (extensions_dir / "openspec").write_text("", encoding="utf-8")
+
+    with pytest.raises(ExtensionManifestMissing, match="missing"):
+        read_extension_manifest(tmp_path, "openspec")
+
+
 def test_schema_1_manifest_in_the_directory_form_is_refused(
     tmp_path: Path,
 ) -> None:
@@ -917,6 +971,25 @@ def test_named_path_under_a_symlinked_directory_is_refused(
     )
     link = tmp_path / ".agentmarshal" / "extensions" / "openspec" / linked
     link.symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(ExtensionManifestError, match="symlink"):
+        read_extension_manifest(tmp_path, "openspec")
+
+
+@pytest.mark.parametrize(
+    ("linked", "body"),
+    [
+        ("bin", '[[stage]]\nphase = "post-gate"\ncommand = "bin/x.py"\n'),
+        ("lock", '[dependencies]\nlock = "lock/uv.lock"\n'),
+    ],
+)
+def test_named_path_under_a_dangling_symlinked_directory_is_refused(
+    tmp_path: Path, linked: str, body: str
+) -> None:
+    """Scenario: a named path under a symlinked directory is refused."""
+    _write_directory_manifest(tmp_path, body)
+    link = tmp_path / ".agentmarshal" / "extensions" / "openspec" / linked
+    link.symlink_to(tmp_path / "nowhere", target_is_directory=True)
 
     with pytest.raises(ExtensionManifestError, match="symlink"):
         read_extension_manifest(tmp_path, "openspec")

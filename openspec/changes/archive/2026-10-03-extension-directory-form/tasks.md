@@ -27,3 +27,16 @@
 - [x] 2.3 The change is archived with the archive command — verify:
   `openspec/specs/extension-manifest/spec.md` gains each new requirement
   once and the change lives under `openspec/changes/archive/`.
+
+## 3. Review fixes
+
+- [x] 3.1 A symlink at the `<name>` directory or at `manifest.toml` —
+  dangling or not — is refused as a link before existence is decided; a
+  component of the file-form path that is not a directory keeps its
+  refusal rather than reporting the manifest missing — verify: tests.
+- [x] 3.2 The schema-version requirement says the declared `name` matches
+  the extension's name — the file name without `.toml` in the file form,
+  the directory name in the directory form — verify: the delta carries it
+  as MODIFIED with the exact header.
+- [x] 3.3 A `bin/` or `lock/` that is itself a symlink — out of the
+  extension directory or dangling — is refused as a link — verify: tests.

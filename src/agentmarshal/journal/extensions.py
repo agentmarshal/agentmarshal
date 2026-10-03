@@ -458,29 +458,50 @@ def parse_extension_manifest_text(
 
 
 def _manifest_candidate(
-    project_root: Path, root: Path, name: str, relative_path: str
+    project_root: Path,
+    root: Path,
+    name: str,
+    relative_path: str,
+    *,
+    not_a_directory_is_absent: bool,
 ) -> Path | None:
     """Resolve one place a manifest may live; ``None`` when none does.
 
-    The rule is the file-form rule applied to each candidate: a link at the
-    manifest path is refused as a link, dangling or not and before strict
-    resolution could report a dangling one as missing; a link above it — a
-    symlinked extensions directory, a symlinked ``<name>`` directory — is
-    caught by strict resolution landing elsewhere; and a link loop is a
-    reader error, reported the same way on every Python this project
-    supports (RuntimeError on one release, ELOOP on the next). An absent
-    candidate — a missing manifest, or a ``<name>`` that is not a directory
-    at all — is the one resolution outcome that is not a refusal.
+    The rule is the file-form rule applied to each candidate, with one
+    addition for the directory form: a link at the manifest path — and, for
+    the directory form, at the ``<name>`` directory itself — is refused as
+    a link, dangling or not, before existence is decided, since strict
+    resolution would report a link pointing nowhere as missing. A link
+    above those — a symlinked extensions directory — is caught by strict
+    resolution landing elsewhere; and a link loop is a reader error,
+    reported the same way on every Python this project supports
+    (RuntimeError on one release, ELOOP on the next). An absent candidate —
+    a missing manifest, or, for the directory form only, a ``<name>`` that
+    is not a directory at all — is the one resolution outcome that is not a
+    refusal; on the file-form path a component that is not a directory is
+    the reader error it always was.
     """
 
     lexical = project_root / relative_path
-    if lexical.is_symlink():
-        raise ExtensionManifestError(f"refusing to read through a symlink: {lexical}")
+    extensions_dir = project_root / ".agentmarshal" / "extensions"
+    component = lexical
+    while component != extensions_dir:
+        if component.is_symlink():
+            raise ExtensionManifestError(
+                f"refusing to read through a symlink: {component}"
+            )
+        component = component.parent
     path = root / relative_path
     try:
         resolved = path.resolve(strict=True)
-    except (FileNotFoundError, NotADirectoryError):
+    except FileNotFoundError:
         return None
+    except NotADirectoryError as error:
+        if not_a_directory_is_absent:
+            return None
+        raise ExtensionManifestError(
+            f"cannot resolve extension manifest {name!r}: {error}"
+        ) from error
     except (OSError, RuntimeError) as error:
         raise ExtensionManifestError(
             f"cannot resolve extension manifest {name!r}: {error}"
@@ -513,8 +534,13 @@ def _require_existing_directory_file(directory: Path, relpath: str) -> None:
     """
 
     target = directory / relpath
-    if target.is_symlink():
-        raise ExtensionManifestError(f"refusing to read through a symlink: {target}")
+    component = target
+    while component != directory:
+        if component.is_symlink():
+            raise ExtensionManifestError(
+                f"refusing to read {relpath!r} through a symlink: {component}"
+            )
+        component = component.parent
     try:
         resolved = target.resolve(strict=True)
     except (FileNotFoundError, NotADirectoryError):
@@ -572,8 +598,12 @@ def read_extension_manifest(project_root: Path, name: str) -> ExtensionManifest:
         raise ExtensionManifestError(
             f"cannot resolve extension manifest {name!r}: {error}"
         ) from error
-    file_candidate = _manifest_candidate(project_root, root, name, relative_file)
-    dir_candidate = _manifest_candidate(project_root, root, name, relative_dir)
+    file_candidate = _manifest_candidate(
+        project_root, root, name, relative_file, not_a_directory_is_absent=False
+    )
+    dir_candidate = _manifest_candidate(
+        project_root, root, name, relative_dir, not_a_directory_is_absent=True
+    )
     if file_candidate is not None and dir_candidate is not None:
         raise ExtensionManifestError(
             f"extension {name!r} has a manifest in both the file and the "

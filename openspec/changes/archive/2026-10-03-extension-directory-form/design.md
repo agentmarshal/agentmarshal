@@ -45,14 +45,19 @@ tree. The gate's base-tree reader is a separate task.
 - **Two candidate paths, one resolution rule each.** The reader resolves
   `.agentmarshal/extensions/<name>.toml` and
   `.agentmarshal/extensions/<name>/manifest.toml` with the same rule the
-  file form uses today: a link at the manifest path is refused as a link
-  (dangling or not, before resolution can report it missing), a strict
-  resolution that succeeds but lands elsewhere is refused the same way —
-  which is how a symlinked `<name>` directory is refused — and an absent
-  candidate is simply absent. Both resolving for one name is refused naming
-  both paths, because which form the extension is would be ambiguous;
-  neither resolving is `ExtensionManifestMissing` naming the file-form
-  path, the place an adopter is told to look.
+  file form uses today, extended one component deeper for the directory
+  form: a link at the manifest path — and, for the directory form, at the
+  `<name>` directory itself — is refused as a link lexically, dangling or
+  not, before existence is decided, because strict resolution would report
+  a link pointing nowhere as missing. A strict resolution that succeeds
+  but lands elsewhere is refused the same way — which is how a symlinked
+  extensions directory is refused — and an absent candidate is simply
+  absent. On the file-form path a component that is not a directory keeps
+  the refusal it always had; for the directory candidate a `<name>` that
+  is not a directory is simply absent. Both resolving for one name is
+  refused naming both paths, because which form the extension is would be
+  ambiguous; neither resolving is `ExtensionManifestMissing` naming the
+  file-form path, the place an adopter is told to look.
 - **The directory form is schema 2 only.** A directory exists to hold what
   a manifest of schema 2 declares — the commands and the locks — so schema
   1 inside it is refused with a message saying the directory form requires
@@ -61,11 +66,11 @@ tree. The gate's base-tree reader is a separate task.
 - **A named path must exist as a regular file inside the directory.** Each
   `[[stage]]` `command` and each `lock` is checked against the extension's
   own directory with the same resolution rule as the manifest itself: a
-  link at the named path is refused as a link; a strict resolution that
-  lands elsewhere — a link for `bin/`, `lock/` or a directory between, each
-  of which is also how a `..` would be reached through a link — is refused
-  the same way; an absent path is refused naming it; and a path that
-  resolves to something that is not a regular file — a directory — is
+  link at the named path or at `bin/`, `lock/` or a directory between —
+  dangling or not — is refused as a link; a strict resolution that lands
+  elsewhere, which is also how a `..` would be reached through a link, is
+  refused the same way; an absent path is refused naming it; and a path
+  that resolves to something that is not a regular file — a directory — is
   refused naming it. The lexical rule already forbids `..` in the declared
   path, so the filesystem check is the whole remaining hazard.
 - **The file form has no directory, so it names no directory paths.** A
