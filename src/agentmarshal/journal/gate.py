@@ -386,15 +386,20 @@ def _sidecar_history_tampering(project_root: Path, journal_path: str) -> list[st
             "--diff-filter=MDRT",
             "--name-only",
             "--format=",
+            # -z: NUL-separated, as the gate's other listings are — git
+            # C-quotes a name with a non-ASCII or control character
+            # otherwise, and a quoted name is one the evidence-path test
+            # cannot see: tampering the check never found.
+            "-z",
             "--",
             journal_path,
         ],
     )
     return sorted(
         {
-            line
-            for line in output.splitlines()
-            if line and _is_append_only_evidence_path(line)
+            token
+            for token in output.split("\0")
+            if token and _is_append_only_evidence_path(token)
         }
     )
 
@@ -672,11 +677,17 @@ def run_gate(
     if not changed:
         raise GateError("candidate range contains no changes")
 
-    base_tree = set(
-        _run_git(
-            project_root, ["ls-tree", "-r", "--name-only", base_commit]
-        ).splitlines()
-    )
+    # NUL-separated, as the diff listings are: git C-quotes a path with a
+    # non-ASCII or control character otherwise, and a quoted name never
+    # equals the raw name the candidate's diff returns — a record-path
+    # collision the check could not see.
+    base_tree = {
+        path
+        for path in _run_git(
+            project_root, ["ls-tree", "-r", "--name-only", "-z", base_commit]
+        ).split("\0")
+        if path
+    }
 
     # The candidate's per-path change statuses also drive the measurements
     # lane below and the append-only / validity checks later. A rename

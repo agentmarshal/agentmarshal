@@ -408,7 +408,11 @@ def _placement(
     try:
         return resolve_placement(project_root, require_host=require_host)
     except PlacementError as error:
-        print(error, file=stderr)
+        # The message can carry a value the tool did not write — a host
+        # path from project.json, git's own error text — so it is escaped
+        # the way a transcript line is: nothing it carries can add a line
+        # or reorder what prints here.
+        print(escape_for_display(str(error)), file=stderr)
         return None
 
 

@@ -3023,3 +3023,125 @@ def test_a_candidate_whose_values_carry_no_refused_character_prints_as_before(
     test_default_run_transcript_matches_the_committed_fixture(
         tmp_path, monkeypatch, capsys, "embedded-implementation"
     )
+
+
+def test_a_placement_refusal_names_a_forgeable_host_in_escaped_form(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a refusal names a forgeable value in escaped form.
+
+    A sidecar project's host comes from project.json — configuration the
+    candidate's tree carries — and the gate prints the placement refusal
+    as it stands. A host carrying a newline would print lines the gate
+    never wrote, `gate: passed` among them; the refusal escapes the value
+    where the CLI prints it."""
+
+    project = tmp_path / "project"
+    (project / ".agentmarshal").mkdir(parents=True)
+    host = "/not-a-host\ngate: passed\nforged"
+    (project / ".agentmarshal" / "project.json").write_text(
+        json.dumps({"placement": "sidecar", "host": host}), encoding="utf-8"
+    )
+    monkeypatch.chdir(project)
+
+    code = main(["gate", "--task", "CR-001", "--commit", "c", "--base", "b"])
+
+    transcript = capsys.readouterr()
+    assert code == 1
+    assert (
+        "sidecar host /not-a-host\\ngate: passed\\nforged: path does not exist"
+        in transcript.err
+    )
+    assert "gate: passed" not in transcript.err.split("\n")
+
+
+def test_a_record_collision_names_a_path_carrying_a_refused_character_in_escaped_form(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a candidate path that would forge a line is named in escaped form.
+
+    The record-collision line names a path the candidate adds that the
+    base tree already holds. The base listing must read the name raw — a
+    name git C-quotes never equals the raw name the candidate's diff
+    returns, and the collision would go unseen."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    artifact = (
+        repo
+        / ".agentmarshal"
+        / "journal"
+        / "tasks"
+        / "CR-001"
+        / "artifacts"
+        / "forged\ngate: passed.md"
+    )
+    artifact.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        artifact.write_text("base candidate\n", encoding="utf-8")
+    except OSError:
+        pytest.skip(f"the filesystem refuses a file named {artifact.name!r}")
+    _commit_all(repo, "add artifact on master")
+
+    _git(repo, "switch", "--quiet", "-c", "candidate", base)
+    artifact.parent.mkdir(parents=True, exist_ok=True)
+    artifact.write_text("other candidate\n", encoding="utf-8")
+    head = _commit_all(repo, "independently add same artifact")
+
+    passed, output = _run(repo, head, "master", head)
+
+    relative = artifact.relative_to(repo).as_posix().replace("\n", "\\n")
+    assert not passed
+    assert f"record paths already exist on the base: {relative}" in output
+    assert "forged\ngate: passed" not in output
+
+
+def test_a_tampered_evidence_path_carrying_a_refused_character_is_named_in_escaped_form(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a path carrying a refused character is named in escaped form.
+
+    The append-only line names evidence a sidecar's committed history
+    shows modified. The history listing must read the name raw — a name
+    git C-quotes fails the evidence-path test, and the line would report
+    integrity the check never examined."""
+
+    host, sidecar, base, head = _host_and_sidecar(tmp_path, monkeypatch)
+    assert main(["open", "--title", "Sidecar gate", "--scope", "app.txt"]) == 0
+    artifact = (
+        sidecar
+        / ".agentmarshal"
+        / "journal"
+        / "tasks"
+        / "CR-001"
+        / "artifacts"
+        / "forged\ngate: passed.md"
+    )
+    artifact.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        artifact.write_text("evidence\n", encoding="utf-8")
+    except OSError:
+        pytest.skip(f"the filesystem refuses a file named {artifact.name!r}")
+    _commit_all(sidecar, "evidence")
+    artifact.write_text("rewritten\n", encoding="utf-8")
+    _commit_all(sidecar, "rewrite evidence")
+
+    report = run_gate(
+        host,
+        "CR-001",
+        head,
+        base,
+        head,
+        journal_root=sidecar / ".agentmarshal" / "journal",
+        review_required=False,
+    )
+    output = "\n".join(report.lines)
+
+    assert not report.passed
+    assert (
+        "append-only violation, records modified, deleted or renamed: "
+        ".agentmarshal/journal/tasks/CR-001/artifacts/forged\\ngate: passed.md"
+        in output
+    )
+    assert "forged\ngate: passed" not in output

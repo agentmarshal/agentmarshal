@@ -8,15 +8,19 @@ the gate's transcript, the brief and the reviewer prompt, escaping each
 finished transcript line at `say` so a line added later cannot forget.
 
 Two surfaces were left. A candidate's file names are not record text —
-they are legal in git, no writer refuses them, and the gate reads its
-path listings raw (`git diff --name-status -z`, `git status -z`,
-`git ls-tree -z`) precisely so a quoted name cannot hide from a matcher.
-When the gate names one — the scope line, the record-collision and
-append-only lines, an extension's removal — the escaped line keeps it
-safe, but nothing pinned that until now. And a `GateError`'s text is
-printed by the CLI as it stands: messages like `git <arguments> failed:
-<detail>` echo a caller-supplied ref or git's own error output raw, so a
-ref carrying a newline prints a line the gate never said.
+they are legal in git, no writer refuses them, and every listing the
+gate matches a name against reads raw (`git diff --name-status -z`,
+`git status -z`, `git ls-tree -z`, `git log --name-only -z`) precisely
+so a quoted name cannot hide from a matcher. When the gate names one —
+the scope line, the record-collision and append-only lines, an
+extension's removal — the escaped line keeps it safe, but nothing
+pinned that until now. And a `GateError`'s text is printed by the CLI
+as it stands: messages like `git <arguments> failed: <detail>` echo a
+caller-supplied ref or git's own error output raw, so a ref carrying a
+newline prints a line the gate never said. The placement refusal has
+the same shape: a `PlacementError` carries the sidecar host path from
+`project.json` — configuration the candidate's tree supplies — or git's
+own error text into a message the CLI prints as it stands.
 
 ## Goals
 
@@ -50,6 +54,29 @@ ref carrying a newline prints a line the gate never said.
   no change, and a wrapper that embeds the text carries the escaped form.
   The tool's fixed text holds no refused character, so escaping the
   finished message changes only what a value put there.
+- **Every listing the gate matches a name against reads NUL-separated.**
+  The candidate diff (`git diff --name-status -z`), the sidecar's
+  working-tree status (`git status -z`) and the candidate tree
+  (`git ls-tree -z`) already did; the base tree's `git ls-tree -r
+  --name-only` and the sidecar history's `git log --name-only` did not,
+  so a name git C-quotes could hide from a matcher — a record-path
+  collision or a committed tamper the check never saw, the blindness the
+  raw-read comment itself warns about. Both now read `-z`, which is
+  what makes the Context's claim true of every matcher.
+- **The placement refusal is escaped where the CLI prints it, not at
+  `PlacementError` construction.** The gate resolves placement through
+  `_placement`, the one helper every command shares, and prints the
+  error as it stands; escaping at that print point is the site a later
+  caller cannot skip, and it keeps the display rule in the layer that
+  prints — `placement.py` resolves roots and knows nothing of
+  transcripts. The parallel with `GateError` is the difference, not a
+  contradiction: a `GateError` escapes at birth because callers
+  re-quote its text into other exceptions (`LifecycleError`,
+  `ReviewLaunchError`), while a `PlacementError`'s text is only ever
+  printed. Escaping the finished message — as `say` does a line —
+  changes only what a value put there; that the helper covers every
+  command, not just the gate, is free and harmless, since a value with
+  no refused character prints byte-identically.
 - **The transcript's escape point stays the finished line.** Every path
   the gate names already joins a line that `say` escapes — the scope
   line's outside paths, rename sources and targets, record paths in the
