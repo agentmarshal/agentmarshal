@@ -4,6 +4,8 @@ id = "CR-165"
 title = "doctor prints where the journal, the process log and the local state are, reports overdue steps, and names the git version local state needs"
 scope = [
   "src/agentmarshal/doctor.py",
+  "src/agentmarshal/steps.py",
+  "src/agentmarshal/cli.py",
   "tests/",
   "openspec/changes/doctor-steps-paths-git/",
   "openspec/changes/archive/",
