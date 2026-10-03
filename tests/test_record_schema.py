@@ -12,6 +12,7 @@ from agentmarshal.journal.records import (
     JournalRecordError,
     create_abandoned_record,
     create_acceptance_record,
+    create_acknowledgement_record,
     create_amendment_record,
     create_check_record,
     create_completed_record,
@@ -144,6 +145,7 @@ def test_todays_rules_apply_from_schema_1_except_the_gates() -> None:
         "session-fields-7": 7,
         "contract-hash-7": 7,
         "check-fields-7": 7,
+        "acknowledgement-fields-7": 7,
     }
     for name, schema in records_module._RULE_FROM_SCHEMA.items():
         assert schema == gates.get(name, 1), name
@@ -395,6 +397,18 @@ _FINDING_ID = "01J00000000000000000000000"
         ),
         (
             create_check_record("CR-001", "t", _COMMIT, "pytest", "passed"),
+            7,
+        ),
+        (
+            create_acknowledgement_record(
+                "CR-001", "t", _COMMIT, "src/app.py", "r", signature="openai-key"
+            ),
+            7,
+        ),
+        (
+            create_acknowledgement_record(
+                "CR-001", "t", _COMMIT, "src/app.py", "r", None, marker=2
+            ),
             7,
         ),
     ],

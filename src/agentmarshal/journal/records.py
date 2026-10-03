@@ -23,6 +23,10 @@ from agentmarshal.journal.attestation import (
     SOURCE_VALUES,
     is_registered_record_type,
 )
+
+# The signature ids an acknowledgement's `signature` may name are the scan's
+# own — read from its table, never listed a second time (ADR-0021).
+from agentmarshal.journal.capture import _LEAK_PATTERNS
 from agentmarshal.project import UnsafeProjectPathError, _create_exclusive
 
 _CROCKFORD_BASE32 = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
@@ -139,6 +143,15 @@ _RECORD_FIELDS = {
             "tool_version",
         }
     ),
+    "acknowledgement": frozenset(
+        {
+            "schema",
+            "record_type",
+            "task",
+            "created_at",
+            "tool_version",
+        }
+    ),
 }
 # Schema 2 adds provenance (ADR-0005): a required ``source`` and optional
 # ``artifacts`` references. They are permitted on schema 2 and above — a
@@ -181,6 +194,18 @@ _SCHEMA_7_CHECK_FIELDS = frozenset(
 )
 _CHECK_RESULTS = frozenset({"passed", "failed", "error", "skipped"})
 _CHECK_EXCERPT_BYTE_LIMIT = 4 * 1024
+# What a reviewed leak-scan hit leaves (ADR-0021, ADR-0022 section 3): the
+# candidate's commit, the file exactly as the scan prints it — masked, so the
+# record can never carry a marker's value — the hit's identification (a
+# signature id or the marker's position, never the matched text) and a
+# bounded reason. The signature ids are the scan's own, read from its table
+# so a signature the scan gains joins the vocabulary the record admits.
+_ACKNOWLEDGEMENT_RECORD_SCHEMA = 7
+_SCHEMA_7_ACKNOWLEDGEMENT_FIELDS = frozenset(
+    {"commit", "file", "signature", "marker", "reason"}
+)
+_ACKNOWLEDGEMENT_REASON_CHAR_LIMIT = 1000
+_LEAK_SIGNATURE_IDS = frozenset(name for name, _pattern in _LEAK_PATTERNS)
 _SHA256_HEX_PATTERN = re.compile(r"[0-9a-f]{64}$")
 _REVIEWED_COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}$")
 _REVIEW_VERDICTS = frozenset({"approved", "changes_required", "blocked", "rejected"})
@@ -300,6 +325,7 @@ _FIELD_FAMILIES: tuple[tuple[int, str | None, frozenset[str]], ...] = (
     (7, "opened", _SCHEMA_7_CONTRACT_FIELDS),
     (7, "amendment", _SCHEMA_7_CONTRACT_FIELDS),
     (7, "check", _SCHEMA_7_CHECK_FIELDS),
+    (7, "acknowledgement", _SCHEMA_7_ACKNOWLEDGEMENT_FIELDS),
 )
 
 
@@ -336,8 +362,14 @@ def _allowed_fields(record_type: str, schema: int) -> frozenset[str]:
 # check family registers its `excerpt` at the ADR's 4 KiB byte bound and
 # its four displayed strings under the forgeable-text rule; its `commit`
 # hex shape and `result` vocabulary admit no character that rule refuses,
-# so they carry no registration.
-_TEXT_CHAR_LIMITS: dict[tuple[str | None, str], int] = {}
+# so they carry no registration. The acknowledgement family registers its
+# `reason` at the ADR's 1000-character bound — a character count, as the
+# ADR states it — and its two displayed strings under the forgeable-text
+# rule; `commit`'s hex shape, the signature vocabulary and `marker`'s
+# integer shape admit no character that rule refuses either.
+_TEXT_CHAR_LIMITS: dict[tuple[str | None, str], int] = {
+    ("acknowledgement", "reason"): _ACKNOWLEDGEMENT_REASON_CHAR_LIMIT,
+}
 _TEXT_BYTE_LIMITS: dict[tuple[str | None, str], int] = {
     ("check", "excerpt"): _CHECK_EXCERPT_BYTE_LIMIT,
 }
@@ -354,6 +386,8 @@ _FORGEABLE_TEXT_FIELDS: dict[tuple[str | None, str], None] = {
     ("check", "failed_step"): None,
     ("check", "excerpt"): None,
     ("check", "run_url"): None,
+    ("acknowledgement", "file"): None,
+    ("acknowledgement", "reason"): None,
 }
 
 
@@ -511,6 +545,24 @@ def _check_check_schema(data: Mapping[str, object], _context: _RuleContext) -> N
         raise JournalRecordError(f"check records require schema {_CHECK_RECORD_SCHEMA}")
 
 
+@_rule("acknowledgement")
+def _check_acknowledgement_schema(
+    data: Mapping[str, object], _context: _RuleContext
+) -> None:
+    # The record-type gate, bound to 1 like `check`: an acknowledgement
+    # record below the schema the type arrived under is refused at write
+    # and on read, whatever it carries — the family's fields already meet
+    # the unsupported-fields refusal, this covers the record that carries
+    # none of them, and no legitimate history can carry the type.
+    if (
+        cast(str, data["record_type"]) == "acknowledgement"
+        and cast(int, data["schema"]) < _ACKNOWLEDGEMENT_RECORD_SCHEMA
+    ):
+        raise JournalRecordError(
+            f"acknowledgement records require schema {_ACKNOWLEDGEMENT_RECORD_SCHEMA}"
+        )
+
+
 @_rule("session-fields")
 def _check_session_fields(data: Mapping[str, object], _context: _RuleContext) -> None:
     if cast(str, data["record_type"]) != "session":
@@ -658,6 +710,52 @@ def _check_check_fields_7(data: Mapping[str, object], _context: _RuleContext) ->
             raise JournalRecordError(
                 f"check record field {field!r} must be a non-empty string"
             )
+
+
+@_rule("acknowledgement-fields-7")
+def _check_acknowledgement_fields_7(
+    data: Mapping[str, object], _context: _RuleContext
+) -> None:
+    if cast(str, data["record_type"]) != "acknowledgement":
+        return
+    commit = data.get("commit")
+    if (
+        not isinstance(commit, str)
+        or _REVIEWED_COMMIT_PATTERN.fullmatch(commit) is None
+    ):
+        raise JournalRecordError(
+            "acknowledgement record field 'commit' must be exactly 40 "
+            "lowercase hex characters"
+        )
+    file = data.get("file")
+    if not isinstance(file, str) or not file.strip():
+        raise JournalRecordError(
+            "acknowledgement record field 'file' must be a non-empty string"
+        )
+    has_signature = "signature" in data
+    has_marker = "marker" in data
+    if has_signature == has_marker:
+        raise JournalRecordError(
+            "acknowledgement record must name exactly one of 'signature' or 'marker'"
+        )
+    if has_signature:
+        signature = data["signature"]
+        if not isinstance(signature, str) or signature not in _LEAK_SIGNATURE_IDS:
+            raise JournalRecordError(
+                "acknowledgement record field 'signature' must be one of "
+                + ", ".join(sorted(_LEAK_SIGNATURE_IDS))
+            )
+    else:
+        marker = data["marker"]
+        if type(marker) is not int or marker < 1:
+            raise JournalRecordError(
+                "acknowledgement record field 'marker' must be an integer of at least 1"
+            )
+    reason = data.get("reason")
+    if not isinstance(reason, str) or not reason.strip():
+        raise JournalRecordError(
+            "acknowledgement record field 'reason' must be a non-empty string"
+        )
 
 
 @_rule("provenance")
@@ -815,6 +913,7 @@ _RULE_FROM_SCHEMA: dict[str, int] = {
     "reopened": 1,
     "amendment": 1,
     "check": 1,
+    "acknowledgement": 1,
     "session-fields": 1,
     "coordination": 6,
     "session-tokens": 1,
@@ -822,6 +921,7 @@ _RULE_FROM_SCHEMA: dict[str, int] = {
     "session-fields-7": 7,
     "contract-hash-7": 7,
     "check-fields-7": 7,
+    "acknowledgement-fields-7": 7,
     "provenance": 2,
     "recorded-by": 1,
     "finding-binding": 4,
@@ -1348,6 +1448,8 @@ def _minimum_schema(record: Mapping[str, object]) -> int:
         schema = max(schema, 7)
     if record.get("record_type") == "check":
         schema = max(schema, _CHECK_RECORD_SCHEMA)
+    if record.get("record_type") == "acknowledgement":
+        schema = max(schema, _ACKNOWLEDGEMENT_RECORD_SCHEMA)
     return schema
 
 
@@ -1687,6 +1789,47 @@ def create_check_record(
     ):
         if value is not None:
             record[field] = value
+    record["schema"] = _minimum_schema(record)
+    return record
+
+
+def create_acknowledgement_record(
+    task_id: str,
+    tool_version: str,
+    commit: str,
+    file: str,
+    reason: str,
+    signature: str | None,
+    *,
+    marker: int | None = None,
+    source: str = SOURCE_LIVE,
+) -> dict[str, object]:
+    """Build the record a reviewed leak-scan hit leaves (ADR-0021).
+
+    Bound to the candidate commit the hit was found in, it names the file
+    exactly as the scan prints it — already masked — and the hit's
+    identification: a built-in ``signature`` id or the ``marker``'s
+    position, never the matched text.
+    """
+
+    if (signature is None) == (marker is None):
+        raise JournalRecordError(
+            "acknowledgement record must name exactly one of 'signature' or 'marker'"
+        )
+    record: dict[str, object] = {
+        "record_type": "acknowledgement",
+        "task": task_id,
+        "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "tool_version": tool_version,
+        "commit": commit,
+        "file": file,
+        "reason": reason,
+        "source": source,
+    }
+    if signature is not None:
+        record["signature"] = signature
+    else:
+        record["marker"] = marker
     record["schema"] = _minimum_schema(record)
     return record
 

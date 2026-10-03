@@ -5,6 +5,7 @@ title = "At capture level hash the reviewer's prose and diagnostics are kept und
 scope = [
   "src/agentmarshal/journal/review.py",
   "src/agentmarshal/process_log.py",
+  "src/agentmarshal/cli.py",
   "tests/",
   "docs/overview.md",
   "docs/quickstart.md",
