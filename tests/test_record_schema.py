@@ -141,6 +141,7 @@ def test_todays_rules_apply_from_schema_1_except_the_gates() -> None:
         "bounded-json": 7,
         "forgeable-text": 7,
         "session-fields-7": 7,
+        "contract-hash-7": 7,
     }
     for name, schema in records_module._RULE_FROM_SCHEMA.items():
         assert schema == gates.get(name, 1), name
@@ -216,6 +217,8 @@ _FINDING_ID = "01J00000000000000000000000"
         (create_abandoned_record("CR-001", "t", "r"), 3),
         (create_reopened_record("CR-001", "t", "r"), 3),
         (create_amendment_record("CR-001", "t", "r"), 3),
+        (create_opened_record("CR-001", "t", contract=_HASH), 7),
+        (create_amendment_record("CR-001", "t", "r", contract=_HASH), 7),
         (
             create_session_record(
                 "CR-001", "t", "r", "a", "implementation", "d", 1, 2, 3

@@ -29,7 +29,7 @@ from agentmarshal.journal.capture import (
     render_undecodable_files,
     review_capture_level_from_journal,
 )
-from agentmarshal.journal.contracts import parse_contract_text
+from agentmarshal.journal.contracts import contract_sha256, parse_contract_text
 from agentmarshal.journal.display import escape_for_display
 from agentmarshal.journal.extensions import (
     ExtensionManifestError,
@@ -987,7 +987,9 @@ def _launch_review_tail(
             advisory or None,
             prose=raw_output if prose_capture_level is CaptureLevel.COMMIT else None,
             reviewed_finding=reviewed_finding,
-            reviewed_contract=hashlib.sha256(contract.encode("utf-8")).hexdigest(),
+            reviewed_contract=contract_sha256(
+                contract.encode("utf-8"), f"task {task_id} contract"
+            ),
         )
     except ReviewSubmitError as error:
         if error.artifact_ref is not None:
