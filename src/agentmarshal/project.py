@@ -329,12 +329,18 @@ def _scaffold_outbox(project_directory: Path) -> tuple[Path, str | None]:
     return outbox, None
 
 
-def _git_common_dir(worktree: Path) -> Path | None:
+def git_common_dir(worktree: Path) -> Path | None:
     """Return a worktree's shared git directory, or ``None`` if git cannot say.
 
     Two worktrees of one repository report the same common directory even
     though their paths are unrelated — which is how a sidecar that is secretly
-    a worktree of its own host is recognised.
+    a worktree of its own host is recognised, and how local state lands in
+    one place for every worktree (ADR-0014 decision 4).
+
+    The contract mirrors ``find_git_root``: git that cannot run and git
+    output that is not a UTF-8 path raise ``GitNotAvailableError``, while a
+    worktree git simply cannot describe — there is no repository there —
+    yields ``None``.
     """
 
     try:
@@ -350,14 +356,16 @@ def _git_common_dir(worktree: Path) -> Path | None:
             capture_output=True,
             check=False,
         )
-    except OSError:
-        return None
+    except OSError as error:
+        raise GitNotAvailableError(f"cannot run git: {error}") from error
     if result.returncode != 0:
         return None
     try:
         text = result.stdout.decode("utf-8").strip()
-    except UnicodeDecodeError:
-        return None
+    except UnicodeDecodeError as error:
+        raise GitNotAvailableError(
+            f"git reported a common directory that is not valid UTF-8: {error}"
+        ) from error
     return Path(text).resolve() if text else None
 
 
@@ -397,7 +405,17 @@ def initialize_project(
         # sits elsewhere on disk and still writes into the host's object
         # database, which is the thing the check above exists to prevent. The
         # shared git directory is what actually distinguishes them.
-        if _git_common_dir(git_root) == _git_common_dir(resolved_host):
+        try:
+            same_repository = git_common_dir(git_root) == git_common_dir(resolved_host)
+        except GitNotAvailableError as error:
+            # The relation cannot be determined, which is no ground to release
+            # the sidecar: an unanswerable comparison used to refuse by
+            # accident (two Nones compared equal) or pass silently (one) —
+            # now it refuses once, naming why.
+            raise AgentMarshalProjectError(
+                f"cannot compare {git_root} with host {resolved_host}: {error}"
+            ) from error
+        if same_repository:
             raise AgentMarshalProjectError(
                 f"sidecar journal {git_root} is a worktree of host "
                 f"{resolved_host}: its commits would land in the host's "
