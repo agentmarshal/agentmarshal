@@ -231,32 +231,51 @@ def test_contract_file_cannot_combine_with_title_or_scope(
 
 
 @pytest.mark.parametrize(
-    "content",
+    ("content", "directory"),
     [
-        None,
-        "not a contract\n",
-        "+++\nschema = 9\n+++\n",
-        "+++\nschema = 1\nid = 'CR-001'\n+++\n",
+        (None, False),
+        ("not a contract\n", False),
+        ("+++\nschema = 9\n+++\n", False),
+        ("+++\nschema = 1\nid = 'CR-001'\n+++\n", False),
+        (b"\xff\xfe not utf-8", False),
+        (None, True),
     ],
-    ids=["missing", "no header", "unknown schema", "incomplete header"],
+    ids=[
+        "missing",
+        "no header",
+        "unknown schema",
+        "incomplete header",
+        "not UTF-8",
+        "a directory",
+    ],
 )
 def test_a_missing_unreadable_or_invalid_file_is_refused_writing_nothing(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
-    content: str | None,
+    content: str | bytes | None,
+    directory: bool,
 ) -> None:
     """Scenario: a missing, unreadable or invalid file is refused writing
-    nothing."""
+    nothing.
+
+    Unreadable is simulated portably — no chmod, which a suite running as
+    root would read through anyway: a read of a directory raises OSError,
+    and bytes that do not decode as UTF-8 are refused just the same.
+    """
 
     repo = _repo(tmp_path, monkeypatch)
     provided = tmp_path / "contract.md"
-    if content is not None:
+    if directory:
+        provided.mkdir()
+    elif isinstance(content, bytes):
+        provided.write_bytes(content)
+    elif content is not None:
         provided.write_text(content, encoding="utf-8")
 
     assert main(["open", "--contract-file", str(provided)]) == 1
 
-    assert capsys.readouterr().err
+    assert str(provided) in capsys.readouterr().err
     assert not (journal_root(repo) / "tasks").exists()
 
 
