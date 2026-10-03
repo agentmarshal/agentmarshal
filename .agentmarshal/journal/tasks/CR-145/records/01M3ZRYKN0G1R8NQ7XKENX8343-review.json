@@ -1,0 +1,31 @@
+{
+  "advisory_findings": [
+    "gate-admits-forged-low-schema-record",
+    "session-writer-not-derived-from-its-record",
+    "minimum-schema-assigns-instead-of-max"
+  ],
+  "artifacts": [
+    {
+      "hash": "9b0d8032bdee1a09ed2189fb3dc2b7872bdbfed8018e296156f07b3e7b66877e",
+      "ref": ".agentmarshal/journal/tasks/CR-145/artifacts/01M3ZRYKN0G1R8NQ7XKENX8343-review.md"
+    }
+  ],
+  "created_at": "2026-10-03T02:19:36.992095Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "c1ea629d819c8455b7f89ab718978c0c7900cf26",
+  "reviewed_contract": "84a83942fec65b4d672d85e09ae2db97de11e9909f506e73ec62ce5f57c14b52",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-145",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "approved"
+}
