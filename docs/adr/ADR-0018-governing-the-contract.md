@@ -68,9 +68,10 @@ Three proposals press on this:
 - [proposal 033](../proposals/033-contract-review-before-implementation-does-not-pay-off.md):
   the same reporter built the pre-implementation contract review that
   proposal 031's third suggestion offered, measured seven review passes
-  over one contract — $27.02 and about 95 minutes, more than any of the
-  six complete candidate-review cycles run the same day — without the
-  task ever reaching an implementer, and withdrew the suggestion.
+  over one contract — $27.02 and about 95 minutes, the cost higher than
+  that of any of the six complete candidate-review cycles run the same
+  day — without the task ever reaching an implementer, and withdrew the
+  suggestion.
 
 ## Decision
 
@@ -203,3 +204,11 @@ can be checked — membership in the lists and the declared independence
 rules. The reason a run moved down the list is shown so a person can
 judge it; the gate does not evaluate whether a provider limit really
 happened.
+
+## Corrections
+
+- 2026-10-03: the Context read the contract review's cost and its minutes
+  as both exceeding the day's six candidate-review cycles;
+  [proposal 033](../proposals/033-contract-review-before-implementation-does-not-pay-off.md)
+  measured the comparison in cost only, and the sentence now claims only
+  that.

@@ -189,6 +189,12 @@ with an acknowledgement or without one.
   command: the mark is part of that detail, so the two still agree —
   on the hits its bound lets it show, the boundary's line says what
   the command's does, mark included.
+- The [leak-scan](../../openspec/specs/leak-scan/spec.md) sentence, in
+  the requirement on a file that does not decode, that the standalone
+  command's exit status answers whether a hit was found: under Decision
+  3 it answers whether a hit nobody has acknowledged was found — an
+  acknowledged hit still prints, marked, and no longer makes the
+  command exit 1.
 
 ## Left open
 
@@ -262,3 +268,11 @@ needs it. The case is marked instead.
 carry the secret: a private marker is itself the sensitive string,
 which is why the scan names it by position. The record binds the hit by
 the same identification the scan prints, and no more.
+
+## Corrections
+
+- 2026-10-03: "What this revises" named two revisions and missed a
+  third — the
+  [leak-scan](../../openspec/specs/leak-scan/spec.md) specification's
+  sentence that the standalone command's exit status answers whether a
+  hit was found, which Decision 3 revises; it is now listed.

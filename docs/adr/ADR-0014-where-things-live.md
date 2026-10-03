@@ -4,7 +4,8 @@ Status: Accepted
 Date: 2026-10-03
 Amended 2026-10-03 (what the gate reads and from where; the rotation
 decision's pointer to the record-model formats; decisions 3, 7 and 8 in
-full sentences)
+full sentences; decision 9's `step` stage declined — the step events
+recorded in the process log instead)
 
 Builds on [ADR-0004](ADR-0004-journal-data-model.md) (documents for
 contracts, append-only records for evidence),
@@ -115,6 +116,20 @@ the overdue ones
 ([proposal 040](../proposals/040-in-flight-steps-are-invisible-and-journal-writes-contend-on-one-checkout.md)).
 Step events are passed to the extensions' `step` stage
 ([ADR-0013](ADR-0013-extensions-stages-scopes-isolation-trust.md)).
+
+Amended 2026-10-03, on the last sentence: the operator decided against a
+`step` stage the core feeds — feeding it would have had the core start
+background processes it then leaves running, and a personal extension at
+that stage the power to stop an implementer. What stands instead: the
+core records the step events in the process log — a step started, with
+its kind of work, its process, the process's start time and its
+deadline, and a step ended, with its outcome — and `status` and `doctor`
+show a step past its deadline. The watchdog and the loop monitor of
+[proposal 042](../proposals/042-liveness-of-an-unattended-loop-is-watched-by-hand.md)
+are a supplied component the harness runs; the core starts no background
+process. The commands that write the events and the fields the events
+carry are defined by the later decision on the record model. Nothing
+else in this decision changes.
 
 ### 10. post-gate results
 

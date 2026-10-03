@@ -140,7 +140,13 @@ placement already names.
 ask lands as a documentation sentence: the workflow documentation states
 that completing a task costs one more run of the required check — the
 journal transaction that records the evidence is itself a change CI runs
-on.
+on. The ask's other half — a way for the required check to recognise a
+journal-only change — is met by exposing the lane the gate already
+computes, and goes to the journal-transactions work of
+[proposal 019](../proposals/019-journal-transactions-assume-direct-commits.md)
+and
+[proposal 035](../proposals/035-journal-transactions-sweep-records-of-other-tasks.md),
+as the proposal's disposition says.
 
 ## Left open
 
@@ -171,7 +177,8 @@ on.
   unstated rate.
 - The outcome vocabulary stays words journals share — `provider-limit`,
   now `output-limit` — documented and unenforced, so a refusal, a crash
-  and a truncation read differently across projects.
+  and a truncation read differently from one another and the same way in
+  every project.
 - Recording cost after the task closes is safe to repeat: `--if-missing`
   turns the second run of a wrapper into a message, not a doubled
   figure.
@@ -209,3 +216,19 @@ put a schema gate on a value no decision reads.
 by [proposal 026](../proposals/026-reviewer-facts-round-convergence-and-two-gaps.md)'s
 reporter: it lost the roles that were missing. The deduplication key is
 `task + role + actor + activity` for exactly that reason.
+
+## Corrections
+
+- 2026-10-03: the fourth Consequences bullet had the shared vocabulary
+  make a refusal, a crash and a truncation "read differently across
+  projects"; it makes them read differently from one another and the
+  same way in every project.
+- 2026-10-03: Decision 8 answered only the documentation half of
+  [proposal 032](../proposals/032-the-journal-has-no-time-axis.md)'s
+  third ask; it now says the other half — exposing the gate's existing
+  journal-only lane to the required check — goes to the
+  journal-transactions work of
+  [proposal 019](../proposals/019-journal-transactions-assume-direct-commits.md)
+  and
+  [proposal 035](../proposals/035-journal-transactions-sweep-records-of-other-tasks.md),
+  as the proposal's disposition says.

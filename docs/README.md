@@ -26,6 +26,12 @@
 - [adr/ADR-0013-extensions-stages-scopes-isolation-trust.md](adr/ADR-0013-extensions-stages-scopes-isolation-trust.md) — understand how extensions run: stages, scopes, isolation, trust, switches and records.
 - [adr/ADR-0014-where-things-live.md](adr/ADR-0014-where-things-live.md) — understand where things live: the journal, the process log, and CI output.
 - [adr/ADR-0015-a-rule-applies-from-the-schema-that-introduced-it.md](adr/ADR-0015-a-rule-applies-from-the-schema-that-introduced-it.md) — understand which schema's rules a record, a contract header or a manifest is checked by.
+- [adr/ADR-0016-the-lifecycle-of-review-findings.md](adr/ADR-0016-the-lifecycle-of-review-findings.md) — understand how review findings get a lifecycle: dispositions at completion, linked rounds, finding classes and the `changes_required` count.
+- [adr/ADR-0017-evidence-of-reviews-and-checks.md](adr/ADR-0017-evidence-of-reviews-and-checks.md) — understand the evidence reviews and checks leave: the `check` record, what a verdict says was executed, and evidence on external facts.
+- [adr/ADR-0018-governing-the-contract.md](adr/ADR-0018-governing-the-contract.md) — understand how the contract itself is governed: its pinned hash, the agreement record, and the named implementer and reviewer.
+- [adr/ADR-0019-accounting-time-quota-resets-money.md](adr/ADR-0019-accounting-time-quota-resets-money.md) — understand what the journal records about a task's time, provider quota resets and money.
+- [adr/ADR-0020-the-outbox-command-group.md](adr/ADR-0020-the-outbox-command-group.md) — understand the `outbox` command group: scaffold, check, send and status for findings bound upstream.
+- [adr/ADR-0021-an-acknowledged-leak-scan-hit.md](adr/ADR-0021-an-acknowledged-leak-scan-hit.md) — understand how an acknowledged leak-scan hit is recorded, and why it stays printed.
 - [migration-v1-to-v2.md](migration-v1-to-v2.md) — see what did not carry from the v1 rails into the v2 journal.
 - [incidents/2026-08-31-scope-warning-scope-creep.md](incidents/2026-08-31-scope-warning-scope-creep.md) — study the scope-warning change that grew into scope creep and was rolled back.
 

@@ -116,8 +116,11 @@ Accepted; not shipped yet.
 the accounting rework's ground — `provider-limit` is already a documented
 outcome since 0.4.1, and the output-limit value is accepted with proposal
 034 — plus a flag on the session that its report was finished, which is what
-tells a run killed after completing its work from one killed before, the
-same fact proposal 036's refusal rests on. `next` reads these classes.
+tells a run killed after completing its work from one killed before. The
+flag is a different fact from the one proposal 036's refusal rests on: that
+refusal reads the session's `commit` against the reviewed commit and an
+outcome other than `implemented`, while the flag marks that the run wrote
+its report. `next` reads these classes.
 Accepted; not shipped yet.
 
 **The plan as data** is accepted, met by what the project supplies rather
@@ -139,3 +142,10 @@ classes — the new outcome values and the "report finished" flag — are
 accepted into the tool, the classes with the accounting rework; the plan
 is accepted as a supplied file in local state with a documented format; the
 reference driver goes into the adopter kit.
+
+## Corrections
+
+- 2026-10-03: the failure-classes paragraph called the "report finished"
+  flag the same fact proposal 036's refusal rests on; 036 rests on the
+  session's `commit` and an outcome other than `implemented`, and the
+  paragraph now says so.
