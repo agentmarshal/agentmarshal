@@ -8,4 +8,5 @@ PASS: evidence records are append-only
 PASS: added records are valid (none examined: a host journal is not this journal's evidence)
 PASS: no record-path collisions (none examined: the candidate adds no record to this journal)
 PASS: task lifecycle records are consistent
+INFO: changes_required verdicts for CR-001: 0 (threshold 3)
 gate: advisory checks passed; decides no merge
