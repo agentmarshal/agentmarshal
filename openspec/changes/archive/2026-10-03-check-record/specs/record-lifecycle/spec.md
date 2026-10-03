@@ -1,12 +1,4 @@
-# record-lifecycle Specification
-
-## Purpose
-Which records a task still admits once it is closed, and which the writer
-refuses. The projection has always had the rule; this capability is about the
-side that writes, because a record the projection refuses to read cannot be
-taken back out of an append-only journal.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: A closed task admits only what its projection admits
 A command that writes a record into an existing task SHALL refuse when the
@@ -53,18 +45,6 @@ then on.
 - **WHEN** each command that writes a record into a task is run against a
   completed task
 - **THEN** each one refuses, and none of them leaves a record behind
-
-### Requirement: A closed task costs no reviewer run
-A review launched against a closed task SHALL be refused before the configured
-reviewer is run, for every binding the launcher accepts. The `findings-review`
-capability already requires this of a review bound to a finding; the lifecycle
-rule is the same one and holds for a commit review too, so neither binding
-spends a run to discover a state the journal already knows.
-
-#### Scenario: a launched review on a closed task runs no reviewer
-- **WHEN** `review` is launched for a task that has completed or been
-  abandoned, with either binding
-- **THEN** no reviewer process is started and no record is written
 
 ### Requirement: The merge gate admits what the projection admits after a terminal record
 A candidate that only appends to a task closed at base SHALL pass the gate's

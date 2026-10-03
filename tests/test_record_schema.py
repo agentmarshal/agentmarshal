@@ -13,6 +13,7 @@ from agentmarshal.journal.records import (
     create_abandoned_record,
     create_acceptance_record,
     create_amendment_record,
+    create_check_record,
     create_completed_record,
     create_finding_record,
     create_opened_record,
@@ -142,6 +143,7 @@ def test_todays_rules_apply_from_schema_1_except_the_gates() -> None:
         "forgeable-text": 7,
         "session-fields-7": 7,
         "contract-hash-7": 7,
+        "check-fields-7": 7,
     }
     for name, schema in records_module._RULE_FROM_SCHEMA.items():
         assert schema == gates.get(name, 1), name
@@ -389,6 +391,10 @@ _FINDING_ID = "01J00000000000000000000000"
                 3,
                 fallback_reason="fell back",
             ),
+            7,
+        ),
+        (
+            create_check_record("CR-001", "t", _COMMIT, "pytest", "passed"),
             7,
         ),
     ],
