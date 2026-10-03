@@ -7,8 +7,10 @@ from pathlib import Path
 import pytest
 
 from agentmarshal.journal.extensions import (
+    ExtensionManifest,
     ExtensionManifestError,
     ExtensionManifestMissing,
+    parse_extension_manifest_text,
     read_extension_manifest,
 )
 
@@ -181,3 +183,339 @@ def test_dangling_symlink_at_the_manifest_path_is_refused_as_a_symlink(
 
     with pytest.raises(ExtensionManifestError, match="symlink"):
         read_extension_manifest(tmp_path, "openspec")
+
+
+def _manifest_text(body: str = "", *, schema: int = 2) -> str:
+    return (
+        f"schema = {schema}\n"
+        'name = "openspec"\n'
+        'version = "1.0.0"\n'
+        'footprint = ["openspec/"]\n'
+        'documents = ["openspec/specs/"]\n'
+        "artifacts = []\n"
+        f"{body}"
+    )
+
+
+def _parse(body: str = "", *, schema: int = 2) -> ExtensionManifest:
+    return parse_extension_manifest_text(
+        _manifest_text(body, schema=schema), "openspec", "the test manifest"
+    )
+
+
+_WRAPS_FIELDS = {
+    "product": 'product = "openspec"',
+    "version": 'version = "1.13.2"',
+    "ecosystem": 'ecosystem = "npm"',
+    "lock": 'lock = "lock/package-lock.json"',
+    "runtime": 'runtime = "node >= 20"',
+    "license": 'license = "MIT"',
+}
+
+
+def _wraps_body(missing: str | None = None, **overrides: str) -> str:
+    lines = dict(_WRAPS_FIELDS)
+    if missing is not None:
+        del lines[missing]
+    lines.update(overrides)
+    return "[wraps]\n" + "\n".join(lines.values()) + "\n"
+
+
+_ISOLATION_FIELDS = {
+    "network": "network = false",
+    "env": 'env = ["HOME", "OPEN_SPEC"]',
+    "writes": 'writes = "none"',
+    "timeout_seconds": "timeout_seconds = 120",
+}
+
+
+def _isolation_body(missing: str | None = None, **overrides: str) -> str:
+    lines = dict(_ISOLATION_FIELDS)
+    if missing is not None:
+        del lines[missing]
+    lines.update(overrides)
+    return "[isolation]\n" + "\n".join(lines.values()) + "\n"
+
+
+def test_schema_3_is_an_unknown_manifest_schema() -> None:
+    """Scenario: schema 3 is an unknown manifest schema."""
+    with pytest.raises(
+        ExtensionManifestError, match="unknown or missing schema version"
+    ) as raised:
+        _parse(schema=3)
+    assert "the test manifest" in str(raised.value)
+
+
+@pytest.mark.parametrize(
+    "field", ["stage", "dependencies", "wraps", "records", "isolation"]
+)
+def test_schema_2_field_in_schema_1_manifest_requires_schema_2(
+    field: str,
+) -> None:
+    """Scenario: a schema-2 field in a schema-1 manifest requires schema 2."""
+    with pytest.raises(
+        ExtensionManifestError, match=rf"field '{field}' requires schema 2"
+    ) as raised:
+        _parse(f"[{field}]\n", schema=1)
+    assert "the test manifest" in str(raised.value)
+
+
+def test_install_and_remove_are_optional_in_schema_2() -> None:
+    """Scenario: install and remove are optional in schema 2."""
+    manifest = _parse()
+
+    assert manifest.install is None
+    assert manifest.remove is None
+
+
+def test_schema_1_manifest_parses_exactly_as_before(tmp_path: Path) -> None:
+    """Scenario: a schema-1 manifest parses exactly as before."""
+    _write_manifest(tmp_path)
+
+    manifest = read_extension_manifest(tmp_path, "openspec")
+
+    assert manifest.schema == 1
+    assert manifest.install == "npx openspec init"
+    assert manifest.remove == "rm -rf openspec"
+    assert manifest.stages == ()
+    assert manifest.dependencies is None
+    assert manifest.wraps is None
+    assert manifest.record_kinds == ()
+    assert manifest.isolation is None
+
+
+def test_stage_entry_parses_its_phase_and_command() -> None:
+    """Scenario: a stage entry parses its phase and command."""
+    manifest = _parse(
+        "[[stage]]\n"
+        'phase = "pre-gate-stop"\n'
+        'command = "bin/validate.py"\n'
+        "[[stage]]\n"
+        'phase = "post-gate"\n'
+        'command = "bin/notify.py"\n'
+    )
+
+    assert [(stage.phase, stage.command) for stage in manifest.stages] == [
+        ("pre-gate-stop", "bin/validate.py"),
+        ("post-gate", "bin/notify.py"),
+    ]
+
+
+@pytest.mark.parametrize("phase", ["pre-gate", "pre-merge", ""])
+def test_phase_outside_the_three_modes_is_refused(phase: str) -> None:
+    """Scenario: a phase outside the three modes is refused."""
+    with pytest.raises(ExtensionManifestError, match="'phase'") as raised:
+        _parse(f'[[stage]]\nphase = "{phase}"\ncommand = "bin/x.py"\n')
+    assert "the test manifest" in str(raised.value)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "/abs/run.py",
+        "bin/../run.py",
+        "bin/",
+        "run.py",
+        "sbin/run.py",
+    ],
+)
+def test_command_outside_the_extensions_bin_is_refused(command: str) -> None:
+    """Scenario: a command outside the extension's bin/ is refused."""
+    with pytest.raises(ExtensionManifestError, match="'command'") as raised:
+        _parse(f'[[stage]]\nphase = "post-gate"\ncommand = "{command}"\n')
+    assert "the test manifest" in str(raised.value)
+
+
+def test_malformed_stage_declaration_is_refused() -> None:
+    """Scenario: a malformed stage declaration is refused."""
+    with pytest.raises(ExtensionManifestError, match="'stage'") as raised:
+        _parse('stage = "bin/x.py"\n')
+    assert "the test manifest" in str(raised.value)
+    with pytest.raises(ExtensionManifestError, match="'stage'"):
+        _parse('stage = ["bin/x.py"]\n')
+    with pytest.raises(ExtensionManifestError, match="'command'"):
+        _parse('[[stage]]\nphase = "post-gate"\n')
+    with pytest.raises(ExtensionManifestError, match="'phase'"):
+        _parse('[[stage]]\ncommand = "bin/x.py"\n')
+
+
+def test_dependencies_lock_under_lock_parses() -> None:
+    """Scenario: a dependencies lock under lock/ parses."""
+    manifest = _parse('[dependencies]\nlock = "lock/uv.lock"\n')
+
+    assert manifest.dependencies is not None
+    assert manifest.dependencies.lock == "lock/uv.lock"
+
+
+@pytest.mark.parametrize(
+    "lock",
+    ["/lock/uv.lock", "lock/../uv.lock", "uv.lock", "deps/uv.lock"],
+)
+def test_dependencies_lock_outside_lock_is_refused(lock: str) -> None:
+    """Scenario: a dependencies lock outside lock/ is refused."""
+    with pytest.raises(ExtensionManifestError, match="'lock'") as raised:
+        _parse(f'[dependencies]\nlock = "{lock}"\n')
+    assert "the test manifest" in str(raised.value)
+
+
+def test_wraps_section_parses_every_field() -> None:
+    """Scenario: a wraps section parses every field."""
+    manifest = _parse(_wraps_body())
+
+    wraps = manifest.wraps
+    assert wraps is not None
+    assert wraps.product == "openspec"
+    assert wraps.version == "1.13.2"
+    assert wraps.ecosystem == "npm"
+    assert wraps.lock == "lock/package-lock.json"
+    assert wraps.runtime == "node >= 20"
+    assert wraps.license == "MIT"
+
+
+@pytest.mark.parametrize("missing", list(_WRAPS_FIELDS))
+def test_missing_wraps_field_is_refused(missing: str) -> None:
+    """Scenario: a missing wraps field is refused."""
+    with pytest.raises(ExtensionManifestError, match=rf"'{missing}'") as raised:
+        _parse(_wraps_body(missing=missing))
+    assert "the test manifest" in str(raised.value)
+
+
+@pytest.mark.parametrize(
+    "runtime",
+    ["node>=20", "node 20", ">= 20", "node >=", "node = 20", "node >= 20 x"],
+)
+def test_runtime_not_of_the_declared_form_is_refused(runtime: str) -> None:
+    """Scenario: a runtime not of the declared form is refused."""
+    with pytest.raises(ExtensionManifestError, match="'runtime'") as raised:
+        _parse(_wraps_body(runtime=f'runtime = "{runtime}"'))
+    assert "the test manifest" in str(raised.value)
+
+
+@pytest.mark.parametrize(
+    "lock",
+    ["/lock/package-lock.json", "lock/../x", "package-lock.json", "deps/x"],
+)
+def test_product_lock_outside_lock_is_refused(lock: str) -> None:
+    """Scenario: a product lock outside lock/ is refused."""
+    with pytest.raises(ExtensionManifestError, match="'lock'") as raised:
+        _parse(_wraps_body(lock=f'lock = "{lock}"'))
+    assert "the test manifest" in str(raised.value)
+
+
+def test_declared_record_kinds_parse() -> None:
+    """Scenario: declared record kinds parse."""
+    manifest = _parse('[records]\nkinds = ["openspec/change-archived@1"]\n')
+
+    assert manifest.record_kinds == ("openspec/change-archived@1",)
+
+
+def test_kind_naming_another_extension_is_refused() -> None:
+    """Scenario: a kind naming another extension is refused."""
+    with pytest.raises(ExtensionManifestError, match="'kinds'") as raised:
+        _parse('[records]\nkinds = ["other/change-archived@1"]\n')
+    assert "other/change-archived@1" in str(raised.value)
+    assert "the test manifest" in str(raised.value)
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "openspec-change@1",
+        "openspec/change",
+        "openspec/@1",
+        "openspec/change@",
+        "/change@1",
+        "openspec/change@1@2",
+    ],
+)
+def test_malformed_kind_is_refused(kind: str) -> None:
+    """Scenario: a malformed kind is refused."""
+    with pytest.raises(ExtensionManifestError, match="'kinds'") as raised:
+        _parse(f'[records]\nkinds = ["{kind}"]\n')
+    assert "the test manifest" in str(raised.value)
+
+
+def test_isolation_section_parses() -> None:
+    """Scenario: an isolation section parses."""
+    manifest = _parse(
+        _isolation_body(network="network = false", writes='writes = "process-log"')
+    )
+
+    isolation = manifest.isolation
+    assert isolation is not None
+    assert isolation.network is False
+    assert isolation.env == ("HOME", "OPEN_SPEC")
+    assert isolation.writes == "process-log"
+    assert isolation.timeout_seconds == 120
+
+
+@pytest.mark.parametrize(
+    ("field", "line"),
+    [
+        ("network", 'network = "false"'),
+        ("network", "network = 1"),
+        ("env", 'env = ["1BAD"]'),
+        ("env", 'env = ["HAS-DASH"]'),
+        ("env", "env = [1]"),
+        ("writes", 'writes = "anywhere"'),
+        ("timeout_seconds", "timeout_seconds = 0"),
+        ("timeout_seconds", "timeout_seconds = -5"),
+        ("timeout_seconds", 'timeout_seconds = "120"'),
+        ("timeout_seconds", "timeout_seconds = true"),
+        ("network", None),
+        ("env", None),
+        ("writes", None),
+        ("timeout_seconds", None),
+    ],
+)
+def test_malformed_isolation_field_is_refused_naming_it(
+    field: str, line: str | None
+) -> None:
+    """Scenario: a malformed isolation field is refused naming it."""
+    body = (
+        _isolation_body(missing=field)
+        if line is None
+        else _isolation_body(**{field: line})
+    )
+    with pytest.raises(ExtensionManifestError, match=rf"'{field}'") as raised:
+        _parse(body)
+    assert "the test manifest" in str(raised.value)
+
+
+def test_parsed_manifest_carries_every_declared_section() -> None:
+    """Scenario: the parsed manifest carries every declared section."""
+    manifest = _parse(
+        "[[stage]]\n"
+        'phase = "pre-gate-stop"\n'
+        'command = "bin/validate.py"\n'
+        "[[stage]]\n"
+        'phase = "pre-gate-warn"\n'
+        'command = "bin/lint.py"\n'
+        "[dependencies]\n"
+        'lock = "lock/uv.lock"\n'
+        + _wraps_body()
+        + '[records]\nkinds = ["openspec/change-archived@1"]\n'
+        + _isolation_body()
+    )
+
+    assert manifest.schema == 2
+    assert [stage.phase for stage in manifest.stages] == [
+        "pre-gate-stop",
+        "pre-gate-warn",
+    ]
+    assert manifest.dependencies is not None
+    assert manifest.wraps is not None
+    assert manifest.record_kinds == ("openspec/change-archived@1",)
+    assert manifest.isolation is not None
+
+
+def test_absent_sections_expose_as_absent() -> None:
+    """Scenario: absent sections expose as absent."""
+    manifest = _parse()
+
+    assert manifest.schema == 2
+    assert manifest.stages == ()
+    assert manifest.dependencies is None
+    assert manifest.wraps is None
+    assert manifest.record_kinds == ()
+    assert manifest.isolation is None

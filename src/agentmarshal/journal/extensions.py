@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import re
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+from typing import Literal, cast
 
 from agentmarshal.journal.contracts import (
     JournalContractError,
@@ -28,6 +29,57 @@ class ExtensionManifestMissing(ExtensionManifestError):
     """
 
 
+ExtensionPhase = Literal["post-gate", "pre-gate-warn", "pre-gate-stop"]
+ExtensionWrites = Literal["none", "process-log"]
+
+_SCHEMA_2_FIELDS = ("stage", "dependencies", "wraps", "records", "isolation")
+_STAGE_PHASES: tuple[ExtensionPhase, ...] = (
+    "post-gate",
+    "pre-gate-warn",
+    "pre-gate-stop",
+)
+_WRITES_MODES: tuple[ExtensionWrites, ...] = ("none", "process-log")
+_ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_RECORD_KIND = re.compile(r"[^/@\s]+/[^/@\s]+@[^/@\s]+")
+
+
+@dataclass(frozen=True)
+class ExtensionStage:
+    """One ``[[stage]]`` entry: when the extension runs and what it runs."""
+
+    phase: ExtensionPhase
+    command: str
+
+
+@dataclass(frozen=True)
+class ExtensionDependencies:
+    """The lock a directory-form extension's dependencies install from."""
+
+    lock: str
+
+
+@dataclass(frozen=True)
+class ExtensionWraps:
+    """The product a wrapper extension adapts (ADR-0013)."""
+
+    product: str
+    version: str
+    ecosystem: str
+    lock: str
+    runtime: str
+    license: str
+
+
+@dataclass(frozen=True)
+class ExtensionIsolation:
+    """The isolation a manifest declares for any stage (ADR-0013)."""
+
+    network: bool
+    env: tuple[str, ...]
+    writes: ExtensionWrites
+    timeout_seconds: int
+
+
 @dataclass(frozen=True)
 class ExtensionManifest:
     """The fields declared by one process-extension manifest."""
@@ -38,8 +90,13 @@ class ExtensionManifest:
     footprint: tuple[str, ...]
     documents: tuple[str, ...]
     artifacts: tuple[str, ...]
-    install: str
-    remove: str
+    install: str | None
+    remove: str | None
+    stages: tuple[ExtensionStage, ...] = ()
+    dependencies: ExtensionDependencies | None = None
+    wraps: ExtensionWraps | None = None
+    record_kinds: tuple[str, ...] = ()
+    isolation: ExtensionIsolation | None = None
 
 
 def _require_string(data: dict[str, object], field: str, source: str | Path) -> str:
@@ -62,12 +119,185 @@ def _require_string_array(
     return tuple(cast(list[str], value))
 
 
+def _optional_string(
+    data: dict[str, object], field: str, source: str | Path
+) -> str | None:
+    if field not in data:
+        return None
+    return _require_string(data, field, source)
+
+
+def _optional_table(
+    data: dict[str, object], field: str, source: str | Path
+) -> dict[str, object] | None:
+    value = data.get(field)
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ExtensionManifestError(
+            f"extension manifest field {field!r} must be a table: {source}"
+        )
+    return cast(dict[str, object], value)
+
+
+def _require_directory_file(
+    data: dict[str, object], field: str, directory: str, source: str | Path
+) -> str:
+    """A relative path naming a file under one directory of the extension's own.
+
+    ``command`` names only a file in the extension's ``bin/`` and a ``lock``
+    only one in its ``lock/`` (ADR-0013 D13): a relative path — no ``PATH``
+    lookup — whose first component is the declared directory.
+    """
+
+    value = _require_string(data, field, source)
+    try:
+        validate_scope_entry(value, f"extension manifest field {field!r}")
+    except JournalContractError as error:
+        raise ExtensionManifestError(f"{error}: {source}") from error
+    parts = value.split("/")
+    if len(parts) < 2 or parts[0] != directory or any(not part for part in parts):
+        raise ExtensionManifestError(
+            f"extension manifest field {field!r} must be a relative path under "
+            f"'{directory}/' in the extension's own directory: {source}"
+        )
+    return value
+
+
 def _validate_entries(entries: tuple[str, ...], field: str, source: str | Path) -> None:
     for entry in entries:
         try:
             validate_scope_entry(entry, f"extension manifest field {field!r}")
         except JournalContractError as error:
             raise ExtensionManifestError(f"{error}: {source}") from error
+
+
+def _parse_stages(
+    data: dict[str, object], source: str | Path
+) -> tuple[ExtensionStage, ...]:
+    value = data.get("stage")
+    if value is None:
+        return ()
+    if not isinstance(value, list) or not all(
+        isinstance(entry, dict) for entry in value
+    ):
+        raise ExtensionManifestError(
+            f"extension manifest field 'stage' must be an array of tables: {source}"
+        )
+    stages: list[ExtensionStage] = []
+    for entry in cast(list[dict[str, object]], value):
+        phase = _require_string(entry, "phase", source)
+        if phase not in _STAGE_PHASES:
+            raise ExtensionManifestError(
+                "extension manifest field 'phase' must be one of 'post-gate', "
+                f"'pre-gate-warn' or 'pre-gate-stop': {source}"
+            )
+        stages.append(
+            ExtensionStage(
+                phase=phase,
+                command=_require_directory_file(entry, "command", "bin", source),
+            )
+        )
+    return tuple(stages)
+
+
+def _parse_dependencies(
+    data: dict[str, object], source: str | Path
+) -> ExtensionDependencies | None:
+    section = _optional_table(data, "dependencies", source)
+    if section is None:
+        return None
+    return ExtensionDependencies(
+        lock=_require_directory_file(section, "lock", "lock", source)
+    )
+
+
+def _parse_wraps(data: dict[str, object], source: str | Path) -> ExtensionWraps | None:
+    section = _optional_table(data, "wraps", source)
+    if section is None:
+        return None
+    product = _require_string(section, "product", source)
+    version = _require_string(section, "version", source)
+    ecosystem = _require_string(section, "ecosystem", source)
+    lock = _require_directory_file(section, "lock", "lock", source)
+    runtime = _require_string(section, "runtime", source)
+    tokens = runtime.split()
+    if len(tokens) != 3 or tokens[1] != ">=":
+        raise ExtensionManifestError(
+            "extension manifest field 'runtime' must be of the form "
+            f"'<name> >= <version>': {source}"
+        )
+    try:
+        reject_control_characters(runtime, "extension manifest field 'runtime'")
+    except JournalContractError as error:
+        raise ExtensionManifestError(f"{error}: {source}") from error
+    return ExtensionWraps(
+        product=product,
+        version=version,
+        ecosystem=ecosystem,
+        lock=lock,
+        runtime=runtime,
+        license=_require_string(section, "license", source),
+    )
+
+
+def _parse_record_kinds(
+    data: dict[str, object], name: str, source: str | Path
+) -> tuple[str, ...]:
+    section = _optional_table(data, "records", source)
+    if section is None:
+        return ()
+    kinds = _require_string_array(section, "kinds", source)
+    for kind in kinds:
+        if _RECORD_KIND.fullmatch(kind) is None:
+            raise ExtensionManifestError(
+                f"extension manifest field 'kinds' entry {kind!r} must be of "
+                f"the form '<name>/<kind>@<version>': {source}"
+            )
+        if kind.split("/", 1)[0] != name:
+            raise ExtensionManifestError(
+                f"extension manifest field 'kinds' entry {kind!r} must name "
+                f"this extension {name!r}: {source}"
+            )
+    return kinds
+
+
+def _parse_isolation(
+    data: dict[str, object], source: str | Path
+) -> ExtensionIsolation | None:
+    section = _optional_table(data, "isolation", source)
+    if section is None:
+        return None
+    network = section.get("network")
+    if type(network) is not bool:
+        raise ExtensionManifestError(
+            f"extension manifest field 'network' must be a boolean: {source}"
+        )
+    env = _require_string_array(section, "env", source)
+    for variable in env:
+        if _ENV_NAME.fullmatch(variable) is None:
+            raise ExtensionManifestError(
+                f"extension manifest field 'env' entry {variable!r} must be an "
+                f"environment variable name: {source}"
+            )
+    writes = _require_string(section, "writes", source)
+    if writes not in _WRITES_MODES:
+        raise ExtensionManifestError(
+            "extension manifest field 'writes' must be 'none' or 'process-log': "
+            f"{source}"
+        )
+    timeout_seconds = section.get("timeout_seconds")
+    if type(timeout_seconds) is not int or timeout_seconds <= 0:
+        raise ExtensionManifestError(
+            "extension manifest field 'timeout_seconds' must be an integer "
+            f"above zero: {source}"
+        )
+    return ExtensionIsolation(
+        network=network,
+        env=env,
+        writes=writes,
+        timeout_seconds=timeout_seconds,
+    )
 
 
 def _validate_name(name: str) -> None:
@@ -102,10 +332,16 @@ def parse_extension_manifest_text(
         ) from error
     data = cast(dict[str, object], parsed)
     schema = data.get("schema")
-    if type(schema) is not int or schema != 1:
+    if type(schema) is not int or schema not in {1, 2}:
         raise ExtensionManifestError(
             f"extension manifest has an unknown or missing schema version: {source}"
         )
+    if schema == 1:
+        for field in _SCHEMA_2_FIELDS:
+            if field in data:
+                raise ExtensionManifestError(
+                    f"extension manifest field {field!r} requires schema 2: {source}"
+                )
 
     declared_name = _require_string(data, "name", source)
     if declared_name != name:
@@ -130,15 +366,38 @@ def parse_extension_manifest_text(
                     f"footprint: {source}"
                 )
 
+    version = _require_string(data, "version", source)
+    if schema == 1:
+        install: str | None = _require_string(data, "install", source)
+        remove: str | None = _require_string(data, "remove", source)
+        stages: tuple[ExtensionStage, ...] = ()
+        dependencies: ExtensionDependencies | None = None
+        wraps: ExtensionWraps | None = None
+        record_kinds: tuple[str, ...] = ()
+        isolation: ExtensionIsolation | None = None
+    else:
+        install = _optional_string(data, "install", source)
+        remove = _optional_string(data, "remove", source)
+        stages = _parse_stages(data, source)
+        dependencies = _parse_dependencies(data, source)
+        wraps = _parse_wraps(data, source)
+        record_kinds = _parse_record_kinds(data, declared_name, source)
+        isolation = _parse_isolation(data, source)
+
     return ExtensionManifest(
         schema=schema,
         name=declared_name,
-        version=_require_string(data, "version", source),
+        version=version,
         footprint=footprint,
         documents=documents,
         artifacts=artifacts,
-        install=_require_string(data, "install", source),
-        remove=_require_string(data, "remove", source),
+        install=install,
+        remove=remove,
+        stages=stages,
+        dependencies=dependencies,
+        wraps=wraps,
+        record_kinds=record_kinds,
+        isolation=isolation,
     )
 
 
