@@ -180,12 +180,16 @@ def _id_source_line(
     A line in a supported form is the declaration only where rewriting it
     changes what the header parses as ``id``: the same text inside a
     multi-line string value, or under a ``[table]`` header, matches the
-    key pattern without being it. The probe is the parsed id plus a
-    character no rewrite of another line can produce, so exactly the
-    source line answers it.
+    key pattern without being it. The probe only has to be a value the
+    parsed id is not — rewriting the source line makes ``id`` parse as
+    the probe, while rewriting a line that merely matches the pattern
+    leaves ``id`` as it was — so it is a fixed ASCII value, NUL unless
+    the parsed id is NUL itself, whose ``json.dumps`` encoding TOML
+    always accepts whatever the author's id carries: a non-BMP character
+    would be written as surrogate escapes TOML refuses.
     """
 
-    probe_id = header_id + "\x00"
+    probe_id = "\x00" if header_id != "\x00" else "\x00\x00"
     for index, value_start, value_end in _id_line_candidates(lines):
         line = lines[index]
         rewritten = (

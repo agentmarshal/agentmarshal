@@ -444,6 +444,58 @@ def test_the_one_line_string_values_open_rewrites(
 
 
 @pytest.mark.parametrize(
+    "value",
+    ['"😀"', '"\\u007f"', '"\\u0000"', '"CR-099\\u0000"'],
+    ids=[
+        "non-BMP character",
+        "escaped DEL",
+        "NUL, the probe's own value",
+        "an id of the probe's form",
+    ],
+)
+def test_the_id_value_open_rewrites_whatever_it_carries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    value: str,
+) -> None:
+    """Scenario: a contract written first becomes the task's contract.
+
+    Whatever characters the author's ``id`` carries — a non-BMP
+    character, an escaped DEL or NUL, an id that itself ends in NUL —
+    the probe locating the declaration is a fixed ASCII value that
+    differs from it, so its TOML encoding is always valid and exactly the
+    declaration answers it. A line matching the ``id`` pattern inside a
+    literal string precedes the declaration: a probe the parsed id could
+    equal would name that line instead.
+    """
+
+    repo = _repo(tmp_path, monkeypatch)
+    provided = tmp_path / "contract.md"
+    original = (
+        "+++\n"
+        "schema = 1\n"
+        "note = '''\n"
+        'id = "decoy"\n'
+        "'''\n"
+        f"id = {value}\n"
+        'title = "Task"\n'
+        "scope = []\n"
+        "acceptance = []\n"
+        "+++\n\n"
+        "Body.\n"
+    )
+    provided.write_text(original, encoding="utf-8")
+
+    assert main(["open", "--contract-file", str(provided)]) == 0
+
+    written = _task_contract(repo).read_text(encoding="utf-8")
+    assert written == original.replace(value, '"CR-001"', 1)
+    opened = read_records(journal_root(repo), "CR-001")[0]
+    assert opened["contract"] == _pinned_hash(repo)
+
+
+@pytest.mark.parametrize(
     "id_line",
     ['"i\\u0064" = "CR-099"', 'id = """\nCR-099\n"""'],
     ids=["escaped key", "multi-line value"],
