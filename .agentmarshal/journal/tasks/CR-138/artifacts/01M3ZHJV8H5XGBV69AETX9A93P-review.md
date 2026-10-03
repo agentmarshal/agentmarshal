@@ -1,0 +1,17 @@
+I verified every present-behaviour claim against its source file and every measurement against the proposals. Summary of what I checked:
+
+- `reviewed_contract` is written only by the launcher (`review.py:978`); the `submit-review` CLI path (`cli.py:631`) never passes it, and `create_opened_record`/`create_amendment_record` (`records.py:792`, `records.py:891`) carry no hash — matches the Context bullet.
+- The gate's one independence check compares the casefolded reviewer email against `%ae%n%ce` over `merge_base..commit` (`gate.py:1025`, `_range_emails` at `gate.py:431`), and `grep` for vendor/model in `gate.py` returns nothing — "can check nothing else" holds.
+- `actors.py:_actors_table` maps an actor id to `git_identities` from the optional `actors` section of `project.json`, with no role field; `distinct` appears nowhere in the gate — ADR-0006's distinct-actor policy is designed (ADR-0006 §3 table, "off") and unimplemented.
+- `_validate_session_record` (`records.py:548`) requires `actor` only to be a non-empty string — free string, as stated.
+- ADR-0005's table row and lines 188–191 do count the committed contract's hash among projection-time fields "so they cannot be turned off", and ADR-0008 §4 puts the sidecar's `.agentmarshal/` in a repository of its own — both the revision and its reason are rendered correctly. Storing the hash on `opened`/`amendment` does not breach ADR-0005's completeness invariant, since capture policy governs only the supplementary layer.
+- All eight links resolve; no occurrence of "adopter", "client", a version number or the draft; proposals are "proposal NNN", linked on first use (unlinked repeats match ADR-0015:47's house style); the record model is referred to without a number, as ADR-0015 D9 does.
+- Form matches ADR-0012..0016 (Status/Date, "Builds on", the not-implemented-by-this-document note, Context, Decision, Consequences, Alternatives considered), and each of the four decision points the contract enumerates is present with nothing extra decided.
+
+The one problem I found: in the Context bullet on proposal 033, `docs/adr/ADR-0018-governing-the-contract.md:71-73` writes "$27.02 and about 95 minutes, more than any of the six complete candidate-review cycles run the same day". Proposal 033 compares only cost across those six cycles ($1.55 … $18.24) and reports no reviewer time for them, so the "more than any of" clause is supported for the dollar figure but not for the 95 minutes it is attached to — and the $18.24 cycle, a data migration with two returns, plausibly ran longer than 95 minutes. Advisory, not blocking: the sentence's substance (the contract review cost more than any implementation review and delivered nothing) is exactly what the source says, and dropping "and about 95 minutes" from the comparison would fix it.
+
+I could not execute the CI sequence — `uv` invocations are not permitted in this read-only sandbox. The change adds one Markdown file under `docs/adr/`; no test reads the real `docs/adr` directory (the `docs/adr/...` strings in `tests/test_brief.py` and `tests/test_journal.py` are `tmp_path` fixtures), and the file is outside ruff's and mypy's input and cannot affect `agentmarshal validate`, which checks journal records.
+
+AGENTMARSHAL_VERDICT_BEGIN
+{"reviewed_commit": "37b78b3cf5e6c911d3616b56fc06fb2d77924b3a", "verdict": "approved", "findings": [], "advisory_findings": ["proposal-033-time-comparison-unsourced"]}
+AGENTMARSHAL_VERDICT_END
