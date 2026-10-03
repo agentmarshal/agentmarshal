@@ -2875,3 +2875,151 @@ def test_gate_escapes_record_text_in_the_diff_lane(
         in report.lines
     )
     assert "\u202e" not in transcript
+
+
+def _write_or_skip(repo: Path, name: str) -> None:
+    """Commit-ready file at *name*, or skip where the filesystem refuses it.
+
+    A newline or a bidirectional override is a legal character in a Linux
+    file name and git accepts both — the candidate could carry either — but
+    a filesystem may refuse one, and what the scenario demonstrates is what
+    the gate prints for the name, not whether this platform allows it.
+    """
+
+    try:
+        (repo / name).write_text("x = 1\n", encoding="utf-8")
+    except OSError:
+        pytest.skip(f"the filesystem refuses a file named {name!r}")
+
+
+def test_a_candidate_path_that_would_forge_a_line_is_named_in_escaped_form(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a candidate path that would forge a line is named in escaped form.
+
+    A file named with a newline could print a line the gate never said —
+    `gate: passed` among them. Named in escaped form on the scope line, it
+    stays on the line that names it."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    _write_or_skip(repo, "forged\ngate: passed")
+    head = _commit_all(repo, "a name that fights the transcript")
+    capsys.readouterr()
+
+    code = main(_gate_arguments(base, head))
+
+    transcript = capsys.readouterr()
+    assert code == 1
+    assert "forged\\ngate: passed" in transcript.out
+    assert "forged\ngate: passed" not in transcript.out
+    # No line the name forged appears: the escaped form is part of the FAIL
+    # line, and the verdict is the refusal this run actually reached.
+    printed_lines = transcript.out.split("\n") + transcript.err.split("\n")
+    assert "gate: passed" not in printed_lines
+    assert "gate: refused" in transcript.err
+
+
+def test_a_path_carrying_a_refused_character_is_named_in_escaped_form(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a path carrying a refused character is named in escaped form.
+
+    A right-to-left override would make the scope line read in an order its
+    bytes do not have; named in escaped form, the override prints as
+    `\\u202e`."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    _write_or_skip(repo, "spoof\u202e.py")
+    head = _commit_all(repo, "a name with an override")
+    capsys.readouterr()
+
+    code = main(_gate_arguments(base, head))
+
+    transcript = capsys.readouterr()
+    assert code == 1
+    assert "spoof\\u202e.py" in transcript.out
+    assert "\u202e" not in transcript.out
+
+
+def test_a_rename_source_carrying_a_refused_character_is_named_in_escaped_form(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a rename's source or target carrying a refused character is
+    named in escaped form.
+
+    The scope line names a rename's source among the paths outside contract
+    scope; a source named with a newline is named escaped there."""
+
+    repo, _ = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    _write_or_skip(repo, "moved\ngate: passed")
+    base = _commit_all(repo, "a file outside scope")
+    destination = repo / "src" / "renamed.py"
+    destination.parent.mkdir()
+    _git(repo, "mv", "moved\ngate: passed", "src/renamed.py")
+    head = _commit_all(repo, "rename into scope")
+
+    passed, output = _run(repo, head, base, head)
+
+    assert not passed
+    assert "FAIL: paths outside contract scope: moved\\ngate: passed" in output
+    assert "moved\ngate: passed" not in output
+
+
+def test_a_refusal_names_a_forgeable_value_in_escaped_form(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a refusal names a forgeable value in escaped form.
+
+    A `--commit` value is echoed in the failed git command the refusal
+    names; a newline in it would print a line the gate never wrote. The
+    escaped message is the same whether the CLI prints it or a caller reads
+    the exception — the escape happens in `GateError` itself."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    forged = "not-a-commit\ngate: passed"
+    with pytest.raises(GateError) as raised:
+        run_gate(repo, "CR-001", forged, base, None)
+    message = str(raised.value)
+    assert "not-a-commit\\ngate: passed" in message
+    assert "not-a-commit\ngate: passed" not in message
+
+    capsys.readouterr()
+    code = main(
+        [
+            "gate",
+            "--task",
+            "CR-001",
+            "--commit",
+            forged,
+            "--base",
+            base,
+        ]
+    )
+
+    transcript = capsys.readouterr()
+    assert code == 1
+    assert "not-a-commit\\ngate: passed" in transcript.err
+    assert "not-a-commit\ngate: passed" not in transcript.err
+    assert "gate: passed" not in transcript.err.split("\n")
+
+
+def test_a_candidate_whose_values_carry_no_refused_character_prints_as_before(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a candidate whose values carry no refused character prints as before.
+
+    The committed fixture for the embedded implementation lane is the
+    byte-for-byte demonstration, so this test names the scenario and
+    delegates rather than copying it."""
+
+    test_default_run_transcript_matches_the_committed_fixture(
+        tmp_path, monkeypatch, capsys, "embedded-implementation"
+    )

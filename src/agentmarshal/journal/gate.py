@@ -72,7 +72,21 @@ _LEAK_HIT_RENDER_LIMIT = 20
 
 
 class GateError(Exception):
-    """Raised when the gate cannot evaluate a candidate at all."""
+    """Raised when the gate cannot evaluate a candidate at all.
+
+    The message is refusal text a caller prints as it stands, and it can
+    carry a value the gate did not write — a candidate's ref or path echoed
+    in a failed git command, a record or contract value inside an
+    exception's text, git's own error output — so it is escaped here the
+    way a transcript line is escaped at ``say``: nothing it carries can add
+    a line or reorder one, a raise added later cannot forget the escape,
+    and a wrapper that re-quotes the text (a lifecycle or a review error)
+    carries the escaped form. A message holding no refused character is
+    unchanged.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(escape_for_display(message))
 
 
 @dataclass(frozen=True)
