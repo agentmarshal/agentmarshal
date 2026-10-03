@@ -2,18 +2,25 @@
 
 Each record type with a dedicated line registers a renderer in
 ``_RECORD_RENDERERS``; a record type without an entry falls back to the
-generic id, type and time line.
+generic id, type and time line. The view also renders the two additions
+the local state brings — the overdue steps the process log reports
+(ADR-0014 decision 9 as amended), printed on stdout after the
+journal-derived detail, and the paths the journal, the process log and
+the local state live at (decision 13), printed on stderr so stdout
+stays what the documentation promises a parser.
 """
 
 from __future__ import annotations
 
 import subprocess
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import cast
+from typing import TextIO, cast
 
 from agentmarshal.journal.display import escape_for_display
 from agentmarshal.journal.status import TaskStatus
+from agentmarshal.localstate import LocalState
+from agentmarshal.steps import OpenStep, format_overdue
 
 #: A renderer takes what the line needs — the project root for the
 #: self-acceptance check, the record itself — and returns the line. The
@@ -197,3 +204,58 @@ def print_task_detail(project_root: Path, task: TaskStatus) -> None:
             )
         else:
             print(escape_for_display(renderer(project_root, record)))
+
+
+def print_paths(
+    journal_root: Path,
+    state: LocalState | None,
+    local_state_error: str | None,
+    stderr: TextIO,
+) -> None:
+    """Print the paths of the journal, the process log and the local state.
+
+    ADR-0014 decision 13: ``status`` says where everything lives — one
+    line per path on *stderr*, each escaped like other displayed text,
+    so stdout stays what the documentation promises a parser. The
+    resolved values print as given — in a sidecar they are the journal
+    repository's, the host's never entering the call. A local state that
+    cannot be resolved marks its two lines ``unavailable`` with the
+    reason rather than failing the command; a missing ``log/`` directory
+    is no error — its path prints and reads as no steps.
+    """
+
+    print(f"journal: {escape_for_display(str(journal_root))}", file=stderr)
+    if state is None:
+        reason = (
+            f" ({escape_for_display(local_state_error)})" if local_state_error else ""
+        )
+        print(f"process log: unavailable{reason}", file=stderr)
+        print(f"local state: unavailable{reason}", file=stderr)
+        return
+    print(f"process log: {escape_for_display(str(state.log))}", file=stderr)
+    print(f"local state: {escape_for_display(str(state.root))}", file=stderr)
+
+
+def print_overdue_steps(steps: Sequence[OpenStep]) -> None:
+    """Print one line per overdue step, each naming this machine's log.
+
+    The line carries the step id, the activity, the deadline and how long
+    past it the step is, and says it comes from this machine's process
+    log — the log is local to one machine (ADR-0014 decision 8), so a
+    line that did not say so would read as task evidence it is not. The
+    whole line goes through ``escape_for_display`` like every rendered
+    line; a field written before the forgeable-text rule can still carry
+    a character that would forge a line (ADR-0015 decision 5).
+    """
+
+    for step in steps:
+        if step.overdue_by is None:
+            continue
+        print(
+            escape_for_display(
+                "Overdue step (this machine's process log): "
+                f"step={step.step} activity={step.activity} "
+                f"deadline={step.deadline} "
+                f"past={format_overdue(step.overdue_by)}"
+            )
+        )

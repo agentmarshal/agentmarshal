@@ -14,8 +14,13 @@ from agentmarshal.cli import main
 from agentmarshal.journal import artifacts as artifacts_module
 from agentmarshal.journal import gate as gate_module
 from agentmarshal.journal import review as review_module
-from agentmarshal.journal.contracts import scope_covers
-from agentmarshal.journal.gate import GateError, markers_from_tree, run_gate
+from agentmarshal.journal.contracts import ContractHeader, scope_covers
+from agentmarshal.journal.gate import (
+    GateError,
+    markers_from_tree,
+    run_findings_gate,
+    run_gate,
+)
 from agentmarshal.journal.records import (
     create_abandoned_record,
     create_acceptance_record,
@@ -27,7 +32,7 @@ from agentmarshal.journal.records import (
     read_records,
     write_record,
 )
-from agentmarshal.journal.status import load_task_status
+from agentmarshal.journal.status import TaskStatus, load_task_status
 from test_placement import _commit, _host_and_sidecar
 
 _WRITER = ["-c", "user.name=Worker", "-c", "user.email=worker@test.invalid"]
@@ -2743,3 +2748,130 @@ def test_sidecar_history_sees_an_artifact_replaced_by_a_symlink(tmp_path: Path) 
     tampered = _sidecar_history_tampering(repo, ".agentmarshal/journal")
 
     assert ".agentmarshal/journal/tasks/CR-001/artifacts/r.md" in tampered
+
+
+def test_findings_gate_escapes_record_and_contract_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a refused character prints escaped in the gate's transcript.
+
+    The records are built in memory — today's read rules would refuse the
+    finding id, the finding ids and the acceptance fields on disk — which is
+    the shape a journal written before the rule existed, or a record written
+    around the writer with a lowered schema, can hand the findings gate.
+    """
+
+    repo, _base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    journal_root = repo / ".agentmarshal" / "journal"
+    task = TaskStatus(
+        task_id="CR-001",
+        contract=ContractHeader(
+            schema=1,
+            id="CR-001",
+            title="Gate task",
+            scope=("src/\u202ex", "lib\nforged"),
+            acceptance=(),
+        ),
+        records=(
+            {"id": "r-open", "record_type": "opened", "created_at": "t0"},
+            {
+                "id": "r-f\n1\u202e",
+                "record_type": "finding",
+                "created_at": "t1",
+                "summary": "claimed\n\u202e",
+                "artifacts": [{"ref": "evidence/x\ny\u202e.md", "hash": "0" * 64}],
+            },
+            {
+                "id": "r-review",
+                "record_type": "review",
+                "created_at": "t2",
+                "reviewed_finding": "r-f\n1\u202e",
+                "verdict": "changes_required",
+                "findings": ["F-1\nforged", "F-2\u202e"],
+                "reviewer": {
+                    "role": "qa",
+                    "vendor": "v",
+                    "model": "m",
+                    "email": "outsider@test.invalid",
+                },
+            },
+            {
+                "id": "r-acceptance",
+                "record_type": "acceptance",
+                "created_at": "t3",
+                "accepted_finding": "r-f\n1\u202e",
+                "accepted_by": "op\nerator\u202e",
+                "findings": ["F-1\nforged", "F-2\u202e"],
+                "reason": "looks\nfine\u202e",
+            },
+        ),
+        state="open",
+    )
+    monkeypatch.setattr(gate_module, "load_task_status", lambda *_args, **_keys: task)
+
+    report = run_findings_gate(journal_root, "CR-001")
+
+    transcript = "\n".join(report.lines)
+    assert (
+        "FAIL: findings lane requires an empty scope; declared scope: "
+        "src/\\u202ex, lib\\nforged" in report.lines
+    )
+    assert (
+        "PASS: accepted over findings F-1\\nforged, F-2\\u202e by "
+        "op\\nerator\\u202e; not an approving review" in report.lines
+    )
+    assert (
+        "NOT VERIFIED: artifact evidence/x\\ny\\u202e.md does not resolve "
+        "locally" in report.lines
+    )
+    # No refused character reaches the transcript raw: nothing prints as a
+    # line the tool never said or in an order its bytes do not have.
+    assert "\u202e" not in transcript
+
+
+def test_gate_escapes_record_text_in_the_diff_lane(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a refused character prints escaped in the gate's transcript.
+
+    Same scenario, other lane: the candidate's records are handed to the
+    gate in memory — a journal that read rules older than the refusal wrote
+    them, or a writer around the writer, lands exactly this shape.
+    """
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    head = _implement(repo, "src/module.py")
+    hostile_records = [
+        {
+            "record_type": "review",
+            "reviewed_commit": head,
+            "verdict": "changes_required",
+            "findings": ["F-1\n\u202e", "F-2"],
+            "reviewer": {
+                "role": "qa",
+                "vendor": "v",
+                "model": "m",
+                "email": "outsider@test.invalid",
+            },
+        },
+        {
+            "record_type": "acceptance",
+            "accepted_commit": head,
+            "accepted_by": "op\nerator\u202e",
+            "findings": ["F-1\n\u202e"],
+            "reason": "settled\n\u202e",
+        },
+    ]
+    monkeypatch.setattr(
+        gate_module, "read_records", lambda *_args, **_keys: hostile_records
+    )
+
+    report = run_gate(repo, "CR-001", head, base, head)
+
+    transcript = "\n".join(report.lines)
+    assert (
+        f"FAIL: acceptance of {head[:12]} does not cover the latest review's "
+        "findings (outstanding: F-1\\n\\u202e, F-2; accepted: F-1\\n\\u202e)"
+        in report.lines
+    )
+    assert "\u202e" not in transcript

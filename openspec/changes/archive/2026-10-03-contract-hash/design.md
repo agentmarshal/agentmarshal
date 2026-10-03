@@ -55,8 +55,12 @@ way.
   source)` decodes back to the identical text and the digest is the value
   `hashlib.sha256(contract.encode("utf-8")).hexdigest()` computed before
   — a test computes it both ways over LF, CRLF and BOM-bearing inputs.
-  review-evidence's "sha256 of the exact contract bytes the prompt
-  carried" therefore stays true and the requirement is unmodified.
+  The digest is over the contract text the prompt carries, before any
+  escaping for display: the prompt inserts the contract block raw and
+  `escape_for_display` touches the named material placed into lines, not
+  the contract. review-evidence's "sha256 of the exact contract bytes
+  the prompt carried" therefore stays true and the requirement is
+  unmodified.
 - **The family is two `_FIELD_FAMILIES` entries over one frozenset** —
   `(7, "opened", _SCHEMA_7_CONTRACT_FIELDS)` and
   `(7, "amendment", _SCHEMA_7_CONTRACT_FIELDS)` — the registry keying on
