@@ -36,16 +36,22 @@ worktree needs here.
   sidecar — and `host_root` never enters the call. A caller cannot get the
   sidecar case wrong because there is nothing to get wrong.
 - **`_git_common_dir` is exposed as `git_common_dir` and given an honest
-  contract.** Today it collapses every failure — git missing, not a worktree,
-  undecodable output — into `None`, which is all `initialize_project`'s
-  equality check needs. A location API needs the *cause*: the public contract
-  mirrors `find_git_root`'s — `GitNotAvailableError` when git cannot run or
-  answers something unreadable, `None` when git runs and cannot name a common
-  directory (no worktree). `initialize_project` refuses a sidecar whose
-  relation to the host cannot be determined: before, an indeterminate
-  comparison refused only when both calls failed (two `None`s comparing
-  equal) and passed silently when one did; now any failure refuses with the
-  cause named.
+  contract.** It used to collapse every failure — git missing, not a
+  worktree, undecodable output — into `None`, which is all
+  `initialize_project`'s equality check needs. A location API needs the
+  *cause*: the public contract mirrors `find_git_root`'s —
+  `GitNotAvailableError` when git cannot run or answers something
+  unreadable, an answer whose `path` is `None` when git runs but cannot
+  name a common directory (no worktree), keeping git's own stderr in
+  `reason` so a refusing caller quotes git instead of inventing a cause.
+  `initialize_project`'s comparison is unchanged: it still asks whether
+  the two answers are equal, `reason` takes no part in equality, and an
+  indeterminate answer behaves exactly as a `None` did — two unanswered
+  calls still compare equal and refuse with the old "worktree of host"
+  wording, one unanswered call still passes silently. That indeterminacy
+  is a known limitation of the init check, left as it was; `reason`
+  exists for the callers that must name a cause, which is what local
+  state needs.
 - **Resolution returns a value object; creation is a second call.**
   `local_state(placement)` runs `git rev-parse` and returns a `LocalState` —
   the root plus the six named locations as paths. It creates nothing, so a

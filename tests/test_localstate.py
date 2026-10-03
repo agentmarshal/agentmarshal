@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
+from typing import NoReturn
 
 import pytest
 
@@ -14,6 +16,7 @@ from agentmarshal.localstate import (
     ensure_directory,
     local_state,
 )
+from agentmarshal.project import GitNotAvailableError, git_common_dir
 
 
 def _git_init(path: Path) -> None:
@@ -59,6 +62,32 @@ def _tree_snapshot(root: Path) -> dict[str, tuple[int, bytes | None]]:
         )
         for path in root.rglob("*")
     }
+
+
+def _gits_common_dir_refusal(worktree: Path) -> str:
+    """Ask git the same question ``git_common_dir`` asks; return its stderr.
+
+    The words belong to this git, so a test asserting on the reason a
+    failure repeats asks git rather than guessing its wording — phrasing
+    is localised and changes between versions.
+    """
+
+    return (
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(worktree),
+                "rev-parse",
+                "--path-format=absolute",
+                "--git-common-dir",
+            ],
+            capture_output=True,
+            check=False,
+        )
+        .stderr.decode("utf-8", errors="replace")
+        .strip()
+    )
 
 
 def test_embedded_project_resolves_under_its_own_git_dir(tmp_path: Path) -> None:
@@ -185,19 +214,27 @@ def test_a_writer_creates_a_directory_location_explicitly(tmp_path: Path) -> Non
 
 
 def test_a_project_outside_git_fails_cleanly(tmp_path: Path) -> None:
-    """Scenario: a project outside git fails cleanly."""
+    """Scenario: a project outside git fails cleanly.
+
+    The reason the failure must repeat is whatever this git said, so the
+    test asks git the same question rather than guessing its wording —
+    git's phrasing is localised and changes between versions.
+    """
 
     project = tmp_path / "project"
     project.mkdir()
     _init_project(project)
+
+    gits_reason = _gits_common_dir_refusal(project)
 
     with pytest.raises(LocalStateError) as raised:
         local_state(resolve_placement(project))
 
     message = str(raised.value)
     assert str(project.resolve()) in message
-    assert "common directory" in message
-    assert "not a git repository" in message
+    assert "git cannot name a common directory" in message
+    assert gits_reason != ""
+    assert gits_reason in message
 
 
 def test_a_stale_git_pointer_reports_gits_reason(tmp_path: Path) -> None:
@@ -217,22 +254,7 @@ def test_a_stale_git_pointer_reports_gits_reason(tmp_path: Path) -> None:
         f"gitdir: {tmp_path / 'missing-gitdir'}\n", encoding="utf-8"
     )
 
-    gits_reason = (
-        subprocess.run(
-            [
-                "git",
-                "-C",
-                str(project),
-                "rev-parse",
-                "--path-format=absolute",
-                "--git-common-dir",
-            ],
-            capture_output=True,
-            check=False,
-        )
-        .stderr.decode("utf-8", errors="replace")
-        .strip()
-    )
+    gits_reason = _gits_common_dir_refusal(project)
 
     with pytest.raises(LocalStateError) as raised:
         local_state(resolve_placement(project))
@@ -243,3 +265,36 @@ def test_a_stale_git_pointer_reports_gits_reason(tmp_path: Path) -> None:
     assert gits_reason != ""
     assert gits_reason in message
     assert "not a git worktree" not in message
+
+
+def test_git_not_runnable_is_a_local_state_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Git that cannot run surfaces as a LocalStateError, not a traceback.
+
+    ``git_common_dir``'s contract for a git that cannot be invoked — not
+    installed, not executable — is ``GitNotAvailableError`` carrying the
+    ``OSError``; ``local_state`` turns it into a ``LocalStateError``
+    naming the repository, the same clean-failure path as a refusal.
+    """
+
+    project = tmp_path / "project"
+    _git_init(project)
+    _init_project(project)
+    placement = resolve_placement(project)
+
+    def no_git(*args: object, **kwargs: object) -> NoReturn:
+        raise OSError("no such file or directory: 'git'")
+
+    monkeypatch.setattr("agentmarshal.project.subprocess", SimpleNamespace(run=no_git))
+
+    with pytest.raises(GitNotAvailableError):
+        git_common_dir(project)
+
+    with pytest.raises(LocalStateError) as raised:
+        local_state(placement)
+
+    message = str(raised.value)
+    assert str(project.resolve()) in message
+    assert "cannot run git" in message
+    assert "no such file or directory" in message
