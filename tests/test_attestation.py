@@ -99,6 +99,7 @@ def test_the_three_modules_read_the_one_registry() -> None:
         "session": "https://agentmarshal.dev/attestations/session/v1",
         "finding": "https://agentmarshal.dev/attestations/finding/v1",
         "check": "https://agentmarshal.dev/attestations/check/v1",
+        "acknowledgement": "https://agentmarshal.dev/attestations/acknowledgement/v1",
     }
     assert dict(status_module._RECORD_TYPE_STATES) == {
         "opened": "open",
@@ -111,6 +112,7 @@ def test_the_three_modules_read_the_one_registry() -> None:
         "session": None,
         "finding": None,
         "check": None,
+        "acknowledgement": None,
     }
     terminal = {"completed", "abandoned"}
     assert terminal == status_module._TERMINAL_RECORD_TYPES
@@ -129,6 +131,7 @@ def test_the_three_modules_read_the_one_registry() -> None:
         "abandoned",
         "reopened",
         "check",
+        "acknowledgement",
     }
     assert writable == status_module._WRITABLE_RECORD_TYPES
     assert set(get_args(status_module.WritableRecordType)) == writable
@@ -149,7 +152,7 @@ def test_the_three_modules_read_the_one_registry() -> None:
         record_type
         for record_type, spec in RECORD_TYPES.items()
         if spec.requires_recorded_by
-    } == {"finding", "check"}
+    } == {"finding", "check", "acknowledgement"}
 
 
 def test_the_writable_flag_is_what_the_write_path_consults(
