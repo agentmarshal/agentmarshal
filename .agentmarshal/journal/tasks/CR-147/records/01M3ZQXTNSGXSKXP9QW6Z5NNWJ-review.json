@@ -1,0 +1,30 @@
+{
+  "advisory_findings": [
+    "test-relies-on-check-order-for-independence-duplicates",
+    "duplicated-schema-gate-loops"
+  ],
+  "artifacts": [
+    {
+      "hash": "92029bd9412454e7dfddf65d8cec88985ef2adfe644c19cf4e898e43ca8649cc",
+      "ref": ".agentmarshal/journal/tasks/CR-147/artifacts/01M3ZQXTNSGXSKXP9QW6Z5NNWJ-review.md"
+    }
+  ],
+  "created_at": "2026-10-03T02:01:42.841242Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "63138c550689c85175e93efcfc3bd82adce9a754",
+  "reviewed_contract": "ee8527a86a4fbadaed2e43d15f35c45650564cefe915eb662d0fad2ebd659389",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-147",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "approved"
+}
