@@ -96,10 +96,13 @@ def write_event(
     ``fields`` carries the event kind's own keys; ``format``, ``at``,
     ``event`` and ``task`` are the writer's envelope — a ``fields`` key
     naming one of them is refused with :class:`ProcessLogError` rather than
-    overriding it. A naive ``at`` is read as UTC. The file is opened in
-    append mode for this one line and closed. A rotation that fails — a
-    reader can hold the file on Windows — is left for the next write to
-    retry; the event is already written.
+    overriding it, and a value strict JSON cannot carry — a non-finite
+    number or an unsupported type — is refused the same way before any line
+    lands. A naive ``at`` is read as UTC. The file is opened in append mode
+    for this one line and closed; an ``OSError`` appending reaches the
+    caller as a :class:`ProcessLogError` naming the file and what to do. A
+    rotation that fails — a reader can hold the file on Windows — is left
+    for the next write to retry; the event is already written.
     """
 
     stolen = _ENVELOPE_KEYS.intersection(fields)
@@ -118,9 +121,23 @@ def write_event(
     if task is not None:
         record["task"] = task
     record.update(fields)
-    line = json.dumps(record, ensure_ascii=False, separators=(",", ":"))
-    with writer.path.open("ab") as handle:
-        handle.write(line.encode("utf-8") + b"\n")
+    try:
+        line = json.dumps(
+            record, ensure_ascii=False, separators=(",", ":"), allow_nan=False
+        )
+    except (TypeError, ValueError) as error:
+        raise ProcessLogError(
+            f"event cannot be encoded as strict JSON: {error}"
+        ) from error
+    try:
+        with writer.path.open("ab") as handle:
+            handle.write(line.encode("utf-8") + b"\n")
+    except OSError as error:
+        reason = error.strerror or str(error)
+        raise ProcessLogError(
+            f"{writer.path}: cannot append the event ({reason}); restore "
+            "the file or its directory and retry the write"
+        ) from error
     with suppress(OSError):
         _rotate_if_full(writer.path)
     return record
