@@ -67,8 +67,10 @@ measured what one such driver costs: a provider usage limit consumed the
 queue's attempt budget within a minute; a run that had finished its work
 when the time limit hit was counted a failure and re-done instead of
 reviewed; an output-length truncation was retried on the same model as
-if it were an environment error; and the queue took 20 manual relaunches
-in two days because its order lived in the driving process's arguments.
+if it were an environment error; and the queue took 20 launches in two
+days — every launch beyond the first a manual change of the plan that a
+data-driven queue would have absorbed as an edit — because its order
+lived in the driving process's arguments.
 
 How it works today:
 
@@ -111,9 +113,11 @@ is an ordinary extension pause, handled by rule 11 like any other.
 ### 1. The command
 
 `agentmarshal next <task> [--branch …] [--base …] [--json]` prints one
-action and its reason. The branch and the base derive the way `gate`
-derives them — the task from the branch, the base by default the default
-branch (`gate_context.py`).
+action and its reason. The task is a required argument — the form
+without it is left open below. `--branch` defaults to the current
+branch; `--base` derives the way `gate` derives its default base —
+`origin/HEAD`, `master` when no `origin/HEAD` exists, a refusal when
+neither resolves (`gate_context.py`).
 
 The command executes nothing and writes nothing — not to the journal,
 not to the process log, not to refs, not to the object store. The
@@ -148,9 +152,9 @@ visibility between machines
 `done` · `hold` · `wait` (until a stated time) · `stop` (a person is
 needed, with the reason) · `integrate` · `implement` · `fix` (which
 implementer; the latest review's findings; `resume` as a hint for
-continuing the session) · `review` (with `mode: resolution` and
-`carried_approval` where they apply, with `allow_unfinished` where it
-applies) · `complete` (with the base for `complete --base`, and the ids
+continuing the session) · `review` (which reviewer, where the rule names
+one; with `mode: resolution` and `carried_approval` where they apply) ·
+`complete` (with the base for `complete --base`, and the ids
 of the advisory findings that still need a disposition).
 
 ### 4. The table — first match, top to bottom
@@ -171,9 +175,16 @@ sessions and acceptances alike.
 4. The plan: `hold` set → `hold`; `not_before` in the future → `wait`
    until it.
 5. The latest session — an implementer's or a reviewer's — ended
-   `provider-limit`: `resets_at` in the future → `wait` until it; no
-   reset recorded and a next implementer in the contract's list → `fix`
-   by them with `fallback_reason: provider-limit`; otherwise → `stop`.
+   `provider-limit`, and the latest review of the head (if any) does not
+   approve it — where one does, this rule does not fire: a quota stop
+   cannot demote an approved head to `fix`, and rule 8 decides.
+   Otherwise `resets_at` in the future → `wait` until it; with no reset
+   recorded, by whose session it was: an implementer's — a next
+   implementer in the contract's list → `fix` by them with
+   `fallback_reason: provider-limit`; a reviewer's — a next reviewer in
+   the contract's list → `review` by them —
+   [ADR-0018](ADR-0018-governing-the-contract.md)'s decision 3 orders
+   both lists — and either list exhausted or absent → `stop`.
 6. The head conflicts with the base → `integrate`. In the embedded
    placement: the latest contract amendment is not an ancestor of
    merge-base(head, base) → `integrate` "merge the amendment" — the rule
@@ -233,12 +244,13 @@ sessions and acceptances alike.
 
 ### 5. What counts as an attempt
 
-`environment-failure` and `provider-limit` are not rounds — the outcome
-vocabulary of
-[ADR-0022](ADR-0022-the-0-5-0-record-model-one-transition.md) marks them
-so, and it is the distinction
+`environment-failure` is not a round — the outcome vocabulary of
+[ADR-0022](ADR-0022-the-0-5-0-record-model-one-transition.md) marks it
+so — and neither is `provider-limit`, on
 [proposal 041](../proposals/041-the-next-step-of-a-task-is-decided-outside-the-tool.md)'s
-first measurement missed. Rounds for the threshold are `changes_required`
+own ground: the provider's refusal did not consume the attempt. Together
+they are the distinction proposal 041's first measurement missed. Rounds
+for the threshold are `changes_required`
 verdicts
 ([ADR-0016](ADR-0016-the-lifecycle-of-review-findings.md)). The
 "two in a row" counters of rule 10 count implementer sessions since the
@@ -250,8 +262,8 @@ Text: `next: <action> — <reason>`, followed by detail lines; strings
 taken from records are escaped on display
 ([ADR-0015](ADR-0015-a-rule-applies-from-the-schema-that-introduced-it.md)).
 `--json` prints the same unescaped: `{action, reason, task, until?,
-implementer?, resume?, findings?, mode?, carried_approval?,
-allow_unfinished?, base?, advisories?, inputs_missing}`.
+implementer?, reviewer?, resume?, findings?, mode?, carried_approval?,
+fallback_reason?, base?, advisories?, inputs_missing}`.
 
 ### 7. Two points decided by the operator
 
@@ -264,11 +276,13 @@ treating it as one is the second failure class proposal 041 measured —
 a finished candidate marked failed and re-done instead of reviewed. The
 refusal therefore does not fire on `time-limit` with `report_ready`:
 this is a **refinement of proposal 036's disposition**, decided here and
-named as such — not an `allow_unfinished` override spent case by case.
-The alternative — `next` answering `review` with `allow_unfinished` and
-a reason, passing every such run through the override — was considered
-and not taken: the override is for a case the operator judges, and a
-finished run with its report written needs no judgement.
+named as such — not an override spent case by case. The alternative —
+`next` answering `review` carrying the unfinished-candidate override and
+a reason, passing every such run through it — was considered and not
+taken: the override is for a case the operator judges, and a finished
+run with its report written needs no judgement. The explicit override
+proposal 036's disposition leaves the operator — `review
+--allow-unfinished` — stays a flag of `review`, outside `next`.
 
 **B. The round threshold counts since the latest contract amendment.**
 [ADR-0016](ADR-0016-the-lifecycle-of-review-findings.md)'s count of
