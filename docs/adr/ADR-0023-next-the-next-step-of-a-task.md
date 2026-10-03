@@ -46,10 +46,10 @@ disposition** — a `time-limit` session whose report is ready does not
 trip the unfinished-candidate refusal, decided as decision A below —
 **and extends
 [ADR-0014](ADR-0014-where-things-live.md)**: `next` is a further local
-reader of the process log, which only `status` and `doctor` read before;
-the gate still never reads it. The texts of ADR-0019, proposal 036 and
-ADR-0014 are amended by a later documentation task; this ADR names the
-revisions.
+reader of the process log, beside the `status` and `doctor` the decision
+names; the gate still never reads it. The texts of ADR-0019, proposal
+036 and ADR-0014 are amended by a later documentation task; this ADR
+names the revisions.
 
 This ADR records a decision. The command, the rule table and the driver
 it describes are **not implemented by this document**; they follow in
@@ -97,11 +97,13 @@ How it works today:
 - `complete` re-runs the gate and takes `--base`, which must be an
   ancestor of the candidate — the merge-base it was gated against, not
   the post-merge tip (docs/self-hosting-workflow.md);
-- an in-flight step lives in the process log — a `step-started` event
-  with its deadline, closed by a `step-ended` event or by the record it
-  ends with — read by `status` and `doctor`, never by the gate
+- the `step` commands write a step's events to the process log —
+  `step start` a `step-started` with its deadline, `step end` the
+  `step-ended` that closes it (`steps.py`); reading them — `status` and
+  `doctor` showing an overdue step — is decided
   ([ADR-0014](ADR-0014-where-things-live.md),
-  [ADR-0022](ADR-0022-the-0-5-0-record-model-one-transition.md)).
+  [ADR-0022](ADR-0022-the-0-5-0-record-model-one-transition.md)) and not
+  yet implemented; the gate never reads the log.
 
 One placement note: the merge slot of
 [proposal 043](../proposals/043-review-before-integration-makes-every-merge-stale.md)
@@ -180,7 +182,9 @@ sessions and acceptances alike.
    cannot demote an approved head to `fix`, and rule 8 decides.
    Otherwise `resets_at` in the future → `wait` until it; with no reset
    recorded, by whose session it was: an implementer's — a next
-   implementer in the contract's list → `fix` by them with
+   implementer in the contract's list → `implement` by them when the
+   head carries no commits over the base — rule 7's case, nothing yet
+   to fix — `fix` by them where it does, either way with
    `fallback_reason: provider-limit`; a reviewer's — a next reviewer in
    the contract's list → `review` by them —
    [ADR-0018](ADR-0018-governing-the-contract.md)'s decision 3 orders
@@ -220,7 +224,9 @@ sessions and acceptances alike.
       session's `cli_session` — a hint; a CLI that will not resume falls
       back to a new round
       ([proposal 042](../proposals/042-liveness-of-an-unattended-loop-is-watched-by-hand.md));
-    - `environment-failure` → retry the same step — not a round;
+    - `environment-failure` → the action that produced the failed
+      session, run again — `implement` or `fix` for an implementer's
+      session, `review` for a reviewer's — not a round;
     - `failed`, or `time-limit` without a report → `fix`; two in a row
       since the latest review → the next implementer —
       [proposal 034](../proposals/034-the-contract-does-not-name-its-implementer-and-reviewer.md)'s
@@ -236,10 +242,15 @@ sessions and acceptances alike.
     base, the reviewer not a writer of the candidate, the reviewer list
     and the independence rules,
     [proposal 036](../proposals/036-review-accepts-a-candidate-the-implementer-did-not-finish.md)'s
-    refusal, the agreement record where the project requires it, an
-    extension pause standing without its acceptance. Any one fails →
-    `stop` naming the check. All pass → `complete`, with the ids of the
-    advisory findings still without a disposition
+    refusal, the agreement record where the project requires it — and,
+    beside them, one condition that is not the gate's: no extension
+    pause standing without its acceptance. The pause is a step before
+    the gate, which reads neither an extension's output nor its flags;
+    the merge happens when the gate has passed and no pause stands —
+    [ADR-0013](ADR-0013-extensions-stages-scopes-isolation-trust.md)'s
+    decision 5. Any one fails → `stop` naming the check. All pass →
+    `complete`, with the ids of the advisory findings still without a
+    disposition
     ([ADR-0016](ADR-0016-the-lifecycle-of-review-findings.md)).
 
 ### 5. What counts as an attempt
@@ -281,8 +292,9 @@ named as such — not an override spent case by case. The alternative —
 a reason, passing every such run through it — was considered and not
 taken: the override is for a case the operator judges, and a finished
 run with its report written needs no judgement. The explicit override
-proposal 036's disposition leaves the operator — `review
---allow-unfinished` — stays a flag of `review`, outside `next`.
+proposal 036's disposition leaves the operator stays the operator's —
+its form is part of implementing proposal 036 — and `next` never needs
+it: after this decision no `review` action carries one.
 
 **B. The round threshold counts since the latest contract amendment.**
 [ADR-0016](ADR-0016-the-lifecycle-of-review-findings.md)'s count of
