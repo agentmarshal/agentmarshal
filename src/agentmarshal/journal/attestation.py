@@ -97,6 +97,11 @@ RECORD_TYPES: dict[str, RecordTypeSpec] = {
         admitted_after_terminal=frozenset({"done", "abandoned"}),
         requires_recorded_by=True,
     ),
+    "acknowledgement": RecordTypeSpec(
+        "https://agentmarshal.dev/attestations/acknowledgement/v1",
+        None,
+        requires_recorded_by=True,
+    ),
 }
 
 # The predicate view of the registry: stable URIs naming AgentMarshal's own
