@@ -18,6 +18,11 @@
   named on stderr — verify: pytest.
 - [x] 2.2 `--contract-file` refuses `--title`/`--scope` and a missing,
   unreadable or invalid file, writing nothing — verify: pytest.
+- [x] 2.3 `open` rewrites the header `id` written as `id`, `"id"` or
+  `'id'` with a one-line string value on a line of its own in the
+  top-level table, and refuses a valid contract that writes it any other
+  way — an escaped key, a value spanning lines — with a message naming
+  those forms, writing nothing — verify: pytest.
 
 ## 3. `status` shows the drift
 

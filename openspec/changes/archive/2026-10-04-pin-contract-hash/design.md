@@ -32,19 +32,27 @@ that proposal announced: the writers set the field.
   bytes the write lands. `amend` and `migrate` hash the contract file's
   bytes on disk. Every place calls `contract_sha256`; no second way.
 - **`--contract-file` rewrites only the `id` line.** The task id is
-  assigned inside `open_task`, so the retarget happens there: the
-  header's top-level `id = …` line — bare or quoted key, before the first
-  `[table]` line — is replaced, and every other byte is kept, line
-  endings and a byte-order mark included. The rewritten text is parsed
-  again as a confirmation that it still names a contract whose header
-  parses and that the `id` now is the task's. A different value is
-  carried on `OpenedTask.replaced_id` for the CLI to name on stderr.
+  assigned inside `open_task`, so the retarget happens there: the header
+  line that declares `id` — written as the key `id`, `"id"` or `'id'`
+  with a one-line string value on a line of its own — is replaced, and
+  every other byte is kept, line endings and a byte-order mark included.
+  A look-alike line is not the declaration: the same text inside a
+  multi-line string value or under a `[table]` header matches the
+  pattern, so a candidate is confirmed by rewriting it and re-parsing —
+  only the line whose rewrite changes the parsed `id` is retargeted, and
+  the rewritten text is parsed again as a confirmation that it still
+  names a contract whose header parses and that the `id` now is the
+  task's. A valid contract whose `id` is written another way — an
+  escaped key, a value spanning lines — is refused with a message naming
+  the supported forms. A different value is carried on
+  `OpenedTask.replaced_id` for the CLI to name on stderr.
 - **The provided contract is validated before the journal is touched.**
   `_read_provided_contract` reads, decodes and validates the file ahead
-  of every directory `open` creates, so a file that is missing,
-  unreadable or not a valid contract is refused with nothing written —
-  the same boundary `parse_contract_text` is for a contract already in
-  the journal.
+  of every directory `open` creates — the header's parse, and that its
+  `id` sits where the rewrite reaches it — so a file that is missing,
+  unreadable, not a valid contract or one whose `id` is written another
+  way is refused with nothing written — the same boundary
+  `parse_contract_text` is for a contract already in the journal.
 - **`amend` refuses through the load it already does.**
   `load_task_for_record` parses the contract, so a `contract.md` that
   does not parse is refused before the hash is read and no record is

@@ -233,9 +233,14 @@ contract it writes.
 written — header and body — validate its header as `parse_contract_text`
 does, set the header's `id` to the assigned task id — naming on stderr
 any different value it replaced — write it as the task's contract and pin
-its hash. It SHALL refuse to be combined with `--title` or `--scope`, and
-SHALL refuse a file that is missing, unreadable or not a valid contract,
-writing nothing.
+its hash. The `id` is rewritten where it is written as the key `id`,
+`"id"` or `'id'` with a one-line string value on a line of its own in the
+header's top-level table; a valid contract that writes its `id` any other
+way — an escaped key, a value spanning lines — SHALL be refused with a
+message naming those forms, writing nothing. `--contract-file` SHALL
+refuse to be combined with `--title` or `--scope`, and SHALL refuse a
+file that is missing, unreadable or not a valid contract, writing
+nothing.
 
 #### Scenario: a contract written first becomes the task's contract
 - **WHEN** `open --contract-file` names a valid contract
@@ -246,6 +251,13 @@ writing nothing.
 - **WHEN** the provided contract's header `id` differs from the assigned
   task id
 - **THEN** it is replaced with the assigned id, which stderr names
+
+#### Scenario: an id written any other way is refused naming the supported forms
+- **WHEN** `open --contract-file` names a valid contract whose header
+  writes its `id` as an escaped key or a value spanning lines
+- **THEN** it is refused with a message naming the forms it rewrites —
+  `id`, `"id"` or `'id'` with a one-line string value on a line of its
+  own in the header's top-level table — and nothing is written
 
 #### Scenario: --contract-file cannot combine with --title or --scope
 - **WHEN** `open --contract-file` is given `--title` or `--scope`

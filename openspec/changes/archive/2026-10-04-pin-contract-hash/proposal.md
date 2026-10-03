@@ -20,8 +20,12 @@ schema 7 — the coordinated upgrade of ADR-0022.
   written (header and body), validates its header as `parse_contract_text`
   does, sets the header's `id` to the assigned task id — naming on stderr
   any different value it replaced — writes it as the task's contract and
-  pins its hash. It refuses combination with `--title` or `--scope`, and
-  refuses a missing, unreadable or invalid file, writing nothing.
+  pins its hash. The `id` is rewritten where it is written as `id`,
+  `"id"` or `'id'` with a one-line string value on a line of its own in
+  the top-level table; a valid contract that writes it any other way is
+  refused naming those forms. `--contract-file` refuses combination with
+  `--title` or `--scope`, and refuses a missing, unreadable or invalid
+  file, writing nothing.
 - `agentmarshal amend` pins the `contract_sha256` of the task's
   `contract.md` as it stands at that moment — in a sidecar, the journal
   repository's copy — and refuses a contract that does not parse;

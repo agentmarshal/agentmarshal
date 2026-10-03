@@ -79,6 +79,74 @@ _CONTRACT_ID_VALUE = re.compile(
     r")"
 )
 
+_ID_FORMS_MESSAGE = (
+    "the header's `id` is not written in a form `open` can rewrite: it "
+    "must be the key `id`, `\"id\"` or `'id'` with a one-line string "
+    "value on a line of its own in the header's top-level table"
+)
+
+
+def _split_for_rewrite(text: str) -> tuple[str, list[str]]:
+    """The text's leading byte-order marks and its lines, endings kept.
+
+    ``parse_contract_text`` strips every leading mark and splits on every
+    boundary ``splitlines`` knows — a lone CR included — so the rewrite
+    works on the same lines and never reconstructs an ending; the bytes
+    that were there stay.
+    """
+
+    stripped = text.lstrip("\ufeff")
+    bom = text[: len(text) - len(stripped)]
+    return bom, stripped.splitlines(keepends=True)
+
+
+def _id_line_candidates(lines: list[str]) -> list[tuple[int, re.Match[str]]]:
+    """Header lines that write ``id`` in a form the open can rewrite."""
+    start = next(index for index, line in enumerate(lines) if line.strip() == "+++")
+    end = next(
+        index
+        for index, line in enumerate(lines[start + 1 :], start + 1)
+        if line.strip() == "+++"
+    )
+    return [
+        (index, match)
+        for index in range(start + 1, end)
+        if (match := _CONTRACT_ID_VALUE.match(lines[index])) is not None
+    ]
+
+
+def _id_source_line(
+    lines: list[str], header_id: str, bom: str
+) -> tuple[int, re.Match[str]] | None:
+    """Which candidate line actually declares the parsed ``id``.
+
+    A line in a supported form is the declaration only where rewriting it
+    changes what the header parses as ``id``: the same text inside a
+    multi-line string value, or under a ``[table]`` header, matches the
+    pattern without being it. The probe is the parsed id plus a character
+    no rewrite of another line can produce, so exactly the source line
+    answers it.
+    """
+
+    probe_id = header_id + "\x00"
+    for index, match in _id_line_candidates(lines):
+        line = lines[index]
+        rewritten = (
+            bom
+            + "".join(lines[:index])
+            + line[: match.start("value")]
+            + json.dumps(probe_id)
+            + line[match.end("value") :]
+            + "".join(lines[index + 1 :])
+        )
+        try:
+            parsed = parse_contract_text(rewritten, "the rewritten contract")
+        except JournalContractError:
+            continue
+        if parsed.id == probe_id:
+            return index, match
+    return None
+
 
 def _read_provided_contract(contract_file: Path) -> tuple[str, str, tuple[str, ...]]:
     """Read and validate a contract supplied on the command line.
@@ -86,7 +154,10 @@ def _read_provided_contract(contract_file: Path) -> tuple[str, str, tuple[str, .
     Returns the contract's text, the id its header declares and its declared
     scope. The header is validated exactly as ``parse_contract_text``
     validates a contract already in the journal — the boundary a malformed
-    declaration is refused at, before anything it names is trusted.
+    declaration is refused at, before anything it names is trusted — and
+    its ``id`` must sit where the open can rewrite it, so a contract whose
+    ``id`` is written another way is refused here too, before the journal
+    is touched.
     """
 
     try:
@@ -105,6 +176,9 @@ def _read_provided_contract(contract_file: Path) -> tuple[str, str, tuple[str, .
         header = parse_contract_text(text, str(contract_file))
     except JournalContractError as error:
         raise TaskOpenError(str(error)) from error
+    bom, lines = _split_for_rewrite(text)
+    if _id_source_line(lines, header.id, bom) is None:
+        raise TaskOpenError(f"contract file {contract_file}: {_ID_FORMS_MESSAGE}")
     return text, header.id, header.scope
 
 
@@ -113,38 +187,26 @@ def _retarget_contract_id(text: str, task_id: str) -> str:
 
     Every other byte is kept: the contract was written first, and the text
     its hash is pinned over should differ from the author's only in the id
-    the open assigns. The ``id`` key lives in the header's top-level table,
-    so the search stops at the first ``[table]`` line.
+    the open assigns. Only the id's value is replaced — the rest of the
+    line is the author's: key quoting, trailing whitespace, a comment, and
+    the line ending, whatever it is.
     """
 
-    bom = text.startswith("\ufeff")
-    lines = (text[1:] if bom else text).splitlines(keepends=True)
-    start = next(index for index, line in enumerate(lines) if line.strip() == "+++")
-    end = next(
-        index
-        for index, line in enumerate(lines[start + 1 :], start + 1)
-        if line.strip() == "+++"
+    bom, lines = _split_for_rewrite(text)
+    located = _id_source_line(
+        lines, parse_contract_text(text, "the provided contract").id, bom
     )
-    for index in range(start + 1, end):
-        line = lines[index]
-        if line.lstrip().startswith("["):
-            break
-        match = _CONTRACT_ID_VALUE.match(line)
-        if match is not None:
-            # Only the id's value is replaced — the rest of the line is the
-            # author's: trailing whitespace, a comment, and the line ending,
-            # whatever it is. `parse_contract_text` splits on every boundary
-            # `splitlines` knows — a lone CR included — so the ending is never
-            # reconstructed; the bytes that were there stay.
-            lines[index] = (
-                line[: match.start("value")]
-                + json.dumps(task_id)
-                + line[match.end("value") :]
-            )
-            break
-    rewritten = ("\ufeff" if bom else "") + "".join(lines)
-    # The header parsed before the rewrite, so this confirms rather than
-    # checks: the retargeted contract still parses and now names the task.
+    if located is None:
+        raise TaskOpenError(_ID_FORMS_MESSAGE)
+    index, match = located
+    line = lines[index]
+    lines[index] = (
+        line[: match.start("value")] + json.dumps(task_id) + line[match.end("value") :]
+    )
+    rewritten = bom + "".join(lines)
+    # The header parsed before the rewrite and the line the probe named
+    # was rewritten, so this confirms rather than checks: the retargeted
+    # contract still parses and now names the task.
     if parse_contract_text(rewritten, "the rewritten contract").id != task_id:
         raise TaskOpenError("could not set the contract id to the assigned task id")
     return rewritten
