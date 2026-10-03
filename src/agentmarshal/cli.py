@@ -72,7 +72,7 @@ from agentmarshal.journal.status import (
 )
 from agentmarshal.journal.status_view import (
     print_overdue_steps,
-    print_paths_line,
+    print_paths,
     print_task_detail,
 )
 from agentmarshal.journal.submit_review import ReviewSubmitError, submit_review
@@ -956,27 +956,55 @@ def _run_report(task_id: str | None, stderr: TextIO) -> int:
     return 0
 
 
+def _read_process_events(state: LocalState, stderr: TextIO) -> list[dict[str, object]]:
+    """Read the process log's events, naming on stderr a log that fails.
+
+    A missing ``log/`` directory is no error — ``read_events`` already
+    reads it as empty. A log that exists but cannot be read — a
+    permission denial, a file where the directory should be — is named
+    and reads as no steps rather than failing the command.
+    """
+
+    try:
+        if state.log.exists() and not state.log.is_dir():
+            reason = "not a directory"
+        else:
+            return read_events(state)
+    except OSError as error:
+        reason = error.strerror or str(error)
+    print(
+        f"status: cannot read the process log "
+        f"{escape_for_display(str(state.log))} ({reason}); "
+        "its steps read as none",
+        file=stderr,
+    )
+    return []
+
+
 def _run_status(task_id: str | None, stderr: TextIO) -> int:
     placement = _placement("status", stderr)
     if placement is None:
         return 1
     print(placement.evidence_line, file=stderr)
     journal = placement.journal_root
-    # ADR-0014 decision 13: where everything lives prints once, ahead of
-    # the task output, so the line survives an empty list and a failed
-    # task lookup alike. A local state that cannot be resolved degrades
-    # the line to "unavailable" rather than failing a command that needed
-    # no git before; a missing log/ directory reads as no steps.
+    # ADR-0014 decision 13: where everything lives prints once on stderr,
+    # so stdout stays what the documentation promises a parser and the
+    # lines survive an empty list and a failed task lookup alike. A local
+    # state that cannot be resolved degrades its two lines to
+    # "unavailable" rather than failing a command that needed no git
+    # before.
     state: LocalState | None = None
     state_error: str | None = None
     try:
         state = local_state(placement)
     except LocalStateError as error:
         state_error = str(error)
-    print_paths_line(journal, state, state_error)
+    print_paths(journal, state, state_error, stderr)
     now = datetime.now(UTC)
+    # The log is read once for the run — not once per task — and a log
+    # that cannot be read is named on stderr and reads as no steps.
+    events = _read_process_events(state, stderr) if state is not None else []
     try:
-        events = read_events(state) if state is not None else []
         if task_id is None:
             tasks = list_task_statuses(journal)
             if not tasks:

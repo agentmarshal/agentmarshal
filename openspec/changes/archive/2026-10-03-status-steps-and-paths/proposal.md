@@ -18,7 +18,8 @@ state actually live. `doctor` is a separate task.
   same task written after the step started closes it — an implementation
   step closes with an implementation session, a review step with a
   review record, a coordination or other step with a session of that
-  activity (ADR-0022 section 7: `step end` is the optional addition for
+  activity, and any step with a `completed` or `abandoned` record
+  (ADR-0022 section 7: `step end` is the optional addition for
   a step that ends with no record). A step is overdue when it is open
   and its deadline has passed; the comparison runs in UTC and the moment
   taken as now is injectable.
@@ -28,10 +29,13 @@ state actually live. `doctor` is a separate task.
   nothing when there is none.
 - `agentmarshal status` — the list — marks a task that has an overdue
   step.
-- Both forms print, once, the actual paths of the journal, the process
-  log and the local state in use, each escaped like other displayed
-  text; in a sidecar the journal and the local state are the journal
-  repository's; a missing process log is not an error.
+- Both forms print, once and on stderr — one line each — the actual
+  paths of the journal, the process log and the local state in use, each
+  escaped like other displayed text, so stdout stays what the
+  documentation promises a parser; in a sidecar the journal and the
+  local state are the journal repository's; a missing process log is not
+  an error, and one that cannot be read is named on stderr while
+  `status` still answers.
 
 ## Capabilities
 
@@ -40,10 +44,10 @@ state actually live. `doctor` is a separate task.
 ## Impact
 
 - `src/agentmarshal/steps.py` (the computation beside the producers),
-  `src/agentmarshal/journal/status_view.py` (the paths line and the
+  `src/agentmarshal/journal/status_view.py` (the paths lines and the
   overdue-step lines), `src/agentmarshal/cli.py` (`_run_status`), and
-  `tests/` including the two byte-exact `status` pins, which change only
-  by the paths line.
+  `tests/`; the two byte-exact `status` stdout pins do not change — the
+  paths went to stderr.
 - `openspec/specs/process-log/spec.md` on archive.
 - Steps on other machines stay invisible — the log is local (ADR-0014
   decision 8); no watchdog or process control, which is a supplied

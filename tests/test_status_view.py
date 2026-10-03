@@ -249,12 +249,8 @@ def test_status_task_detail_output_is_pinned(
         write_record(journal, "CR-001", record, record_id=record_id)
 
     assert main(["status", "CR-001"]) == 0
-    assert capsys.readouterr().out == (
-        # CR-162: the paths line prints once ahead of the task output
-        # (ADR-0014 decision 13) — the only line this pin gains.
-        f"Paths: journal={repo.resolve()}/.agentmarshal/journal "
-        f"process-log={repo.resolve()}/.git/agentmarshal/log "
-        f"local-state={repo.resolve()}/.git/agentmarshal\n"
+    captured = capsys.readouterr()
+    assert captured.out == (
         "ID: CR-001\n"
         "Status: abandoned\n"
         "Title: Pinning task\n"
@@ -302,4 +298,12 @@ def test_status_task_detail_output_is_pinned(
         "- 00000000000000000000000015 abandoned 2026-01-15T00:00:00Z "
         "reason=superseded\n"
         "- 00000000000000000000000016 session 2026-01-16T00:00:00Z\n"
+    )
+    # CR-162: the paths print once on stderr, after the placement line —
+    # the stdout pin does not move (ADR-0014 decision 13).
+    assert captured.err == (
+        "Placement: embedded\n"
+        f"journal: {repo.resolve()}/.agentmarshal/journal\n"
+        f"process log: {repo.resolve()}/.git/agentmarshal/log\n"
+        f"local state: {repo.resolve()}/.git/agentmarshal\n"
     )

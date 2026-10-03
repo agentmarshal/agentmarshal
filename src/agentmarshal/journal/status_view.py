@@ -2,11 +2,12 @@
 
 Each record type with a dedicated line registers a renderer in
 ``_RECORD_RENDERERS``; a record type without an entry falls back to the
-generic id, type and time line. The view also renders the two lines the
-local state adds — the paths the evidence and the process log live at
-(ADR-0014 decision 13) and the overdue steps the log reports (decision
-9 as amended) — computed by ``agentmarshal.steps`` and printed around
-the journal-derived detail.
+generic id, type and time line. The view also renders the two additions
+the local state brings — the overdue steps the process log reports
+(ADR-0014 decision 9 as amended), printed on stdout after the
+journal-derived detail, and the paths the journal, the process log and
+the local state live at (decision 13), printed on stderr so stdout
+stays what the documentation promises a parser.
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ from __future__ import annotations
 import subprocess
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import cast
+from typing import TextIO, cast
 
 from agentmarshal.journal.display import escape_for_display
 from agentmarshal.journal.status import TaskStatus
@@ -205,35 +206,34 @@ def print_task_detail(project_root: Path, task: TaskStatus) -> None:
             print(escape_for_display(renderer(project_root, record)))
 
 
-def print_paths_line(
-    journal_root: Path, state: LocalState | None, local_state_error: str | None
+def print_paths(
+    journal_root: Path,
+    state: LocalState | None,
+    local_state_error: str | None,
+    stderr: TextIO,
 ) -> None:
     """Print the paths of the journal, the process log and the local state.
 
-    ADR-0014 decision 13: ``status`` says where everything lives, each
-    path escaped like other displayed text. The resolved values print as
-    given — in a sidecar they are the journal repository's, the host's
-    never entering the call. A local state that cannot be resolved marks
-    its paths ``unavailable`` with the reason rather than failing the
-    command; a missing ``log/`` directory is no error — its path prints
-    and reads as no steps.
+    ADR-0014 decision 13: ``status`` says where everything lives — one
+    line per path on *stderr*, each escaped like other displayed text,
+    so stdout stays what the documentation promises a parser. The
+    resolved values print as given — in a sidecar they are the journal
+    repository's, the host's never entering the call. A local state that
+    cannot be resolved marks its two lines ``unavailable`` with the
+    reason rather than failing the command; a missing ``log/`` directory
+    is no error — its path prints and reads as no steps.
     """
 
-    journal = escape_for_display(str(journal_root))
+    print(f"journal: {escape_for_display(str(journal_root))}", file=stderr)
     if state is None:
         reason = (
             f" ({escape_for_display(local_state_error)})" if local_state_error else ""
         )
-        print(
-            f"Paths: journal={journal} process-log=unavailable "
-            f"local-state=unavailable{reason}"
-        )
+        print(f"process log: unavailable{reason}", file=stderr)
+        print(f"local state: unavailable{reason}", file=stderr)
         return
-    print(
-        f"Paths: journal={journal} "
-        f"process-log={escape_for_display(str(state.log))} "
-        f"local-state={escape_for_display(str(state.root))}"
-    )
+    print(f"process log: {escape_for_display(str(state.log))}", file=stderr)
+    print(f"local state: {escape_for_display(str(state.root))}", file=stderr)
 
 
 def print_overdue_steps(steps: Sequence[OpenStep]) -> None:

@@ -14,7 +14,9 @@ event for the task and neither its `step-ended` event nor a journal
 record of the matching kind for the same task written after the step
 started closes it: an implementation step closes with an implementation
 session record, a review step with a review record, a coordination or
-other step with a session record of that activity. A `step-started`
+other step with a session record of that activity, and any step with a
+`completed` or `abandoned` record — ADR-0014 decision 9 lists
+`completed` among the records a step ends with. A `step-started`
 event without a step id, an activity or a deadline is not a step the
 view can name and SHALL read as no step. A journal record whose
 `created_at` cannot be read as a time, or that was written no later
@@ -22,7 +24,8 @@ than the step started, SHALL NOT close the step. A step SHALL be
 overdue when it is open and its deadline has passed; the comparison
 runs in UTC, and one function SHALL compute a task's open steps and
 their overdue spans for both forms of the command, the moment taken as
-now being injectable so a test decides what has passed.
+now being injectable so a test decides what has passed. The process log
+SHALL be read once per status run, not once per task.
 
 #### Scenario: an overdue step prints its line after the existing lines
 - **WHEN** a task's step is open and past its deadline
@@ -55,6 +58,11 @@ now being injectable so a test decides what has passed.
   written after a coordination or other step started
 - **THEN** the step is not open
 
+#### Scenario: a completed or abandoned record closes the step
+- **WHEN** a `completed` or an `abandoned` record for the task was
+  written after a step started
+- **THEN** the step is not open
+
 #### Scenario: a record written no later than the step started does not close it
 - **WHEN** the only journal record of the matching kind was written no
   later than the step started
@@ -83,22 +91,36 @@ now being injectable so a test decides what has passed.
 - **THEN** both take their answer from the one function that computes a
   task's open steps and their overdue spans
 
+#### Scenario: the process log is read once per status run
+- **WHEN** `status` runs in either form
+- **THEN** the process log is read once for the run, however many tasks
+  the run lists
+
 ### Requirement: `status` prints the actual paths in use
 
-Both forms of `agentmarshal status` SHALL print, once, the actual paths
-of the journal, the process log and the local state in use — ADR-0014
-decision 13 — each escaped like other displayed text. In a sidecar the
-journal and the local state SHALL be the journal repository's. A
-missing process log SHALL NOT be an error: the log's path still prints
-and the task reads as having no steps. When the local state cannot be
-resolved, the line SHALL name the journal's path and mark the local
-state's paths unavailable with the reason, and the command SHALL still
-answer.
+Both forms of `agentmarshal status` SHALL print, once and on stderr —
+stdout keeping what the documentation promises the parsers reading it —
+the actual paths of the journal, the process log and the local state in
+use (ADR-0014 decision 13), each on a line of its own — `journal:
+<path>`, `process log: <path>` and `local state: <path>` — and each
+escaped like other displayed text. In a sidecar the journal and the
+local state SHALL be the journal repository's. A missing process log
+SHALL NOT be an error: the log's path still prints and the task reads
+as having no steps. A process log that cannot be read SHALL be named on
+stderr while `status` still answers. When the local state cannot be
+resolved, the journal's path SHALL still print, the process log's and
+the local state's lines SHALL mark them unavailable with the reason,
+and the command SHALL still answer.
 
-#### Scenario: both forms of status print the three paths once
+#### Scenario: both forms of status print the three paths once, on stderr
 - **WHEN** `status` runs in either form
 - **THEN** the actual paths of the journal, the process log and the
-  local state print once each
+  local state print once each on stderr, each on a line of its own
+
+#### Scenario: stdout stays what the documentation promises
+- **WHEN** `status` runs in either form
+- **THEN** stdout carries exactly what it carried before this change —
+  what docs/quickstart.md and docs/sidecar.md promise a parser
 
 #### Scenario: each path prints escaped like other displayed text
 - **WHEN** a path holds a character the forgeable-text rule refuses
@@ -114,13 +136,20 @@ answer.
 - **THEN** `status` still prints the log's path, reads no steps and
   does not fail
 
+#### Scenario: a process log that cannot be read is named on stderr
+- **WHEN** the local state's `log/` exists but cannot be read — a
+  permission denial, a file where the directory should be
+- **THEN** `status` names it on stderr, reads no steps and does not
+  fail
+
 #### Scenario: a local state that cannot be resolved is named unavailable
 - **WHEN** the local state cannot be resolved — git cannot name the
   repository's common directory
-- **THEN** the line names the journal's path, marks the local-state
-  paths unavailable with the reason, and `status` still answers
+- **THEN** the journal's path still prints, the process log's and the
+  local state's lines mark them unavailable with the reason, and
+  `status` still answers
 
-#### Scenario: a task without steps prints what it printed before, apart from the paths line
+#### Scenario: a task without steps prints what it printed before
 - **WHEN** a task has no steps at all
-- **THEN** `status <task>` prints exactly the lines it printed before
-  this change, apart from the one paths line
+- **THEN** `status <task>` prints on stdout exactly what it printed
+  before this change

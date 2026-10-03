@@ -10,22 +10,23 @@ the local state live.
 from __future__ import annotations
 
 import subprocess
+import sys
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 
-from agentmarshal import steps
+from agentmarshal import cli, steps
 from agentmarshal.cli import main
 from agentmarshal.journal.records import (
     create_opened_record,
     read_records,
     write_record,
 )
-from agentmarshal.journal.status_view import print_paths_line
+from agentmarshal.journal.status_view import print_paths
 from agentmarshal.localstate import LocalState
-from agentmarshal.process_log import open_writer, write_event
+from agentmarshal.process_log import open_writer, read_events, write_event
 from agentmarshal.steps import OpenStep, format_overdue, open_steps
 
 _STARTED_AT = "2026-01-01T00:00:00+00:00"
@@ -121,11 +122,14 @@ def _log_step(
     )
 
 
-def _paths_line(repo: Path) -> str:
+def _paths_lines(repo: Path) -> str:
+    """The three path lines ``status`` prints on stderr for *repo*."""
+
     state = _state(repo)
     return (
-        f"Paths: journal={repo.resolve()}/.agentmarshal/journal "
-        f"process-log={state.log} local-state={state.root}\n"
+        f"journal: {repo.resolve()}/.agentmarshal/journal\n"
+        f"process log: {state.log}\n"
+        f"local state: {state.root}\n"
     )
 
 
@@ -320,28 +324,31 @@ def test_both_forms_take_the_answer_from_one_computation(
 def test_both_forms_of_status_print_the_three_paths_once(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Scenario: both forms of status print the three paths once."""
+    """Scenario: both forms of status print the three paths once, on
+    stderr — stdout keeping what it printed before this change."""
     repo = _project(tmp_path, monkeypatch)
     _task(repo, "CR-001")
 
     assert main(["status"]) == 0
-    listed = capsys.readouterr().out
+    listed = capsys.readouterr()
     assert main(["status", "CR-001"]) == 0
-    detailed = capsys.readouterr().out
+    detailed = capsys.readouterr()
 
-    for output in (listed, detailed):
-        assert output.count("Paths:") == 1
-        assert _paths_line(repo) in output
+    for captured in (listed, detailed):
+        assert captured.err == f"Placement: embedded\n{_paths_lines(repo)}"
+        assert "journal:" not in captured.out
+        assert "process log:" not in captured.out
+        assert "local state:" not in captured.out
 
 
 def test_each_path_prints_escaped_like_other_displayed_text(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Scenario: each path prints escaped like other displayed text."""
-    print_paths_line(Path("jour\nnal"), LocalState(Path("lo\ncal")), None)
+    print_paths(Path("jour\nnal"), LocalState(Path("lo\ncal")), None, sys.stderr)
 
-    assert capsys.readouterr().out == (
-        "Paths: journal=jour\\nnal process-log=lo\\ncal/log local-state=lo\\ncal\n"
+    assert capsys.readouterr().err == (
+        "journal: jour\\nnal\nprocess log: lo\\ncal/log\nlocal state: lo\\ncal\n"
     )
 
 
@@ -367,13 +374,14 @@ def test_in_a_sidecar_the_paths_are_the_journal_repositorys(
 
     assert main(["status"]) == 0
 
-    output = capsys.readouterr().out
+    error_output = capsys.readouterr().err
     state = _state(sidecar)
     assert (
-        f"journal={sidecar.resolve()}/.agentmarshal/journal "
-        f"process-log={state.log} local-state={state.root}"
-    ) in output
-    assert str(host.resolve()) not in output
+        f"journal: {sidecar.resolve()}/.agentmarshal/journal\n"
+        f"process log: {state.log}\n"
+        f"local state: {state.root}\n"
+    ) in error_output
+    assert str(host.resolve()) not in error_output
 
 
 def test_a_missing_process_log_is_not_an_error(
@@ -386,9 +394,9 @@ def test_a_missing_process_log_is_not_an_error(
     assert not _state(repo).log.exists()
     assert main(["status", "CR-001"]) == 0
 
-    output = capsys.readouterr().out
-    assert _paths_line(repo) in output
-    assert "Overdue" not in output
+    captured = capsys.readouterr()
+    assert _paths_lines(repo) in captured.err
+    assert "Overdue" not in captured.out
 
 
 def test_a_local_state_that_cannot_be_resolved_is_named_unavailable(
@@ -410,29 +418,27 @@ def test_a_local_state_that_cannot_be_resolved_is_named_unavailable(
 
     assert main(["status", "CR-001"]) == 0
 
-    line = next(
-        line
-        for line in capsys.readouterr().out.splitlines()
-        if line.startswith("Paths:")
-    )
-    assert "journal=" in line
-    assert "process-log=unavailable" in line
-    assert "local-state=unavailable" in line
+    err = capsys.readouterr().err
+    assert f"journal: {repo.resolve()}/.agentmarshal/journal\n" in err
+    assert "process log: unavailable (" in err
+    assert "local state: unavailable (" in err
 
 
 def test_a_task_without_steps_prints_what_it_printed_before(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Scenario: a task without steps prints what it printed before, apart
-    from the paths line."""
+    """Scenario: a task without steps prints on stdout exactly what it
+    printed before."""
     repo = _project(tmp_path, monkeypatch)
     _task(repo, "CR-001")
     record = read_records(repo / ".agentmarshal" / "journal", "CR-001")[0]
 
     assert main(["status", "CR-001"]) == 0
 
-    # The whole output is the pre-change block plus the one paths line.
-    assert capsys.readouterr().out == _paths_line(repo) + (
+    captured = capsys.readouterr()
+    # stdout is byte-for-byte the pre-change block; the paths went to
+    # stderr.
+    assert captured.out == (
         "ID: CR-001\n"
         "Status: open\n"
         "Title: Task\n"
@@ -441,6 +447,7 @@ def test_a_task_without_steps_prints_what_it_printed_before(
         "Records:\n"
         f"- {record['id']} opened {record['created_at']}\n"
     )
+    assert captured.err == f"Placement: embedded\n{_paths_lines(repo)}"
 
 
 def test_status_writes_nothing_into_the_local_state(
@@ -453,3 +460,93 @@ def test_status_writes_nothing_into_the_local_state(
     assert main(["status"]) == 0
 
     assert not _state(repo).root.exists()
+
+
+def test_a_completed_or_abandoned_record_closes_the_step() -> None:
+    """Scenario: a completed or abandoned record closes the step.
+
+    ADR-0014 decision 9 lists ``completed`` among the records a step
+    ends with; ``abandoned`` closes the task the same way.
+    """
+    events = [_started("S1")]
+    for kind in ("completed", "abandoned"):
+        record = {
+            "record_type": kind,
+            "created_at": "2026-01-01T01:00:00+00:00",
+        }
+        assert open_steps("CR-001", [record], events, now=_NOW) == []
+    # Written no later than the step started, even a closing record
+    # leaves it open.
+    earlier = {"record_type": "completed", "created_at": _STARTED_AT}
+    assert open_steps("CR-001", [earlier], events, now=_NOW)
+
+
+def test_a_process_log_that_cannot_be_read_is_named_on_stderr(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a process log that cannot be read is named on stderr —
+    a file where the directory should be, and a permission denial."""
+    repo = _project(tmp_path, monkeypatch)
+    _task(repo, "CR-001")
+    state = _state(repo)
+    state.root.mkdir(parents=True)
+    state.log.write_text("not a directory\n", encoding="utf-8")
+
+    assert main(["status", "CR-001"]) == 0
+
+    captured = capsys.readouterr()
+    assert f"process log: {state.log}\n" in captured.err
+    assert f"cannot read the process log {state.log} (not a directory)" in (
+        captured.err
+    )
+    assert "Overdue" not in captured.out
+
+    state.log.unlink()
+    state.log.mkdir()
+    state.log.chmod(0)
+    try:
+        assert main(["status", "CR-001"]) == 0
+    finally:
+        state.log.chmod(0o700)
+
+    captured = capsys.readouterr()
+    assert "cannot read the process log" in captured.err
+    assert str(state.log) in captured.err
+    assert "Overdue" not in captured.out
+
+
+def test_the_process_log_is_read_once_per_status_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: the process log is read once per status run, not once
+    per task."""
+    repo = _project(tmp_path, monkeypatch)
+    _task(repo, "CR-001")
+    _task(repo, "CR-002")
+    calls: list[LocalState] = []
+
+    def spy(state: LocalState) -> list[dict[str, object]]:
+        calls.append(state)
+        return read_events(state)
+
+    monkeypatch.setattr(cli, "read_events", spy)
+
+    assert main(["status"]) == 0
+    assert main(["status", "CR-001"]) == 0
+    capsys.readouterr()
+
+    assert len(calls) == 2
+
+
+def test_a_moment_at_the_edge_of_the_range_is_not_a_traceback() -> None:
+    """An aware time whose UTC conversion leaves the representable range
+    reads as a time that cannot be read — never an OverflowError."""
+    # 0001-01-01T00:30:00+01:00 is 0000-12-31 in UTC — below year 1.
+    edge = "0001-01-01T00:30:00+01:00"
+    events = [_started("S1", at=edge, deadline=edge)]
+
+    (step,) = open_steps("CR-001", [], events, now=_NOW)
+    assert step.overdue_by is None
+    # An edge-time record cannot be read as written-after either.
+    record = _session("implementation", edge)
+    assert open_steps("CR-001", [record], [_started("S1")], now=_NOW)

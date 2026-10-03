@@ -419,9 +419,11 @@ def open_steps(
     task and neither its ``step-ended`` event nor a journal record of the
     matching kind for the same task written after the step started closes
     it: an implementation step closes with an implementation session, a
-    review step with a review record, and a coordination or other step —
+    review step with a review record, a coordination or other step —
     or one whose activity the session vocabulary does not know — with a
-    session record of that activity (ADR-0014 decision 9 as amended;
+    session record of that activity, and any step with a ``completed``
+    or ``abandoned`` record (ADR-0014 decision 9 as amended, which lists
+    ``completed`` among the records a step ends with;
     ADR-0022 section 7, where ``step end`` is the optional close for a
     step that ends with no record). ``records`` is the task's journal
     records and ``events`` the process log's events, both read as data.
@@ -430,10 +432,7 @@ def open_steps(
     decides what has passed.
     """
 
-    moment_now = now if now is not None else datetime.now(UTC)
-    if moment_now.tzinfo is None:
-        moment_now = moment_now.replace(tzinfo=UTC)
-    moment_now = moment_now.astimezone(UTC)
+    moment_now = _moment(now) or datetime.now(UTC)
     ended = {
         event["step"]
         for event in events
@@ -505,7 +504,9 @@ def _moment(value: object) -> datetime | None:
     """Read *value* as a UTC instant, or ``None`` when it cannot be read.
 
     A naive ISO-8601 time reads as UTC, the way the writer reads a naive
-    ``at``; an aware one converts.
+    ``at``; an aware one converts — an aware time at the edge of the
+    range, whose conversion leaves the representable years, reads as a
+    time that cannot be read rather than raising ``OverflowError``.
     """
 
     if isinstance(value, datetime):
@@ -519,7 +520,10 @@ def _moment(value: object) -> datetime | None:
         return None
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=UTC)
-    return parsed.astimezone(UTC)
+    try:
+        return parsed.astimezone(UTC)
+    except OverflowError:
+        return None
 
 
 def _closed_by(
@@ -538,11 +542,16 @@ def _closed_by(
 def _closes_step(record: Mapping[str, object], activity: str) -> bool:
     """Whether a journal record is the kind that ends a step of *activity*.
 
-    A review step ends with the review itself; every other activity ends
-    with a session of that activity — the record a step of it already
-    produces.
+    A step ends with the record its work already lands: a review step
+    with the review itself — a session of activity ``review`` is the
+    session the review ran in, not the review, so it does not close —
+    every other activity with a session of that activity, and any step
+    with a ``completed`` or ``abandoned`` record, ADR-0014 decision 9
+    listing ``completed`` among the records a step ends with.
     """
 
+    if record.get("record_type") in ("completed", "abandoned"):
+        return True
     if activity == "review":
         return record.get("record_type") == "review"
     return record.get("record_type") == "session" and record.get("activity") == activity
