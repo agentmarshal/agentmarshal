@@ -617,6 +617,41 @@ def test_a_dry_run_resolves_the_journal_root_like_a_recorded_run(
     assert not (host / ".git" / "agentmarshal").exists()
 
 
+def test_a_dry_run_through_the_cli_keeps_diagnostics_in_the_sidecar(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The CLI hands the dry run the placement's journal root.
+
+    ``review --dry-run`` resolves a placement like a recorded run, so in a
+    sidecar the kept diagnostics and the ``review-diagnostics`` event land
+    in the sidecar repository's local state and the host's is never
+    consulted.
+    """
+
+    host, sidecar, _base, _head = _host_and_sidecar(tmp_path, monkeypatch)
+    stub = _reviewer_stub(
+        tmp_path,
+        _verdict(review._DRY_RUN_COMMIT, "approved", []),
+        error_output="wrapper used a fallback\n",
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+    capsys.readouterr()
+
+    assert main(["review", "--dry-run"]) == 0
+
+    captured = capsys.readouterr()
+    kept = _kept_diagnostics(sidecar)
+    events = _diagnostics_events(sidecar)
+    assert len(kept) == 1
+    assert kept[0].read_bytes() == b"wrapper used a fallback\n"
+    assert str(kept[0]) in captured.err
+    assert len(events) == 1
+    assert "task" not in events[0]
+    assert not (host / ".git" / "agentmarshal").exists()
+
+
 def test_review_uses_contract_from_reviewed_commit(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

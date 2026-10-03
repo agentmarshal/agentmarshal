@@ -589,7 +589,9 @@ def _run_review(args: argparse.Namespace, stderr: TextIO) -> int:
         if placement is None:
             return 1
         try:
-            tree, diagnostics_note = dry_run_review(placement.host_root, args.model)
+            tree, diagnostics_note = dry_run_review(
+                placement.host_root, args.model, journal_root=placement.journal_root
+            )
         except ReviewLaunchError as error:
             print(f"dry run failed: {error}", file=stderr)
             return 1
