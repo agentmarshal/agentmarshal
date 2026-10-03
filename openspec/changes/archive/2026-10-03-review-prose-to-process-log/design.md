@@ -44,7 +44,11 @@ launcher's two preservation paths at that place.
   the event names, so a file under its final name is always complete — a
   candidate at any age, like a rotated writer file, since nothing ever
   writes it again — while a `.part` file is a candidate only past the
-  abandonment age, since a younger one may still be mid-write. Retention
+  abandonment age, since a younger one may still be mid-write. The sweep
+  never follows a symlink: a `files/` entry that is not a real directory
+  is skipped whole — its children may live outside the local state — and
+  any entry that is not a regular file is never unlinked, so the sweep
+  can only ever delete regular files inside the real area. Retention
   beyond the bound is a declared non-goal. The event carries the file's
   absolute path, so the layout can move later without a format change.
 - **`write_payload(state, prefix, content)` joins the process-log module.**

@@ -371,7 +371,7 @@ def test_a_rotated_file_is_a_candidate_whatever_its_age(
 def test_a_published_payload_counts_toward_the_bound_whatever_its_age(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A finished payload is shed at any age, like a rotated writer file.
+    """Scenario: a published payload is a candidate whatever its age.
 
     The publish rename is the last write a payload ever sees, so even a young
     one is a deletion candidate — there is no writer left to hold it.
@@ -390,11 +390,11 @@ def test_a_published_payload_counts_toward_the_bound_whatever_its_age(
 def test_a_staging_file_is_never_deleted_while_a_writer_may_hold_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A young ``.part`` file survives the sweep, like a young current file.
+    """Scenario: a young staging file is never deleted.
 
     A staging file exists only between its creation and its publish rename,
     so a fresh one may still belong to a writer mid-write; the bound gives
-    way before it.
+    way before it, like before a young current file.
     """
 
     monkeypatch.setattr(process_log, "DIRECTORY_CAP_BYTES", 10)
@@ -412,10 +412,11 @@ def test_a_staging_file_is_never_deleted_while_a_writer_may_hold_it(
 def test_an_abandoned_staging_file_is_a_candidate(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A ``.part`` file quiet past the abandonment age sheds like a current one.
+    """Scenario: an abandoned staging file is a candidate.
 
     Its writer is gone — a live one could not still be writing it — so the
-    orphan a crashed publish left behind is swept.
+    orphan a crashed publish left behind is swept like an abandoned current
+    file.
     """
 
     monkeypatch.setattr(process_log, "DIRECTORY_CAP_BYTES", 10)
@@ -459,6 +460,68 @@ def test_the_oldest_files_shed_first_across_writer_files_and_payloads(
     assert not oldest.exists()
     assert not middle.exists()
     assert newest.exists()
+    assert writer.path.is_file()
+
+
+def test_a_symlinked_payload_area_is_never_entered(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a symlinked files area is skipped whole.
+
+    The sweep may delete what it walks into, so a ``files/`` entry that is
+    not a real directory is left alone entirely: its children may live
+    outside the local state, and unlinking them would delete files the log
+    does not own.
+    """
+
+    if os.name == "nt":
+        pytest.skip("symlink creation needs a privilege Windows may not grant")
+    monkeypatch.setattr(process_log, "DIRECTORY_CAP_BYTES", 10)
+    monkeypatch.setattr(process_log, "ABANDONED_AFTER_SECONDS", 0)
+    state = LocalState(tmp_path / "agentmarshal")
+    log_dir = state.ensure_directory(state.log)
+    decoys = tmp_path / "decoys"
+    decoys.mkdir()
+    for name in ("keep-a.txt", "keep-b.txt"):
+        (decoys / name).write_bytes(b"x" * 100)
+    (log_dir / "files").symlink_to(decoys, target_is_directory=True)
+
+    writer = open_writer(state)
+
+    assert sorted(decoys.iterdir()) == [decoys / "keep-a.txt", decoys / "keep-b.txt"]
+    assert (log_dir / "files").is_symlink()
+    assert writer.path.is_file()
+
+
+def test_a_symlinked_entry_is_never_deleted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a symlinked entry is never unlinked.
+
+    Inside the real ``files/`` area or beside it, a symlink is not the file
+    it names: it is neither counted as a candidate nor unlinked, so only a
+    regular file inside the real area can ever shed.
+    """
+
+    if os.name == "nt":
+        pytest.skip("symlink creation needs a privilege Windows may not grant")
+    monkeypatch.setattr(process_log, "DIRECTORY_CAP_BYTES", 10)
+    monkeypatch.setattr(process_log, "ABANDONED_AFTER_SECONDS", 0)
+    state = LocalState(tmp_path / "agentmarshal")
+    log_dir = state.ensure_directory(state.log)
+    files_dir = state.ensure_directory(state.log / "files")
+    decoy = tmp_path / "decoy.txt"
+    decoy.write_bytes(b"x" * 100)
+    payload_link = files_dir / "agentmarshal-review-prose-linked.txt"
+    payload_link.symlink_to(decoy)
+    rotated_link = log_dir / "linked-writer.jsonl.1"
+    rotated_link.symlink_to(decoy)
+
+    writer = open_writer(state)
+
+    assert payload_link.is_symlink()
+    assert rotated_link.is_symlink()
+    assert decoy.exists()
     assert writer.path.is_file()
 
 

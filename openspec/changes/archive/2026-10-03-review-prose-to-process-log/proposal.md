@@ -27,11 +27,14 @@ log, so the place the decisions name is real now.
   and stderr says why. In a sidecar the files and the events land in the
   journal repository's local state; the host's is never touched.
 - The process log gains a payload area — `log/files/` — for files its
-  events name, beside the writer files rather than among them.
+  events name, beside the writer files rather than among them. Its files
+  ride the log directory's bound — a published payload sheds at any age, a
+  `.part` staging file only once abandoned — and the sweep never follows a
+  symlink, deleting only regular files inside the real area.
 
 ## Capabilities
 
-- modified: `review-evidence`, `reviewer-adapter`
+- modified: `review-evidence`, `reviewer-adapter`, `process-log`
 
 ## Impact
 

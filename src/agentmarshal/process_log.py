@@ -18,7 +18,9 @@ writer files rather than among them. The subdirectory is skipped by the
 reader, but the sweep counts its bytes toward the bound: a published
 payload sheds at any age — its publish rename is the last write it ever
 sees — while a ``.part`` staging file sheds only once it is abandoned,
-like a current writer file.
+like a current writer file. The sweep never follows a symlink — a
+``files/`` area that is one, and any entry that is not a regular file, is
+left alone — so it only ever unlinks regular files inside the real area.
 """
 
 from __future__ import annotations
@@ -217,10 +219,14 @@ def read_events(state: LocalState) -> list[dict[str, object]]:
 
 
 def _regular_file_info(path: Path) -> os.stat_result | None:
-    """The stat of a regular file, ``None`` for anything else or an error."""
+    """The stat of a regular file, ``None`` for anything else or an error.
+
+    The stat never follows a symlink — a link is not the file it names,
+    and the sweep may unlink what it stats.
+    """
 
     try:
-        info = path.stat()
+        info = path.stat(follow_symlinks=False)
     except OSError:
         return None
     return info if stat.S_ISREG(info.st_mode) else None
@@ -237,10 +243,13 @@ def _bound_directory(log_dir: Path) -> None:
     publish rename is the last write it ever sees. A current ``.jsonl``
     file and a ``.part`` staging file are candidates only once their last
     write is older than :data:`ABANDONED_AFTER_SECONDS`: younger, another
-    writer may still be writing them and they are left alone. Everything
-    else counts toward the cap but is never deleted, a failed removal is
-    skipped and an unreadable entry ignored — the bound is best-effort and
-    never fails the open that runs it.
+    writer may still be writing them and they are left alone. A symlink is
+    never followed: a ``files/`` entry that is not a real directory is
+    skipped whole — its children may live outside the local state — and so
+    is any entry that is not a regular file, inside the area or beside it,
+    so the sweep only ever unlinks regular files inside the real area. A
+    failed removal is skipped and an unreadable entry ignored — the bound
+    is best-effort and never fails the open that runs it.
     """
 
     try:
@@ -251,7 +260,13 @@ def _bound_directory(log_dir: Path) -> None:
     total = 0
     candidates: list[tuple[float, int, Path]] = []
     for path in entries:
-        if path.name == FILES_DIR_NAME and path.is_dir():
+        if path.name == FILES_DIR_NAME:
+            try:
+                area = path.stat(follow_symlinks=False)
+            except OSError:
+                continue
+            if not stat.S_ISDIR(area.st_mode):
+                continue
             try:
                 payloads = list(path.iterdir())
             except OSError:

@@ -25,3 +25,14 @@
   unchanged — verify: the fallback tests and the unchanged-level tests.
 - [x] 2.5 In a sidecar the files and events land in the sidecar's local
   state and the host's is untouched — verify: the sidecar test.
+
+## 3. The sweep and the bound's requirement
+
+- [x] 3.1 `_bound_directory` never follows a symlink — a `files/` entry
+  that is not a real directory is skipped whole, and any entry that is not
+  a regular file is never unlinked — verify: the symlinked-area and
+  symlinked-entry tests.
+- [x] 3.2 The change's delta modifies the process-log requirement "The log
+  directory is bounded as a whole" so it names payload and staging files
+  as deletion candidates and the no-symlink rule — verify: `openspec
+  validate review-prose-to-process-log`.
