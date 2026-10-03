@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal, cast
 
@@ -98,6 +98,7 @@ class ExtensionManifest:
     wraps: ExtensionWraps | None = None
     record_kinds: tuple[str, ...] = ()
     isolation: ExtensionIsolation | None = None
+    directory: Path | None = None
 
 
 def _require_string(
@@ -362,6 +363,13 @@ def extension_manifest_path(name: str) -> str:
     return f".agentmarshal/extensions/{name}.toml"
 
 
+def extension_directory_manifest_path(name: str) -> str:
+    """Return a directory-form manifest's repository-relative path."""
+
+    _validate_name(name)
+    return f".agentmarshal/extensions/{name}/manifest.toml"
+
+
 def parse_extension_manifest_text(
     text: str, name: str, source: str | Path
 ) -> ExtensionManifest:
@@ -449,46 +457,154 @@ def parse_extension_manifest_text(
     )
 
 
-def read_extension_manifest(project_root: Path, name: str) -> ExtensionManifest:
-    """Read and validate ``.agentmarshal/extensions/<name>.toml``.
+def _manifest_candidate(
+    project_root: Path, root: Path, name: str, relative_path: str
+) -> Path | None:
+    """Resolve one place a manifest may live; ``None`` when none does.
 
-    Brief and review call this filesystem reader against their contextual working
-    tree or reviewed snapshot. A sidecar gate calls it against the trusted sidecar
-    working tree; an embedded gate obtains the blob with ``git show`` from its
-    merge-base and passes that text to :func:`parse_extension_manifest_text`.
+    The rule is the file-form rule applied to each candidate: a link at the
+    manifest path is refused as a link, dangling or not and before strict
+    resolution could report a dangling one as missing; a link above it — a
+    symlinked extensions directory, a symlinked ``<name>`` directory — is
+    caught by strict resolution landing elsewhere; and a link loop is a
+    reader error, reported the same way on every Python this project
+    supports (RuntimeError on one release, ELOOP on the next). An absent
+    candidate — a missing manifest, or a ``<name>`` that is not a directory
+    at all — is the one resolution outcome that is not a refusal.
     """
 
-    relative_path = extension_manifest_path(name)
-    # Resolve the root first: a symlink in an ancestor of the project (a
-    # temporary directory on some hosts) is not the hazard; a symlinked
-    # extensions directory or manifest file is.
-    # Strict resolution reports a symlink loop the same way on every Python
-    # this project supports (RuntimeError on one release, ELOOP on the next);
-    # an absent file is the one resolution failure that means "missing".
-    if (project_root / relative_path).is_symlink():
-        # Dangling or not, a link at the manifest path is refused as a link,
-        # before strict resolution could report a dangling one as missing.
-        raise ExtensionManifestError(
-            f"refusing to read through a symlink: {project_root / relative_path}"
-        )
+    lexical = project_root / relative_path
+    if lexical.is_symlink():
+        raise ExtensionManifestError(f"refusing to read through a symlink: {lexical}")
+    path = root / relative_path
     try:
-        root = project_root.resolve(strict=True)
-        path = root / relative_path
         resolved = path.resolve(strict=True)
-    except FileNotFoundError:
-        raise ExtensionManifestMissing(
-            f"extension manifest {name!r} is missing: {project_root / relative_path}"
-        ) from None
+    except (FileNotFoundError, NotADirectoryError):
+        return None
     except (OSError, RuntimeError) as error:
         raise ExtensionManifestError(
             f"cannot resolve extension manifest {name!r}: {error}"
         ) from error
     if resolved != path:
         raise ExtensionManifestError(f"refusing to read through a symlink: {path}")
+    return path
+
+
+def _manifest_directory_paths(manifest: ExtensionManifest) -> tuple[str, ...]:
+    """Every path a manifest names under its directory's ``bin/`` or ``lock/``."""
+
+    paths = [stage.command for stage in manifest.stages]
+    if manifest.dependencies is not None:
+        paths.append(manifest.dependencies.lock)
+    if manifest.wraps is not None:
+        paths.append(manifest.wraps.lock)
+    return tuple(paths)
+
+
+def _require_existing_directory_file(directory: Path, relpath: str) -> None:
+    """The named path exists inside the directory as a regular file.
+
+    The same resolution rule as the manifest itself: a link at the named
+    path or above it — for ``bin/``, ``lock/`` or a directory between, each
+    of which is also how a ``..`` would be reached through a link, the
+    declared path itself never carrying one — is refused as a link; an
+    absent path is refused naming it, and so is a path that is not a
+    regular file.
+    """
+
+    target = directory / relpath
+    if target.is_symlink():
+        raise ExtensionManifestError(f"refusing to read through a symlink: {target}")
     try:
-        text = path.read_text(encoding="utf-8")
+        resolved = target.resolve(strict=True)
+    except (FileNotFoundError, NotADirectoryError):
+        raise ExtensionManifestError(
+            f"extension manifest names {relpath!r}, which does not exist in "
+            f"the extension's directory: {target}"
+        ) from None
+    except (OSError, RuntimeError) as error:
+        raise ExtensionManifestError(
+            f"cannot resolve {relpath!r} in the extension's directory: {error}"
+        ) from error
+    if resolved != target:
+        raise ExtensionManifestError(f"refusing to read through a symlink: {target}")
+    if not resolved.is_file():
+        raise ExtensionManifestError(
+            f"extension manifest names {relpath!r}, which is not a regular "
+            f"file: {target}"
+        )
+
+
+def read_extension_manifest(project_root: Path, name: str) -> ExtensionManifest:
+    """Read and validate one extension manifest, in either form.
+
+    An extension lives at ``.agentmarshal/extensions/<name>.toml`` — the
+    file form — or at ``.agentmarshal/extensions/<name>/manifest.toml`` —
+    the directory form of ADR-0013 decision 9. A manifest in both places
+    for one name is refused naming both paths; in neither is
+    :class:`ExtensionManifestMissing`. The directory form requires schema 2
+    and that every path it names under ``bin/`` or ``lock/`` exists inside
+    the directory as a regular file; the file form keeps its rules
+    unchanged, so a schema-2 single file naming such a path is refused —
+    it has no directory for the path to name a file in. A manifest read
+    from a directory exposes that directory; any other manifest exposes
+    none.
+
+    Brief and review call this filesystem reader against their contextual
+    working tree or reviewed snapshot. A sidecar gate calls it against the
+    trusted sidecar working tree; an embedded gate obtains the blob with
+    ``git show`` from its merge-base and passes that text to
+    :func:`parse_extension_manifest_text`.
+    """
+
+    relative_file = extension_manifest_path(name)
+    relative_dir = extension_directory_manifest_path(name)
+    # Resolve the root first: a symlink in an ancestor of the project (a
+    # temporary directory on some hosts) is not the hazard; a symlinked
+    # extensions directory, extension directory or manifest file is.
+    try:
+        root = project_root.resolve(strict=True)
+    except FileNotFoundError:
+        raise ExtensionManifestMissing(
+            f"extension manifest {name!r} is missing: {project_root / relative_file}"
+        ) from None
+    except (OSError, RuntimeError) as error:
+        raise ExtensionManifestError(
+            f"cannot resolve extension manifest {name!r}: {error}"
+        ) from error
+    file_candidate = _manifest_candidate(project_root, root, name, relative_file)
+    dir_candidate = _manifest_candidate(project_root, root, name, relative_dir)
+    if file_candidate is not None and dir_candidate is not None:
+        raise ExtensionManifestError(
+            f"extension {name!r} has a manifest in both the file and the "
+            f"directory form: {file_candidate} and {dir_candidate}"
+        )
+    candidate = file_candidate if file_candidate is not None else dir_candidate
+    if candidate is None:
+        raise ExtensionManifestMissing(
+            f"extension manifest {name!r} is missing: {project_root / relative_file}"
+        )
+    try:
+        text = candidate.read_text(encoding="utf-8")
     except (OSError, UnicodeError) as error:
         raise ExtensionManifestError(
             f"cannot read extension manifest {name!r}: {error}"
         ) from error
-    return parse_extension_manifest_text(text, name, path)
+    manifest = parse_extension_manifest_text(text, name, candidate)
+    if dir_candidate is not None:
+        if manifest.schema != 2:
+            raise ExtensionManifestError(
+                "the directory form requires a manifest of schema 2; "
+                f"{name!r} declares schema {manifest.schema}: {candidate}"
+            )
+        directory = candidate.parent
+        for relpath in _manifest_directory_paths(manifest):
+            _require_existing_directory_file(directory, relpath)
+        return replace(manifest, directory=directory)
+    named = _manifest_directory_paths(manifest)
+    if named:
+        raise ExtensionManifestError(
+            f"extension manifest {name!r} names {named[0]!r}, but the "
+            f"single-file form has no extension directory: {candidate}"
+        )
+    return manifest
