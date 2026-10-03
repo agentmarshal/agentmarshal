@@ -30,6 +30,9 @@ from agentmarshal.journal.records import (
 )
 
 _FINDING_ID = "00000000000000000000000003"
+#: A second finding the first review carries in ``advisory_findings``; the
+#: ``completed`` record that binds to it pins the ``completed_finding`` line.
+_ADVISORY_FINDING_ID = "00000000000000000000000012"
 
 _CONTRACT = """\
 +++
@@ -75,6 +78,12 @@ def _commit_file(repo: Path, name: str, content: str) -> str:
 def test_status_task_detail_output_is_pinned(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    """Scenario: a value without refused characters prints as it is.
+
+    Byte-exact output is the pin: with escaping on display (ADR-0015
+    decision 5) a record carrying no refused character renders identically.
+    """
+
     repo = tmp_path / "repo"
     repo.mkdir()
     subprocess.run(
@@ -106,7 +115,7 @@ def test_status_task_detail_output_is_pinned(
                 "model",
                 "rev@example.invalid",
                 ["F-1", "F-2"],
-                advisory_findings=["A-1"],
+                advisory_findings=[_ADVISORY_FINDING_ID],
                 artifacts=[{"ref": "review.md", "hash": "b" * 64}],
             ),
         ),
@@ -198,11 +207,30 @@ def test_status_task_detail_output_is_pinned(
             create_reopened_record("CR-001", "1.0", "regression found"),
         ),
         (
-            "00000000000000000000000012",
-            create_abandoned_record("CR-001", "1.0", "superseded"),
+            _ADVISORY_FINDING_ID,
+            create_finding_record(
+                "CR-001",
+                "1.0",
+                "advisory note",
+                [{"ref": "note.md", "hash": "e" * 64}],
+            ),
         ),
         (
             "00000000000000000000000013",
+            create_completed_record(
+                "CR-001", "1.0", None, completed_finding=_ADVISORY_FINDING_ID
+            ),
+        ),
+        (
+            "00000000000000000000000014",
+            create_reopened_record("CR-001", "1.0", "verification failed"),
+        ),
+        (
+            "00000000000000000000000015",
+            create_abandoned_record("CR-001", "1.0", "superseded"),
+        ),
+        (
+            "00000000000000000000000016",
             create_session_record(
                 "CR-001",
                 "1.0",
@@ -260,7 +288,13 @@ def test_status_task_detail_output_is_pinned(
         f"completed_commit={commit[:7]}\n"
         "- 00000000000000000000000011 reopened 2026-01-11T00:00:00Z "
         "reason=regression found\n"
-        "- 00000000000000000000000012 abandoned 2026-01-12T00:00:00Z "
+        "- 00000000000000000000000012 finding 2026-01-12T00:00:00Z "
+        "summary=advisory note artifacts=1\n"
+        "- 00000000000000000000000013 completed 2026-01-13T00:00:00Z "
+        f"completed_finding={_ADVISORY_FINDING_ID}\n"
+        "- 00000000000000000000000014 reopened 2026-01-14T00:00:00Z "
+        "reason=verification failed\n"
+        "- 00000000000000000000000015 abandoned 2026-01-15T00:00:00Z "
         "reason=superseded\n"
-        "- 00000000000000000000000013 session 2026-01-13T00:00:00Z\n"
+        "- 00000000000000000000000016 session 2026-01-16T00:00:00Z\n"
     )

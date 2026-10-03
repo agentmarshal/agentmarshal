@@ -28,6 +28,7 @@ from agentmarshal.journal.complete import (
     complete_findings_task,
     complete_task,
 )
+from agentmarshal.journal.display import escape_for_display
 from agentmarshal.journal.gate import (
     GateError,
     leak_scan_diff,
@@ -960,7 +961,10 @@ def _run_status(task_id: str | None, stderr: TextIO) -> int:
                 print("No tasks.")
                 return 0
             for task in tasks:
-                print(f"{task.task_id}\t{task.state}\t{task.contract.title}")
+                print(
+                    f"{escape_for_display(task.task_id)}\t{task.state}"
+                    f"\t{escape_for_display(task.contract.title)}"
+                )
         else:
             task = load_task_status(journal, task_id)
             if placement.is_sidecar and any(

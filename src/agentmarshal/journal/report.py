@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
+from agentmarshal.journal.display import escape_for_display
 from agentmarshal.journal.records import JournalRecordError
 from agentmarshal.journal.status import (
     TaskStatus,
@@ -138,16 +139,20 @@ def format_report(
 ) -> tuple[str, ...]:
     """Return stable, tab-separated report lines for CLI output."""
 
+    # Each value taken from a record or a contract is escaped where it is
+    # interpolated — the tabs are structure and must survive (ADR-0015
+    # decision 5). ``state`` and ``decision`` are labels the tool derives
+    # from closed sets — its own text — and print as they are.
     lines = []
     for task in report.tasks:
         line = (
-            f"{task.task_id}\t{task.state}\treviews={task.review_cycles}"
-            f"\ttokens={task.tokens}"
+            f"{escape_for_display(task.task_id)}\t{task.state}"
+            f"\treviews={task.review_cycles}\ttokens={task.tokens}"
         )
         if task.artifacts:
             line += f"\tartifacts={task.artifacts}"
         if task.usage_provenance is not None:
-            line += f"\tusage={task.usage_provenance}"
+            line += f"\tusage={escape_for_display(task.usage_provenance)}"
         if task.decision is not None:
             line += f"\tdecision={task.decision}"
         lines.append(line)
@@ -166,6 +171,6 @@ def format_report(
     if report.artifacts:
         summary += f"\tartifacts={report.artifacts}"
     if report.usage_provenance is not None:
-        summary += f"\tusage={report.usage_provenance}"
+        summary += f"\tusage={escape_for_display(report.usage_provenance)}"
     lines.append(summary)
     return tuple(lines)

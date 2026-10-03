@@ -12,10 +12,13 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import cast
 
+from agentmarshal.journal.display import escape_for_display
 from agentmarshal.journal.status import TaskStatus
 
 #: A renderer takes what the line needs — the project root for the
-#: self-acceptance check, the record itself — and returns the line.
+#: self-acceptance check, the record itself — and returns the line. The
+#: dispatch in ``print_task_detail`` escapes what it returns, so a renderer
+#: cannot forget to (ADR-0015 decision 5).
 RecordRenderer = Callable[[Path, dict[str, object]], str]
 
 
@@ -148,20 +151,29 @@ _RECORD_RENDERERS: dict[str, RecordRenderer] = {
 def print_task_detail(project_root: Path, task: TaskStatus) -> None:
     """Print one task's detail view: header, acceptance trail, scope, records."""
 
-    print(f"ID: {task.task_id}")
+    # Every line built from a record or a contract goes through
+    # ``escape_for_display``: a record a later read rule does not reach can
+    # still carry a character that would forge a line or reorder text
+    # (ADR-0015 decision 5).
+    print(f"ID: {escape_for_display(task.task_id)}")
     print(f"Status: {task.state}")
-    print(f"Title: {task.contract.title}")
+    print(f"Title: {escape_for_display(task.contract.title)}")
     for acceptance in (
         record for record in task.records if record["record_type"] == "acceptance"
     ):
-        summary = f"Acceptance: accepted over findings by {acceptance['accepted_by']}"
+        summary = (
+            "Acceptance: accepted over findings by "
+            f"{escape_for_display(str(acceptance['accepted_by']))}"
+        )
         self_accepted = _is_self_accepted(project_root, acceptance)
         if "accepted_finding" in acceptance:
-            summary += f" (finding {acceptance['accepted_finding']})"
+            summary += (
+                f" (finding {escape_for_display(str(acceptance['accepted_finding']))})"
+            )
         elif self_accepted is None:
             summary += (
                 " (self-acceptance not checked: git cannot read "
-                f"{str(acceptance['accepted_commit'])[:7]} here)"
+                f"{escape_for_display(str(acceptance['accepted_commit'])[:7])} here)"
             )
         elif self_accepted:
             summary += (
@@ -171,13 +183,17 @@ def print_task_detail(project_root: Path, task: TaskStatus) -> None:
     print("Scope:")
     if task.contract.scope:
         for path in task.contract.scope:
-            print(f"- {path}")
+            print(f"- {escape_for_display(path)}")
     else:
         print("- (none)")
     print("Records:")
     for record in task.records:
         renderer = _RECORD_RENDERERS.get(cast(str, record["record_type"]))
         if renderer is None:
-            print(f"- {record['id']} {record['record_type']} {record['created_at']}")
+            print(
+                f"- {escape_for_display(str(record['id']))} "
+                f"{escape_for_display(str(record['record_type']))} "
+                f"{escape_for_display(str(record['created_at']))}"
+            )
         else:
-            print(renderer(project_root, record))
+            print(escape_for_display(renderer(project_root, record)))
