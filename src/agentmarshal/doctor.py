@@ -20,7 +20,6 @@ from agentmarshal.journal.review import ReviewLaunchError, _reviewer_command
 from agentmarshal.journal.status import TaskStatusError, list_task_statuses
 from agentmarshal.journal.status_view import print_paths
 from agentmarshal.localstate import LocalState, LocalStateError, local_state
-from agentmarshal.process_log import read_events
 from agentmarshal.project import (
     GitNotAvailableError,
     find_git_root,
@@ -37,7 +36,12 @@ from agentmarshal.settings import (
     finding_classes,
     require_agreement,
 )
-from agentmarshal.steps import format_overdue, open_steps, step_events_by_task
+from agentmarshal.steps import (
+    format_overdue,
+    open_steps,
+    read_process_events,
+    step_events_by_task,
+)
 
 ExecutableResolver = Callable[[str], str | None]
 
@@ -422,7 +426,7 @@ def _report_overdue_steps(
             file=stderr,
         )
         return
-    events = _read_process_events(state, stderr)
+    events = read_process_events(state, stderr, "doctor")
     events_by_task = step_events_by_task(events)
     moment = now if now is not None else datetime.now(UTC)
     for task in tasks:
@@ -443,31 +447,6 @@ def _report_overdue_steps(
                 ),
                 file=stderr,
             )
-
-
-def _read_process_events(state: LocalState, stderr: TextIO) -> list[dict[str, object]]:
-    """Read the process log's events, naming a log that cannot be read.
-
-    A missing ``log/`` directory is no error — ``read_events`` already
-    reads it as empty. A log that exists but cannot be read — a
-    permission denial, a file where the directory should be — is named
-    and reads as no steps rather than failing the run.
-    """
-
-    try:
-        if state.log.exists() and not state.log.is_dir():
-            reason = "not a directory"
-        else:
-            return read_events(state)
-    except OSError as error:
-        reason = error.strerror or str(error)
-    print(
-        f"doctor: cannot read the process log "
-        f"{escape_for_display(str(state.log))} ({reason}); "
-        "its steps read as none",
-        file=stderr,
-    )
-    return []
 
 
 def run_doctor(

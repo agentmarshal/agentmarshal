@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from agentmarshal import cli, steps
+from agentmarshal import steps
 from agentmarshal.cli import main
 from agentmarshal.journal.records import (
     create_opened_record,
@@ -587,7 +587,7 @@ def test_the_process_log_is_read_once_per_status_run(
         calls.append(state)
         return read_events(state)
 
-    monkeypatch.setattr(cli, "read_events", spy)
+    monkeypatch.setattr(steps, "read_events", spy)
 
     assert main(["status"]) == 0
     assert main(["status", "CR-001"]) == 0

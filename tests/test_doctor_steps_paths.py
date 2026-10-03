@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 
 import agentmarshal.doctor as doctor
+from agentmarshal import steps
 from agentmarshal.cli import main
 from agentmarshal.doctor import run_doctor
 from agentmarshal.journal.display import escape_for_display
@@ -234,22 +235,47 @@ def test_the_moment_taken_as_now_is_injectable(
 def test_the_process_log_is_read_once_per_doctor_run(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Scenario: the process log is read once per doctor run."""
+    """Scenario: the process log is read once per doctor run — once for
+    all tasks, not once per task."""
     repo = _project(tmp_path, monkeypatch)
     _task(repo, "CR-001")
     _task(repo, "CR-002")
+    _task(repo, "CR-003")
     calls: list[LocalState] = []
 
     def spy(state: LocalState) -> list[dict[str, object]]:
         calls.append(state)
         return read_events(state)
 
-    monkeypatch.setattr(doctor, "read_events", spy)
+    monkeypatch.setattr(steps, "read_events", spy)
 
     main(["doctor"])
     capsys.readouterr()
 
     assert len(calls) == 1
+
+
+def test_status_and_doctor_share_the_one_process_log_reader(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """``status`` and ``doctor`` read the process log through the one
+    shared reader — ``read_process_events`` in ``steps.py`` — so a spy
+    on the read it performs sees each command read once per run."""
+    repo = _project(tmp_path, monkeypatch)
+    _task(repo, "CR-001")
+    calls: list[LocalState] = []
+
+    def spy(state: LocalState) -> list[dict[str, object]]:
+        calls.append(state)
+        return read_events(state)
+
+    monkeypatch.setattr(steps, "read_events", spy)
+
+    main(["status"])
+    main(["doctor"])
+    capsys.readouterr()
+
+    assert len(calls) == 2
 
 
 def test_doctor_prints_the_three_paths_once_on_stderr(
@@ -264,6 +290,7 @@ def test_doctor_prints_the_three_paths_once_on_stderr(
     captured = capsys.readouterr()
     assert _paths_lines(repo) in captured.err
     for label in ("journal:", "process log:", "local state:"):
+        assert captured.err.count(f"{label} ") == 1
         assert label not in captured.out
 
 
@@ -434,3 +461,39 @@ def test_a_version_that_cannot_be_read_fails_the_check(
     assert not ok
     assert "2.31" in detail
     assert "upgrade git" in detail
+
+
+def test_an_unreadable_version_is_judged_exactly_as_a_missing_git(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An unreadable ``git --version`` output is judged exactly as a
+    missing git: the same ``git`` check fails either way — identical
+    ``ok`` and identical standing as a check rather than a
+    precondition — and the exit status follows those alone, so both
+    runs exit alike."""
+    repo = _project(tmp_path, monkeypatch)
+
+    missing = next(
+        result
+        for result in run_doctor(
+            repo, resolver=lambda _name: None, stderr=io.StringIO()
+        )
+        if result.name == "git"
+    )
+    monkeypatch.setattr(subprocess, "run", _versioned_git("git version\n"))
+    unreadable = next(
+        result
+        for result in run_doctor(
+            repo, resolver=lambda _name: "git", stderr=io.StringIO()
+        )
+        if result.name == "git"
+    )
+
+    assert (
+        (missing.ok, missing.precondition)
+        == (
+            unreadable.ok,
+            unreadable.precondition,
+        )
+        == (False, False)
+    )

@@ -37,7 +37,11 @@ third: local state resolves through `git rev-parse
   `open_steps`, `step_events_by_task` and `format_overdue` come from
   `steps.py`; `print_paths` comes from `status_view.py` — the same
   call `status` makes, so a sidecar's journal-repository paths print
-  and the host's never enter the call.
+  and the host's never enter the call. The process-log read is shared
+  the same way: `read_process_events` in `steps.py` is the one reader
+  `status` and `doctor` call — the guard that names a log it cannot
+  read — the calling command's name being the only difference in the
+  message it prints.
 - **`run_doctor` prints the report itself.** `cli.py`'s `_run_doctor`
   prints check results and nothing else, and this change's scope does
   not reach it — so `run_doctor` gains a `stderr` keyword and a `now`
@@ -67,7 +71,10 @@ third: local state resolves through `git rev-parse
   --path-format=absolute`. An older version, or one that cannot be
   read, fails the check with the minimum and the remedy — upgrade git
   — in the message; new enough reports the executable available as
-  before.
+  before. A version that cannot be read is judged exactly as a missing
+  git: the same check fails the same way — a failed check that is no
+  precondition — so the exit status is the same; only the message
+  differs, carrying the minimum and the remedy.
 
 ## Risks
 
