@@ -54,7 +54,7 @@ def _later_rule(
 ) -> None:
     """Register a test-only rule bound to one schema above the highest."""
 
-    def refuse(data: Mapping[str, object]) -> None:
+    def refuse(data: Mapping[str, object], _context: object) -> None:
         raise JournalRecordError("refused by a rule from a later schema")
 
     monkeypatch.setitem(records_module._RULES, name, refuse)
@@ -66,10 +66,12 @@ def test_every_read_rule_has_its_schema() -> None:
 
     The completeness check: a check registered as a rule and absent from the
     table — or an entry naming no rule — fails this test. The schema check
-    is not a rule: it runs ahead of the registry, so it holds no entry.
+    is not a rule: it runs ahead of the registry, so registering it there
+    fails this test too.
     """
 
-    assert "schema-version" not in records_module._RULES
+    registered: list[object] = list(records_module._RULES.values())
+    assert records_module._check_schema_version not in registered
     assert set(records_module._RULES) == set(records_module._RULE_FROM_SCHEMA)
 
 
@@ -83,8 +85,8 @@ def test_the_schema_check_runs_before_any_rule(
     checked: a record with no schema gets the schema error, not the rule's.
     """
 
-    def reads_schema(data: Mapping[str, object]) -> None:
-        if type(data["schema"]) is not int:
+    def reads_schema(data: Mapping[str, object], _context: object) -> None:
+        if type(data.get("schema")) is not int:
             raise AssertionError("a rule read the schema before it was checked")
 
     monkeypatch.setattr(
@@ -103,11 +105,11 @@ def test_a_rule_without_an_entry_is_never_checked_on_read(
 ) -> None:
     """Scenario: a rule cannot be checked without an entry in the table.
 
-    The fail-closed half: a rule the table lookup cannot find is skipped on
-    read — it is never silently applied to history.
+    A rule the table lookup cannot find is skipped on read — it is never
+    silently applied to history.
     """
 
-    def refuse(data: Mapping[str, object]) -> None:
+    def refuse(data: Mapping[str, object], _context: object) -> None:
         raise JournalRecordError("a rule without an entry was checked")
 
     monkeypatch.setitem(records_module._RULES, "unregistered", refuse)
@@ -292,3 +294,60 @@ def test_session_record_schema_uses_the_same_derivation(
     """Scenario: each writer stamps the minimum schema its record needs."""
 
     assert session_record_schema(activity) == expected
+
+
+def test_a_record_is_checked_against_where_it_lies_on_read(tmp_path: Path) -> None:
+    """The placing rules apply on read: the record's task against the task
+    directory it lies in."""
+
+    record = create_opened_record("CR-002", "test")
+    journal_root = _journal_with(tmp_path, record)
+    with pytest.raises(JournalRecordError, match="does not match its directory"):
+        read_records(journal_root, "CR-001")
+
+
+def test_a_record_is_checked_against_its_filename_on_read(tmp_path: Path) -> None:
+    """The placing rules apply on read: the record type against the type
+    the file name declares."""
+
+    record = create_opened_record("CR-001", "test")
+    journal_root = _journal_with(tmp_path, record)
+    records_dir = journal_root / "tasks" / "CR-001" / "records"
+    (records_dir / f"{generate_ulid()}-review.json").write_text(
+        json.dumps(record, ensure_ascii=False), encoding="utf-8"
+    )
+    with pytest.raises(JournalRecordError, match="does not match its filename"):
+        read_records(journal_root, "CR-001")
+
+
+def test_a_record_is_checked_against_its_destination_on_write(
+    tmp_path: Path,
+) -> None:
+    """The placing rules apply on write: the record's task against the
+    destination it is written to."""
+
+    record = create_opened_record("CR-001", "test")
+    with pytest.raises(JournalRecordError, match="does not match its destination"):
+        validate_record_for_write(tmp_path / "journal", "CR-002", record)
+
+
+def test_a_binding_to_an_absent_finding_is_a_write_side_refusal(
+    tmp_path: Path,
+) -> None:
+    """Scenario: a rule comparing a record with where it lies applies where
+    the path supplies that placement.
+
+    The task's finding set is the write side's placement input — the author
+    can still fix the input — so a completed record bound to a finding the
+    task does not hold is refused by validate_record_for_write, while the
+    same record already in the journal is read, checked by the rules of its
+    own schema.
+    """
+
+    record = create_completed_record(
+        "CR-001", "test", None, completed_finding=_FINDING_ID
+    )
+    journal_root = _journal_with(tmp_path, record)
+    assert read_records(journal_root, "CR-001")[0]["completed_finding"] == _FINDING_ID
+    with pytest.raises(JournalRecordError, match="must name a finding"):
+        validate_record_for_write(journal_root, "CR-001", record)

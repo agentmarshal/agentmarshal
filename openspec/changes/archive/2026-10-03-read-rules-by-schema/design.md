@@ -47,8 +47,9 @@ number.
   the read side, so the completeness test is simply
   `set(_RULES) == set(_RULE_FROM_SCHEMA)` — it fails the moment a rule is
   checked without an entry (or an entry names no rule). A lookup that comes
-  back empty is fail-closed on read: an unregistered rule is skipped, never
-  silently applied to history.
+  back empty applies no rule on read: an unregistered rule is skipped —
+  permissive, never a refusal — which is why the completeness test, not
+  the read path, is what refuses the missing entry.
 - **The schema-version check is an explicit first step, not a rule.** A
   rule reads `data["schema"]` — field admission, the `reviewed_contract`
   and finding-binding gates, the provenance guard — so the check that
@@ -56,7 +57,7 @@ number.
   registered. `_validate_record` calls `_check_schema_version` itself,
   then iterates the registry. The check needs no table entry: it is bound
   to no schema — it is what makes the record's number known — and the
-  completeness test asserts it stays out of both structures.
+  completeness test fails the moment the check is registered anywhere.
 - **Read and write share one iteration; the record's own schema selects
   the rules.** `_validate_record(record, *, for_write)` runs the schema
   check, then the registry in order; on the read side a rule whose bound
@@ -70,6 +71,24 @@ number.
   and the gate's reading of the journal. No rule list is duplicated for
   the two sides; the side is one parameter, and the gate-bound rules keep
   their numbers in the same table that drives both.
+- **Rules that compare a record with where it lies take a context.** The
+  record's task against its destination or directory, its record type
+  against the file name that carries it, and a finding binding against the
+  task's findings were checks `_validate_record`'s callers ran inline —
+  outside the table entirely, so the completeness test could not see them.
+  They are registered like every other rule (bound 1: they exist today)
+  and read their placement from a `_RuleContext` the caller passes:
+  `read_records` supplies the directory task and the file's declared type,
+  `validate_record_for_write` the destination task and a lazy
+  `finding_ids` (the same `read_records` scan it ran inline),
+  `validate_record_content` the file name only — a content check has no
+  destination and no journal at hand, and the gate compares an added
+  record's task to its path itself, exactly as today. A rule whose
+  placement the caller cannot supply is not applied there; in particular
+  the read side supplies no finding set, so a record bound to a finding
+  the task does not hold is still read — refusing it is the write side's,
+  where the author can still fix the input — and what history accepts is
+  unchanged.
 - **Each conditional check keeps its own condition inside its predicate.**
   The write path must not start refusing records it accepted today: a
   schema-1 record is still writable (a test pins it), so the provenance
@@ -138,5 +157,5 @@ number.
   failure a malformed record reports is unchanged.
 - [A rule added without a table entry silently passes review] → the
   completeness test compares the registry keys to the table keys; the
-  read-side lookup is fail-closed (unregistered rules are skipped, not
-  applied).
+  read-side lookup skips an unregistered rule rather than applying it, so
+  the missing entry is the test's to refuse.

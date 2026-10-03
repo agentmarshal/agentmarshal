@@ -54,11 +54,26 @@ from 4, `reviewed_contract` from 5, the coordination activity from 6. A rule
 SHALL NOT be checked without an entry in the table, and a read path SHALL
 apply no rule whose entry is missing. The schema-version check is a
 precondition of the table itself — it is what makes the record's number
-known — so it runs ahead of every rule and holds no entry.
+known — so it runs ahead of every rule and holds no entry. Some rules
+compare a record with where it lies: `task` against the task the record
+is written to or read from, `record_type` against the file name that
+carries it, a finding binding against the findings the task holds. Such a
+rule SHALL be bound in the table like any other and SHALL apply where the
+path supplies that placement — the read path supplies the directory and
+the file name; the write side supplies the destination and, where the
+task's findings are at hand, the finding set. A rule whose placement a
+path does not supply SHALL NOT be applied there.
 
 #### Scenario: a rule cannot be checked without an entry in the table
 - **WHEN** a check is registered as a rule without a table entry
 - **THEN** the completeness check fails, and no read path applies the rule
+
+#### Scenario: a rule comparing a record with where it lies applies where the path supplies that placement
+- **WHEN** a record bound to a finding the task does not hold is read from
+  the journal
+- **THEN** it is read under its own schema's rules — the task's findings
+  are the write side's placement — while the same record presented for
+  write is refused
 
 #### Scenario: today's rules apply from schema 1 except the gates bound to 2, 4, 5 and 6
 - **WHEN** the table's bindings are read
