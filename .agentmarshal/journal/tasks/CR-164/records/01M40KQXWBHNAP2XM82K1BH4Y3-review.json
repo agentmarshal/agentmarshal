@@ -1,0 +1,32 @@
+{
+  "advisory_findings": [
+    "z-listing-change-alters-detection-without-a-requirement",
+    "base-tree-z-widens-the-non-utf8-refusal"
+  ],
+  "artifacts": [
+    {
+      "hash": "7dec3f1ec1a4f179f96f54dfe8788ffde30fd5c1a0a1f13b45dd7612f9948c02",
+      "ref": ".agentmarshal/journal/tasks/CR-164/artifacts/01M40KQXWBHNAP2XM82K1BH4Y3-review.md"
+    }
+  ],
+  "created_at": "2026-10-03T10:07:49.643609Z",
+  "findings": [
+    "proposal-denies-the-cli-change-and-omits-the-z-listing-changes"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "c75dac60a04921d9fee694c95fec816d6da8e839",
+  "reviewed_contract": "9066a056cc56dd4f80a4d51ea67439376775166097d8a0d7b239b0422d1a8440",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-164",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "changes_required"
+}

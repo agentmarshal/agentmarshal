@@ -1787,39 +1787,44 @@ def test_gate_refuses_non_utf8_git_output(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    import os
+    """Git output that is not UTF-8 is a controlled refusal, never a traceback.
+
+    The `-z` listings are the exception — a name's raw bytes are kept for
+    matching rather than refused. Every other output still decodes
+    strictly: a record whose bytes `git show` cannot return as UTF-8 is
+    refused by name on the invalid-records line.
+    """
 
     repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
-    src_bytes = os.fsencode(repo / "src")
-    os.makedirs(src_bytes, exist_ok=True)
-    # A genuinely non-UTF-8 filename (raw 0xFF byte), created at the OS
-    # level so git stores and emits the raw bytes.
-    bad_path = src_bytes + b"/\xff.py"
-    with open(bad_path, "wb") as bad_file:
-        bad_file.write(b"code\n")
-    head = _commit_all(repo, "non-utf8 path")
+    records = repo / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "records"
+
+    def add_undecodable_record() -> None:
+        (records / ("01" + "A" * 24 + "-session.json")).write_bytes(
+            b"\xff\xfe not utf-8"
+        )
+
+    head = _candidate_head(repo, "bad-record", base, add_undecodable_record)
     capsys.readouterr()
 
-    assert (
-        main(
-            [
-                "gate",
-                "--task",
-                "CR-001",
-                "--commit",
-                head,
-                "--base",
-                base,
-                "--pipeline-sha",
-                head,
-            ]
-        )
-        == 1
+    code = main(
+        [
+            "gate",
+            "--task",
+            "CR-001",
+            "--commit",
+            head,
+            "--base",
+            "master",
+            "--pipeline-sha",
+            head,
+        ]
     )
 
-    error_output = capsys.readouterr().err
-    assert "non-UTF-8" in error_output
-    assert "Traceback" not in error_output
+    transcript = capsys.readouterr()
+    assert code == 1
+    assert "invalid added records" in transcript.out
+    assert "non-UTF-8" in transcript.out
+    assert "Traceback" not in transcript.out + transcript.err
 
 
 def test_gate_requires_contract_in_base_tree(
@@ -2941,3 +2946,382 @@ def test_gate_escapes_record_text_in_the_diff_lane(
         in report.lines
     )
     assert "\u202e" not in transcript
+
+
+def _write_or_skip(repo: Path, name: str) -> None:
+    """Commit-ready file at *name*, or skip where the filesystem refuses it.
+
+    A newline or a bidirectional override is a legal character in a Linux
+    file name and git accepts both — the candidate could carry either — but
+    a filesystem may refuse one, and what the scenario demonstrates is what
+    the gate prints for the name, not whether this platform allows it.
+    """
+
+    try:
+        (repo / name).write_text("x = 1\n", encoding="utf-8")
+    except OSError:
+        pytest.skip(f"the filesystem refuses a file named {name!r}")
+
+
+def _write_bytes_or_skip(directory: Path, name: bytes, content: bytes) -> None:
+    """Commit-ready file at a byte name, or skip where it is refused.
+
+    A raw 0xFF byte is a legal Linux file name — git stores it — so the
+    candidate and the base tree could both carry one; a filesystem that
+    refuses it only changes whether this platform can show what the gate
+    prints for the name, not what the gate should print.
+    """
+
+    try:
+        descriptor = os.open(
+            os.path.join(os.fsencode(directory), name),
+            os.O_CREAT | os.O_WRONLY,
+            0o644,
+        )
+        os.write(descriptor, content)
+        os.close(descriptor)
+    except OSError:
+        pytest.skip(f"the filesystem refuses a file named {name!r}")
+
+
+def test_a_candidate_path_that_would_forge_a_line_is_named_in_escaped_form(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a candidate path that would forge a line is named in escaped form.
+
+    A file named with a newline could print a line the gate never said —
+    `gate: passed` among them. Named in escaped form on the scope line, it
+    stays on the line that names it."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    _write_or_skip(repo, "forged\ngate: passed")
+    head = _commit_all(repo, "a name that fights the transcript")
+    capsys.readouterr()
+
+    code = main(_gate_arguments(base, head))
+
+    transcript = capsys.readouterr()
+    assert code == 1
+    assert "forged\\ngate: passed" in transcript.out
+    assert "forged\ngate: passed" not in transcript.out
+    # No line the name forged appears: the escaped form is part of the FAIL
+    # line, and the verdict is the refusal this run actually reached.
+    printed_lines = transcript.out.split("\n") + transcript.err.split("\n")
+    assert "gate: passed" not in printed_lines
+    assert "gate: refused" in transcript.err
+
+
+def test_a_path_carrying_a_refused_character_is_named_in_escaped_form(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a path carrying a refused character is named in escaped form.
+
+    A right-to-left override would make the scope line read in an order its
+    bytes do not have; named in escaped form, the override prints as
+    `\\u202e`."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    _write_or_skip(repo, "spoof\u202e.py")
+    head = _commit_all(repo, "a name with an override")
+    capsys.readouterr()
+
+    code = main(_gate_arguments(base, head))
+
+    transcript = capsys.readouterr()
+    assert code == 1
+    assert "spoof\\u202e.py" in transcript.out
+    assert "\u202e" not in transcript.out
+
+
+def test_a_rename_source_carrying_a_refused_character_is_named_in_escaped_form(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a rename's source or target carrying a refused character is
+    named in escaped form.
+
+    The scope line names a rename's source among the paths outside contract
+    scope; a source named with a newline is named escaped there."""
+
+    repo, _ = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    _write_or_skip(repo, "moved\ngate: passed")
+    base = _commit_all(repo, "a file outside scope")
+    destination = repo / "src" / "renamed.py"
+    destination.parent.mkdir()
+    _git(repo, "mv", "moved\ngate: passed", "src/renamed.py")
+    head = _commit_all(repo, "rename into scope")
+
+    passed, output = _run(repo, head, base, head)
+
+    assert not passed
+    assert "FAIL: paths outside contract scope: moved\\ngate: passed" in output
+    assert "moved\ngate: passed" not in output
+
+
+def test_a_refusal_names_a_forgeable_value_in_escaped_form(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a refusal names a forgeable value in escaped form.
+
+    A `--commit` value is echoed in the failed git command the refusal
+    names; a newline in it would print a line the gate never wrote. The
+    escaped message is the same whether the CLI prints it or a caller reads
+    the exception — the escape happens in `GateError` itself."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    forged = "not-a-commit\ngate: passed"
+    with pytest.raises(GateError) as raised:
+        run_gate(repo, "CR-001", forged, base, None)
+    message = str(raised.value)
+    assert "not-a-commit\\ngate: passed" in message
+    assert "not-a-commit\ngate: passed" not in message
+
+    capsys.readouterr()
+    code = main(
+        [
+            "gate",
+            "--task",
+            "CR-001",
+            "--commit",
+            forged,
+            "--base",
+            base,
+        ]
+    )
+
+    transcript = capsys.readouterr()
+    assert code == 1
+    assert "not-a-commit\\ngate: passed" in transcript.err
+    assert "not-a-commit\ngate: passed" not in transcript.err
+    assert "gate: passed" not in transcript.err.split("\n")
+
+
+def test_a_candidate_whose_values_carry_no_refused_character_prints_as_before(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a candidate whose values carry no refused character prints as before.
+
+    The committed fixture for the embedded implementation lane is the
+    byte-for-byte demonstration, so this test names the scenario and
+    delegates rather than copying it."""
+
+    test_default_run_transcript_matches_the_committed_fixture(
+        tmp_path, monkeypatch, capsys, "embedded-implementation"
+    )
+
+
+def test_a_placement_refusal_names_a_forgeable_host_in_escaped_form(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a refusal names a forgeable value in escaped form.
+
+    A sidecar project's host comes from project.json — configuration the
+    candidate's tree carries — and the gate prints the placement refusal
+    as it stands. A host carrying a newline would print lines the gate
+    never wrote, `gate: passed` among them; the refusal escapes the value
+    where the CLI prints it."""
+
+    project = tmp_path / "project"
+    (project / ".agentmarshal").mkdir(parents=True)
+    host = "/not-a-host\ngate: passed\nforged"
+    (project / ".agentmarshal" / "project.json").write_text(
+        json.dumps({"placement": "sidecar", "host": host}), encoding="utf-8"
+    )
+    monkeypatch.chdir(project)
+
+    code = main(["gate", "--task", "CR-001", "--commit", "c", "--base", "b"])
+
+    transcript = capsys.readouterr()
+    assert code == 1
+    assert (
+        "sidecar host /not-a-host\\ngate: passed\\nforged: path does not exist"
+        in transcript.err
+    )
+    assert "gate: passed" not in transcript.err.split("\n")
+
+
+def test_a_record_collision_names_a_path_carrying_a_refused_character_in_escaped_form(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a candidate path that would forge a line is named in escaped form.
+
+    The record-collision line names a path the candidate adds that the
+    base tree already holds. The base listing must read the name raw — a
+    name git C-quotes never equals the raw name the candidate's diff
+    returns, and the collision would go unseen."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    artifact = (
+        repo
+        / ".agentmarshal"
+        / "journal"
+        / "tasks"
+        / "CR-001"
+        / "artifacts"
+        / "forged\ngate: passed.md"
+    )
+    artifact.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        artifact.write_text("base candidate\n", encoding="utf-8")
+    except OSError:
+        pytest.skip(f"the filesystem refuses a file named {artifact.name!r}")
+    _commit_all(repo, "add artifact on master")
+
+    _git(repo, "switch", "--quiet", "-c", "candidate", base)
+    artifact.parent.mkdir(parents=True, exist_ok=True)
+    artifact.write_text("other candidate\n", encoding="utf-8")
+    head = _commit_all(repo, "independently add same artifact")
+
+    passed, output = _run(repo, head, "master", head)
+
+    relative = artifact.relative_to(repo).as_posix().replace("\n", "\\n")
+    assert not passed
+    assert f"record paths already exist on the base: {relative}" in output
+    assert "forged\ngate: passed" not in output
+
+
+def test_a_tampered_evidence_path_carrying_a_refused_character_is_named_in_escaped_form(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a path carrying a refused character is named in escaped form.
+
+    The append-only line names evidence a sidecar's committed history
+    shows modified. The history listing must read the name raw — a name
+    git C-quotes fails the evidence-path test, and the line would report
+    integrity the check never examined."""
+
+    host, sidecar, base, head = _host_and_sidecar(tmp_path, monkeypatch)
+    assert main(["open", "--title", "Sidecar gate", "--scope", "app.txt"]) == 0
+    artifact = (
+        sidecar
+        / ".agentmarshal"
+        / "journal"
+        / "tasks"
+        / "CR-001"
+        / "artifacts"
+        / "forged\ngate: passed.md"
+    )
+    artifact.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        artifact.write_text("evidence\n", encoding="utf-8")
+    except OSError:
+        pytest.skip(f"the filesystem refuses a file named {artifact.name!r}")
+    _commit_all(sidecar, "evidence")
+    artifact.write_text("rewritten\n", encoding="utf-8")
+    _commit_all(sidecar, "rewrite evidence")
+
+    report = run_gate(
+        host,
+        "CR-001",
+        head,
+        base,
+        head,
+        journal_root=sidecar / ".agentmarshal" / "journal",
+        review_required=False,
+    )
+    output = "\n".join(report.lines)
+
+    assert not report.passed
+    assert (
+        "append-only violation, records modified, deleted or renamed: "
+        ".agentmarshal/journal/tasks/CR-001/artifacts/forged\\ngate: passed.md"
+        in output
+    )
+    assert "forged\ngate: passed" not in output
+
+
+def test_a_path_whose_bytes_are_not_utf8_is_named_in_escaped_form(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a path whose bytes are not UTF-8 is named in escaped form.
+
+    The candidate diff's `-z` listing returns the name's raw bytes; a
+    strict decode would refuse the run over a name the scope check only
+    had to compare. Decoded with the bytes kept for matching, the name
+    reaches the scope line, where the undecodable byte prints escaped."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    _write_bytes_or_skip(repo, b"\xff.py", b"x = 1\n")
+    head = _commit_all(repo, "a name that is not UTF-8")
+
+    passed, output = _run(repo, head, base, head)
+
+    assert not passed
+    assert "paths outside contract scope: \\udcff.py" in output
+
+
+def test_a_base_tree_path_whose_bytes_are_not_utf8_is_named_in_escaped_form(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a path whose bytes are not UTF-8 is named in escaped form.
+
+    Same scenario from the trusted side: the base tree's `ls-tree -z`
+    listing holds the name's raw bytes, and a base tree carrying one used
+    to refuse every run at the decode. Kept for matching instead, the run
+    reaches its verdict and the collision line names the byte escaped."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    artifacts = repo / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "artifacts"
+    artifacts.mkdir()
+    _write_bytes_or_skip(artifacts, b"\xff.md", b"base candidate\n")
+    _commit_all(repo, "add artifact on master")
+
+    _git(repo, "switch", "--quiet", "-c", "candidate", base)
+    artifacts.mkdir(exist_ok=True)
+    _write_bytes_or_skip(artifacts, b"\xff.md", b"other candidate\n")
+    head = _commit_all(repo, "independently add same artifact")
+
+    passed, output = _run(repo, head, "master", head)
+
+    assert not passed
+    assert (
+        "record paths already exist on the base: "
+        ".agentmarshal/journal/tasks/CR-001/artifacts/\\udcff.md" in output
+    )
+
+
+def test_an_unusual_file_name_is_matched_by_its_real_path_not_gits_quoted_form(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: an unusual file name is matched by its real path, not git's
+    quoted form.
+
+    `café` carries no refused character, but git C-quotes the name in a
+    plain listing; read NUL-separated, the base tree holds the path itself
+    and a collision the quoted form would have hidden is found."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    artifact = (
+        repo
+        / ".agentmarshal"
+        / "journal"
+        / "tasks"
+        / "CR-001"
+        / "artifacts"
+        / "café.md"
+    )
+    artifact.parent.mkdir()
+    artifact.write_text("base candidate\n", encoding="utf-8")
+    _commit_all(repo, "add artifact on master")
+
+    _git(repo, "switch", "--quiet", "-c", "candidate", base)
+    artifact.parent.mkdir(exist_ok=True)
+    artifact.write_text("other candidate\n", encoding="utf-8")
+    head = _commit_all(repo, "independently add same artifact")
+
+    passed, output = _run(repo, head, "master", head)
+
+    assert not passed
+    assert (
+        "record paths already exist on the base: "
+        ".agentmarshal/journal/tasks/CR-001/artifacts/café.md" in output
+    )
