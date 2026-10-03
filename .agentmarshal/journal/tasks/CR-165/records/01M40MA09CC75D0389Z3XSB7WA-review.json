@@ -1,0 +1,31 @@
+{
+  "advisory_findings": [
+    "ADV-OVERDUE-LINE-DUPLICATED",
+    "ADV-UNAVAILABLE-LINE-DUPLICATED",
+    "ADV-GIT-VERSION-TEST-PATCH-TOO-BROAD"
+  ],
+  "artifacts": [
+    {
+      "hash": "2f2e3a321308b2e03024cc814d111bef2a3b0edd7216d9cf0f7304197be56bc7",
+      "ref": ".agentmarshal/journal/tasks/CR-165/artifacts/01M40MA09CC75D0389Z3XSB7WA-review.md"
+    }
+  ],
+  "created_at": "2026-10-03T10:17:41.932340Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "8cb8342dbb7cbd8ad1b998038fad761e5fe8a093",
+  "reviewed_contract": "51114fe12e9d76a2eff73843ecbcda1da328dbcbd3366cb54ffe91a3990ac350",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-165",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "approved"
+}

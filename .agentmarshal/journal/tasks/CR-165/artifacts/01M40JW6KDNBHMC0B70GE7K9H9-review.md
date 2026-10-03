@@ -1,0 +1,20 @@
+Я прочитал diff и весь задействованный контекст: `doctor.py`, `steps.py`, `status_view.py`, `process_log.py`, `localstate.py`, `project.py` (`git_common_dir`), `journal/status.py`, `placement.py`, `cli.py` (`_run_doctor`, `_run_status`), оба spec-файла и оба набора тестов — новый и существующий `tests/test_doctor.py`.
+
+Что проверил по acceptance:
+
+- **Пути.** `_report_locations_and_steps` переиспользует `status_view.print_paths` — те же три строки `journal:` / `process log:` / `local state:` на stderr, каждая через `escape_for_display`. Sidecar берёт `placement.journal_root` и `local_state(placement)`, то есть репозиторий журнала; host в вызов не входит. Неразрешимый local state даёт `unavailable (<reason>)` для двух строк, ненайденный проект — для всех трёх.
+- **Overdue steps.** Вычисление то же, что у `status`: `list_task_statuses` + `step_events_by_task` + `open_steps(..., now=moment)`, лог читается один раз за запуск, `moment` берётся один раз и инъектируется. Отчёт не влияет на exit code: он печатается после цикла проверок, а `except Exception` вокруг него превращает любой сбой в строку на stderr.
+- **Git floor.** 2.31 подтверждается: `project.git_common_dir` действительно вызывает `rev-parse --path-format=absolute` (`project.py:371`), а этот флаг появился в git 2.31. Сравнение `version[:2] < (2, 31)` корректно на границе (`2.31.0` проходит, `2.30.9` нет, `3.0` проходит), а regex `(\d+)\.(\d+)(?:\.(\d+))?` читает первое число с точкой, поэтому `2.39.2.windows.1` → `2.39.2` и суффикс роли не играет.
+- **Нераспознаваемый/нечитаемый лог.** `read_events` может выбросить только `OSError` (из `iterdir`) — `_at_or_dawn` всегда возвращает aware datetime, так что сортировка не падает на сравнении naive/aware. Случай «файл вместо каталога» ловится явной проверкой, случай «каталог без прав» — через `except OSError`. Оба названы, оба читаются как «шагов нет».
+- **Существующие проверки.** Ни один тест в `tests/test_doctor.py` не опирался на старый текст git-проверки и ни один не требует пустого stderr, так что новые строки отчёта их не ломают. Количество проверок осталось 10.
+- **Спеки.** `ADDED` здесь правильный ярлык: ни в `process-log`, ни в `local-state`, ни в `project-settings`/`trust-preconditions` не было требования про git-проверку `doctor` или про пути/шаги `doctor`, так что `MODIFIED` нечему было адресоваться. Все 11 + 4 сценария покрыты тестами, docstring каждого называет сценарий. Change заархивирован по той же конвенции `2026-10-03-…`, что и соседние.
+
+Блокирующих дефектов не нашёл. Два advisory:
+
+`adv-duplicate-process-log-reader` — `doctor._read_process_events` (`src/agentmarshal/doctor.py:448`) — посимвольная копия `cli._read_process_events` (`src/agentmarshal/cli.py:959`): то же имя, та же сигнатура, та же логика, отличается только префикс сообщения `doctor:` против `status:` и последние слова docstring. design.md заявляет «The computation and the paths printer are reused, not copied», и для `open_steps`/`print_paths` это так, но охранник чтения лога скопирован. Один helper, принимающий имя команды, в `process_log.py` или `status_view.py` снял бы дрейф двух копий. Делаю это advisory, а не blocking, потому что scope контракта (`doctor.py`, `tests/`, openspec) не включает `cli.py`, то есть правка потребует расширения scope — это решение координатора, а не автора.
+
+`adv-paths-printed-once-untested` — `tests/test_doctor_steps_paths.py:276` — сценарий говорит «print once each on stderr», но `test_doctor_prints_the_three_paths_once_on_stderr` проверяет только вхождение блока подстрокой (`_paths_lines(repo) in captured.err`) и отсутствие метки в stdout. Регрессия, печатающая блок дважды — например, если отчёт однажды вызовут и из `cli._run_doctor`, и из `run_doctor` — тест пройдёт. Хватило бы `captured.err.count("journal: ") == 1`.
+
+AGENTMARSHAL_VERDICT_BEGIN
+{"reviewed_commit": "948424784c9bd14cd71922e03e2ec2891841ad93", "verdict": "approved", "findings": [], "advisory_findings": ["adv-duplicate-process-log-reader", "adv-paths-printed-once-untested"]}
+AGENTMARSHAL_VERDICT_END
