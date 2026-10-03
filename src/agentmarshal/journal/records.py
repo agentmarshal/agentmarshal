@@ -213,7 +213,10 @@ def _is_ulid(value: str) -> bool:
 # 6, which keep their numbers. The two structures are deliberate: a rule can
 # be registered without a table entry, and that gap is what the completeness
 # test catches. A read path whose lookup finds no entry applies no rule —
-# fail-closed, never a silent check on history.
+# fail-closed, never a silent check on history. The schema-version check is
+# not a rule: `_validate_record` runs it as an explicit first step, before
+# the registry, so no rule — wherever it is registered — can read the
+# record's schema before it is checked.
 _RuleCheck = Callable[[Mapping[str, object]], None]
 _RULES: dict[str, _RuleCheck] = {}
 
@@ -247,8 +250,9 @@ def _allowed_fields(record_type: str, schema: int) -> frozenset[str]:
     return fields
 
 
-@_rule("schema-version")
 def _check_schema_version(data: Mapping[str, object]) -> None:
+    """The explicit first step of validation, ahead of every rule."""
+
     schema = data.get("schema")
     if type(schema) is not int or schema not in _SUPPORTED_SCHEMAS:
         raise JournalRecordError("record has an unknown or missing schema version")
@@ -486,7 +490,6 @@ def _check_finding_binding(data: Mapping[str, object]) -> None:
 # at read time. The write path applies every rule regardless; the read paths
 # apply a rule only to records of this schema and above.
 _RULE_FROM_SCHEMA: dict[str, int] = {
-    "schema-version": 1,
     "record-type": 1,
     "record-type-predicate": 1,
     "reviewed-contract": 5,
@@ -524,17 +527,17 @@ def _validate_record(
     """
 
     data = dict(record)
-    schema: int | None = None
+    # An explicit first step, outside the registry: once it has run, the
+    # record's number selects which rules a read applies — and a rule
+    # registered ahead of the others can never read the schema unchecked.
+    _check_schema_version(data)
+    schema = cast(int, data["schema"])
     for name, check in _RULES.items():
-        if schema is not None and not for_write:
+        if not for_write:
             bound = _RULE_FROM_SCHEMA.get(name)
             if bound is None or bound > schema:
                 continue
         check(data)
-        if schema is None:
-            # The schema check is the first rule registered; once it has
-            # run, the record's number selects which rules a read applies.
-            schema = cast(int, data["schema"])
     return data
 
 
@@ -979,7 +982,7 @@ def _minimum_schema(record: Mapping[str, object]) -> int:
 
     schema = _BASELINE_SCHEMA
     if record.get("record_type") == "finding" or record.keys() & _SCHEMA_4_FIELDS:
-        schema = 4
+        schema = max(schema, 4)
     if "reviewed_contract" in record:
         schema = max(schema, 5)
     if record.get("activity") == "coordination":
@@ -1110,9 +1113,9 @@ def create_amendment_record(
 def session_record_schema(activity: str) -> int:
     """Return the schema a session record with *activity* is written under.
 
-    One place decides it, for the live writer and for backfill alike: the
-    minimum-schema derivation sees a value a later schema introduced and
-    stamps that schema; every other activity keeps the baseline.
+    Backfill asks for the stamp before its record exists; it goes through
+    the same minimum-schema derivation the writers apply to the records
+    they build.
     """
 
     return _minimum_schema({"record_type": "session", "activity": activity})
@@ -1141,7 +1144,6 @@ def create_session_record(
             f"session record argument {missing!r} is required when its pair is supplied"
         )
     record: dict[str, object] = {
-        "schema": session_record_schema(activity),
         "record_type": "session",
         "task": task_id,
         "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
@@ -1159,6 +1161,7 @@ def create_session_record(
     }
     if usage_provider is not None:
         record["usage"] = {"provider": usage_provider, "method": usage_method}
+    record["schema"] = _minimum_schema(record)
     return record
 
 
@@ -1258,7 +1261,14 @@ def create_acceptance_record(
 
 
 def validate_record_content(filename: str, content: str) -> dict[str, object]:
-    """Validate a record file's name and JSON content; return the record."""
+    """Validate a record file's name and JSON content; return the record.
+
+    A write-side check (ADR-0015 decision 1): the gate runs it on the
+    records a candidate adds, and backfill and migrate run it on a record
+    they built before writing — in each case the author can still fix the
+    input, so every current rule applies whatever schema the record
+    carries. History is read through ``read_records``.
+    """
 
     match = _RECORD_FILENAME_PATTERN.fullmatch(filename)
     if match is None:
@@ -1269,7 +1279,7 @@ def validate_record_content(filename: str, content: str) -> dict[str, object]:
         raise JournalRecordError(f"invalid JSON record: {filename}") from error
     if not isinstance(loaded, dict):
         raise JournalRecordError(f"record must contain a JSON object: {filename}")
-    record = _validate_record(cast(dict[str, object], loaded), for_write=False)
+    record = _validate_record(cast(dict[str, object], loaded), for_write=True)
     if record["record_type"] != match["record_type"]:
         raise JournalRecordError(f"record type does not match its filename: {filename}")
     return record

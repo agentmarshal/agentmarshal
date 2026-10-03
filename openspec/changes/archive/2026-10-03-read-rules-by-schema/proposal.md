@@ -17,9 +17,11 @@ from. Every rule that exists today is bound to schema 1, except the field
 gates already bound to schemas 2, 4, 5 and 6 — provenance, finding bindings,
 `reviewed_contract`, and the coordination activity — which keep their
 numbers. Validation splits by side (ADR-0015 decision 1):
-`validate_record_for_write` applies every rule whatever schema the record
-carries, while `read_records` and `validate_record_content` apply only the
-rules of the record's own schema and below.
+`validate_record_for_write` and `validate_record_content` — the check the
+gate runs on the records a candidate adds, and the preflight backfill and
+migrate run before writing — apply every rule whatever schema the record
+carries, while `read_records` applies only the rules of the record's own
+schema and below.
 
 Every `create_*` writer and `session_record_schema` stamp the minimum schema
 through one derivation over the record's fields and values instead of

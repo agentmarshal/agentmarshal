@@ -7,24 +7,32 @@
   admission moves to `_FIELD_FAMILIES` — verify: the split validation runs
   green under pytest.
 - [x] 1.2 `_validate_record(record, *, for_write)` applies all rules on
-  write and the record's own schema's rules on read;
-  `validate_record_for_write` passes `for_write=True`, `read_records` and
-  `validate_record_content` `for_write=False` — verify: pytest on
-  `test_journal.py`, `test_session.py`, `test_record_text_safety.py`,
-  `test_findings.py` (all unchanged).
+  write and the record's own schema's rules on read, with the
+  schema-version check as an explicit first step outside the registry;
+  `validate_record_for_write` and `validate_record_content` pass
+  `for_write=True` (the gate's check of added records and the
+  backfill/migrate preflights are write-side), `read_records` passes
+  `for_write=False` — verify: pytest on `test_journal.py`,
+  `test_session.py`, `test_record_text_safety.py`, `test_findings.py`.
 
 ## 2. Tests pin the table and the sides
 
 - [x] 2.1 Completeness test: `_RULES` keys equal `_RULE_FROM_SCHEMA` keys,
-  first rule is the schema check, and the bindings are schema 1 except the
-  four gates — verify: test fails if a rule lacks an entry.
+  the schema check stays outside both structures as the explicit first
+  step, and the bindings are schema 1 except the four gates — verify: test
+  fails if a rule lacks an entry.
 - [x] 2.2 Test-only rule bound to `max(_SUPPORTED_SCHEMAS) + 1` (monkeypatch
   the registry and table): a record of the highest schema is accepted by
-  `read_records`/`validate_record_content` and refused by
-  `validate_record_for_write` — verify: pytest; the synthetic rule never
+  `read_records` and refused by `validate_record_for_write` and
+  `validate_record_content` — verify: pytest; the synthetic rule never
   appears in `records.py`.
 - [x] 2.3 A rule registered with no table entry is never checked on read
   (fail-closed lookup) — verify: pytest.
+- [x] 2.4 The gate refuses a candidate that adds a record stamped below
+  the schema a rule needs (a coordination session stamped 3, a
+  finding-bound record stamped 3), while the same records already in the
+  journal are read by `read_records` — verify: the gate test in
+  `test_gate.py`.
 
 ## 3. Writers derive the minimum schema
 

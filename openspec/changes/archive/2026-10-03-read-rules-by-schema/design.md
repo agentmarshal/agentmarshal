@@ -1,9 +1,11 @@
 ## Context
 
 `records.py` has a single `_validate_record` that every path calls —
-`validate_record_for_write` on the write side, `read_records` and
-`validate_record_content` on the read side. Inside it the schema-bound checks
-are scattered: field-family admission (`_SCHEMA_2_FIELDS`,
+`validate_record_for_write` on live writes, `read_records` where history is
+read, and `validate_record_content` where the gate checks the records a
+candidate adds and where backfill and migrate preflight a record they
+built. Inside it the schema-bound checks are scattered: field-family
+admission (`_SCHEMA_2_FIELDS`,
 `_SCHEMA_2_SESSION_FIELDS`, `_SCHEMA_5_FIELDS`), the `reviewed_contract`
 gate, the finding-binding gate, the `schema >= 2` provenance gate, the
 coordination-activity gate inside `_validate_session_record` — while every
@@ -47,15 +49,27 @@ number.
   checked without an entry (or an entry names no rule). A lookup that comes
   back empty is fail-closed on read: an unregistered rule is skipped, never
   silently applied to history.
-- **Read and write share one iteration; the record's own schema selects the
-  rules.** `_validate_record(record, *, for_write)` runs the registry in
-  order. The first registered rule is the schema check; once it has run, the
-  record's number is known, and on the read side a rule whose bound schema
-  exceeds it is skipped. On the write side the flag short-circuits the
-  filter entirely — every rule runs on every record, which is exactly
-  today's single-function behaviour. No rule list is duplicated for the two
-  sides; the side is one parameter, and the gate-bound rules keep their
-  numbers in the same table that drives both.
+- **The schema-version check is an explicit first step, not a rule.** A
+  rule reads `data["schema"]` — field admission, the `reviewed_contract`
+  and finding-binding gates, the provenance guard — so the check that
+  makes the number trustworthy runs before any rule, wherever a rule is
+  registered. `_validate_record` calls `_check_schema_version` itself,
+  then iterates the registry. The check needs no table entry: it is bound
+  to no schema — it is what makes the record's number known — and the
+  completeness test asserts it stays out of both structures.
+- **Read and write share one iteration; the record's own schema selects
+  the rules.** `_validate_record(record, *, for_write)` runs the schema
+  check, then the registry in order; on the read side a rule whose bound
+  schema exceeds the record's is skipped, as is one the lookup cannot
+  find. On the write side the flag short-circuits the filter — every rule
+  runs on every record. The write side is `validate_record_for_write` and
+  `validate_record_content`: the gate runs the latter on the records a
+  candidate adds — a write-side check, since the author can still fix the
+  input — and backfill and migrate run it as a preflight before writing.
+  The read side is `read_records`, and through it `validate`, `status`,
+  and the gate's reading of the journal. No rule list is duplicated for
+  the two sides; the side is one parameter, and the gate-bound rules keep
+  their numbers in the same table that drives both.
 - **Each conditional check keeps its own condition inside its predicate.**
   The write path must not start refusing records it accepted today: a
   schema-1 record is still writable (a test pins it), so the provenance
@@ -65,7 +79,11 @@ number.
   `reviewed_contract`-requires-5 keep their explicit check for the message;
   a record carrying the field at a lower schema is still refused on read —
   by the field-admission rule (bound 1), which admits the field only to
-  records of schema 5 and above.
+  records of schema 5 and above. The read-side message for
+  `reviewed_contract` below schema 5 therefore stays "record has
+  unsupported fields: reviewed_contract" rather than the gate's "requires
+  schema 5" — acceptance and refusal are unchanged either way, and this
+  task deliberately leaves the message as it is.
 - **Field admission is data, not rules.** `_FIELD_FAMILIES` lists
   `(schema, record_type-or-None, fields)`: the schema-2 provenance fields
   (and `usage` on sessions) from 2, `reviewed_contract` from 5. The fields
@@ -91,20 +109,29 @@ number.
   current record model is written under — and raises it for each thing a
   later schema introduced: a finding record or a finding-binding field to 4,
   `reviewed_contract` to 5, a coordination activity to 6. Every `create_*`
-  builds its record, then stamps `_minimum_schema(record)`;
-  `session_record_schema` delegates to the same derivation for the live
-  writer and for backfill alike. The stamped numbers are what they are today
+  builds its record, then stamps `_minimum_schema(record)` —
+  `create_session_record` included, so a later session field raises the
+  stamp without touching the writer. `session_record_schema` stays for
+  backfill, which asks for the stamp before its record exists, and goes
+  through the same derivation. The stamped numbers are what they are today
   (3, 4, 5, 6 where they occur) — pinned by a parametrized test.
 
 ## Risks
 
 - [A hand-forged low-schema record carrying a gated field or value is now
-  read under its own schema's rules — e.g. a coordination session stamped 5
-  is no longer refused on read] → intended by ADR-0015 decision 1: no lawful
-  writer produces such a record (write still refuses it), the journal is
-  append-only so it cannot appear in a real journal, and output-forging
-  values are still refused by schema-1 rules; escaping on display (decision
-  5) covers the rest in its own task.
+  read under its own schema's rules — e.g. a coordination session stamped 3
+  is no longer refused where history is read] → intended by ADR-0015
+  decision 1, and bounded by the side split. The journal's being
+  append-only does not keep such a record out — a candidate could add one
+  — but every path that puts a record in is write-side: `write_record`,
+  the gate's `validate_record_content` over added records, and backfill's
+  and migrate's preflights all apply every current rule, so a governed
+  write still refuses it. What remains is a record written around the tool
+  entirely — a hand-edited commit merged outside the gate — which no
+  in-tool check can refuse at the boundary; that record is then read under
+  its own schema's rules, output-forging values are still refused by
+  schema-1 rules, and escaping on display (decision 5) covers the rest in
+  its own task.
 - [Rule registration order silently changes error precedence] → the registry
   is declared in exactly today's check order; the coordination gate is split
   out of `_validate_session_record` at its original position so the first

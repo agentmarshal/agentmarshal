@@ -1,6 +1,7 @@
 """Read-time rules bound to the schema that introduced them (ADR-0015)."""
 
 import json
+from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
@@ -53,7 +54,7 @@ def _later_rule(
 ) -> None:
     """Register a test-only rule bound to one schema above the highest."""
 
-    def refuse(data: dict[str, object]) -> None:
+    def refuse(data: Mapping[str, object]) -> None:
         raise JournalRecordError("refused by a rule from a later schema")
 
     monkeypatch.setitem(records_module._RULES, name, refuse)
@@ -65,11 +66,36 @@ def test_every_read_rule_has_its_schema() -> None:
 
     The completeness check: a check registered as a rule and absent from the
     table — or an entry naming no rule — fails this test. The schema check
-    must be the first rule registered, since its result selects the rest.
+    is not a rule: it runs ahead of the registry, so it holds no entry.
     """
 
-    assert next(iter(records_module._RULES)) == "schema-version"
+    assert "schema-version" not in records_module._RULES
     assert set(records_module._RULES) == set(records_module._RULE_FROM_SCHEMA)
+
+
+def test_the_schema_check_runs_before_any_rule(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A rule registered first still sees a checked schema.
+
+    The schema check is an explicit first step outside the registry, so a
+    rule sitting ahead of the others cannot read the schema before it is
+    checked: a record with no schema gets the schema error, not the rule's.
+    """
+
+    def reads_schema(data: Mapping[str, object]) -> None:
+        if type(data["schema"]) is not int:
+            raise AssertionError("a rule read the schema before it was checked")
+
+    monkeypatch.setattr(
+        records_module,
+        "_RULES",
+        {"reads-schema": reads_schema, **records_module._RULES},
+    )
+    with pytest.raises(JournalRecordError, match="schema version"):
+        validate_record_for_write(
+            tmp_path / "journal", "CR-001", {"record_type": "opened"}
+        )
 
 
 def test_a_rule_without_an_entry_is_never_checked_on_read(
@@ -81,7 +107,7 @@ def test_a_rule_without_an_entry_is_never_checked_on_read(
     read — it is never silently applied to history.
     """
 
-    def refuse(data: dict[str, object]) -> None:
+    def refuse(data: Mapping[str, object]) -> None:
         raise JournalRecordError("a rule without an entry was checked")
 
     monkeypatch.setitem(records_module._RULES, "unregistered", refuse)
@@ -115,6 +141,10 @@ def test_a_record_is_checked_by_every_current_rule_at_write_time(
     record = _opened(_HIGHEST_SCHEMA)
     with pytest.raises(JournalRecordError, match="later schema"):
         validate_record_for_write(tmp_path / "journal", "CR-001", record)
+    filename = f"{generate_ulid()}-opened.json"
+    content = json.dumps(record, ensure_ascii=False)
+    with pytest.raises(JournalRecordError, match="later schema"):
+        validate_record_content(filename, content)
 
 
 def test_a_later_rule_does_not_reach_a_record_of_an_earlier_schema_on_read(
@@ -126,9 +156,6 @@ def test_a_later_rule_does_not_reach_a_record_of_an_earlier_schema_on_read(
     record = _opened(_HIGHEST_SCHEMA)
     journal_root = _journal_with(tmp_path, record)
     assert read_records(journal_root, "CR-001")[0]["schema"] == _HIGHEST_SCHEMA
-    content = json.dumps(record, ensure_ascii=False)
-    filename = f"{generate_ulid()}-opened.json"
-    assert validate_record_content(filename, content)["schema"] == _HIGHEST_SCHEMA
 
 
 @pytest.mark.parametrize("schema", [1, 2])

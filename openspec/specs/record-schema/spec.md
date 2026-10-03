@@ -18,9 +18,17 @@ whatever schema the record carries: refusal is in place while the author can
 still fix the input. At read time a record SHALL be checked only by the rules
 of its own schema and below — a rule bound to a later schema does not apply
 to it, so a rule a schema introduces cannot refuse history written before
-it. The write path (`validate_record_for_write`) applies the first; the read
-paths (`read_records`, and `validate_record_content` as the gate uses it on
-added records) apply the second.
+it. The write side (`validate_record_for_write`, and
+`validate_record_content` as the gate runs it on the records a candidate
+adds and as backfill and migrate run it before writing) applies the first;
+the read side (`read_records`, and so validate and status over the journal)
+applies the second.
+
+#### Scenario: a record a candidate adds is checked by every current rule
+- **WHEN** a candidate adds a record stamped below the schema a rule needs —
+  a coordination session stamped 3, or a record bound to a finding stamped 3
+- **THEN** the check the gate runs on added records refuses it, while the
+  same record already in the journal is read under its own schema's rules
 
 #### Scenario: a record is checked by every current rule at write time
 - **WHEN** a rule bound to a schema one above the highest supported is
@@ -46,7 +54,9 @@ except the field gates already bound to schemas 2, 4, 5 and 6, which keep
 their numbers: provenance from 2, the finding record and finding bindings
 from 4, `reviewed_contract` from 5, the coordination activity from 6. A rule
 SHALL NOT be checked without an entry in the table, and a read path SHALL
-apply no rule whose entry is missing.
+apply no rule whose entry is missing. The schema-version check is a
+precondition of the table itself — it is what makes the record's number
+known — so it runs ahead of every rule and holds no entry.
 
 #### Scenario: a rule cannot be checked without an entry in the table
 - **WHEN** a check is registered as a rule without a table entry
