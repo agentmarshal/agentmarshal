@@ -204,20 +204,42 @@ def test_a_stale_git_pointer_reports_gits_reason(tmp_path: Path) -> None:
     """Scenario: a project outside git fails cleanly — git's own reason.
 
     A `.git` file pointing at a missing directory is a case where the
-    canned "(not a git worktree)" would be false: git says which repository
-    it could not find, and that is what the failure must repeat.
+    canned "(not a git worktree)" would be false: whatever words this git
+    uses for the refusal are the reason the failure must repeat, so the
+    test asks git the same question rather than guessing its wording —
+    git's phrasing differs between versions.
     """
 
     project = tmp_path / "project"
     project.mkdir()
     _init_project(project)
-    missing = tmp_path / "missing-gitdir"
-    (project / ".git").write_text(f"gitdir: {missing}\n", encoding="utf-8")
+    (project / ".git").write_text(
+        f"gitdir: {tmp_path / 'missing-gitdir'}\n", encoding="utf-8"
+    )
+
+    gits_reason = (
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(project),
+                "rev-parse",
+                "--path-format=absolute",
+                "--git-common-dir",
+            ],
+            capture_output=True,
+            check=False,
+        )
+        .stderr.decode("utf-8", errors="replace")
+        .strip()
+    )
 
     with pytest.raises(LocalStateError) as raised:
         local_state(resolve_placement(project))
 
     message = str(raised.value)
     assert str(project.resolve()) in message
-    assert str(missing) in message
+    assert "git cannot name a common directory" in message
+    assert gits_reason != ""
+    assert gits_reason in message
     assert "not a git worktree" not in message
