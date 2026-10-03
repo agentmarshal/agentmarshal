@@ -708,6 +708,12 @@ def test_a_review_bound_to_a_research_finding_is_not_counted(
     """Scenario: a review bound to a research finding is not counted."""
 
     repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    # The finding record needs a resolvable recorder; CI has neither
+    # AGENTMARSHAL_ACTOR nor a git identity, so the test sets both itself,
+    # as tests/test_findings.py's _repo does.
+    monkeypatch.setenv("AGENTMARSHAL_ACTOR", "researcher")
+    _git(repo, "config", "user.name", "Recorder")
+    _git(repo, "config", "user.email", "recorder@test.invalid")
     first = _implement(repo, "src/module.py")
     second = _implement(repo, "src/module.py", "more code\n")
     # Two kinds of changes_required verdict on the one task: the review of
