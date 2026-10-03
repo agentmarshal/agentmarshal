@@ -15,7 +15,8 @@ fixes: `{format: 1, at, event, task?, …}`.
 - Two processes writing at once never interleave or tear each other's lines,
   without a lock.
 - A file's size is bounded by rotation; retention deletes the oldest rotated
-  files first.
+  files first, and the directory as a whole is bounded too — every process
+  run is a writer, so per-writer retention alone bounds nothing.
 - The reader tolerates a still-writing file, foreign lines and event kinds it
   does not know.
 - Creating `log/` cannot create a directory outside the local state root.
@@ -63,6 +64,13 @@ fixes: `{format: 1, at, event, task?, …}`.
   place is what makes "the key is `event`, not `kind`" hold for every later
   producer. (`write_event` accepts an explicit `at` so tests and producers
   recording a past moment can pin it; it is normalized to UTC.)
+- **An event field naming an envelope key is refused, not merged.** The
+  alternative — applying the envelope after the fields — would let a caller
+  write `format` or `at` believing it set the key while the writer silently
+  rewrote it. Refusing with a `ProcessLogError` makes the envelope's
+  ownership loud, and the check is cheap: only `format` can even reach
+  `**fields` through the signature today, but all four keys are checked so
+  the rule survives a signature change.
 - **Rotation is a rename to a sequence suffix, checked after the write.** When
   the current file reaches `ROTATE_AT_BYTES` (10 MiB) it is renamed
   `<name>.1`, the previous `.1`…`.4` shift one suffix up, and `.5` is deleted —
@@ -72,7 +80,30 @@ fixes: `{format: 1, at, event, task?, …}`.
   newest rotation. The check runs after the append, so a burst can overshoot
   the limit by one line — the bound is on files kept, not on the line that
   crosses it. Only a writer rotates its own files, so rotation needs no
-  coordination either.
+  coordination either. A rename can still fail — on Windows a reader holding
+  the file blocks it — so `write_event` treats any `OSError` from rotation
+  as "try again at the next write": the event is already durable, the file
+  keeps its name and nothing is lost.
+- **The directory is bounded as a whole, at open.** Rotation bounds one
+  writer's files; it cannot bound the directory, because every process run
+  is a writer of its own and dead writers' current files accumulate forever.
+  So `open_writer` deletes oldest-first — by modification time, not name:
+  names carry the writer's start time, but the mtime says when anything last
+  touched the file, and "oldest" for retention means least recently used —
+  while the regular files total more than `DIRECTORY_CAP_BYTES` (50 MiB).
+  The candidate rule is chosen so no lock or liveness probe is ever needed:
+  a rotated file is a candidate at any age — a writer never appends to a
+  `.N` file again — and a current `.jsonl` file only once it has been quiet
+  for `ABANDONED_AFTER_SECONDS` (24 h), since a younger one may still belong
+  to a running writer and is left alone. Anything else — foreign files,
+  entries that vanished, unlinks the platform refuses — counts toward the
+  cap but is skipped, so the bound is best-effort and never fails an open.
+  The residual risk is a writer silent for a whole day losing its file to a
+  sweep; its next append starts a fresh file, so the cost is lost events in
+  a working log, never a torn line.
+- **The sweep runs before the writer's own file exists.** `open_writer`
+  bounds the directory before it claims a name, so even a zero abandonment
+  age could not make the sweep take the file it is about to return.
 - **The reader returns events, not lines.** Every regular file in `log/` —
   current and rotated — is read; the events of all files come back as one
   list ordered by `at` (events sharing an `at` keep file-then-line order).
@@ -94,9 +125,12 @@ fixes: `{format: 1, at, event, task?, …}`.
   `Placement` so a caller cannot ask about the wrong repository. The location
   must resolve to the root or a path under it — `..` segments and symlinks
   are resolved before the check, so a location that only *looks* under the
-  root is refused with a `LocalStateError`. The process log creates `log/`
-  through this call; later writers (extensions, deps, the plan file) get the
-  same containment for free.
+  root is refused with a `LocalStateError`. Resolution serves the check
+  only: the call returns the caller's own spelling of the location, so a
+  caller holding `state.log` gets `state.log` back and never a resolved
+  alias of it. The process log creates `log/` through this call; later
+  writers (extensions, deps, the plan file) get the same containment for
+  free.
 - **The gate never sees the module.** The module sits at
   `agentmarshal.process_log`, outside `agentmarshal.journal`, and imports
   nothing the gate imports; a subprocess test pins that importing
@@ -106,9 +140,12 @@ fixes: `{format: 1, at, event, task?, …}`.
 ## Risks
 
 - [A writer's file is deleted or rotated away under it] → only the owning
-  writer rotates, and nothing else is specified to touch `log/`; a hostile
-  same-user process can always rewrite the log — ADR-0014 decision 8 accepts
-  that.
+  writer rotates, and the directory sweep never takes a file quiet for less
+  than the abandonment age; a hostile same-user process can always rewrite
+  the log — ADR-0014 decision 8 accepts that.
+- [A writer silent past the abandonment age loses its file to the sweep] →
+  its next append creates a fresh file, so the cost is earlier events lost
+  in a working log, never a torn line.
 - [A burst crossing 10 MiB between checks] → the check runs after every
   append, so overshoot is bounded by one line.
 - [Events clock-skewed across machines] → the log is local to one machine

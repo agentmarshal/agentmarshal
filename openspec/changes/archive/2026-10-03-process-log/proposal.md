@@ -17,10 +17,14 @@ One module, `process_log.py`, is the one place events are appended and the one
 way they are read back. A writer gets a file of its own under the local state's
 `log/` directory — the location the CR-148 resolver names — so concurrent
 writers never share a line's bytes and need no lock. Events are appended one
-JSON object per line in append mode. A file that reaches 10 MiB is renamed with
-a sequence suffix; at most five rotated files per writer are kept, the oldest
-deleted first. The reader returns every file's events ordered by `at`, skipping
-an unfinished last line and any line that is not a JSON object, keeping event
+JSON object per line in append mode; an event field naming an envelope key is
+refused. A file that reaches 10 MiB is renamed with a sequence suffix; at most
+five rotated files per writer are kept, the oldest deleted first, and a failed
+rotation leaves the file for the next write to retry. Every process run is a
+writer, so the directory is bounded as a whole too: a writer that opens
+deletes the oldest files past 50 MiB, never one a running writer may still
+hold. The reader returns every file's events ordered by `at`, skipping an
+unfinished last line and any line that is not a JSON object, keeping event
 kinds it does not know as data. The local state's explicit creation call gains
 a containment check — it refuses a path outside the local state root — and
 creating `log/` goes through it. Nothing calls the module yet; the producers

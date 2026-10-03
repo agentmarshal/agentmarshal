@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from datetime import datetime, timedelta, tzinfo
 from pathlib import Path
 from typing import cast
@@ -14,7 +15,12 @@ import pytest
 
 import agentmarshal.process_log as process_log
 from agentmarshal.localstate import LocalState, LocalStateError
-from agentmarshal.process_log import open_writer, read_events, write_event
+from agentmarshal.process_log import (
+    ProcessLogError,
+    open_writer,
+    read_events,
+    write_event,
+)
 
 _WRITER_CHILD = """
 import sys
@@ -208,6 +214,97 @@ def test_events_keep_flowing_after_a_rotation(
     lines = writer.path.read_bytes().split(b"\n")[:-1]
     assert len(lines) == 1
     assert json.loads(lines[0])["event"] == "after"
+
+
+def test_a_rotation_that_fails_leaves_the_file_and_the_event(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a rotation that fails leaves the file and the event."""
+
+    monkeypatch.setattr(process_log, "ROTATE_AT_BYTES", 10)
+    writer = open_writer(LocalState(tmp_path / "agentmarshal"))
+    name = writer.path.name
+    held = True
+    real_rename = Path.rename
+
+    def fake_rename(self: Path, target: Path) -> Path:
+        if held:
+            raise OSError("another process holds the file")
+        return real_rename(self, target)
+
+    monkeypatch.setattr(Path, "rename", fake_rename)
+
+    write_event(writer, "bulk", sequence=0)
+
+    lines = writer.path.read_bytes().split(b"\n")[:-1]
+    assert len(lines) == 1
+    assert json.loads(lines[0])["sequence"] == 0
+    assert writer.path.exists()
+    assert not writer.path.with_name(f"{name}.1").exists()
+
+    held = False
+    write_event(writer, "bulk", sequence=1)
+    assert writer.path.with_name(f"{name}.1").exists()
+
+
+def test_a_directory_over_the_bound_sheds_its_oldest_files_first(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a directory over the bound sheds its oldest files first."""
+
+    monkeypatch.setattr(process_log, "DIRECTORY_CAP_BYTES", 300)
+    monkeypatch.setattr(process_log, "ABANDONED_AFTER_SECONDS", 0)
+    state = LocalState(tmp_path / "agentmarshal")
+    log_dir = state.ensure_directory(state.log)
+    base = time.time() - 100
+    paths = []
+    for index, name in enumerate(("a.jsonl", "b.jsonl", "c.jsonl")):
+        path = log_dir / name
+        path.write_bytes(b"x" * 200)
+        moment = base + index * 10
+        os.utime(path, (moment, moment))
+        paths.append(path)
+
+    writer = open_writer(state)
+
+    assert not paths[0].exists()
+    assert not paths[1].exists()
+    assert paths[2].exists()
+    assert writer.path.is_file()
+
+
+def test_a_young_current_file_is_never_deleted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a young current file is never deleted."""
+
+    monkeypatch.setattr(process_log, "DIRECTORY_CAP_BYTES", 10)
+    state = LocalState(tmp_path / "agentmarshal")
+    log_dir = state.ensure_directory(state.log)
+    young = log_dir / "young.jsonl"
+    young.write_bytes(b"x" * 100)
+
+    writer = open_writer(state)
+
+    assert young.exists()
+    assert writer.path.is_file()
+
+
+def test_a_rotated_file_is_a_candidate_whatever_its_age(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a rotated file is a candidate whatever its age."""
+
+    monkeypatch.setattr(process_log, "DIRECTORY_CAP_BYTES", 10)
+    state = LocalState(tmp_path / "agentmarshal")
+    log_dir = state.ensure_directory(state.log)
+    rotated = log_dir / "old-writer.jsonl.1"
+    rotated.write_bytes(b"x" * 100)
+
+    writer = open_writer(state)
+
+    assert not rotated.exists()
+    assert writer.path.is_file()
 
 
 def test_events_come_back_in_order_of_at_across_files(tmp_path: Path) -> None:
@@ -419,7 +516,8 @@ def test_a_location_under_the_root_is_created(tmp_path: Path) -> None:
     root = state.ensure_directory(state.root)
     nested = state.ensure_directory(state.log / "deeper" / "still")
 
-    assert root == state.root.resolve()
+    assert root == state.root
+    assert nested == state.log / "deeper" / "still"
     assert nested.is_dir()
     assert state.log.is_dir()
 
@@ -464,6 +562,19 @@ def test_writer_file_names_carry_start_time_pid_and_suffix(tmp_path: Path) -> No
     assert datetime.strptime(stamp, "%Y%m%dT%H%M%S.%fZ").tzinfo is None
     assert pid == str(os.getpid())
     assert len(token) == 16
+
+
+def test_an_event_field_naming_an_envelope_key_is_refused(
+    tmp_path: Path,
+) -> None:
+    """Scenario: an event field naming an envelope key is refused."""
+
+    writer = open_writer(LocalState(tmp_path / "agentmarshal"))
+
+    with pytest.raises(ProcessLogError, match="envelope"):
+        write_event(writer, "pinned", format=2)
+
+    assert writer.path.read_bytes() == b""
 
 
 def test_write_event_normalizes_a_naive_at_to_utc(tmp_path: Path) -> None:

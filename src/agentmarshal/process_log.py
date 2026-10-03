@@ -7,15 +7,21 @@ so two processes writing at once never interleave or tear each other's
 lines and no lock is needed; each event is one JSON object on one line,
 ``{"format": 1, "at": <UTC ISO-8601>, "event": <name>, "task"?: <id>, …}``.
 A file is rotated when it reaches :data:`ROTATE_AT_BYTES`, with at most
-:data:`ROTATED_KEEP` rotated files kept; the reader tolerates an unfinished
-last line, lines that are not JSON objects and event kinds it does not
-know, and reads rotated files as well as current ones.
+:data:`ROTATED_KEEP` rotated files kept, and the directory as a whole is
+bounded by :data:`DIRECTORY_CAP_BYTES` — every process run is a writer, so
+per-writer retention alone bounds nothing. The reader tolerates an
+unfinished last line, lines that are not JSON objects and event kinds it
+does not know, and reads rotated files as well as current ones.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
+import stat
+import time
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -26,14 +32,20 @@ from agentmarshal.localstate import LocalState
 FORMAT = 1
 ROTATE_AT_BYTES = 10 * 1024 * 1024
 ROTATED_KEEP = 5
+DIRECTORY_CAP_BYTES = 50 * 1024 * 1024
+ABANDONED_AFTER_SECONDS = 24 * 60 * 60
 
 _NAME_ATTEMPTS = 8
 
 _DAWN = datetime.min.replace(tzinfo=UTC)
 
+_ENVELOPE_KEYS = frozenset({"format", "at", "event", "task"})
+
+_ROTATED_NAME = re.compile(r"\.jsonl\.\d+$")
+
 
 class ProcessLogError(Exception):
-    """Raised when a writer cannot claim a file of its own."""
+    """Raised when a writer cannot claim a file or an event is refused."""
 
 
 @dataclass(frozen=True)
@@ -53,10 +65,12 @@ def open_writer(state: LocalState) -> ProcessLogWriter:
 
     The file's name carries the writer's UTC start time, its process id and
     a random suffix, so no second writer — in this process or another —
-    ever appends to it.
+    ever appends to it. Opening also bounds the directory as a whole; the
+    sweep runs before this writer's file exists, so it can never take it.
     """
 
     log_dir = state.ensure_directory(state.log)
+    _bound_directory(log_dir)
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S.%fZ")
     for _ in range(_NAME_ATTEMPTS):
         path = log_dir / f"{stamp}-{os.getpid()}-{token_hex(8)}.jsonl"
@@ -80,10 +94,19 @@ def write_event(
     """Append one event to the writer's file as a single JSON line.
 
     ``fields`` carries the event kind's own keys; ``format``, ``at``,
-    ``event`` and ``task`` are the writer's envelope. A naive ``at`` is read
-    as UTC. The file is opened in append mode for this one line and closed.
+    ``event`` and ``task`` are the writer's envelope — a ``fields`` key
+    naming one of them is refused with :class:`ProcessLogError` rather than
+    overriding it. A naive ``at`` is read as UTC. The file is opened in
+    append mode for this one line and closed. A rotation that fails — a
+    reader can hold the file on Windows — is left for the next write to
+    retry; the event is already written.
     """
 
+    stolen = _ENVELOPE_KEYS.intersection(fields)
+    if stolen:
+        raise ProcessLogError(
+            f"event fields may not name the envelope keys: {sorted(stolen)}"
+        )
     stamp = at if at is not None else datetime.now(UTC)
     if stamp.tzinfo is None:
         stamp = stamp.replace(tzinfo=UTC)
@@ -98,7 +121,8 @@ def write_event(
     line = json.dumps(record, ensure_ascii=False, separators=(",", ":"))
     with writer.path.open("ab") as handle:
         handle.write(line.encode("utf-8") + b"\n")
-    _rotate_if_full(writer.path)
+    with suppress(OSError):
+        _rotate_if_full(writer.path)
     return record
 
 
@@ -124,12 +148,58 @@ def read_events(state: LocalState) -> list[dict[str, object]]:
     return events
 
 
+def _bound_directory(log_dir: Path) -> None:
+    """Delete the directory's oldest files while it exceeds the cap.
+
+    Every process run is a writer of its own, so per-writer retention
+    bounds nothing; this bounds the directory. Candidates go oldest first
+    by modification time. A rotated file is a candidate at any age — a
+    writer never appends to one again — and a current ``.jsonl`` file only
+    once its last write is older than :data:`ABANDONED_AFTER_SECONDS`:
+    younger, another writer may still be appending to it and it is left
+    alone. Everything else counts toward the cap but is never deleted, a
+    failed removal is skipped and an unreadable entry ignored — the bound
+    is best-effort and never fails the open that runs it.
+    """
+
+    try:
+        entries = list(log_dir.iterdir())
+    except OSError:
+        return
+    cutoff = time.time() - ABANDONED_AFTER_SECONDS
+    total = 0
+    candidates: list[tuple[float, int, Path]] = []
+    for path in entries:
+        try:
+            info = path.stat()
+        except OSError:
+            continue
+        if not stat.S_ISREG(info.st_mode):
+            continue
+        total += info.st_size
+        if _ROTATED_NAME.search(path.name) or (
+            path.suffix == ".jsonl" and info.st_mtime <= cutoff
+        ):
+            candidates.append((info.st_mtime, info.st_size, path))
+    candidates.sort()
+    for _mtime, size, path in candidates:
+        if total <= DIRECTORY_CAP_BYTES:
+            return
+        try:
+            path.unlink()
+        except OSError:
+            continue
+        total -= size
+
+
 def _rotate_if_full(path: Path) -> None:
     """Rename ``path`` to its next sequence suffix once it reaches the limit.
 
     Rotated files are ``<name>.1`` … ``<name>.ROTATED_KEEP``: on each
     rotation the suffixes shift up and the oldest file is deleted, so the
-    newest rotation is always ``.1``.
+    newest rotation is always ``.1``. A rename may fail while a reader
+    holds the file; the caller treats any ``OSError`` here as "try again at
+    the next write".
     """
 
     if path.stat().st_size < ROTATE_AT_BYTES:

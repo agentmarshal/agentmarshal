@@ -80,7 +80,9 @@ class LocalState:
         path under them — when it is about to write into it. The location is
         resolved before the check, so a path that only comes under the root
         through ``..`` segments or symlinks is refused, like any other path
-        outside the root.
+        outside the root. The caller's own spelling of the location is
+        returned: resolution serves the check only, so the path handed back
+        is the path the caller named, not the resolved target.
         """
 
         try:
@@ -96,7 +98,7 @@ class LocalState:
             target.mkdir(parents=True, exist_ok=True)
         except OSError as error:
             raise LocalStateError(f"cannot create {location}: {error}") from error
-        return target
+        return location
 
 
 def local_state(placement: Placement) -> LocalState:
