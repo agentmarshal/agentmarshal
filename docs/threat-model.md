@@ -96,14 +96,15 @@ surrogate, line- and paragraph-separator categories and the bidirectional
 marks, embeddings, overrides and isolates. A record that carries such a
 character anyway — one a later read rule does not reach — is escaped on
 display in `status`, `report`, the gate's transcript, the brief and the
-reviewer prompt, which covers a record written around the writer with a
-lowered schema. The gate escapes every value it did not write itself —
-candidate paths, refs, git's error output — so nothing a candidate
-controls can add a line to what the gate prints. (record-text-safety
-specification, "A record's text may not forge a line or reorder what is
-read", "A refused character a record still carries is escaped on display"
-and "The gate escapes every value it did not write itself"; ADR-0015,
-decision 5.)
+reviewer prompt, which covers a record that reached the journal without
+the gate's check of the candidate that added it — one written around
+the writer with a lowered schema. The gate escapes every value it did
+not write itself — candidate paths, refs, git's error output — so
+nothing a candidate controls can add a line to what the gate prints.
+(record-text-safety specification, "A record's text may not forge a
+line or reorder what is read", "A refused character a record still
+carries is escaped on display" and "The gate escapes every value it did
+not write itself"; ADR-0015, decision 5.)
 
 **Leak-scan output does not print what it exists to withhold.** A hit
 names the file and the identification of what matched — a built-in
@@ -286,15 +287,18 @@ still checks records another tool wrote, and a record a candidate adds is
 checked by every current rule; but the journal-only lane verifies shape,
 append-only integrity and lifecycle consistency — it does not verify
 that a gate pass preceded a completion record, for either binding. A
-record written around the writer with a lowered schema is checked by its
-own schema's rules — later rules do not reach it — and is escaped on
-display rather than refused. A contract edited in a journal transaction
-without an amendment record is a change the visibility mechanism cannot
-show, and two open tasks may declare overlapping scope and nothing checks
-it. (ADR-0009, decision 3; record-schema specification, "A record is
-checked by the current rules at write time and by the rules of its own
-schema at read time"; ADR-0015, decisions 4 and 5; ADR-0011,
-"Consequences"; ADR-0006, decision 4.)
+record that reaches the journal without the gate's check of the
+candidate that added it — committed around the gate with a lowered
+schema, for example — is read by its own schema's rules: later rules
+do not reach it, and it is escaped on display rather than refused. A
+contract edited in a journal transaction without an amendment record is
+a change the visibility mechanism cannot show, and two open tasks may
+declare overlapping scope and nothing checks it. (ADR-0009, decision 3;
+record-schema specification, "A record is checked by the current rules
+at write time and by the rules of its own schema at read time" and its
+scenario "a record a candidate adds is checked by every current rule";
+ADR-0015, decisions 4 and 5; ADR-0011, "Consequences"; ADR-0006,
+decision 4.)
 
 **A sidecar's evidence rests on the sidecar's own governance.** In a
 sidecar the gate runs advisory and does not decide a merge — the
@@ -395,15 +399,7 @@ stop short, and this document does not resolve them.
    reads — and what the findings lane does with any of it — is left open
    by the decision itself. (ADR-0011, decisions 3 and 4 and "Left open".)
 
-5. **A record written around the writer with a lowered schema.** Read
-   time checks such a record by the rules of its own schema — a rule
-   bound to a later schema does not apply — so what the design promises
-   for it is escaping on display, not refusal. Whether anything beyond
-   escaping is warranted is unstated. (record-schema specification, "A
-   record is checked by the current rules at write time and by the rules
-   of its own schema at read time"; ADR-0015, decisions 4 and 5.)
-
-6. **A shared extension switched off without review.** The operational
+5. **A shared extension switched off without review.** The operational
    lane — decided, not yet implemented — admits a diff touching only
    `.agentmarshal/switches.toml` and the task's own records, requires no
    review, and skips the extensions' `pre-gate` stages; the reason is
@@ -413,7 +409,7 @@ stop short, and this document does not resolve them.
    review is not assessed. (ADR-0013, decisions 16 and 17, header and
    "Consequences" — decided, not yet implemented; ADR-0010, decision 2.)
 
-7. **`next` reads local, forgeable inputs.** `next` — decided, not yet
+6. **`next` reads local, forgeable inputs.** `next` — decided, not yet
    implemented — reads the process log for an open step and for an
    extension pause standing without its acceptance, and the plan file;
    the log promises no protection against forgery and no visibility
