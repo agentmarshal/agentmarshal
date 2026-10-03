@@ -55,14 +55,20 @@ markers, not writing another scanner.
   characters and trimmed again; a gist that yields nothing — reports may
   be in any language, and a non-Latin alphabet slugs to empty — falls
   back to `draft`. An empty gist is refused: a draft needs a name.
-- **Only the scheme `new` writes counts toward the number.** A name counts
-  only when it is exactly `NNNN-<slug>.md` — `NNNN` as `new` emits it
-  (four or more digits, no leading zero past the padding) and the slug
-  `[a-z0-9]+(-[a-z0-9]+)*` — and a `-NN-NN-` right after the number reads
-  as a hand-written date prefix, so `2026-10-03-note.md` is not number
-  2026. A scaffolded draft can in principle land on the date shape itself;
-  exclusive creation still yields a free number, so the counter being
-  blind to it costs nothing.
+- **Every name `new` could have written counts toward the number, and a
+  hand-written date does not.** A name counts when it is exactly
+  `NNNN-<slug>.md` — `NNNN` as `new` emits it (zero-padded to four digits
+  below 1000, unpadded at and above) and the slug `[a-z0-9]+(-[a-z0-9]+)*`
+  — whatever the slug's leading groups: `new` itself emits `-NN-NN-`
+  there (the gist `12 34 widget` slugs to `12-34-widget`), so a digit-led
+  slug must not hide a draft. The exception is the date shape a hand
+  writes: an unpadded four-digit number followed by a valid `-MM-DD`
+  reads as a date prefix — `2026-10-03-note.md` is not number 2026 —
+  while `new`'s zero padding means `0001-10-03-note.md` can only be a
+  draft's number 1. A scaffolded draft can still land on the date shape
+  itself — an unpadded number 1000–9999 under a slug that opens `MM-DD-`
+  is indistinguishable from a hand-written date; exclusive creation still
+  yields a free number, so the counter being blind to it costs nothing.
 - **Creation is exclusive.** The file is opened `O_EXCL`; on collision the
   number advances and creation retries, so `new` can never overwrite —
   not by race and not by a manually placed file.
@@ -88,7 +94,10 @@ markers, not writing another scanner.
   not UTF-8 text is named as such — it cannot carry the fields — and its
   bytes are still searched: decoded for the scan with U+FFFD for the
   undecodable spans, the same lossy-search rule the diff scan follows, so
-  an ASCII signature in a binary file still matches.
+  an ASCII signature in a binary file still matches. The `README.md`
+  `init` writes is the one regular file that is not a draft — its fields
+  are never checked — but it leaves with the batch like everything else,
+  so its name and its content go through the same scan.
 - **The scan is content-level, per file, with the diff scan's
   vocabulary.** Each draft's text goes through `scan_for_leaks` for the
   built-in signatures; configured markers are matched by position exactly
@@ -118,7 +127,11 @@ markers, not writing another scanner.
   described by its errno text (`strerror`, the errno name when there is
   none) and the path, where one is printed at all, only through
   `safe_path`; the `GateError` wrapping a failed config read is described
-  the same way, since its text embeds the same path. `new` prints the real
+  the same way, since its text embeds the same path. A `leak_scan` section
+  that is present but malformed fails the read with `CaptureError`, whose
+  text echoes the configured keys it rejects, so `check` answers with a
+  fixed diagnosis — the leak-scan configuration is malformed; run
+  `agentmarshal doctor` — and quotes none of it. `new` prints the real
   path it wrote — the scenario's contract and the operator's own terminal
   — but its errors follow the same no-exception-text rule.
 - **The report goes to stdout, the refusal and errors to stderr.** Draft

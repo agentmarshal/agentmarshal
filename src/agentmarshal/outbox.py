@@ -50,13 +50,19 @@ _FIELD_HINTS = {
     "Expected": "what you expected instead, and why",
 }
 
-# A name counts toward the next number only in the exact shape `new`
-# writes: `NNNN` as `:04d` emits it — four or more digits, no leading zero
-# past the padding — then `-` and a slug. A `-NN-NN-` right after the
-# number reads as a hand-written date prefix, so `2026-10-03-note.md` is
-# not number 2026.
-_DRAFT_NAME = re.compile(
-    r"^(0\d{3}|[1-9]\d{3,})-(?!\d{2}-\d{2}-)[a-z0-9]+(?:-[a-z0-9]+)*\.md$"
+# A name counts toward the next number in the exact shape `new` writes:
+# `NNNN` as `:04d` emits it — zero-padded to four digits below 1000,
+# unpadded at and above it — then `-` and a slug. Whatever digit groups
+# the slug opens with, the name still counts: `new` itself emits `-NN-NN-`
+# after the number (the gist "12 34 widget" slugs to `12-34-widget`), so a
+# digit-led slug must not hide a draft. The one exception is the date a
+# hand writes: an unpadded four-digit number followed by a valid `-MM-DD-`
+# reads as a date prefix, so `2026-10-03-note.md` is not number 2026 —
+# while `new`'s zero padding keeps `0001-10-03-note.md` a number, since no
+# hand-written date opens `0NNN`.
+_DRAFT_NAME = re.compile(r"^(0\d{3}|[1-9]\d{3,})-[a-z0-9]+(?:-[a-z0-9]+)*\.md$")
+_DATE_NAME = re.compile(
+    r"^[1-9]\d{3}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])(?:-|\.md$)"
 )
 _HEADING = re.compile(r"^## (.+?)\s*$")
 _SLUG_RUN = re.compile(r"[^a-z0-9]+")
@@ -193,7 +199,7 @@ def _write_draft(outbox: Path, slug: str, text: str) -> Path:
     used = [
         int(match.group(1))
         for entry in outbox.iterdir()
-        if (match := _DRAFT_NAME.match(entry.name))
+        if (match := _DRAFT_NAME.match(entry.name)) and not _DATE_NAME.match(entry.name)
     ]
     number = max(used, default=0)
     while True:
@@ -262,9 +268,29 @@ def _missing_unfilled(text: str) -> tuple[list[str], list[str]]:
         field
         for field in _FIELDS
         if field in bodies
-        and any(body == "" or body == _placeholder(field) for body in bodies[field])
+        and any(body in ("", _placeholder(field)) for body in bodies[field])
     ]
     return missing, unfilled
+
+
+def _scan_hits(
+    safe_name: str, haystack: str, markers: tuple[str, ...]
+) -> list[LeakHit]:
+    """The hits one searched text produces under one masked file name.
+
+    Signatures come from ``scan_for_leaks``; configured markers are
+    identified by position exactly as ``scan_diff_for_leaks`` identifies
+    them — ``private-marker #N`` — written once here so the two callers
+    cannot drift.
+    """
+
+    hits = [LeakHit(safe_name, category) for category in scan_for_leaks(haystack)]
+    hits.extend(
+        LeakHit(safe_name, f"private-marker #{index}")
+        for index, marker in enumerate(markers, start=1)
+        if marker and marker in haystack
+    )
+    return hits
 
 
 def _name_hits(name: str, markers: tuple[str, ...]) -> list[LeakHit]:
@@ -275,14 +301,7 @@ def _name_hits(name: str, markers: tuple[str, ...]) -> list[LeakHit]:
     marker's position or the signature's identifier.
     """
 
-    safe_name = safe_path(name, markers)
-    hits = [LeakHit(safe_name, category) for category in scan_for_leaks(name)]
-    hits.extend(
-        LeakHit(safe_name, f"private-marker #{index}")
-        for index, marker in enumerate(markers, start=1)
-        if marker and marker in name
-    )
-    return hits
+    return _scan_hits(safe_path(name, markers), name, markers)
 
 
 def _draft_hits(name: str, text: str, markers: tuple[str, ...]) -> list[LeakHit]:
@@ -295,14 +314,7 @@ def _draft_hits(name: str, text: str, markers: tuple[str, ...]) -> list[LeakHit]
     """
 
     safe_name = safe_path(name, markers)
-    hits = _name_hits(name, markers)
-    hits.extend(LeakHit(safe_name, category) for category in scan_for_leaks(text))
-    hits.extend(
-        LeakHit(safe_name, f"private-marker #{index}")
-        for index, marker in enumerate(markers, start=1)
-        if marker and marker in text
-    )
-    return hits
+    return _name_hits(name, markers) + _scan_hits(safe_name, text, markers)
 
 
 def _is_regular(entry: Path) -> bool:
@@ -322,8 +334,15 @@ def _run_check(stderr: TextIO) -> int:
     project_root, outbox = located
     try:
         markers = markers_from_config(project_root)
-    except CaptureError as error:
-        print(f"outbox check: cannot read project config: {error}", file=stderr)
+    except CaptureError:
+        # A malformed leak_scan section is a fixed diagnosis: the
+        # CaptureError's text echoes the unknown configured keys, so no
+        # part of the exception's text is printed.
+        print(
+            "outbox check: the leak-scan configuration in project.json is "
+            "malformed; run `agentmarshal doctor`",
+            file=stderr,
+        )
         return 1
     except GateError as error:
         print(
@@ -345,17 +364,19 @@ def _run_check(stderr: TextIO) -> int:
     checked = 0
     hits: list[LeakHit] = []
     for entry in entries:
-        is_regular = _is_regular(entry)
-        if is_regular and entry.name == _README:
-            continue
-        if not is_regular:
+        if not _is_regular(entry):
             # Not a draft and not checkable, but a later send would stage
             # it unchecked — nothing in the outbox passes in silence.
             refused = True
             hits.extend(_name_hits(entry.name, markers))
             print(f"{safe_path(entry.name, markers)}: not a draft, not checked")
             continue
-        checked += 1
+        # The README init writes is not a draft — the field check below
+        # skips it — but it leaves with the batch like every file, so its
+        # name and content go through the same scan.
+        is_draft = entry.name != _README
+        if is_draft:
+            checked += 1
         problems: list[str] = []
         text = ""
         try:
@@ -370,13 +391,15 @@ def _run_check(stderr: TextIO) -> int:
                 # spans become U+FFFD, a non-word character, so an ASCII
                 # signature or marker beside them still matches.
                 text = raw.decode("utf-8", errors="replace")
-                problems.append("not UTF-8 text")
+                if is_draft:
+                    problems.append("not UTF-8 text")
             else:
-                missing, unfilled = _missing_unfilled(text)
-                if missing:
-                    problems.append("missing " + ", ".join(missing))
-                if unfilled:
-                    problems.append("unfilled " + ", ".join(unfilled))
+                if is_draft:
+                    missing, unfilled = _missing_unfilled(text)
+                    if missing:
+                        problems.append("missing " + ", ".join(missing))
+                    if unfilled:
+                        problems.append("unfilled " + ", ".join(unfilled))
         hits.extend(_draft_hits(entry.name, text, markers))
         if problems:
             refused = True

@@ -216,6 +216,30 @@ def test_the_readme_init_writes_is_not_a_draft(
     assert "README" not in capsys.readouterr().out
 
 
+def test_the_readme_leaves_with_the_batch_and_is_leak_scanned(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The README's fields are not checked, but its name and content leave
+    with the batch, so a marker in its content is a hit like any draft's."""
+    repo = _project(tmp_path, monkeypatch)
+    _configure_markers(repo, ["internal.example.invalid"])
+    readme = _outbox(repo) / "README.md"
+    readme.write_text(
+        readme.read_text(encoding="utf-8") + "\ninternal.example.invalid\n",
+        encoding="utf-8",
+    )
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    assert main(["outbox", "check"]) == 1
+
+    captured = capsys.readouterr()
+    assert "README.md: private-marker #1" in captured.out
+    assert "internal.example.invalid" not in captured.out
+    assert "internal.example.invalid" not in captured.err
+
+
 def test_check_refuses_when_there_is_no_outbox(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -367,6 +391,25 @@ def test_a_file_name_that_carries_a_secret_is_a_hit_even_with_clean_content(
     assert "internal.example.invalid" not in captured.err
 
 
+def test_a_file_name_matching_a_signature_is_a_hit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A name matching a built-in signature — not only a configured
+    marker — is a hit by itself, described by the signature's identifier."""
+    repo = _project(tmp_path, monkeypatch)
+    _conforming_draft(_outbox(repo), name=f"{_TOKEN}.md")
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    assert main(["outbox", "check"]) == 1
+
+    captured = capsys.readouterr()
+    assert "<github-token>.md: github-token" in captured.out
+    assert _TOKEN not in captured.out
+    assert _TOKEN not in captured.err
+
+
 def test_an_entry_that_is_not_a_regular_file_is_named_as_not_checked(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -468,6 +511,71 @@ def test_gaps_in_numbering_are_not_refilled(
     assert main(["outbox", "new", "gate hangs"]) == 0
 
     assert (_outbox(repo) / "0010-gate-hangs.md").is_file()
+
+
+def test_a_slug_opening_with_digit_groups_still_counts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`new` itself emits `-NN-NN-` after the number — gist "12 34 widget"
+    slugs to `12-34-widget` — so the counter reads every name `new` could
+    have written; a zero-padded `NNNN` is its padding, never a date."""
+    repo = _project(tmp_path, monkeypatch)
+
+    assert main(["outbox", "new", "12 34 widget"]) == 0
+    assert main(["outbox", "new", "10 03 note"]) == 0
+    assert main(["outbox", "new", "other"]) == 0
+
+    assert (_outbox(repo) / "0001-12-34-widget.md").is_file()
+    assert (_outbox(repo) / "0002-10-03-note.md").is_file()
+    assert (_outbox(repo) / "0003-other.md").is_file()
+
+
+def test_a_malformed_leak_scan_section_is_described_without_its_text(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A malformed leak_scan section is a fixed diagnosis — the
+    CaptureError's text echoes the unknown configured keys and none of it
+    is printed."""
+    repo = _project(tmp_path, monkeypatch)
+    _conforming_draft(_outbox(repo))
+    project_file = repo / ".agentmarshal" / "project.json"
+    data = json.loads(project_file.read_text(encoding="utf-8"))
+    data["leak_scan"] = {"hidden-team-name.invalid": []}
+    project_file.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    assert main(["outbox", "check"]) == 1
+
+    captured = capsys.readouterr()
+    assert "malformed" in captured.err
+    assert "hidden-team-name.invalid" not in captured.out
+    assert "hidden-team-name.invalid" not in captured.err
+
+
+def test_an_unreadable_project_config_is_described_without_its_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A project.json that cannot be parsed is described by the cause's
+    kind — the GateError wrapping the failure embeds the path and its text
+    is never printed."""
+    repo = _project(tmp_path, monkeypatch)
+    _conforming_draft(_outbox(repo))
+    (repo / ".agentmarshal" / "project.json").write_text(
+        "{ not json\n", encoding="utf-8"
+    )
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    assert main(["outbox", "check"]) == 1
+
+    captured = capsys.readouterr()
+    assert "cannot read project config" in captured.err
+    assert "JSONDecodeError" in captured.err
+    assert str(repo) not in captured.out
+    assert str(repo) not in captured.err
 
 
 def test_outbox_help_lists_both_subcommands(
