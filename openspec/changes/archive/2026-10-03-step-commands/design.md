@@ -43,15 +43,21 @@ reading them back is a later task.
   never written.
 - **The step id is a ULID.** `generate_ulid` is already the journal's id
   source — sortable and collision-safe across processes — so a step id
-  needs no machinery of its own. `step start` prints it bare on stdout for
-  a harness to capture.
+  needs no machinery of its own. `step start` prints it bare on stdout —
+  exactly the id and a newline — for a harness to capture, and `step end`
+  prints the id it closed the same way. `step end` also refuses a `--step`
+  that is not of that form (`_is_ulid`): a close that cannot name a real
+  step id records nothing.
 - **The deadline is required and takes two spellings.** An ISO-8601 time —
   a naive one reads as UTC, the way the writer reads a naive `at` — or a
   duration `<n><unit>` with units `s`, `m`, `h` and `d`, measured from the
   command's run: `90m` is the deadline of a step allowed an hour and a
   half, which is how a harness says "judge me late after this". Both land
   in the event normalized to a UTC ISO-8601 timestamp, so a reader never
-  parses two shapes.
+  parses two shapes. A value that fits neither spelling — or one that
+  overflows `datetime`'s range, like a duration of a billion days or a
+  time that crosses year 9999 in `astimezone` — is refused with the named
+  error, never a traceback.
 - **Without `--pid` the parent process is recorded.** A harness runs
   `agentmarshal step start` as its child, so `os.getppid()` names the
   process the step belongs to; `--pid` overrides it for a caller announcing
@@ -59,19 +65,24 @@ reading them back is a later task.
 - **`pid_started_at` is read where the platform allows and names itself
   unknown where it cannot.** On Linux it is field 22 of
   `/proc/<pid>/stat` — clock ticks since boot — added to the boot time
-  `btime` in `/proc/stat`, at `SC_CLK_TCK` ticks a second. On other POSIX
-  systems the portable fallback is `ps -o etime= -p <pid>`: its
+  `btime` in `/proc/stat`, at `SC_CLK_TCK` ticks a second. The stat file
+  is read as bytes: `comm` is whatever bytes a process named itself, so a
+  decode would turn a non-ASCII process name into a traceback; parsing
+  after the last `)` needs no decode at all. On other POSIX systems the
+  portable fallback is `ps -o etime= -p <pid>` with a bounded wait: its
   elapsed-time format `[[dd-]hh:]mm:ss` is numeric rather than
   locale-dependent, and the start time is now minus the elapsed span.
-  Everywhere else — Windows, a missing `ps`, a dead or unreadable pid,
-  output that does not parse — the field carries the string `unknown`
-  rather than a guess: a wrong start time defeats the field's purpose,
-  which is disambiguating pid reuse, and the command still works.
-- **The outcome is a word that cannot forge rendered text.** `step end`'s
-  optional outcome will be printed by `status` and `doctor`; like the
-  session outcome vocabulary it is any non-empty word — no whitespace —
-  and it must pass `forges_rendered_text`, the same predicate the journal
-  applies to text it renders.
+  Everywhere else — Windows, a missing or hanging `ps`, a dead or
+  unreadable pid, output that does not parse — the field carries the
+  string `unknown` rather than a guess: a wrong start time defeats the
+  field's purpose, which is disambiguating pid reuse, and the command
+  still works.
+- **The strings a renderer will print cannot forge rendered text.**
+  `status` and `doctor` will print these events' fields inline, so every
+  free string the commands take is held to `forges_rendered_text`, the
+  predicate the journal applies to text it renders: `step end`'s optional
+  outcome is any non-empty word — no whitespace — that passes it, and
+  `step start`'s `--actor` and `--run-dir` must pass it too.
 - **The writer refuses what strict JSON cannot carry, before the line
   lands.** `json.dumps` with `allow_nan=False` raises on NaN, infinity and
   types JSON cannot carry; `write_event` wraps that in a `ProcessLogError`

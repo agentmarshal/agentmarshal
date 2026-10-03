@@ -197,18 +197,19 @@ nothing local (ADR-0014 decision 3).
 ### Requirement: `step start` records a step's start and deadline
 
 `agentmarshal step start` SHALL write one `step-started` event and print the
-new step id on stdout. `--task` SHALL be given and validated as a journal
-task identifier, `--activity` SHALL be given and taken from the session
-activity vocabulary, and `--deadline` SHALL be given — an ISO-8601 time or a
-duration such as `90m` measured from the command's run — recorded as a UTC
-ISO-8601 timestamp. The event SHALL carry `step` — the fresh identifier the
-command prints — `activity`, `pid`, `pid_started_at` and `deadline`, and
-`actor` and `run_dir` only when `--actor` and `--run-dir` are given. Without
-`--pid` the command SHALL record its own parent process. `pid_started_at`
-SHALL be the process's real start time where the platform exposes it — Linux
-`/proc`, and the portable fallback the design states — and a value naming it
-unknown where it cannot be read, never a guess; the command SHALL work
-either way.
+new step id on stdout — exactly the id and a newline. `--task` SHALL be
+given and validated as a journal task identifier, `--activity` SHALL be
+given and taken from the session activity vocabulary, and `--deadline`
+SHALL be given — an ISO-8601 time or a duration such as `90m` measured from
+the command's run — recorded as a UTC ISO-8601 timestamp. The event SHALL
+carry `step` — the fresh identifier the command prints — `activity`, `pid`,
+`pid_started_at` and `deadline`, and `actor` and `run_dir` only when
+`--actor` and `--run-dir` are given; a given `--actor` or `--run-dir`
+SHALL hold nothing that can forge rendered text. Without `--pid` the
+command SHALL record its own parent process. `pid_started_at` SHALL be the
+process's real start time where the platform exposes it — Linux `/proc`,
+and the portable fallback the design states — and a value naming it unknown
+where it cannot be read, never a guess; the command SHALL work either way.
 
 #### Scenario: a started step lands as one step-started event and its id is printed
 - **WHEN** a harness runs `step start` with task, activity and deadline
@@ -240,22 +241,34 @@ either way.
 
 #### Scenario: a malformed task id, an unknown activity or a missing deadline is refused
 - **WHEN** `step start` is given a task id that is not a journal task
-  identifier, an activity outside the session vocabulary, or no deadline
+  identifier, an activity outside the session vocabulary, no deadline, or a
+  deadline that is neither a readable ISO-8601 time nor a duration
+- **THEN** the command refuses and no event lands
+
+#### Scenario: an actor or run_dir that could forge rendered text is refused
+- **WHEN** `step start` is given an `--actor` or a `--run-dir` holding a
+  character that could forge rendered text
 - **THEN** the command refuses and no event lands
 
 ### Requirement: `step end` records a step's close
 
-`agentmarshal step end` SHALL write one `step-ended` event. `--task` SHALL
-be given and validated as a journal task identifier, `--step` SHALL name
-the step the event closes, and `--outcome` MAY be given — when it is, it
-SHALL be a non-empty word, holding no whitespace, that cannot forge
-rendered text. The event SHALL carry `step` and, when given, `outcome`.
+`agentmarshal step end` SHALL write one `step-ended` event and print the
+step id on stdout. `--task` SHALL be given and validated as a journal task
+identifier, `--step` SHALL be a step identifier of the form `step start`
+prints, and `--outcome` MAY be given — when it is, it SHALL be a non-empty
+word, holding no whitespace, that cannot forge rendered text. The event
+SHALL carry `step` and, when given, `outcome`.
 
 #### Scenario: an ended step lands as one step-ended event
 - **WHEN** a harness runs `step end` with task and step, and once with an
   outcome
 - **THEN** each run lands one `step-ended` event carrying `step`, and
-  `outcome` when it was given
+  `outcome` when it was given, and prints the step id on stdout
+
+#### Scenario: a step id that is not a step identifier is refused
+- **WHEN** `step end` is given a `--step` that is not a step identifier of
+  the form `step start` prints
+- **THEN** the command refuses and no event lands
 
 #### Scenario: an outcome that is not a clean word is refused
 - **WHEN** `step end` is given an `--outcome` that is empty, holds

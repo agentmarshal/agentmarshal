@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from agentmarshal import steps
 from agentmarshal.cli import main
 from agentmarshal.localstate import LocalState
 from agentmarshal.process_log import read_events
@@ -81,7 +82,9 @@ def test_a_started_step_lands_as_one_step_started_event_and_its_id_is_printed(
         == 0
     )
 
-    step_id = capsys.readouterr().out.strip()
+    out = capsys.readouterr().out
+    step_id = out.strip()
+    assert out == step_id + "\n"
     assert len(step_id) == 26
     events = _events(repo)
     assert len(events) == 1
@@ -142,6 +145,122 @@ def test_without_pid_the_parent_process_is_recorded(
     events = _events(repo)
     assert events[0]["pid"] == os.getppid()
     assert events[1]["pid"] == 4242
+
+
+def test_a_proc_stat_with_a_non_ascii_comm_still_reads(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A process name is raw bytes: a ``comm`` with non-ASCII bytes is
+    parsed after the last ``)``, never a decode failure."""
+    pid = os.getpid()
+    stat = b"1234 (\xff\xfeweird (comm)) S " + b"0 " * 18 + b"12345\n"
+    real_read_bytes = Path.read_bytes
+
+    def fake_read_bytes(self: Path) -> bytes:
+        if self == Path(f"/proc/{pid}/stat"):
+            return stat
+        return real_read_bytes(self)
+
+    monkeypatch.setattr(Path, "read_bytes", fake_read_bytes)
+    monkeypatch.setattr(steps, "_boot_time", lambda: 1_000_000)
+    monkeypatch.setattr(os, "sysconf", lambda _name: 100, raising=False)
+    monkeypatch.setattr(sys, "platform", "linux")
+
+    started = steps.pid_started_at(pid)
+    expected = datetime.fromtimestamp(1_000_000 + 123.45, UTC)
+    assert started == expected.isoformat(timespec="seconds")
+
+
+def test_the_ps_fallback_parses_etime_and_names_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The portable fallback subtracts ``ps``'s elapsed time from now, and
+    output that does not parse — or a ``ps`` that fails — reads unknown."""
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(os, "name", "posix")
+    calls: list[list[str]] = []
+
+    def fake_run(
+        command: list[str], **_kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, "1-02:03:04\n", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    before = datetime.now(UTC)
+    started = steps.pid_started_at(4321)
+    after = datetime.now(UTC)
+
+    assert calls == [["ps", "-p", "4321", "-o", "etime="]]
+    elapsed = timedelta(days=1, hours=2, minutes=3, seconds=4)
+    moment = datetime.fromisoformat(started)
+    # timespec="seconds" truncates, so the read may sit a second early.
+    assert before - elapsed - timedelta(seconds=1) <= moment <= after - elapsed
+
+    def garbage_run(
+        command: list[str], **_kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(command, 0, "nonsense\n", "")
+
+    monkeypatch.setattr(subprocess, "run", garbage_run)
+    assert steps.pid_started_at(4321) == "unknown"
+
+    def hanging_run(
+        command: list[str], **_kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        raise subprocess.TimeoutExpired(command, 10)
+
+    monkeypatch.setattr(subprocess, "run", hanging_run)
+    assert steps.pid_started_at(4321) == "unknown"
+
+
+def test_a_deadline_that_overflows_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A duration or time beyond ``datetime``'s range is refused with a
+    message naming the value and the accepted forms — never a traceback."""
+    repo = _project(tmp_path, monkeypatch)
+    capsys.readouterr()
+
+    for bad in ("999999999999d", "9999-12-31T23:59:59-12:00"):
+        assert (
+            main(
+                [
+                    "step",
+                    "start",
+                    "--task",
+                    "CR-1",
+                    "--activity",
+                    "implementation",
+                    "--deadline",
+                    bad,
+                ]
+            )
+            == 1
+        )
+        error = capsys.readouterr().err
+        assert bad in error
+        assert "ISO-8601" in error
+
+    assert _events(repo) == []
+
+
+def test_an_actor_or_run_dir_that_could_forge_rendered_text_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: an actor or run_dir that could forge rendered text is
+    refused."""
+    repo = _project(tmp_path, monkeypatch)
+    capsys.readouterr()
+
+    for option, value in (
+        ("--actor", "impl\u202eactor"),
+        ("--run-dir", "line\nbreak"),
+    ):
+        assert _start(option, value) == 1
+        assert "forge rendered text" in capsys.readouterr().err
+
+    assert _events(repo) == []
 
 
 def test_pid_started_at_is_read_or_names_itself_unknown(
@@ -257,7 +376,7 @@ def test_an_ended_step_lands_as_one_step_ended_event(
         main(["step", "end", "--task", "CR-1", "--step", "01ARZ3NDEKTSV4RRFFQ69G5FAV"])
         == 0
     )
-    assert capsys.readouterr().out.strip() == "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+    assert capsys.readouterr().out == "01ARZ3NDEKTSV4RRFFQ69G5FAV\n"
     assert (
         main(
             [
@@ -311,6 +430,20 @@ def test_an_outcome_that_is_not_a_clean_word_is_refused(
     assert _events(repo) == []
 
 
+def test_a_step_id_that_is_not_a_step_identifier_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a step id that is not a step identifier is refused."""
+    repo = _project(tmp_path, monkeypatch)
+    capsys.readouterr()
+
+    for bad in ("", "not-a-step", "01ABC", "81ARZ3NDEKTSV4RRFFQ69G5FAV"):
+        assert main(["step", "end", "--task", "CR-1", "--step", bad]) == 1
+        assert "step id" in capsys.readouterr().err
+
+    assert _events(repo) == []
+
+
 def test_a_step_command_leaves_the_journal_untouched(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -320,7 +453,10 @@ def test_a_step_command_leaves_the_journal_untouched(
     before = _tree(repo / ".agentmarshal")
 
     assert _start() == 0
-    assert main(["step", "end", "--task", "CR-1", "--step", "01ABC"]) == 0
+    assert (
+        main(["step", "end", "--task", "CR-1", "--step", "01ARZ3NDEKTSV4RRFFQ69G5FAV"])
+        == 0
+    )
 
     assert _tree(repo / ".agentmarshal") == before
     assert len(_events(repo)) == 2

@@ -29,6 +29,7 @@ from agentmarshal.journal.placement import (
 from agentmarshal.journal.records import (
     _SESSION_ACTIVITIES,
     JournalRecordError,
+    _is_ulid,
     forges_rendered_text,
     generate_ulid,
     validate_task_id,
@@ -129,6 +130,9 @@ def _run_start(args: argparse.Namespace, stderr: TextIO) -> int:
     try:
         validate_task_id(args.task)
         deadline = _parse_deadline(args.deadline)
+        for option, value in (("--actor", args.actor), ("--run-dir", args.run_dir)):
+            if value is not None:
+                _refuse_forgeable(value, option)
     except (JournalRecordError, StepError) as error:
         print(f"step start: {error}", file=stderr)
         return 1
@@ -159,7 +163,9 @@ def _run_start(args: argparse.Namespace, stderr: TextIO) -> int:
 def _run_end(args: argparse.Namespace, stderr: TextIO) -> int:
     try:
         validate_task_id(args.task)
-    except JournalRecordError as error:
+        if not _is_ulid(args.step):
+            raise StepError("--step must be a step id of the form step start prints")
+    except (JournalRecordError, StepError) as error:
         print(f"step end: {error}", file=stderr)
         return 1
     outcome = args.outcome
@@ -185,6 +191,17 @@ def _run_end(args: argparse.Namespace, stderr: TextIO) -> int:
     return 0
 
 
+def _refuse_forgeable(value: str, option: str) -> None:
+    """Raise ``StepError`` when *value* could forge rendered text.
+
+    ``status`` and ``doctor`` will print these fields inline, so they
+    follow the same rule the journal applies to text it renders.
+    """
+
+    if forges_rendered_text(value):
+        raise StepError(f"{option} must not hold characters that forge rendered text")
+
+
 def _is_word(value: str) -> bool:
     """Whether *value* is a non-empty word that cannot forge rendered text.
 
@@ -208,21 +225,20 @@ def _parse_deadline(value: str) -> str:
     """
 
     match = _DURATION.fullmatch(value.strip())
-    if match is not None:
-        moment = datetime.now(UTC) + timedelta(
-            seconds=int(match.group(1)) * _UNIT_SECONDS[match.group(2)]
-        )
-    else:
-        try:
+    try:
+        if match is not None:
+            moment = datetime.now(UTC) + timedelta(
+                seconds=int(match.group(1)) * _UNIT_SECONDS[match.group(2)]
+            )
+        else:
             moment = datetime.fromisoformat(value.strip())
-        except ValueError as error:
-            raise StepError(
-                f"deadline {value!r} is neither an ISO-8601 time nor a "
-                "duration such as 90m"
-            ) from error
-        if moment.tzinfo is None:
-            moment = moment.replace(tzinfo=UTC)
-    return moment.astimezone(UTC).isoformat(timespec="microseconds")
+            if moment.tzinfo is None:
+                moment = moment.replace(tzinfo=UTC)
+        return moment.astimezone(UTC).isoformat(timespec="microseconds")
+    except (ValueError, OverflowError) as error:
+        raise StepError(
+            f"deadline {value!r} is neither an ISO-8601 time nor a duration such as 90m"
+        ) from error
 
 
 def pid_started_at(pid: int) -> str:
@@ -247,19 +263,24 @@ def pid_started_at(pid: int) -> str:
 
 
 def _linux_started_at(pid: int) -> datetime | None:
-    """Field 22 of ``/proc/<pid>/stat`` plus ``/proc/stat``'s boot time."""
+    """Field 22 of ``/proc/<pid>/stat`` plus ``/proc/stat``'s boot time.
+
+    ``comm`` — field 2 — is raw bytes a process names itself with, so the
+    file is read as bytes; decoding it would turn a non-ASCII process name
+    into a traceback.
+    """
 
     try:
-        stat_text = Path(f"/proc/{pid}/stat").read_text(encoding="ascii")
+        stat_bytes = Path(f"/proc/{pid}/stat").read_bytes()
     except OSError:
         return None
-    # comm — field 2 — may itself hold spaces and parentheses; the fields
-    # after its closing ')' begin at field 3, so starttime (field 22) is
-    # index 19 of what follows the last one.
-    close = stat_text.rfind(")")
+    # comm may itself hold spaces and parentheses; the fields after its
+    # closing ')' begin at field 3, so starttime (field 22) is index 19 of
+    # what follows the last one.
+    close = stat_bytes.rfind(b")")
     if close < 0:
         return None
-    fields = stat_text[close + 1 :].split()
+    fields = stat_bytes[close + 1 :].split()
     if len(fields) <= 19:
         return None
     try:
@@ -277,11 +298,11 @@ def _boot_time() -> int | None:
     """The ``btime`` line of ``/proc/stat`` as epoch seconds."""
 
     try:
-        lines = Path("/proc/stat").read_text(encoding="ascii").splitlines()
+        lines = Path("/proc/stat").read_bytes().splitlines()
     except OSError:
         return None
     for line in lines:
-        if line.startswith("btime "):
+        if line.startswith(b"btime "):
             try:
                 return int(line.split()[1])
             except (IndexError, ValueError):
@@ -298,6 +319,7 @@ def _ps_started_at(pid: int) -> datetime | None:
             capture_output=True,
             check=True,
             text=True,
+            timeout=10,
         )
     except (OSError, subprocess.SubprocessError):
         return None
