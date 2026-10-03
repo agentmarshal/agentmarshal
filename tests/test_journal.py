@@ -37,6 +37,7 @@ from agentmarshal.journal.status import (
     WritableRecordType,
     load_task_for_record,
 )
+from test_placement import _host_and_sidecar
 
 
 def initialize_status_repo(repo: Path) -> Path:
@@ -2911,3 +2912,271 @@ def test_every_writing_command_refuses_a_closed_task(
     assert f"state: {state}" in capsys.readouterr().err
     assert read_records(root, "CR-001") == before
     assert main(["validate"]) == 0
+
+
+# --- record-session flags for the schema-7 session fields -----------------
+
+_SESSION_FLAG_ARGUMENTS = [
+    "record-session",
+    "--task",
+    "CR-001",
+    "--role",
+    "implementer",
+    "--actor",
+    "agent",
+    "--activity",
+    "implementation",
+    "--outcome",
+    "done",
+]
+
+
+def _open_session_task(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[Path, Path]:
+    repo = tmp_path / "repo"
+    root = initialize_status_repo(repo)
+    monkeypatch.chdir(repo)
+    assert main(["open", "--title", "Task", "--scope", "src/"]) == 0
+    return repo, root
+
+
+def test_record_session_flags_write_the_schema_7_session_fields(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a session recorded with the flags carries the fields."""
+
+    repo, root = _open_session_task(tmp_path, monkeypatch)
+    head = _commit_file(repo, "work.txt", "work\n")
+
+    assert (
+        main(
+            [
+                *_SESSION_FLAG_ARGUMENTS,
+                "--commit",
+                head,
+                "--model",
+                "swe-2",
+                "--trace",
+                "https://trace.example/run-1",
+                "--cli-session",
+                "cli-123",
+                "--report-ready",
+                "--fallback-reason",
+                "provider limit",
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+
+    record = read_records(root, "CR-001")[-1]
+    assert record["commit"] == head
+    assert record["model"] == "swe-2"
+    assert record["trace"] == "https://trace.example/run-1"
+    assert record["cli_session"] == "cli-123"
+    assert record["report_ready"] is True
+    assert record["fallback_reason"] == "provider limit"
+    assert main(["validate"]) == 0
+
+
+def test_the_schema_7_flags_are_optional(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: the flags are optional."""
+
+    _repo, root = _open_session_task(tmp_path, monkeypatch)
+
+    assert main(_SESSION_FLAG_ARGUMENTS) == 0
+
+    record = read_records(root, "CR-001")[-1]
+    for field in (
+        "commit",
+        "model",
+        "trace",
+        "cli_session",
+        "report_ready",
+        "fallback_reason",
+    ):
+        assert field not in record
+
+
+def test_a_session_recorded_with_a_flag_is_stamped_schema_7(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a session recorded with a flag is stamped schema 7."""
+
+    _repo, root = _open_session_task(tmp_path, monkeypatch)
+
+    assert main([*_SESSION_FLAG_ARGUMENTS, "--model", "swe-2"]) == 0
+
+    assert read_records(root, "CR-001")[-1]["schema"] == 7
+
+
+@pytest.mark.parametrize(
+    ("activity", "schema"),
+    [("implementation", 3), ("coordination", 6)],
+)
+def test_a_session_recorded_without_the_flags_keeps_its_schema(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    activity: str,
+    schema: int,
+) -> None:
+    """Scenario: a session recorded without the flags keeps its schema."""
+
+    _repo, root = _open_session_task(tmp_path, monkeypatch)
+
+    assert (
+        main(
+            [
+                "record-session",
+                "--task",
+                "CR-001",
+                "--role",
+                "implementer",
+                "--actor",
+                "agent",
+                "--activity",
+                activity,
+                "--outcome",
+                "done",
+            ]
+        )
+        == 0
+    )
+
+    assert read_records(root, "CR-001")[-1]["schema"] == schema
+
+
+@pytest.mark.parametrize(
+    ("flag", "value", "message"),
+    [
+        ("--model", "   ", "'model' must be a non-empty string"),
+        ("--cli-session", "", "'cli_session' must be a non-empty string"),
+        (
+            "--fallback-reason",
+            "   ",
+            "'fallback_reason' must be a non-empty string",
+        ),
+        ("--trace", "a\nb", "'trace' must not contain control characters"),
+    ],
+)
+def test_a_refused_flag_value_writes_nothing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    flag: str,
+    value: str,
+    message: str,
+) -> None:
+    """Scenario: a refused flag value writes nothing."""
+
+    _repo, root = _open_session_task(tmp_path, monkeypatch)
+    capsys.readouterr()
+
+    assert main([*_SESSION_FLAG_ARGUMENTS, flag, value]) == 1
+    assert message in capsys.readouterr().err
+    assert [record["record_type"] for record in read_records(root, "CR-001")] == [
+        "opened"
+    ]
+
+
+def test_an_outcome_of_free_text_is_still_recorded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: an outcome of free text is still recorded."""
+
+    _repo, root = _open_session_task(tmp_path, monkeypatch)
+
+    outcome = "implemented; review pending — third round"
+    assert (
+        main(
+            [
+                "record-session",
+                "--task",
+                "CR-001",
+                "--role",
+                "implementer",
+                "--actor",
+                "agent",
+                "--activity",
+                "implementation",
+                "--outcome",
+                outcome,
+            ]
+        )
+        == 0
+    )
+
+    assert read_records(root, "CR-001")[-1]["outcome"] == outcome
+
+
+@pytest.mark.parametrize("revision", ["HEAD", "short"])
+def test_a_revision_resolves_to_the_full_commit_id(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    revision: str,
+) -> None:
+    """Scenario: a revision resolves to the full commit id."""
+
+    repo, root = _open_session_task(tmp_path, monkeypatch)
+    head = _commit_file(repo, "work.txt", "work\n")
+
+    assert (
+        main(
+            [
+                *_SESSION_FLAG_ARGUMENTS,
+                "--commit",
+                head[:10] if revision == "short" else revision,
+            ]
+        )
+        == 0
+    )
+
+    assert read_records(root, "CR-001")[-1]["commit"] == head
+
+
+def test_in_a_sidecar_the_revision_resolves_in_the_host(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: in a sidecar the revision resolves in the host."""
+
+    _host, sidecar, _base, head = _host_and_sidecar(tmp_path, monkeypatch)
+    assert main(["open", "--title", "Task", "--scope", "app.txt"]) == 0
+
+    # The sidecar's own repository holds no commit at all, so `master` names a
+    # revision only the host can resolve.
+    assert (
+        main(
+            [
+                *_SESSION_FLAG_ARGUMENTS,
+                "--commit",
+                "master",
+            ]
+        )
+        == 0
+    )
+
+    journal = sidecar / ".agentmarshal" / "journal"
+    assert read_records(journal, "CR-001")[-1]["commit"] == head
+
+
+def test_an_unknown_revision_is_refused_naming_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: an unknown revision is refused naming it."""
+
+    repo, root = _open_session_task(tmp_path, monkeypatch)
+    _commit_file(repo, "work.txt", "work\n")
+    capsys.readouterr()
+
+    assert main([*_SESSION_FLAG_ARGUMENTS, "--commit", "no-such-rev"]) == 1
+    assert "no-such-rev" in capsys.readouterr().err
+    assert [record["record_type"] for record in read_records(root, "CR-001")] == [
+        "opened"
+    ]
