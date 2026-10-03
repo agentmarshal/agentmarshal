@@ -1,0 +1,31 @@
+{
+  "advisory_findings": [
+    "non-raw-git-listings-break-path-matchers"
+  ],
+  "artifacts": [
+    {
+      "hash": "41612db00f3040463ae45d65aa6714cda58092f1a5260ae6274f639902fac8a7",
+      "ref": ".agentmarshal/journal/tasks/CR-164/artifacts/01M40JNJ54HKQTQ6Q8WFX8WGNJ-review.md"
+    }
+  ],
+  "created_at": "2026-10-03T09:49:03.524909Z",
+  "findings": [
+    "gate-placement-refusal-prints-candidate-host-path-unescaped"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "98c724144d92daf613d69899ba838433159ad7cc",
+  "reviewed_contract": "9066a056cc56dd4f80a4d51ea67439376775166097d8a0d7b239b0422d1a8440",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-164",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "changes_required"
+}
