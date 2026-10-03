@@ -31,18 +31,20 @@ the `record-session` flags that write all of them, are separate tasks.
   them at write and, on read, under the record's own schema — the same
   field-admission rule that gates `usage` from 2 and `reviewed_contract`
   from 5.
-- **`model`, `trace`, `cli_session` and `fallback_reason` register into
-  `_FORGEABLE_TEXT_FIELDS` keyed `("session", field)`; `commit` and
-  `report_ready` do not.** The four are displayed strings, so ADR-0022
-  section 8 puts them under the forgeable-text rule. The registration
+- **Every string field of the family — `commit`, `model`, `trace`,
+  `cli_session` and `fallback_reason` — registers into
+  `_FORGEABLE_TEXT_FIELDS` keyed `("session", field)`; `report_ready`
+  does not.** The five are displayed strings, so ADR-0022 section 8 puts
+  them under the forgeable-text rule, and the contract asks that every
+  string field of the family carry the registration. The registration
   keys on the record type as the mechanism requires — a `None` ("every
   type") key would claim the rule guards these names wherever they lie,
   and no other type carries them. `report_ready` is a boolean: the rule
   refuses a registered non-string fail-closed, so registering it would
-  refuse every honest value. `commit` gets no entry: the 40-lowercase-hex
-  shape the `session-fields-7` rule checks first admits no character the
-  forgeable-text rule refuses, so the registration could never fire —
-  dead weight beside the shape rule, not a second layer.
+  refuse every honest value. `commit`'s entry never fires: the
+  40-lowercase-hex shape the `session-fields-7` rule checks first admits
+  no character the forgeable-text rule refuses, so the entry stands
+  beside the shape rule for completeness, not as a second layer.
 - **No field registers into a length-bound table.** ADR-0022 section 8
   bounds `excerpt`, `payload` and the new record types' `reason` alone —
   none of these fields — so `_TEXT_CHAR_LIMITS`, `_TEXT_BYTE_LIMITS` and

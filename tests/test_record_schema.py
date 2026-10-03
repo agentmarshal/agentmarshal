@@ -397,10 +397,12 @@ def test_each_writer_stamps_the_minimum_schema_its_record_needs(
 
     A record using nothing a schema introduced stamps below that schema:
     the session fields of schema 7 are what raises a session's stamp to 7.
+    The second assertion re-derives the stamp from the record's own fields
+    — a writer stamping a hand-chosen number fails it.
     """
 
     assert record["schema"] == expected
-    assert type(record["schema"]) is int
+    assert record["schema"] == records_module._minimum_schema(record)
 
 
 @pytest.mark.parametrize(

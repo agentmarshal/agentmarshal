@@ -301,14 +301,16 @@ def _allowed_fields(record_type: str, schema: int) -> frozenset[str]:
 # case. All four tables are dicts, so iteration is registration order and
 # the field a refusal names is stable; a field family registers its fields
 # into the validators it needs and nothing more. The schema-7 session
-# family registers its displayed strings below; ADR-0022 section 8 bounds
+# family registers its five string fields below; ADR-0022 section 8 bounds
 # no length for them, so the three limit tables stay empty of the family.
-# `commit` has no entry: its 40-lowercase-hex shape admits no character the
-# rule refuses, so a registration would be dead weight beside it.
+# `commit`'s entry never fires — the 40-lowercase-hex shape rule refuses
+# every character the forgeable-text rule would, and runs first — but the
+# family registers every string field, so the entry stands beside it.
 _TEXT_CHAR_LIMITS: dict[tuple[str | None, str], int] = {}
 _TEXT_BYTE_LIMITS: dict[tuple[str | None, str], int] = {}
 _JSON_BYTE_LIMITS: dict[tuple[str | None, str], int] = {}
 _FORGEABLE_TEXT_FIELDS: dict[tuple[str | None, str], None] = {
+    ("session", "commit"): None,
     ("session", "model"): None,
     ("session", "trace"): None,
     ("session", "cli_session"): None,

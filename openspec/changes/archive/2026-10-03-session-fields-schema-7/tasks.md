@@ -3,11 +3,11 @@
 - [x] 1.1 `_SCHEMA_7_SESSION_FIELDS` and the `_FIELD_FAMILIES` entry
   `(7, "session", …)` admit the six fields from schema 7 — verify: a
   schema-7 session carrying each round-trips; below 7 refused (pytest).
-- [x] 1.2 The four displayed string fields register into
-  `_FORGEABLE_TEXT_FIELDS` keyed `("session", field)` — `commit` takes no
-  entry, its hex shape admitting nothing the rule refuses — and no entry
-  lands in the length-bound tables — verify: a forgeable character
-  refused; a long value passes (pytest).
+- [x] 1.2 The five string fields register into `_FORGEABLE_TEXT_FIELDS`
+  keyed `("session", field)` — `commit`'s entry never fires, its hex
+  shape admitting nothing the rule refuses — and no entry lands in the
+  length-bound tables — verify: a forgeable character refused; a long
+  value passes (pytest).
 - [x] 1.3 The `session-fields-7` rule, bound to 7, refuses a `commit`
   that is not 40 lowercase hex, an empty, all-whitespace or non-string
   `model`, `trace`, `cli_session` or `fallback_reason`, and a non-boolean

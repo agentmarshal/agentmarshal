@@ -192,10 +192,10 @@ def test_a_string_field_that_could_forge_a_rendered_line_is_refused(
 ) -> None:
     """Scenario: a string field that could forge a rendered line is refused.
 
-    `model`, `trace`, `cli_session` and `fallback_reason` meet the
-    forgeable-text refusal; `commit` meets its own 40-hex shape refusal
-    first, which admits no forgeable character — the registration would
-    never fire, so the family registers the four displayed strings only.
+    All five string fields register under the forgeable-text rule keyed
+    `("session", field)`, `commit` included — its entry never fires, the
+    40-hex shape rule refusing the forgeable character first, so `commit`
+    meets that refusal and the other four meet the forgeable-text one.
     """
 
     journal_root = tmp_path / "journal"
@@ -203,6 +203,24 @@ def test_a_string_field_that_could_forge_a_rendered_line_is_refused(
         write_record(journal_root, "CR-001", _session_with(**{field: "ok\nforged"}))
 
     assert not journal_root.exists()
+
+
+@pytest.mark.parametrize("field", ("model", "trace", "cli_session", "fallback_reason"))
+def test_no_length_bound_applies_to_the_family_fields(
+    field: str, tmp_path: Path
+) -> None:
+    """ADR-0022 section 8 bounds no length for the family's fields.
+
+    A value far past any bound the shared validators register is written
+    and read back unchanged — the three length tables hold no entry for
+    this family.
+    """
+
+    journal_root = tmp_path / "journal"
+    long_value = "x" * 100_000
+    write_record(journal_root, "CR-001", _session_with(**{field: long_value}))
+
+    assert read_records(journal_root, "CR-001")[0][field] == long_value
 
 
 @pytest.mark.parametrize("field", tuple(_FAMILY_VALUES))

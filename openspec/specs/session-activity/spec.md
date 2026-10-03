@@ -64,9 +64,10 @@ never fetched; `cli_session` — a non-empty string naming the CLI session a
 resume needs; `report_ready` — a boolean saying the run's report was
 finished; and `fallback_reason` — a non-empty string saying why a run
 moved down the fallback list, shown and never verified. Each field is
-optional. Each of `model`, `trace`, `cli_session` and `fallback_reason`
-SHALL pass the forgeable-text rule registered for the session record type
-and that field, and no length bound SHALL apply to any of them.
+optional. Each of `commit`, `model`, `trace`, `cli_session` and
+`fallback_reason` SHALL pass the forgeable-text rule registered for the
+session record type and that field, and no length bound SHALL apply to
+any of them.
 
 #### Scenario: a session carrying the new fields is written and read back
 - **WHEN** a session record carries `commit`, `model`, `trace`,
