@@ -1,0 +1,31 @@
+{
+  "advisory_findings": [
+    "two-proposals-introduces-three-item-list",
+    "outbox-not-the-only-non-record-directory-under-agentmarshal",
+    "init-written-readme-unaddressed-by-check-and-status"
+  ],
+  "artifacts": [
+    {
+      "hash": "d8836519888c3bae6652f1a5f6c0804fc94bb0283a98255ce24db234560d4f69",
+      "ref": ".agentmarshal/journal/tasks/CR-140/artifacts/01M3ZJCA3438988DT3Z29APDZ8-review.md"
+    }
+  ],
+  "created_at": "2026-10-03T00:24:45.924521Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "82a1dd92fe064d6562cfe212cdcccfcaaf6fcc0a",
+  "reviewed_contract": "e6a7b2396a7e9d16caae962fb65f1537945610e9c15fbb6f31dd0335e9d57856",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-140",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "approved"
+}
