@@ -1,0 +1,28 @@
+{
+  "artifacts": [
+    {
+      "hash": "844467e43db93ca29f9c67fadb6753c076ad70dd55759948fe216cc491a7865d",
+      "ref": ".agentmarshal/journal/tasks/CR-152/artifacts/01M3ZZ6N911DRK6CN4K5PFHAZS-review.md"
+    }
+  ],
+  "created_at": "2026-10-03T04:08:52.257611Z",
+  "findings": [
+    "manifest-version-skips-control-character-rule"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "bf1670bfbeaa54efaa07e7a20db41fb0ff6fe877",
+  "reviewed_contract": "b9b82764edfe75630ff0a2a44b21dd0e397fe3cfec7ec3e12f754928b4daa54d",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-152",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "changes_required"
+}

@@ -48,3 +48,4 @@ As in the header.
 
 - The gate's transcript, the brief and the reviewer prompt (a later task).
 - Any change to what is refused at write.
+- Rewriting the `## Purpose` of the record-text-safety spec: the archive command leaves an existing spec's Purpose untouched and AGENTS.md forbids hand edits under openspec/specs/; how a Purpose is updated is a separate decision. The requirements carry the change.
