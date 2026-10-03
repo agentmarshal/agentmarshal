@@ -139,6 +139,7 @@ def test_todays_rules_apply_from_schema_1_except_the_gates() -> None:
         "bounded-text-bytes": 7,
         "bounded-json": 7,
         "forgeable-text": 7,
+        "session-fields-7": 7,
     }
     for name, schema in records_module._RULE_FROM_SCHEMA.items():
         assert schema == gates.get(name, 1), name
@@ -296,6 +297,96 @@ _FINDING_ID = "01J00000000000000000000000"
             ),
             4,
         ),
+        (
+            create_session_record(
+                "CR-001",
+                "t",
+                "r",
+                "a",
+                "implementation",
+                "d",
+                1,
+                2,
+                3,
+                commit=_COMMIT,
+            ),
+            7,
+        ),
+        (
+            create_session_record(
+                "CR-001",
+                "t",
+                "r",
+                "a",
+                "implementation",
+                "d",
+                1,
+                2,
+                3,
+                model="m",
+            ),
+            7,
+        ),
+        (
+            create_session_record(
+                "CR-001",
+                "t",
+                "r",
+                "a",
+                "implementation",
+                "d",
+                1,
+                2,
+                3,
+                trace="https://t.example/run",
+            ),
+            7,
+        ),
+        (
+            create_session_record(
+                "CR-001",
+                "t",
+                "r",
+                "a",
+                "implementation",
+                "d",
+                1,
+                2,
+                3,
+                cli_session="c-1",
+            ),
+            7,
+        ),
+        (
+            create_session_record(
+                "CR-001",
+                "t",
+                "r",
+                "a",
+                "implementation",
+                "d",
+                1,
+                2,
+                3,
+                report_ready=True,
+            ),
+            7,
+        ),
+        (
+            create_session_record(
+                "CR-001",
+                "t",
+                "r",
+                "a",
+                "coordination",
+                "d",
+                1,
+                2,
+                3,
+                fallback_reason="fell back",
+            ),
+            7,
+        ),
     ],
 )
 def test_each_writer_stamps_the_minimum_schema_its_record_needs(
@@ -303,12 +394,12 @@ def test_each_writer_stamps_the_minimum_schema_its_record_needs(
 ) -> None:
     """Scenario: each writer stamps the minimum schema its record needs.
 
-    Scenario: no writer stamps a schema no field needs — while no field of
-    schema 7 exists, every stamped number stays below 7.
+    A record using nothing a schema introduced stamps below that schema:
+    the session fields of schema 7 are what raises a session's stamp to 7.
     """
 
     assert record["schema"] == expected
-    assert type(record["schema"]) is int and record["schema"] < 7
+    assert type(record["schema"]) is int
 
 
 @pytest.mark.parametrize(

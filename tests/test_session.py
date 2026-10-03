@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from agentmarshal.journal.records import (
     JournalRecordError,
     create_session_record,
+    generate_ulid,
     read_records,
     write_record,
 )
@@ -65,3 +68,180 @@ def test_other_activities_keep_their_schema(activity: str, tmp_path: Path) -> No
     write_record(journal_root, "CR-001", _session_record(activity))
 
     assert read_records(journal_root, "CR-001")[0]["schema"] == 3
+
+
+# --- the session fields of schema 7 (ADR-0022 section 2) -------------------
+
+_COMMIT = "a" * 40
+_FAMILY_VALUES: dict[str, object] = {
+    "commit": _COMMIT,
+    "model": "swe-2",
+    "trace": "https://trace.example/run-1",
+    "cli_session": "cli-123",
+    "report_ready": True,
+    "fallback_reason": "provider limit",
+}
+_STRING_FIELDS = ("commit", "model", "trace", "cli_session", "fallback_reason")
+
+
+def _session_with(**fields: Any) -> dict[str, object]:
+    return create_session_record(
+        "CR-001",
+        "test",
+        "implementer",
+        "agent",
+        "implementation",
+        "done",
+        1,
+        2,
+        3,
+        **fields,
+    )
+
+
+def test_a_session_carrying_the_new_fields_is_written_and_read_back(
+    tmp_path: Path,
+) -> None:
+    """Scenario: a session carrying the new fields is written and read back."""
+
+    journal_root = tmp_path / "journal"
+    write_record(journal_root, "CR-001", _session_with(**_FAMILY_VALUES))
+
+    stored = read_records(journal_root, "CR-001")[0]
+    for field, value in _FAMILY_VALUES.items():
+        assert stored[field] == value
+
+
+def test_each_new_field_is_optional(tmp_path: Path) -> None:
+    """Scenario: each new field is optional."""
+
+    journal_root = tmp_path / "journal"
+    write_record(journal_root, "CR-001", _session_record("implementation"))
+
+    stored = read_records(journal_root, "CR-001")[0]
+    for field in _FAMILY_VALUES:
+        assert field not in stored
+
+
+@pytest.mark.parametrize(
+    "commit", ["a" * 39, "a" * 41, "A" * 40, "g" * 40, "a" * 40 + " ", 40]
+)
+def test_a_commit_that_is_not_40_lowercase_hex_is_refused(
+    commit: object, tmp_path: Path
+) -> None:
+    """Scenario: a commit that is not 40 lowercase hex is refused."""
+
+    journal_root = tmp_path / "journal"
+    with pytest.raises(JournalRecordError, match=r"40 .*lowercase hex"):
+        write_record(journal_root, "CR-001", _session_with(commit=commit))
+
+    assert not journal_root.exists()
+
+
+@pytest.mark.parametrize("field", ("model", "trace", "cli_session", "fallback_reason"))
+@pytest.mark.parametrize("value", ["", 5])
+def test_an_empty_string_field_is_refused(
+    field: str, value: object, tmp_path: Path
+) -> None:
+    """Scenario: an empty string field is refused."""
+
+    journal_root = tmp_path / "journal"
+    with pytest.raises(JournalRecordError, match="non-empty string"):
+        write_record(journal_root, "CR-001", _session_with(**{field: value}))
+
+    assert not journal_root.exists()
+
+
+@pytest.mark.parametrize("value", ["yes", 1, 0])
+def test_a_report_ready_that_is_not_a_boolean_is_refused(
+    value: object, tmp_path: Path
+) -> None:
+    """Scenario: a report_ready that is not a boolean is refused."""
+
+    journal_root = tmp_path / "journal"
+    with pytest.raises(JournalRecordError, match="must be a boolean"):
+        write_record(journal_root, "CR-001", _session_with(report_ready=value))
+
+    assert not journal_root.exists()
+
+
+@pytest.mark.parametrize("field", _STRING_FIELDS)
+def test_a_string_field_that_could_forge_a_rendered_line_is_refused(
+    field: str, tmp_path: Path
+) -> None:
+    """Scenario: a string field that could forge a rendered line is refused.
+
+    The commit field passes its own shape check first only on hex input, so
+    a forgeable value still meets the forgeable-text refusal through the
+    other registered fields — and through `commit` itself.
+    """
+
+    journal_root = tmp_path / "journal"
+    with pytest.raises(JournalRecordError, match=r"control characters|lowercase hex"):
+        write_record(journal_root, "CR-001", _session_with(**{field: "ok\nforged"}))
+
+    assert not journal_root.exists()
+
+
+@pytest.mark.parametrize("field", tuple(_FAMILY_VALUES))
+def test_a_session_carrying_a_field_of_the_family_stamps_schema_7(
+    field: str, tmp_path: Path
+) -> None:
+    """Scenario: a session carrying a field of the family stamps schema 7."""
+
+    journal_root = tmp_path / "journal"
+    write_record(
+        journal_root, "CR-001", _session_with(**{field: _FAMILY_VALUES[field]})
+    )
+
+    assert read_records(journal_root, "CR-001")[0]["schema"] == 7
+
+
+@pytest.mark.parametrize("field", tuple(_FAMILY_VALUES))
+def test_a_field_of_the_family_on_a_session_below_schema_7_is_refused_at_write(
+    field: str, tmp_path: Path
+) -> None:
+    """Scenario: a field of the family on a session below schema 7 is
+    refused at write."""
+
+    journal_root = tmp_path / "journal"
+    record = _session_with(**{field: _FAMILY_VALUES[field]})
+    record["schema"] = 6
+    with pytest.raises(JournalRecordError, match="unsupported fields"):
+        write_record(journal_root, "CR-001", record)
+
+    assert not journal_root.exists()
+
+
+@pytest.mark.parametrize("field", tuple(_FAMILY_VALUES))
+def test_a_field_of_the_family_on_a_session_below_schema_7_is_refused_on_read(
+    field: str, tmp_path: Path
+) -> None:
+    """Scenario: a field of the family on a session below schema 7 is
+    refused on read."""
+
+    record = _session_with(**{field: _FAMILY_VALUES[field]})
+    record["schema"] = 6
+    records_dir = tmp_path / "journal" / "tasks" / "CR-001" / "records"
+    records_dir.mkdir(parents=True)
+    (records_dir / f"{generate_ulid()}-session.json").write_text(
+        json.dumps(record), encoding="utf-8"
+    )
+
+    with pytest.raises(JournalRecordError, match="unsupported fields"):
+        read_records(tmp_path / "journal", "CR-001")
+
+
+@pytest.mark.parametrize(
+    "activity,expected",
+    [("implementation", 3), ("review", 3), ("other", 3), ("coordination", 6)],
+)
+def test_a_session_without_the_family_keeps_its_schema(
+    activity: str, expected: int, tmp_path: Path
+) -> None:
+    """Scenario: a session without the family keeps its schema."""
+
+    journal_root = tmp_path / "journal"
+    write_record(journal_root, "CR-001", _session_record(activity))
+
+    assert read_records(journal_root, "CR-001")[0]["schema"] == expected
