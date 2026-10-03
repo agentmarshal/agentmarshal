@@ -1,0 +1,29 @@
+{
+  "advisory_findings": [
+    "CHK-001"
+  ],
+  "artifacts": [
+    {
+      "hash": "b74022fb3fac2a115e5a3c202c78b237bb929f4970e922ec07f404d0cced56b0",
+      "ref": ".agentmarshal/journal/tasks/CR-167/artifacts/01M40QEGW95X1E1APAQEMRM47A-review.md"
+    }
+  ],
+  "created_at": "2026-10-03T11:12:35.721698Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "4783ce19d9cd51f6646caea80bc4882172a0e085",
+  "reviewed_contract": "8d6782408e261649b1df30e280ecb2184a5176133efe903d8ce45394df4a43e9",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-167",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "approved"
+}

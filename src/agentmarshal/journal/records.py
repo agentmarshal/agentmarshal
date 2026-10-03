@@ -130,6 +130,15 @@ _RECORD_FIELDS = {
             "summary",
         }
     ),
+    "check": frozenset(
+        {
+            "schema",
+            "record_type",
+            "task",
+            "created_at",
+            "tool_version",
+        }
+    ),
 }
 # Schema 2 adds provenance (ADR-0005): a required ``source`` and optional
 # ``artifacts`` references. They are permitted on schema 2 and above — a
@@ -163,6 +172,15 @@ _SCHEMA_7_SESSION_FIELDS = frozenset(
 # decision 1, ADR-0022 section 2): `opened` and `amendment` may carry the
 # sha256 of the contract text they establish.
 _SCHEMA_7_CONTRACT_FIELDS = frozenset({"contract"})
+# What a pipeline check found on a commit (ADR-0017 decision 1, ADR-0022
+# section 3): the commit it ran on, the check's name and result, and
+# optionally the step that failed, a bounded excerpt and a link to the run.
+_CHECK_RECORD_SCHEMA = 7
+_SCHEMA_7_CHECK_FIELDS = frozenset(
+    {"commit", "name", "result", "failed_step", "excerpt", "run_url"}
+)
+_CHECK_RESULTS = frozenset({"passed", "failed", "error", "skipped"})
+_CHECK_EXCERPT_BYTE_LIMIT = 4 * 1024
 _SHA256_HEX_PATTERN = re.compile(r"[0-9a-f]{64}$")
 _REVIEWED_COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}$")
 _REVIEW_VERDICTS = frozenset({"approved", "changes_required", "blocked", "rejected"})
@@ -281,6 +299,7 @@ _FIELD_FAMILIES: tuple[tuple[int, str | None, frozenset[str]], ...] = (
     (7, "session", _SCHEMA_7_SESSION_FIELDS),
     (7, "opened", _SCHEMA_7_CONTRACT_FIELDS),
     (7, "amendment", _SCHEMA_7_CONTRACT_FIELDS),
+    (7, "check", _SCHEMA_7_CHECK_FIELDS),
 )
 
 
@@ -308,14 +327,20 @@ def _allowed_fields(record_type: str, schema: int) -> frozenset[str]:
 # the field a refusal names is stable; a field family registers its fields
 # into the validators it needs and nothing more. The schema-7 session
 # family registers its five string fields below; ADR-0022 section 8 bounds
-# no length for them, so the three limit tables stay empty of the family.
+# no length for them, so the limit tables hold none of the family.
 # `commit`'s entry never fires — the 40-lowercase-hex shape rule refuses
 # every character the forgeable-text rule would, and runs first — but the
 # family registers every string field, so the entry stands beside it. The
 # contract family's `contract` registers the same way on each of its two
-# record types, its 64-hex shape rule standing first the same way.
+# record types, its 64-hex shape rule standing first the same way. The
+# check family registers its `excerpt` at the ADR's 4 KiB byte bound and
+# its four displayed strings under the forgeable-text rule; its `commit`
+# hex shape and `result` vocabulary admit no character that rule refuses,
+# so they carry no registration.
 _TEXT_CHAR_LIMITS: dict[tuple[str | None, str], int] = {}
-_TEXT_BYTE_LIMITS: dict[tuple[str | None, str], int] = {}
+_TEXT_BYTE_LIMITS: dict[tuple[str | None, str], int] = {
+    ("check", "excerpt"): _CHECK_EXCERPT_BYTE_LIMIT,
+}
 _JSON_BYTE_LIMITS: dict[tuple[str | None, str], int] = {}
 _FORGEABLE_TEXT_FIELDS: dict[tuple[str | None, str], None] = {
     ("session", "commit"): None,
@@ -325,6 +350,10 @@ _FORGEABLE_TEXT_FIELDS: dict[tuple[str | None, str], None] = {
     ("session", "fallback_reason"): None,
     ("opened", "contract"): None,
     ("amendment", "contract"): None,
+    ("check", "name"): None,
+    ("check", "failed_step"): None,
+    ("check", "excerpt"): None,
+    ("check", "run_url"): None,
 }
 
 
@@ -466,6 +495,22 @@ def _check_amendment_record(data: Mapping[str, object], _context: _RuleContext) 
             )
 
 
+@_rule("check")
+def _check_check_schema(data: Mapping[str, object], _context: _RuleContext) -> None:
+    # The record-type gate, bound to 1 like `fields` itself: a check
+    # record below the schema the type arrived under is refused at write
+    # and on read, whatever it carries. The family's fields are admitted
+    # only from schema 7, so a check carrying them meets the
+    # unsupported-fields refusal first; this rule is what also refuses
+    # the type where no field forces it, and no legitimate history can
+    # carry it.
+    if (
+        cast(str, data["record_type"]) == "check"
+        and cast(int, data["schema"]) < _CHECK_RECORD_SCHEMA
+    ):
+        raise JournalRecordError(f"check records require schema {_CHECK_RECORD_SCHEMA}")
+
+
 @_rule("session-fields")
 def _check_session_fields(data: Mapping[str, object], _context: _RuleContext) -> None:
     if cast(str, data["record_type"]) != "session":
@@ -582,6 +627,37 @@ def _check_contract_hash_7(data: Mapping[str, object], _context: _RuleContext) -
         raise JournalRecordError(
             "record field 'contract' must be exactly 64 lowercase hex characters"
         )
+
+
+@_rule("check-fields-7")
+def _check_check_fields_7(data: Mapping[str, object], _context: _RuleContext) -> None:
+    if cast(str, data["record_type"]) != "check":
+        return
+    commit = data.get("commit")
+    if (
+        not isinstance(commit, str)
+        or _REVIEWED_COMMIT_PATTERN.fullmatch(commit) is None
+    ):
+        raise JournalRecordError(
+            "check record field 'commit' must be exactly 40 lowercase hex characters"
+        )
+    name = data.get("name")
+    if not isinstance(name, str) or not name.strip():
+        raise JournalRecordError("check record field 'name' must be a non-empty string")
+    result = data.get("result")
+    if not isinstance(result, str) or result not in _CHECK_RESULTS:
+        raise JournalRecordError(
+            "check record field 'result' must be one of "
+            + ", ".join(sorted(_CHECK_RESULTS))
+        )
+    for field in ("failed_step", "excerpt", "run_url"):
+        if field not in data:
+            continue
+        value = data[field]
+        if not isinstance(value, str) or not value.strip():
+            raise JournalRecordError(
+                f"check record field {field!r} must be a non-empty string"
+            )
 
 
 @_rule("provenance")
@@ -738,12 +814,14 @@ _RULE_FROM_SCHEMA: dict[str, int] = {
     "abandoned": 1,
     "reopened": 1,
     "amendment": 1,
+    "check": 1,
     "session-fields": 1,
     "coordination": 6,
     "session-tokens": 1,
     "session-usage": 1,
     "session-fields-7": 7,
     "contract-hash-7": 7,
+    "check-fields-7": 7,
     "provenance": 2,
     "recorded-by": 1,
     "finding-binding": 4,
@@ -1268,6 +1346,8 @@ def _minimum_schema(record: Mapping[str, object]) -> int:
         schema = max(schema, 7)
     if record.keys() & _SCHEMA_7_CONTRACT_FIELDS:
         schema = max(schema, 7)
+    if record.get("record_type") == "check":
+        schema = max(schema, _CHECK_RECORD_SCHEMA)
     return schema
 
 
@@ -1566,6 +1646,47 @@ def create_acceptance_record(
         record["accepted_finding"] = accepted_finding
     else:
         record["accepted_commit"] = accepted_commit
+    record["schema"] = _minimum_schema(record)
+    return record
+
+
+def create_check_record(
+    task_id: str,
+    tool_version: str,
+    commit: str,
+    name: str,
+    result: str,
+    *,
+    failed_step: str | None = None,
+    excerpt: str | None = None,
+    run_url: str | None = None,
+    source: str = SOURCE_LIVE,
+) -> dict[str, object]:
+    """Build the measurement record a pipeline check's observer writes.
+
+    The record traces what a check found on a commit — its name, its
+    result, and optionally the step that failed, a bounded excerpt and a
+    link to the run (ADR-0017 decision 1); the gate decides nothing from
+    it.
+    """
+
+    record: dict[str, object] = {
+        "record_type": "check",
+        "task": task_id,
+        "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "tool_version": tool_version,
+        "commit": commit,
+        "name": name,
+        "result": result,
+        "source": source,
+    }
+    for field, value in (
+        ("failed_step", failed_step),
+        ("excerpt", excerpt),
+        ("run_url", run_url),
+    ):
+        if value is not None:
+            record[field] = value
     record["schema"] = _minimum_schema(record)
     return record
 

@@ -1,0 +1,23 @@
+{
+  "activity": "coordination",
+  "actor": "anthropic/claude-opus-5-5",
+  "created_at": "2026-10-03T11:44:13.469406Z",
+  "outcome": "success",
+  "record_type": "session",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "role": "coordinator",
+  "schema": 6,
+  "source": "live",
+  "task": "CR-167",
+  "tokens": {
+    "cache": 22134219,
+    "input": 64,
+    "output": 14583
+  },
+  "tool_version": "0.5.0.dev0",
+  "usage": {
+    "method": "measured",
+    "provider": "anthropic"
+  }
+}
