@@ -1,0 +1,19 @@
+I reviewed commit `d3ab2dd3aa6604965adee763927f60374fd9986d` against CR-146 statically — the sandbox here refused every attempt to execute `pytest`/`ruff`/`mypy`, so criterion 5 ("the full CI sequence passes") is the one claim I could not independently exercise. Everything else I checked against the files.
+
+**What holds up**
+
+- The archived change `openspec/changes/archive/2026-10-03-pin-gate-transcript-by-fixture/` carries `proposal.md`, `design.md`, `tasks.md` (all ticked) and three deltas; `openspec/changes/` now holds only `archive/`, and the three published specs match their deltas verbatim — consistent with `openspec archive` rather than a hand edit (AGENTS.md's rule).
+- gate-lanes' "A default run is unchanged" is restated around committed fixtures, and each of its three scenarios has a test whose docstring names it (`test_default_run_transcript_matches_the_committed_fixture`, `test_a_transcript_difference_is_shown_as_a_readable_diff`, `test_a_fixture_changes_only_when_the_output_changes_on_purpose`). The scope-enforcement delta restates the whole requirement and all four of its scenarios have naming tests (`tests/test_gate.py:778`, `:805`, `:839`, `:763`); review-evidence's single scenario is named by `test_old_journal_reads_as_before`.
+- I checked all four fixture triples line-by-line against `src/agentmarshal/journal/gate.py` and `src/agentmarshal/cli.py:790-871`: the sidecar-only suffixes (`added records are valid (none examined: a host journal is not this journal's evidence)`, `no record-path collisions (none examined: …)`), the scope line's sidecar parenthetical appearing only on the PASS branch, the absence of an independence line when no review exists, and the stderr/exit split for the refused sidecar case all match the source exactly.
+- No test was weakened: `test_empty_scope_candidate_takes_the_diff_lane_and_is_refused` still asserts `paths outside contract scope: host-change.py` on the current run (`tests/test_gate.py:886`), and `test_old_journal_reads_as_before` traded two assertions for a full-transcript pin plus a pinned exit status. `released_030`/`SKIP_030` are still consumed by `test_findings.py:22` and `test_journal.py:460`, so the retained helpers are not dead code.
+- The pinning test and `test_old_journal_reads_as_before` both `monkeypatch.delenv(UPDATE_FIXTURES_ENV)` before comparing, missing fixtures fail by name instead of comparing as empty, and longest-first substitution keeps `<head-sha>` and `<head-sha-12>` distinct.
+
+Two non-blocking notes follow.
+
+`normalization-misses-resolved-roots`: in `tests/test_gate.py:366` `_run_values` maps the unresolved `tmp_path`, `repo`, `host` and `sidecar` strings, but every root AgentMarshal itself holds is resolved (`src/agentmarshal/journal/placement.py:61` and `:67` both call `.resolve()`). No fixture currently contains a path, so those entries never fire today — which also means the "temporary paths" half of the documented substitution is unexercised, and the first transcript line that does print a root will print the resolved form the mapping does not cover, failing the pin on any platform whose temp root is a symlink.
+
+`placeholder-name-in-lifecycle-test`: `tests/test_gate.py` in `test_a_fixture_changes_only_when_the_output_changes_on_purpose` maps a twelve-character value to `<head-sha>`, while `_run_values` and task 1.6 reserve that placeholder for the full forty-character sha and use `<head-sha-12>` for the abbreviation. The test passes either way, but it teaches a reader the opposite of the convention the change deliberately introduced.
+
+AGENTMARSHAL_VERDICT_BEGIN
+{"reviewed_commit": "d3ab2dd3aa6604965adee763927f60374fd9986d", "verdict": "approved", "findings": [], "advisory_findings": ["normalization-misses-resolved-roots", "placeholder-name-in-lifecycle-test"]}
+AGENTMARSHAL_VERDICT_END
