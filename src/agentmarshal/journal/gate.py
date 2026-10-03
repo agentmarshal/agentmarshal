@@ -286,6 +286,25 @@ def _run_git(project_root: Path, arguments: list[str]) -> str:
         raise GateError(f"git produced non-UTF-8 output: {error}") from error
 
 
+def _run_git_lossy(project_root: Path, arguments: list[str]) -> str:
+    """Run git like ``_run_git``, decoding what a path may have spoiled.
+
+    For the ``-z`` listings: NUL is the one byte git guarantees a path
+    never carries, so the names arrive raw — bytes that are not UTF-8
+    included, which a strict decode would refuse the whole run over even
+    when the name is one the run never had to read. Undecodable bytes
+    decode as low surrogates instead (``surrogateescape``): the name
+    keeps its bytes for matching — the surrogate round-trips through
+    ``os`` and back to git — and where the gate names it, a surrogate is
+    a character the forgeable-text rule refuses, so ``say`` and
+    ``GateError`` print it as its ``\\udcXX`` escape.
+    """
+
+    return _run_git_bytes(project_root, arguments).decode(
+        "utf-8", errors="surrogateescape"
+    )
+
+
 def _resolve_commit(project_root: Path, reference: str) -> str:
     resolved = _run_git(
         project_root, ["rev-parse", "--verify", f"{reference}^{{commit}}"]
@@ -305,7 +324,7 @@ def _changed_with_status(
     seen as removing it there; a copy contributes only the addition.
     """
 
-    output = _run_git(
+    output = _run_git_lossy(
         project_root, ["diff", "--name-status", "-z", f"{merge_base}..{commit}"]
     )
     tokens = [token for token in output.split("\0") if token]
@@ -371,7 +390,7 @@ def _sidecar_history_tampering(project_root: Path, journal_path: str) -> list[st
     # failure propagates.
     if not _run_git(project_root, ["rev-list", "-n", "1", "--all"]).strip():
         return []
-    output = _run_git(
+    output = _run_git_lossy(
         project_root,
         [
             "log",
@@ -413,7 +432,7 @@ def _sidecar_tampered_records(journal_root: Path) -> list[str]:
     """
 
     project_root = journal_root.parents[1]
-    output = _run_git(
+    output = _run_git_lossy(
         project_root,
         [
             "status",
@@ -478,7 +497,7 @@ def _manifest_from_tree(
         # A literal pathspec: a bracket or a star in an extension's name is a
         # character, not a glob. The entry's mode is part of the answer — a
         # symlink is refused here as the filesystem reader refuses one.
-        entry = _run_git(
+        entry = _run_git_lossy(
             project_root, ["ls-tree", "-z", tree_ref, "--", f":(literal){path}"]
         )
         if not entry.strip("\0"):
@@ -683,7 +702,7 @@ def run_gate(
     # collision the check could not see.
     base_tree = {
         path
-        for path in _run_git(
+        for path in _run_git_lossy(
             project_root, ["ls-tree", "-r", "--name-only", "-z", base_commit]
         ).split("\0")
         if path
@@ -943,7 +962,7 @@ def run_gate(
             # path is one the matcher cannot see — a false "removal complete".
             candidate_tree = {
                 path
-                for path in _run_git(
+                for path in _run_git_lossy(
                     project_root,
                     ["ls-tree", "-r", "--name-only", "-z", resolved_commit],
                 ).split("\0")

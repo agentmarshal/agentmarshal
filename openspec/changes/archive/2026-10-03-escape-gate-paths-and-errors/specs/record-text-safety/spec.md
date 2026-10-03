@@ -25,6 +25,12 @@ have. A value carrying no refused character SHALL print byte-identically.
   the gate names it among the paths outside contract scope
 - **THEN** it prints escaped on the line that names it
 
+#### Scenario: a path whose bytes are not UTF-8 is named in escaped form
+- **WHEN** a path a gate listing returns carries bytes that are not UTF-8
+  and the gate names it
+- **THEN** the undecodable bytes print in escaped form on the line that
+  names it, and the run is not refused on the name's account
+
 #### Scenario: a refusal names a forgeable value in escaped form
 - **WHEN** an error or refusal message embeds a value taken from the
   candidate, the journal or git output — a ref, a path, an exception's

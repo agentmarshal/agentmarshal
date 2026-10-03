@@ -1786,39 +1786,44 @@ def test_gate_refuses_non_utf8_git_output(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    import os
+    """Git output that is not UTF-8 is a controlled refusal, never a traceback.
+
+    The `-z` listings are the exception — a name's raw bytes are kept for
+    matching rather than refused. Every other output still decodes
+    strictly: a record whose bytes `git show` cannot return as UTF-8 is
+    refused by name on the invalid-records line.
+    """
 
     repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
-    src_bytes = os.fsencode(repo / "src")
-    os.makedirs(src_bytes, exist_ok=True)
-    # A genuinely non-UTF-8 filename (raw 0xFF byte), created at the OS
-    # level so git stores and emits the raw bytes.
-    bad_path = src_bytes + b"/\xff.py"
-    with open(bad_path, "wb") as bad_file:
-        bad_file.write(b"code\n")
-    head = _commit_all(repo, "non-utf8 path")
+    records = repo / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "records"
+
+    def add_undecodable_record() -> None:
+        (records / ("01" + "A" * 24 + "-session.json")).write_bytes(
+            b"\xff\xfe not utf-8"
+        )
+
+    head = _candidate_head(repo, "bad-record", base, add_undecodable_record)
     capsys.readouterr()
 
-    assert (
-        main(
-            [
-                "gate",
-                "--task",
-                "CR-001",
-                "--commit",
-                head,
-                "--base",
-                base,
-                "--pipeline-sha",
-                head,
-            ]
-        )
-        == 1
+    code = main(
+        [
+            "gate",
+            "--task",
+            "CR-001",
+            "--commit",
+            head,
+            "--base",
+            "master",
+            "--pipeline-sha",
+            head,
+        ]
     )
 
-    error_output = capsys.readouterr().err
-    assert "non-UTF-8" in error_output
-    assert "Traceback" not in error_output
+    transcript = capsys.readouterr()
+    assert code == 1
+    assert "invalid added records" in transcript.out
+    assert "non-UTF-8" in transcript.out
+    assert "Traceback" not in transcript.out + transcript.err
 
 
 def test_gate_requires_contract_in_base_tree(
@@ -2892,6 +2897,27 @@ def _write_or_skip(repo: Path, name: str) -> None:
         pytest.skip(f"the filesystem refuses a file named {name!r}")
 
 
+def _write_bytes_or_skip(directory: Path, name: bytes, content: bytes) -> None:
+    """Commit-ready file at a byte name, or skip where it is refused.
+
+    A raw 0xFF byte is a legal Linux file name — git stores it — so the
+    candidate and the base tree could both carry one; a filesystem that
+    refuses it only changes whether this platform can show what the gate
+    prints for the name, not what the gate should print.
+    """
+
+    try:
+        descriptor = os.open(
+            os.path.join(os.fsencode(directory), name),
+            os.O_CREAT | os.O_WRONLY,
+            0o644,
+        )
+        os.write(descriptor, content)
+        os.close(descriptor)
+    except OSError:
+        pytest.skip(f"the filesystem refuses a file named {name!r}")
+
+
 def test_a_candidate_path_that_would_forge_a_line_is_named_in_escaped_form(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -3145,3 +3171,91 @@ def test_a_tampered_evidence_path_carrying_a_refused_character_is_named_in_escap
         in output
     )
     assert "forged\ngate: passed" not in output
+
+
+def test_a_path_whose_bytes_are_not_utf8_is_named_in_escaped_form(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a path whose bytes are not UTF-8 is named in escaped form.
+
+    The candidate diff's `-z` listing returns the name's raw bytes; a
+    strict decode would refuse the run over a name the scope check only
+    had to compare. Decoded with the bytes kept for matching, the name
+    reaches the scope line, where the undecodable byte prints escaped."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    _write_bytes_or_skip(repo, b"\xff.py", b"x = 1\n")
+    head = _commit_all(repo, "a name that is not UTF-8")
+
+    passed, output = _run(repo, head, base, head)
+
+    assert not passed
+    assert "paths outside contract scope: \\udcff.py" in output
+
+
+def test_a_base_tree_path_whose_bytes_are_not_utf8_is_named_in_escaped_form(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a path whose bytes are not UTF-8 is named in escaped form.
+
+    Same scenario from the trusted side: the base tree's `ls-tree -z`
+    listing holds the name's raw bytes, and a base tree carrying one used
+    to refuse every run at the decode. Kept for matching instead, the run
+    reaches its verdict and the collision line names the byte escaped."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    artifacts = repo / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "artifacts"
+    artifacts.mkdir()
+    _write_bytes_or_skip(artifacts, b"\xff.md", b"base candidate\n")
+    _commit_all(repo, "add artifact on master")
+
+    _git(repo, "switch", "--quiet", "-c", "candidate", base)
+    artifacts.mkdir(exist_ok=True)
+    _write_bytes_or_skip(artifacts, b"\xff.md", b"other candidate\n")
+    head = _commit_all(repo, "independently add same artifact")
+
+    passed, output = _run(repo, head, "master", head)
+
+    assert not passed
+    assert (
+        "record paths already exist on the base: "
+        ".agentmarshal/journal/tasks/CR-001/artifacts/\\udcff.md" in output
+    )
+
+
+def test_an_unusual_file_name_is_matched_by_its_real_path_not_gits_quoted_form(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: an unusual file name is matched by its real path, not git's
+    quoted form.
+
+    `café` carries no refused character, but git C-quotes the name in a
+    plain listing; read NUL-separated, the base tree holds the path itself
+    and a collision the quoted form would have hidden is found."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    artifact = (
+        repo
+        / ".agentmarshal"
+        / "journal"
+        / "tasks"
+        / "CR-001"
+        / "artifacts"
+        / "café.md"
+    )
+    artifact.parent.mkdir()
+    artifact.write_text("base candidate\n", encoding="utf-8")
+    _commit_all(repo, "add artifact on master")
+
+    _git(repo, "switch", "--quiet", "-c", "candidate", base)
+    artifact.parent.mkdir(exist_ok=True)
+    artifact.write_text("other candidate\n", encoding="utf-8")
+    head = _commit_all(repo, "independently add same artifact")
+
+    passed, output = _run(repo, head, "master", head)
+
+    assert not passed
+    assert (
+        "record paths already exist on the base: "
+        ".agentmarshal/journal/tasks/CR-001/artifacts/café.md" in output
+    )

@@ -6,10 +6,14 @@ which a rename contributes its source as a deletion and its destination as an
 addition, and a copy contributes its destination as an addition. Every check
 that reads the candidate's paths — the scope check, the choice between the
 journal-only and diff lanes, and the refusal of an empty range — SHALL read
-that set. Where the gate names one of those paths — the scope line, the
-record-collision and append-only lines, an extension's removal — it SHALL
-name it in escaped form: a character that could add a line to the transcript
-or reorder it prints as `\n`, `\r`, `\t` or its `\uXXXX` (`\UXXXXXXXX`)
+that set. A listing a check matches those paths against — the base tree
+the record-collision check reads, the committed history the append-only
+check reads — SHALL be read in the same raw form: a name git would
+C-quote is matched by the path itself, never by the quoted form. Where
+the gate names one of those paths — the scope line, the record-collision
+and append-only lines, an extension's removal — it SHALL name it in
+escaped form: a character that could add a line to the transcript or
+reorder it prints as `\n`, `\r`, `\t` or its `\uXXXX` (`\UXXXXXXXX`)
 escape, and a path carrying none prints as it is.
 
 #### Scenario: a rename out of scope is refused
@@ -39,3 +43,9 @@ escape, and a path carrying none prints as it is.
   target — carries a character that could add a line or reorder one
 - **THEN** the line that names it prints each such character as its escape:
   the name adds no line and reorders none
+
+#### Scenario: an unusual file name is matched by its real path, not git's quoted form
+- **WHEN** a listing a check matches the candidate's paths against — the
+  base tree, the committed history — holds a name git would C-quote
+- **THEN** the check reads the listing NUL-separated and matches by the
+  name itself, never by the quoted form
