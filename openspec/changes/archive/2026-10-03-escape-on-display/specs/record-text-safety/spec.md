@@ -1,14 +1,4 @@
-# record-text-safety Specification
-
-## Purpose
-What text a record or a contract header may carry. Its fields are rendered into
-transcripts, briefs and prompts, so a value that can add a line to that output —
-or make it read in an order its bytes do not have — is refused at the boundary
-rather than escaped at the edge. The rule names the characters it refuses; a
-printability test stood in for that and was stricter than the purpose, which
-cost an adopter a journal an earlier release had accepted.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: A record's text may not forge a line or reorder what is read
 Where this rule is applied — a review record's finding and advisory finding
@@ -62,6 +52,8 @@ escaped where the tool displays it rather than refused.
 - **WHEN** the same refused character appears in a contract header entry
 - **THEN** the contract is refused, by the same set of characters the record
   side refuses
+
+## ADDED Requirements
 
 ### Requirement: A refused character a record still carries is escaped on display
 At read time a record is checked by the rules of its own schema, so a value a
