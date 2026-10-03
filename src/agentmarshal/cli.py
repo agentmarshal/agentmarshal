@@ -7,6 +7,7 @@ import os
 import subprocess
 import sys
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TextIO
 
@@ -69,10 +70,16 @@ from agentmarshal.journal.status import (
     load_task_for_record,
     load_task_status,
 )
-from agentmarshal.journal.status_view import print_task_detail
+from agentmarshal.journal.status_view import (
+    print_overdue_steps,
+    print_paths,
+    print_task_detail,
+)
 from agentmarshal.journal.submit_review import ReviewSubmitError, submit_review
 from agentmarshal.journal.validate import validate_journal
+from agentmarshal.localstate import LocalState, LocalStateError, local_state
 from agentmarshal.migrate import JournalMigrationError, migrate_journal
+from agentmarshal.process_log import read_events
 from agentmarshal.project import (
     PROJECT_CONFIG_RELPATH,
     AgentMarshalProjectError,
@@ -949,12 +956,57 @@ def _run_report(task_id: str | None, stderr: TextIO) -> int:
     return 0
 
 
+def _read_process_events(state: LocalState, stderr: TextIO) -> list[dict[str, object]]:
+    """Read the process log's events, naming on stderr a log that fails.
+
+    A missing ``log/`` directory is no error — ``read_events`` already
+    reads it as empty. A log that exists but cannot be read — a
+    permission denial, a file where the directory should be — is named
+    and reads as no steps rather than failing the command.
+    """
+
+    try:
+        if state.log.exists() and not state.log.is_dir():
+            reason = "not a directory"
+        else:
+            return read_events(state)
+    except OSError as error:
+        reason = error.strerror or str(error)
+    print(
+        f"status: cannot read the process log "
+        f"{escape_for_display(str(state.log))} ({reason}); "
+        "its steps read as none",
+        file=stderr,
+    )
+    return []
+
+
 def _run_status(task_id: str | None, stderr: TextIO) -> int:
     placement = _placement("status", stderr)
     if placement is None:
         return 1
     print(placement.evidence_line, file=stderr)
     journal = placement.journal_root
+    # ADR-0014 decision 13: where everything lives prints once on stderr,
+    # so stdout stays what the documentation promises a parser and the
+    # lines survive an empty list and a failed task lookup alike. A local
+    # state that cannot be resolved degrades its two lines to
+    # "unavailable" rather than failing a command that needed no git
+    # before.
+    state: LocalState | None = None
+    state_error: str | None = None
+    try:
+        state = local_state(placement)
+    except LocalStateError as error:
+        state_error = str(error)
+    print_paths(journal, state, state_error, stderr)
+    now = datetime.now(UTC)
+    # The log is read once for the run — not once per task — and the
+    # step events are indexed by task once, so each task's lookup scans
+    # only its own slice. A log that cannot be read is named on stderr
+    # and reads as no steps.
+    events = _read_process_events(state, stderr) if state is not None else []
+    events_by_task = steps.step_events_by_task(events)
     try:
         if task_id is None:
             tasks = list_task_statuses(journal)
@@ -962,9 +1014,19 @@ def _run_status(task_id: str | None, stderr: TextIO) -> int:
                 print("No tasks.")
                 return 0
             for task in tasks:
+                overdue = any(
+                    step.overdue_by is not None
+                    for step in steps.open_steps(
+                        task.task_id,
+                        task.records,
+                        events_by_task.get(task.task_id, ()),
+                        now=now,
+                    )
+                )
+                marker = "\toverdue-step" if overdue else ""
                 print(
                     f"{escape_for_display(task.task_id)}\t{task.state}"
-                    f"\t{escape_for_display(task.contract.title)}"
+                    f"\t{escape_for_display(task.contract.title)}{marker}"
                 )
         else:
             task = load_task_status(journal, task_id)
@@ -976,6 +1038,14 @@ def _run_status(task_id: str | None, stderr: TextIO) -> int:
                     return 1
                 placement = checked_placement
             print_task_detail(placement.host_root, task)
+            print_overdue_steps(
+                steps.open_steps(
+                    task.task_id,
+                    task.records,
+                    events_by_task.get(task.task_id, ()),
+                    now=now,
+                )
+            )
     except (OSError, TaskStatusError, ValueError) as error:
         print(error, file=stderr)
         return 1
