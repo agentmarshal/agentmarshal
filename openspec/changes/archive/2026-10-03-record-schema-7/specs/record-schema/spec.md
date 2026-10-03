@@ -1,50 +1,4 @@
-# record-schema Specification
-
-## Purpose
-How record validation knows which rules a record answers to. A record
-written now is checked by every rule the tool knows — at write time, while
-the author can still fix the input — and a record read back is checked only
-by the rules of the schema it carries, so a rule a later schema introduces
-cannot refuse history. One table binds each read-time rule to the schema it
-applies from, and writers stamp the least schema their record's fields and
-values need, which is how an earlier release's pinned installation keeps
-reading a journal a newer one writes to.
-
-## Requirements
-
-### Requirement: A record is checked by the current rules at write time and by the rules of its own schema at read time
-At write time the writer SHALL check a record by every rule the tool knows,
-whatever schema the record carries: refusal is in place while the author can
-still fix the input. At read time a record SHALL be checked only by the rules
-of its own schema and below — a rule bound to a later schema does not apply
-to it, so a rule a schema introduces cannot refuse history written before
-it. The write side (`validate_record_for_write`, and
-`validate_record_content` as the gate runs it on the records a candidate
-adds and as backfill and migrate run it before writing) applies the first;
-the read side (`read_records`, and so validate and status over the journal)
-applies the second.
-
-#### Scenario: a record a candidate adds is checked by every current rule
-- **WHEN** a candidate adds a record stamped below the schema a rule needs —
-  a coordination session stamped 3, or a record bound to a finding stamped 3
-- **THEN** the check the gate runs on added records refuses it, while the
-  same record already in the journal is read under its own schema's rules
-
-#### Scenario: a record is checked by every current rule at write time
-- **WHEN** a rule bound to a schema one above the highest supported is
-  registered and a record of the highest schema is presented for write
-- **THEN** the record is refused, the later rule applied to it anyway
-
-#### Scenario: a later rule does not reach a record of an earlier schema on read
-- **WHEN** a rule bound to a schema one above the highest supported is
-  registered and a record of the highest schema is read
-- **THEN** the record is accepted, checked by the rules of its own schema
-  and below
-
-#### Scenario: a record an earlier release wrote stays valid
-- **WHEN** a record written under schema 1 or schema 2 is read back
-- **THEN** it validates under the rules of its own schema, the way an
-  earlier release's journal must keep reading
+## MODIFIED Requirements
 
 ### Requirement: Every read-time rule is bound to the schema it applies from in one table
 Record validation SHALL hold a table mapping every read-time rule — each
@@ -95,18 +49,7 @@ rule whose placement a path does not supply SHALL NOT be applied there.
 - **THEN** each is bound to schema 7, and none is folded into a rule bound
   to an earlier schema
 
-### Requirement: A writer stamps the minimum schema the record needs
-Every writer SHALL stamp the least schema that admits the fields and values
-its record carries, derived by one derivation over the record rather than a
-hand-chosen number. The base record model stamps 3; a finding record or a
-record bound to a finding stamps 4; `reviewed_contract` stamps 5; a
-coordination activity stamps 6 — exactly the numbers the writers stamp
-today.
-
-#### Scenario: each writer stamps the minimum schema its record needs
-- **WHEN** a `create_*` function or `session_record_schema` builds a record
-- **THEN** the stamped schema is 3 for the base model and exactly 4, 5 or 6
-  where the record's own fields and values require them
+## ADDED Requirements
 
 ### Requirement: Schema 7 is a supported record schema
 Record validation SHALL know schema 7 — the record schema the 0.5.0 record

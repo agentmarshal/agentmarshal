@@ -1,13 +1,18 @@
-"""Tests for the in-toto attestation vocabulary and schema-2+ records."""
+"""Tests for the record-type registry, attestation vocabulary and schema-2+ records."""
 
 from __future__ import annotations
 
+import json
+from dataclasses import replace
 from pathlib import Path
+from typing import get_args
 
 import pytest
 
+from agentmarshal.journal import status as status_module
 from agentmarshal.journal.attestation import (
     PREDICATE_TYPES,
+    RECORD_TYPES,
     SOURCE_IMPORTED,
     SOURCE_LIVE,
     UnknownPredicateTypeError,
@@ -18,6 +23,7 @@ from agentmarshal.journal.records import (
     _RECORD_FIELDS,
     JournalRecordError,
     read_records,
+    validate_record_content,
     write_record,
 )
 
@@ -71,6 +77,126 @@ def test_every_accepted_record_type_is_registered() -> None:
     # The completeness check depends on this coupling: a record type the
     # validator accepts must be projectable to an in-toto Statement.
     assert set(_RECORD_FIELDS) == set(PREDICATE_TYPES)
+
+
+def test_the_three_modules_read_the_one_registry() -> None:
+    """Scenario: the three modules read the one registry.
+
+    The derived surfaces are pinned against literals, not recomputed from
+    the registry — a shared drift of registry and derivation cannot pass
+    this test. The writable Literal is pinned the same way, since a
+    Literal cannot be derived at type-check time.
+    """
+
+    assert PREDICATE_TYPES == {
+        "opened": "https://agentmarshal.dev/attestations/opening/v1",
+        "review": "https://agentmarshal.dev/attestations/review/v1",
+        "acceptance": "https://agentmarshal.dev/attestations/acceptance/v1",
+        "completed": "https://agentmarshal.dev/attestations/completion/v1",
+        "abandoned": "https://agentmarshal.dev/attestations/abandonment/v1",
+        "reopened": "https://agentmarshal.dev/attestations/reopening/v1",
+        "amendment": "https://agentmarshal.dev/attestations/amendment/v1",
+        "session": "https://agentmarshal.dev/attestations/session/v1",
+        "finding": "https://agentmarshal.dev/attestations/finding/v1",
+    }
+    assert dict(status_module._RECORD_TYPE_STATES) == {
+        "opened": "open",
+        "review": None,
+        "acceptance": None,
+        "completed": "done",
+        "abandoned": "abandoned",
+        "reopened": "open",
+        "amendment": None,
+        "session": None,
+        "finding": None,
+    }
+    terminal = {"completed", "abandoned"}
+    assert terminal == status_module._TERMINAL_RECORD_TYPES
+    admitted_after_terminal = {"reopened", "session"}
+    assert (
+        admitted_after_terminal == status_module._RECORD_TYPES_ADMITTED_AFTER_TERMINAL
+    )
+    writable = {
+        "opened",
+        "review",
+        "acceptance",
+        "session",
+        "amendment",
+        "finding",
+        "completed",
+        "abandoned",
+        "reopened",
+    }
+    assert writable == status_module._WRITABLE_RECORD_TYPES
+    assert set(get_args(status_module.WritableRecordType)) == writable
+    # The admission rule reads the registry's own per-type state sets.
+    admitted = {("reopened", "done"), ("session", "done"), ("session", "abandoned")}
+    for record_type in PREDICATE_TYPES:
+        for terminal_state in ("done", "abandoned"):
+            assert status_module.record_type_is_admitted_after_terminal(
+                record_type, terminal_state
+            ) == ((record_type, terminal_state) in admitted)
+    assert {
+        record_type
+        for record_type, spec in RECORD_TYPES.items()
+        if spec.requires_recorded_by
+    } == {"finding"}
+
+
+def test_the_writable_flag_is_what_the_write_path_consults(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A type the registry marks not writable cannot be written.
+
+    The guard is not the flag's only reader — write_record behind
+    validate_record_for_write, and the gate's validate_record_content over
+    a record a candidate adds, refuse the same type — while a record of it
+    already in the journal still reads: the flag decides creation, never
+    history.
+    """
+
+    monkeypatch.setitem(
+        RECORD_TYPES, "opened", replace(RECORD_TYPES["opened"], writable=False)
+    )
+    record = _opened_v2()
+    filename = "01J00000000000000000000000-opened.json"
+    with pytest.raises(JournalRecordError, match="not writable"):
+        write_record(tmp_path / "journal", "CR-001", record)
+    with pytest.raises(JournalRecordError, match="not writable"):
+        validate_record_content(filename, json.dumps(record))
+    records_dir = tmp_path / "journal" / "tasks" / "CR-001" / "records"
+    records_dir.mkdir(parents=True)
+    (records_dir / filename).write_text(json.dumps(record), encoding="utf-8")
+    assert read_records(tmp_path / "journal", "CR-001")[0]["record_type"] == "opened"
+
+
+def test_a_type_requiring_its_recorder_refuses_a_record_naming_none() -> None:
+    """Scenario: a type that requires its recorder refuses a record that
+    names none.
+
+    `finding` is the type the flag covers today; the requirement moved
+    from an inline check onto the registry flag with the same refusal.
+    """
+
+    assert RECORD_TYPES["finding"].requires_recorded_by
+    record: dict[str, object] = {
+        "schema": 4,
+        "record_type": "finding",
+        "task": "CR-001",
+        "created_at": "2026-07-19T00:00:00Z",
+        "tool_version": "1.0",
+        "source": SOURCE_LIVE,
+        "summary": "a finding",
+        "artifacts": [{"ref": "result.md", "hash": _HEX64}],
+    }
+    filename = "01J00000000000000000000000-finding.json"
+    with pytest.raises(JournalRecordError, match="resolvable recorder"):
+        validate_record_content(filename, json.dumps(record))
+    record["recorded_by"] = "an-agent"
+    record["recorded_by_source"] = "override"
+    assert validate_record_content(filename, json.dumps(record))["recorded_by"] == (
+        "an-agent"
+    )
 
 
 # --- schema-2+ acceptance -------------------------------------------------
@@ -181,7 +307,20 @@ def test_schema_1_carrying_artifacts_is_rejected(tmp_path: Path) -> None:
 
 
 def test_unknown_schema_is_rejected(tmp_path: Path) -> None:
-    """The number moves as the ladder grows; what is pinned is the refusal."""
+    """Scenario: the schema above the newest is unknown and refused.
 
+    The number moves as the ladder grows — schema 7 is known now, so the
+    unknown example is 8 — what is pinned is the refusal, at write and at
+    read.
+    """
+
+    record = _opened_v2(schema=8)
     with pytest.raises(JournalRecordError, match="schema"):
-        write_record(tmp_path / "journal", "CR-001", _opened_v2(schema=7))
+        write_record(tmp_path / "journal", "CR-001", record)
+    records_dir = tmp_path / "journal" / "tasks" / "CR-001" / "records"
+    records_dir.mkdir(parents=True)
+    (records_dir / "01J00000000000000000000000-opened.json").write_text(
+        json.dumps(record), encoding="utf-8"
+    )
+    with pytest.raises(JournalRecordError, match="schema"):
+        read_records(tmp_path / "journal", "CR-001")

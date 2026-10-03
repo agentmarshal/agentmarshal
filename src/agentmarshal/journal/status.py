@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from agentmarshal.journal.attestation import RECORD_TYPES
 from agentmarshal.journal.contracts import ContractHeader, parse_contract
 from agentmarshal.journal.records import (
     JournalRecordError,
@@ -17,7 +18,9 @@ from agentmarshal.journal.records import (
 
 # The record types a writer may ask the guard about, as a type rather than a
 # string: mypy refuses a typo at the call site, and the guard's own runtime
-# refusal then covers only a caller outside this package.
+# refusal then covers only a caller outside this package. A Literal cannot
+# be derived from the registry at type-check time, so the names are written
+# out here and a test pins them equal to the registry's writable types.
 WritableRecordType = Literal[
     "opened",
     "review",
@@ -30,19 +33,29 @@ WritableRecordType = Literal[
     "reopened",
 ]
 
+# The projection's tables are views over the one record-type registry in
+# attestation.py — the state a type projects to, the types whose projected
+# state is terminal, and the types admitted after a terminal record.
 _RECORD_TYPE_STATES: Mapping[str, str | None] = {
-    "opened": "open",
-    "review": None,
-    "acceptance": None,
-    "session": None,
-    "amendment": None,
-    "finding": None,
-    "completed": "done",
-    "abandoned": "abandoned",
-    "reopened": "open",
+    record_type: spec.projects_to for record_type, spec in RECORD_TYPES.items()
 }
-_TERMINAL_RECORD_TYPES = frozenset({"completed", "abandoned"})
-_RECORD_TYPES_ADMITTED_AFTER_TERMINAL = frozenset({"session", "reopened"})
+_TERMINAL_STATES = frozenset({"done", "abandoned"})
+_TERMINAL_RECORD_TYPES = frozenset(
+    record_type
+    for record_type, spec in RECORD_TYPES.items()
+    if spec.projects_to in _TERMINAL_STATES
+)
+_RECORD_TYPES_ADMITTED_AFTER_TERMINAL = frozenset(
+    record_type
+    for record_type, spec in RECORD_TYPES.items()
+    if spec.admitted_after_terminal
+)
+# The types a writer may create — read here by the record guard and in
+# records.py by the write path itself, so a type declared not writable
+# cannot be written by naming it, however it reached the call site.
+_WRITABLE_RECORD_TYPES = frozenset(
+    record_type for record_type, spec in RECORD_TYPES.items() if spec.writable
+)
 
 
 class TaskStatusError(ValueError):
@@ -58,9 +71,9 @@ def record_type_is_admitted_after_terminal(
     only, because it returns that state to open; abandonment remains terminal.
     """
 
-    return record_type in _RECORD_TYPES_ADMITTED_AFTER_TERMINAL and (
-        record_type != "reopened" or terminal_state == "done"
-    )
+    if record_type not in _RECORD_TYPES_ADMITTED_AFTER_TERMINAL:
+        return False
+    return terminal_state in RECORD_TYPES[record_type].admitted_after_terminal
 
 
 def projected_state_of(record_type: str) -> str | None:
@@ -149,10 +162,10 @@ def load_task_for_record(
 ) -> TaskStatus:
     """Load a task and refuse a record its terminal projection cannot admit."""
 
-    if record_type not in _RECORD_TYPE_STATES:
+    if record_type not in _WRITABLE_RECORD_TYPES:
         # An unknown type would silently fall on the refusing side, and a typo
         # towards "session" would start refusing the cost step of a completed
-        # task. The projection's own table decides what a record type is.
+        # task. The registry's writable flag decides what a writer may write.
         raise TaskStatusError(f"unknown record type: {record_type!r}")
     task = load_task_status(journal_root, task_id)
     if task.state == "open":
