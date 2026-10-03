@@ -33,11 +33,13 @@
 - [adr/ADR-0020-the-outbox-command-group.md](adr/ADR-0020-the-outbox-command-group.md) — understand the `outbox` command group: scaffold, check, send and status for findings bound upstream.
 - [adr/ADR-0021-an-acknowledged-leak-scan-hit.md](adr/ADR-0021-an-acknowledged-leak-scan-hit.md) — understand how an acknowledged leak-scan hit is recorded, and why it stays printed.
 - [adr/ADR-0022-the-0-5-0-record-model-one-transition.md](adr/ADR-0022-the-0-5-0-record-model-one-transition.md) — understand the 0.5.0 record model: one transition, the new fields and record types, the contract and manifest schemas, and the local formats.
+- [adr/ADR-0023-next-the-next-step-of-a-task.md](adr/ADR-0023-next-the-next-step-of-a-task.md) — understand `next`, the command that names a task's next step: its rules, its inputs, and the reference driver.
 - [migration-v1-to-v2.md](migration-v1-to-v2.md) — see what did not carry from the v1 rails into the v2 journal.
 - [incidents/2026-08-31-scope-warning-scope-creep.md](incidents/2026-08-31-scope-warning-scope-creep.md) — study the scope-warning change that grew into scope creep and was rolled back.
 
 ## Report or assess a finding
 
+- [threat-model.md](threat-model.md) — tell a security defect from a hardening suggestion against the published decisions.
 - [proposals/README.md](proposals/README.md) — learn how adopters send findings and how upstream publishes their English digests.
 - [proposals/001-review-launcher-loses-the-analysis.md](proposals/001-review-launcher-loses-the-analysis.md) — review the finding about discarded reviewer analysis.
 - [proposals/002-scope-ergonomics.md](proposals/002-scope-ergonomics.md) — review the finding about silently unmatched scope.
