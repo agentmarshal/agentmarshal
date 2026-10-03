@@ -26,16 +26,24 @@ reader of session records.
 - **THEN** it is refused and nothing is written
 
 ### Requirement: An older reader refuses a coordination session by its schema
-A session record whose activity is `coordination` SHALL carry the schema number
-that introduced the value, and a record with any other activity SHALL keep the
-schema it had unless a field of the schema-7 session family raises it to 7. A
-reader that predates the value then refuses the record as an unsupported schema
-rather than as a malformed field, and a journal that never records coordination
-stays readable by it.
+A session record whose activity is `coordination` SHALL carry at least the
+schema number that introduced the value — 6 — and 7 when it carries a field
+of the schema-7 session family, and a record with any other activity SHALL
+keep the schema it had unless a field of the schema-7 session family raises
+it to 7. A reader that predates the value then refuses the record as an
+unsupported schema rather than as a malformed field, and a journal that never
+records coordination stays readable by it.
 
 #### Scenario: coordination stamps the newer schema
-- **WHEN** a session is recorded with the activity `coordination`
-- **THEN** the record carries the newer schema number
+- **WHEN** a session is recorded with the activity `coordination` carrying
+  none of the schema-7 session fields
+- **THEN** the record carries schema 6, the newer schema number the value
+  introduced
+
+#### Scenario: a coordination session carrying a schema-7 field carries 7
+- **WHEN** a session is recorded with the activity `coordination` carrying
+  a field of the schema-7 session family
+- **THEN** the record carries schema 7
 
 #### Scenario: other activities keep their schema
 - **WHEN** a session is recorded with `implementation`, `review` or `other`

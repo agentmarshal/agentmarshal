@@ -73,7 +73,7 @@ def test_other_activities_keep_their_schema(activity: str, tmp_path: Path) -> No
 # --- the session fields of schema 7 (ADR-0022 section 2) -------------------
 
 _COMMIT = "a" * 40
-_FAMILY_VALUES: dict[str, object] = {
+_FAMILY_VALUES: dict[str, Any] = {
     "commit": _COMMIT,
     "model": "swe-2",
     "trace": "https://trace.example/run-1",
@@ -84,13 +84,13 @@ _FAMILY_VALUES: dict[str, object] = {
 _STRING_FIELDS = ("commit", "model", "trace", "cli_session", "fallback_reason")
 
 
-def _session_with(**fields: Any) -> dict[str, object]:
+def _session_with(activity: str = "implementation", **fields: Any) -> dict[str, object]:
     return create_session_record(
         "CR-001",
         "test",
         "implementer",
         "agent",
-        "implementation",
+        activity,
         "done",
         1,
         2,
@@ -141,7 +141,7 @@ def test_a_commit_that_is_not_40_lowercase_hex_is_refused(
 @pytest.mark.parametrize("field", ("model", "trace", "cli_session", "fallback_reason"))
 @pytest.mark.parametrize("value", ["", "   ", 5])
 def test_an_empty_string_field_is_refused(
-    field: str, value: object, tmp_path: Path
+    field: str, value: Any, tmp_path: Path
 ) -> None:
     """Scenario: an empty string field is refused.
 
@@ -292,6 +292,23 @@ def test_a_non_coordination_session_carrying_a_schema_7_field_carries_7(
             3,
             model="m",
         ),
+    )
+
+    assert read_records(journal_root, "CR-001")[0]["schema"] == 7
+
+
+@pytest.mark.parametrize("field", tuple(_FAMILY_VALUES))
+def test_a_coordination_session_carrying_a_schema_7_field_carries_7(
+    field: str, tmp_path: Path
+) -> None:
+    """Scenario: a coordination session carrying a schema-7 field
+    carries 7."""
+
+    journal_root = tmp_path / "journal"
+    write_record(
+        journal_root,
+        "CR-001",
+        _session_with("coordination", **{field: _FAMILY_VALUES[field]}),
     )
 
     assert read_records(journal_root, "CR-001")[0]["schema"] == 7
