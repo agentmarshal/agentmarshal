@@ -11,7 +11,10 @@ A file is rotated when it reaches :data:`ROTATE_AT_BYTES`, with at most
 bounded by :data:`DIRECTORY_CAP_BYTES` — every process run is a writer, so
 per-writer retention alone bounds nothing. The reader tolerates an
 unfinished last line, lines that are not JSON objects and event kinds it
-does not know, and reads rotated files as well as current ones.
+does not know, and reads rotated files as well as current ones. Files an
+event names — payloads too free-form to be event fields — live in
+``files/`` beside the writer files; a subdirectory is skipped by the reader
+and the sweep alike.
 """
 
 from __future__ import annotations
@@ -20,6 +23,7 @@ import json
 import os
 import re
 import stat
+import tempfile
 import time
 from contextlib import suppress
 from dataclasses import dataclass
@@ -34,6 +38,7 @@ ROTATE_AT_BYTES = 10 * 1024 * 1024
 ROTATED_KEEP = 5
 DIRECTORY_CAP_BYTES = 50 * 1024 * 1024
 ABANDONED_AFTER_SECONDS = 24 * 60 * 60
+FILES_DIR_NAME = "files"
 
 _NAME_ATTEMPTS = 8
 
@@ -141,6 +146,25 @@ def write_event(
     with suppress(OSError):
         _rotate_if_full(writer.path)
     return record
+
+
+def write_payload(state: LocalState, prefix: str, content: bytes) -> Path:
+    """Write *content* as a file under the log directory's ``files/`` area.
+
+    A payload is content an event names by path — review prose, reviewer
+    diagnostics — too free-form to be an event field. ``files/`` sits beside
+    the writer files rather than among them: the reader reads only regular
+    files directly under ``log/``, so a payload's lines can never surface as
+    events, and the sweep counts only those same files, so a payload is
+    never swept. The directory is created through the local state's
+    contained creation call, the same one the writer uses for ``log/``.
+    """
+
+    files = state.ensure_directory(state.log / FILES_DIR_NAME)
+    descriptor, name = tempfile.mkstemp(prefix=prefix, suffix=".txt", dir=files)
+    with os.fdopen(descriptor, "wb") as handle:
+        handle.write(content)
+    return Path(name)
 
 
 def read_events(state: LocalState) -> list[dict[str, object]]:

@@ -20,6 +20,7 @@ from agentmarshal.process_log import (
     open_writer,
     read_events,
     write_event,
+    write_payload,
 )
 
 _WRITER_CHILD = """
@@ -122,6 +123,26 @@ def test_two_writers_never_share_a_file(tmp_path: Path) -> None:
     second = open_writer(state)
 
     assert first.path != second.path
+
+
+def test_a_payload_sits_beside_the_writer_files_never_among_them(
+    tmp_path: Path,
+) -> None:
+    """A payload lands under ``log/files/`` and its lines are never events."""
+
+    state = LocalState(tmp_path / "agentmarshal")
+    writer = open_writer(state)
+    write_event(writer, "made", marker="here")
+
+    kept = write_payload(
+        state,
+        "agentmarshal-review-prose-",
+        b'{"format": 1, "event": "forgery"}\ntext\n',
+    )
+
+    assert kept.parent == state.log / "files"
+    assert kept.read_bytes() == b'{"format": 1, "event": "forgery"}\ntext\n'
+    assert [event["event"] for event in read_events(state)] == ["made"]
 
 
 def test_two_processes_writing_at_once_never_interleave_or_tear_each_others_lines(
