@@ -63,9 +63,11 @@ checked a hit and found it harmless has nothing to record that with —
 the command still exits 1, and the verification evaporates. The
 reporter measured what that costs: the transaction had to be completed
 outside the tooling, with the reasoning written into the pull request
-by hand. The deferral was lifted because the path stays what it was
-judged to be — a new kind of record, decided in an architecture
-decision before it is built — and this is that decision.
+by hand. The deferral was lifted for the reason the whole intake
+moved — the project has taken every adopter finding into the next
+release, and this path is among them. That it remains a new kind of
+record is why it arrives through a decision record rather than as a
+flag — and this is that decision.
 
 ## Decision
 
@@ -111,15 +113,21 @@ number belong to the later decision on the record model.
 
 ### 3. Nothing is hidden — the hit stays printed, marked
 
-The gate and the command still print an acknowledged hit. What the hit
-gains is the mark — acknowledged, by whom, and the reason — so a reader
-of either surface sees both the hit and the claim that someone checked
-it.
+The gate, the command and `status` are the surfaces an
+acknowledgement prints on. The command still prints every hit, an
+acknowledged one marked — acknowledged, by whom, and the reason; the
+gate prints the mark on the hits its line shows, within the bound
+that line already has — at most twenty, then "and N more not shown",
+as the [leak-scan](../../openspec/specs/leak-scan/spec.md)
+specification permits; and `status` shows who acknowledged on the
+acknowledgement's own line. An acknowledgement never removes a hit
+from a surface that shows it, and it neither widens nor narrows the
+gate's bound.
 
 What changes is the command's exit status: an acknowledged hit no
 longer makes `leak-scan` exit 1. The command still exits 1 on a hit
-nobody has acknowledged — the mark changes what the run refuses, not
-what it shows.
+nobody has acknowledged — an acknowledgement changes what the run
+refuses and adds the mark to what it shows; it takes no hit off.
 
 ### 4. Any declared actor may acknowledge
 
@@ -154,10 +162,10 @@ not proven.
 
 ### 6. The readers and the advisory stay where they are
 
-The gate and the command find acknowledgements among the journal's
-records, read where the gate reads records today — the calling
-checkout's working tree in the embedded placement, the journal
-repository's working tree in a sidecar
+The gate, the command and `status` find acknowledgements among the
+journal's records, read where the gate reads records today — the
+calling checkout's working tree in the embedded placement, the
+journal repository's working tree in a sidecar
 ([ADR-0014](ADR-0014-where-things-live.md)). A repository with no
 journal has no records to find, and the command behaves there exactly
 as today.
@@ -175,7 +183,8 @@ acknowledgement or without one.
 - The [leak-scan](../../openspec/specs/leak-scan/spec.md) scenario that
   the merge boundary's line carries the same detail as the standalone
   command: the mark is part of that detail, so the two still agree —
-  the boundary's line says what the command's does, mark included.
+  on the hits its bound lets it show, the boundary's line says what
+  the command's does, mark included.
 
 ## Left open
 
@@ -197,9 +206,16 @@ acknowledgement or without one.
   [proposal 020](../proposals/020-leak-scan-names-no-file-and-self-matches.md)
   measured, outside the tooling with the reasoning left in a pull
   request by hand, becomes a journal record.
-- The mark travels with the hit on both surfaces: an acknowledgement
-  changes the command's exit code, never what either surface shows —
-  acknowledged by whom and why is printed wherever the hit is.
+- The mark travels with the hit on the three surfaces: an
+  acknowledgement changes the command's exit code and adds the mark
+  to the hit's line on the surfaces that show it — every hit on the
+  command, the hits within the line's bound on the gate — and
+  `status` shows who acknowledged on the record's line; it removes a
+  hit from none of them.
+- `status` gains a line for the record type: today a record type it
+  has no line for prints as only its id, its type and its time, so
+  showing who acknowledged is part of implementing this decision, not
+  something that surface does on its own.
 - An acknowledgement cannot silently follow the work: a new commit, or
   a renumbered marker list, shows the hit again as unacknowledged.
 - This is a new record type, so a journal containing one cannot be read
