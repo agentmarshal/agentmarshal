@@ -91,6 +91,12 @@ RECORD_TYPES: dict[str, RecordTypeSpec] = {
         None,
         requires_recorded_by=True,
     ),
+    "check": RecordTypeSpec(
+        "https://agentmarshal.dev/attestations/check/v1",
+        None,
+        admitted_after_terminal=frozenset({"done", "abandoned"}),
+        requires_recorded_by=True,
+    ),
 }
 
 # The predicate view of the registry: stable URIs naming AgentMarshal's own
