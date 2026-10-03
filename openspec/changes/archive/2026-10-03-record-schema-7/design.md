@@ -79,14 +79,27 @@ schema, 7; ADR-0015's table is where its rules land.
   maximum characters); `bounded-json` reads `_JSON_BYTE_LIMITS`
   ((record type, field) → maximum bytes after canonical encoding —
   `json.dumps` with sorted keys, compact separators, UTF-8 output,
-  non-ASCII unescaped); `forgeable-text` reads `_FORGEABLE_TEXT_FIELDS`
-  and applies `forges_rendered_text` to a string the field carries. Each
-  is its own entry in `_RULES` and `_RULE_FROM_SCHEMA` — the carried
-  review advisory: a tightening folded into a schema-1 rule would apply
-  to old records, so nothing is shared but the mechanism. All three
-  tables are empty in production; tests register a test-only field into
-  the validator's table and into `_FIELD_FAMILIES` to exercise the rule
-  end to end.
+  non-ASCII unescaped, and `allow_nan=False` so `NaN`/`Infinity` —
+  tokens `json.loads` accepts but JSON does not define — meet the
+  rule's own "must be a JSON value" refusal rather than a 3-byte token
+  a strict parser could not read back); `forgeable-text` reads
+  `_FORGEABLE_TEXT_FIELDS` and applies `forges_rendered_text` to a
+  string the field carries. Each is its own entry in `_RULES` and
+  `_RULE_FROM_SCHEMA` — the carried review advisory: a tightening
+  folded into a schema-1 rule would apply to old records, so nothing
+  is shared but the mechanism. All three tables are empty in
+  production; tests register a test-only field into the validator's
+  table and into `_FIELD_FAMILIES` to exercise the rule end to end.
+- **`forgeable-text` refuses a non-string — the rule owns the type
+  itself.** `bounded-text` already refuses a non-string value;
+  `forgeable-text` first skipped one silently on the grounds that the
+  field's own shape rule owns the type refusal — but a field family
+  registers into only the validators it needs, so a registered field
+  may carry no shape rule at all, and the skip was fail-open at the
+  registration. Of the two options the review named — constrain
+  registrations to string fields, or refuse the non-string in the rule
+  — the rule refuses: the siblings stay fail-closed alike, and no
+  registration can pass unguarded.
 - **A registration keys on (record type, field), never the field
   alone.** ADR-0022 section 8 bounds `reason` at 1000 characters in the
   *new* record types only — "the existing `reason` fields are
@@ -121,3 +134,8 @@ schema, 7; ADR-0015's table is where its rules land.
 - [Deriving `status.py`'s tables changes lookup semantics] → the
   derivations are one-to-one comprehensions over the registry; the
   pinning test asserts the exact values, not just the keys.
+- [The rule-table scenario's title names only the older gates] → a
+  MODIFIED requirement replaces the whole block and may not rename or
+  drop a scenario, so "the gates bound to 2, 4, 5 and 6" stands while
+  its THEN also names the validators bound to 7; tasks.md 4.1 and the
+  pinning test's docstring record the widening.

@@ -39,8 +39,10 @@
 ## 4. Nothing that worked changed
 
 - [x] 4.1 `test_todays_rules_apply_from_schema_1_except_the_gates` gains
-  the three schema-7 bindings and its scenario line is renamed to match
-  the delta — verify: pytest.
+  the three schema-7 bindings — verify: pytest. The delta's scenario
+  keeps its earlier title ("the gates bound to 2, 4, 5 and 6") while its
+  THEN names the validators bound to 7: a MODIFIED requirement may not
+  rename or drop a scenario, so the title stands as written.
 - [x] 4.2 Full check sequence passes: `uv sync --locked`,
   `uv run agentmarshal validate`, `uv run pytest`, `uv run ruff check`,
   `uv run ruff format --check`, `uv run mypy` — verify: run them.

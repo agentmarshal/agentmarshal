@@ -611,14 +611,15 @@ def _check_bounded_json(data: Mapping[str, object], _context: _RuleContext) -> N
 def _check_forgeable_text(data: Mapping[str, object], _context: _RuleContext) -> None:
     record_type = cast(str, data["record_type"])
     for only_type, field in _FORGEABLE_TEXT_FIELDS:
-        if only_type is not None and record_type != only_type:
+        if (only_type is not None and record_type != only_type) or field not in data:
             continue
-        value = data.get(field)
-        # A non-string is not displayed text; the field's own shape rule
-        # owns the type refusal. What this rule refuses is a string that
-        # could add a line to rendered output or reorder it.
-        if isinstance(value, str):
-            _reject_control_characters(value, f"record field {field!r}")
+        value = data[field]
+        # Fail-closed like bounded-text: a registered field carrying a
+        # non-string is refused here rather than skipped, since the field
+        # may carry no shape rule of its own to own the type refusal.
+        if not isinstance(value, str):
+            raise JournalRecordError(f"record field {field!r} must be a string")
+        _reject_control_characters(value, f"record field {field!r}")
 
 
 # The table ADR-0015 decision 7 asks for: rule → the schema it applies from
@@ -692,11 +693,18 @@ def _canonical_json(value: object) -> bytes:
 
     Sorted keys, compact separators, UTF-8 output with non-ASCII
     unescaped: one byte count for one value, so the bound does not depend
-    on how the record happened to be serialized.
+    on how the record happened to be serialized. ``allow_nan=False``
+    keeps that promise for non-finite floats: ``NaN`` and ``Infinity``
+    are not JSON, so the dumps raises and the rule refuses the value
+    rather than measuring a token a strict parser could not read back.
     """
 
     return json.dumps(
-        value, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
     ).encode("utf-8")
 
 

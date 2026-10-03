@@ -125,8 +125,9 @@ def test_todays_rules_apply_from_schema_1_except_the_gates() -> None:
     """Scenario: today's rules apply from schema 1 except the gates bound to
     2, 4, 5 and 6.
 
-    The shared validators are bound to 7 — entries of their own, named in
-    the same THEN list the updated scenario gives.
+    The scenario's title names the older gates only — a MODIFIED
+    requirement may not rename a scenario — while its THEN also names the
+    shared validators bound to 7, which this test pins.
     """
 
     gates = {
@@ -455,6 +456,48 @@ def test_bounded_json_refuses_a_value_over_its_canonical_byte_bound(
     # A value JSON cannot encode is refused rather than crashing the rule.
     record[_TEST_FIELD] = {1, 2}
     with pytest.raises(JournalRecordError, match="must be a JSON value"):
+        validate_record_for_write(tmp_path / "journal", "CR-001", record)
+
+
+def test_bounded_json_refuses_a_non_finite_float(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """NaN and Infinity are not JSON, so the rule refuses them as such.
+
+    ``json.loads`` reads the ``NaN``/``Infinity`` tokens a hand-edited
+    record file may carry; the canonical encoding refuses them
+    (``allow_nan=False``) rather than emitting the same non-JSON token
+    back, so the record gets the rule's "must be a JSON value" refusal —
+    at write, and at read for a file already holding the token.
+    """
+
+    _admit_test_field(monkeypatch)
+    monkeypatch.setitem(records_module._JSON_BYTE_LIMITS, ("opened", _TEST_FIELD), 13)
+    record = _opened(_HIGHEST_SCHEMA) | {_TEST_FIELD: {"key": float("inf")}}
+    with pytest.raises(JournalRecordError, match="must be a JSON value"):
+        validate_record_for_write(tmp_path / "journal", "CR-001", record)
+    journal_root = _journal_with(tmp_path, record | {_TEST_FIELD: float("nan")})
+    with pytest.raises(JournalRecordError, match="must be a JSON value"):
+        read_records(journal_root, "CR-001")
+
+
+def test_forgeable_text_refuses_a_registered_field_carrying_a_non_string(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A registered field whose value is not a string is refused, not
+    skipped.
+
+    The rule is fail-closed like its sibling bounded-text: a registration
+    that names a non-string field meets a refusal, not silent passage —
+    the field may carry no shape rule of its own to own the type.
+    """
+
+    _admit_test_field(monkeypatch)
+    monkeypatch.setitem(
+        records_module._FORGEABLE_TEXT_FIELDS, ("opened", _TEST_FIELD), None
+    )
+    record = _opened(_HIGHEST_SCHEMA) | {_TEST_FIELD: ["not", "text"]}
+    with pytest.raises(JournalRecordError, match="must be a string"):
         validate_record_for_write(tmp_path / "journal", "CR-001", record)
 
 
