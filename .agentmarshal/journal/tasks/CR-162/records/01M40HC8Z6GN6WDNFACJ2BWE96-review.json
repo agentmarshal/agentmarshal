@@ -1,0 +1,31 @@
+{
+  "advisory_findings": [
+    "advisory-spec-stdout-unchanged-scenario-contradicts-overdue-mark",
+    "advisory-deadline-compound-duration-grammar-absent-from-spec",
+    "advisory-docs-not-updated-for-new-status-output"
+  ],
+  "artifacts": [
+    {
+      "hash": "1d69846befbcdd2e9fdd4764f6fde95ff50d79c14b3beaef65051e52ceea503b",
+      "ref": ".agentmarshal/journal/tasks/CR-162/artifacts/01M40HC8Z6GN6WDNFACJ2BWE96-review.md"
+    }
+  ],
+  "created_at": "2026-10-03T09:26:30.629960Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "7cc214f47152d63a95ab3adbeb7f3b4aed1af3a9",
+  "reviewed_contract": "3926f900b605c0ca2b58f9a62806179a6c7936b0242af4c80607c0ae0ea76357",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-162",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "approved"
+}
