@@ -14,8 +14,12 @@ import pytest
 
 from agentmarshal import steps
 from agentmarshal.cli import main
-from agentmarshal.localstate import LocalState
-from agentmarshal.process_log import ProcessLogWriter, read_events
+from agentmarshal.localstate import LocalState, LocalStateError
+from agentmarshal.process_log import (
+    ProcessLogWriter,
+    open_writer,
+    read_events,
+)
 
 
 def _git(repo: Path, *arguments: str) -> None:
@@ -176,16 +180,17 @@ def test_the_ps_fallback_parses_etime_and_names_unknown(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The portable fallback subtracts ``ps``'s elapsed time from now, and
-    output that does not parse — or a ``ps`` that fails — reads unknown."""
+    output that does not decode or does not parse — or a ``ps`` that
+    fails — reads unknown."""
     monkeypatch.setattr(sys, "platform", "darwin")
     monkeypatch.setattr(os, "name", "posix")
     calls: list[list[str]] = []
 
     def fake_run(
         command: list[str], **_kwargs: object
-    ) -> subprocess.CompletedProcess[str]:
+    ) -> subprocess.CompletedProcess[bytes]:
         calls.append(command)
-        return subprocess.CompletedProcess(command, 0, "1-02:03:04\n", "")
+        return subprocess.CompletedProcess(command, 0, b"1-02:03:04\n", b"")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
     before = datetime.now(UTC)
@@ -200,15 +205,23 @@ def test_the_ps_fallback_parses_etime_and_names_unknown(
 
     def garbage_run(
         command: list[str], **_kwargs: object
-    ) -> subprocess.CompletedProcess[str]:
-        return subprocess.CompletedProcess(command, 0, "nonsense\n", "")
+    ) -> subprocess.CompletedProcess[bytes]:
+        return subprocess.CompletedProcess(command, 0, b"nonsense\n", b"")
 
     monkeypatch.setattr(subprocess, "run", garbage_run)
     assert steps.pid_started_at(4321) == "unknown"
 
+    def undecodable_run(
+        command: list[str], **_kwargs: object
+    ) -> subprocess.CompletedProcess[bytes]:
+        return subprocess.CompletedProcess(command, 0, b"\xff\xfe\n", b"")
+
+    monkeypatch.setattr(subprocess, "run", undecodable_run)
+    assert steps.pid_started_at(4321) == "unknown"
+
     def hanging_run(
         command: list[str], **_kwargs: object
-    ) -> subprocess.CompletedProcess[str]:
+    ) -> subprocess.CompletedProcess[bytes]:
         raise subprocess.TimeoutExpired(command, 10)
 
     monkeypatch.setattr(subprocess, "run", hanging_run)
@@ -508,12 +521,44 @@ def test_a_filesystem_failure_opening_the_log_is_a_named_error(
     assert _start() == 1
     error = capsys.readouterr().err
     assert str(log_dir) in error
+    assert "writable" in error
     assert "retry" in error
     assert (
         main(["step", "end", "--task", "CR-1", "--step", "01ARZ3NDEKTSV4RRFFQ69G5FAV"])
         == 1
     )
-    assert str(log_dir) in capsys.readouterr().err
+    error = capsys.readouterr().err
+    assert str(log_dir) in error
+    assert "writable" in error
+
+    # A ``log/`` that cannot be created — a permission denial or a
+    # read-only filesystem — arrives as a LocalStateError rather than an
+    # OSError; the refusal still names the directory and what to do.
+    blocker = tmp_path / "blocker"
+    blocker.write_text("not a directory")
+    blocked_state = LocalState(blocker / "agentmarshal")
+    monkeypatch.setattr(steps, "local_state", lambda _placement: blocked_state)
+    monkeypatch.setattr(steps, "open_writer", open_writer)
+
+    assert _start() == 1
+    error = capsys.readouterr().err
+    assert str(blocked_state.log) in error
+    assert "writable" in error
+    assert (
+        main(["step", "end", "--task", "CR-1", "--step", "01ARZ3NDEKTSV4RRFFQ69G5FAV"])
+        == 1
+    )
+    assert "writable" in capsys.readouterr().err
+
+    # A failure before the local state resolves ends with a remedy too.
+    def refusing_state(_placement: object) -> LocalState:
+        raise LocalStateError(f"{repo}: git cannot name a common directory: stubbed")
+
+    monkeypatch.setattr(steps, "local_state", refusing_state)
+    assert _start() == 1
+    error = capsys.readouterr().err
+    assert "git cannot name a common directory" in error
+    assert "retry" in error
 
     assert _events(repo) == []
 

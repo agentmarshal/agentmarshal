@@ -72,11 +72,13 @@ reading them back is a later task.
   portable fallback is `ps -o etime= -p <pid>` with a bounded wait: its
   elapsed-time format `[[dd-]hh:]mm:ss` is numeric rather than
   locale-dependent, and the start time is now minus the elapsed span.
-  Everywhere else — Windows, a missing or hanging `ps`, a dead or
-  unreadable pid, output that does not parse — the field carries the
-  string `unknown` rather than a guess: a wrong start time defeats the
-  field's purpose, which is disambiguating pid reuse, and the command
-  still works.
+  `ps` output is captured as bytes and decoded with `errors="replace"`,
+  so a byte the locale cannot decode is a parse failure like any other
+  rather than a `UnicodeDecodeError` escaping the command. Everywhere
+  else — Windows, a missing or hanging `ps`, a dead or unreadable pid,
+  output that does not parse — the field carries the string `unknown`
+  rather than a guess: a wrong start time defeats the field's purpose,
+  which is disambiguating pid reuse, and the command still works.
 - **The strings a renderer will print cannot forge rendered text.**
   `status` and `doctor` will print these events' fields inline, so every
   free string the commands take is held to `forges_rendered_text`, the
@@ -95,11 +97,16 @@ reading them back is a later task.
   filesystem, a directory where the file was — becomes a `ProcessLogError`
   naming `writer.path` and what to do, so the CLI prints a sentence, never
   a traceback (carried from the CR-153 review). The open path follows the
-  same rule: `open_writer` lets an `OSError` through — a `log/` that
-  cannot be created or a writer file that cannot be claimed on a
-  read-only or full filesystem — so the step commands catch it, and any
-  other `OSError` on the way to the log, and report an error naming the
-  log directory and what to do rather than exiting on a traceback.
+  same rule: `open_writer` lets an `OSError` through — a writer file
+  that cannot be claimed on a read-only or full filesystem — while a
+  `log/` that cannot be created arrives as a `LocalStateError`, so the
+  step commands catch all of them, and any other filesystem error on
+  the way to the log, and report an error naming the log directory and
+  what to do — check that the local state root is writable by this user
+  and has free space, and retry — rather than exiting on a traceback. A
+  refusal earlier on the path — a project file that cannot be read, git
+  that cannot name the common directory — ends with a remedy too: no
+  refusal on the step path is left without a path.
 - **One writer file per command run.** Every `step` run opens a writer of
   its own, so `log/` gains one file per command for a single event; that
   churn stays — the process log bounds the directory as a whole by bytes

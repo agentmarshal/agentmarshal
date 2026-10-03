@@ -34,7 +34,7 @@ from agentmarshal.journal.records import (
     generate_ulid,
     validate_task_id,
 )
-from agentmarshal.localstate import LocalStateError, local_state
+from agentmarshal.localstate import LocalState, LocalStateError, local_state
 from agentmarshal.process_log import (
     ProcessLogError,
     ProcessLogWriter,
@@ -113,34 +113,46 @@ def _writer_for(command: str, stderr: TextIO) -> ProcessLogWriter | None:
     """
 
     directory: Path | None = None
+    state: LocalState | None = None
     try:
         directory = Path.cwd()
         project_root = find_project_root(directory)
         if project_root is None:
             print(
                 f"agentmarshal step {command} must be run inside an "
-                "initialized project",
+                "initialized project; run agentmarshal init in the "
+                "repository first",
                 file=stderr,
             )
             return None
+        directory = project_root
         state = local_state(resolve_placement(project_root))
         directory = state.log
         return open_writer(state)
-    except (LocalStateError, PlacementError, ProcessLogError) as error:
-        print(error, file=stderr)
-        return None
-    except OSError as error:
-        # ``open_writer`` lets an OSError through — a ``log/`` a mkdir
-        # cannot create or a writer file that cannot be claimed — and so
-        # does any earlier filesystem read on the step path; name the
-        # directory the command had reached.
-        reason = error.strerror or str(error)
-        where = directory if directory is not None else Path(".")
-        print(
-            f"{where}: cannot open the process log ({reason}); check the "
-            "directory's permissions and free space and retry",
-            file=stderr,
+    except (LocalStateError, PlacementError, ProcessLogError, OSError) as error:
+        # ``open_writer`` lets an OSError through — a writer file that
+        # cannot be claimed — while a ``log/`` a mkdir cannot create
+        # arrives as a LocalStateError, and a placement or git failure
+        # ahead of them as a PlacementError or LocalStateError. Every
+        # refusal ends with what to do: none is left without a path.
+        reason = (
+            error.strerror or str(error) if isinstance(error, OSError) else str(error)
         )
+        if state is not None:
+            print(
+                f"step {command}: {state.log}: cannot open the process log "
+                f"({reason}); check that {state.root} is writable by this "
+                "user and has free space, and retry",
+                file=stderr,
+            )
+        else:
+            where = directory if directory is not None else Path(".")
+            print(
+                f"step {command}: {reason}; check that git can run in "
+                f"{where} and .agentmarshal/project.json is readable, "
+                "then retry",
+                file=stderr,
+            )
         return None
 
 
@@ -332,19 +344,23 @@ def _boot_time() -> int | None:
 
 
 def _ps_started_at(pid: int) -> datetime | None:
-    """POSIX fallback: ``ps -o etime=`` elapsed time subtracted from now."""
+    """POSIX fallback: ``ps -o etime=`` elapsed time subtracted from now.
+
+    The output is captured as bytes and decoded with ``errors="replace"``:
+    a byte the locale cannot decode becomes a parse failure — ``unknown``
+    — rather than a ``UnicodeDecodeError`` escaping as a traceback.
+    """
 
     try:
         result = subprocess.run(
             ["ps", "-p", str(pid), "-o", "etime="],
             capture_output=True,
             check=True,
-            text=True,
             timeout=10,
         )
     except (OSError, subprocess.SubprocessError):
         return None
-    elapsed = _elapsed_seconds(result.stdout.strip())
+    elapsed = _elapsed_seconds(result.stdout.decode("utf-8", errors="replace").strip())
     if elapsed is None:
         return None
     return datetime.now(UTC) - timedelta(seconds=elapsed)
