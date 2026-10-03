@@ -82,14 +82,15 @@ def local_state(placement: Placement) -> LocalState:
 
     worktree = placement.project_root
     try:
-        common = git_common_dir(worktree)
+        answer = git_common_dir(worktree)
     except GitNotAvailableError as error:
         raise LocalStateError(f"{worktree}: {error}") from error
-    if common is None:
+    if answer.path is None:
+        reason = answer.reason or "git gave no reason"
         raise LocalStateError(
-            f"{worktree}: git cannot name a common directory (not a git worktree)"
+            f"{worktree}: git cannot name a common directory: {reason}"
         )
-    return LocalState(common / LOCAL_STATE_DIR_NAME)
+    return LocalState(answer.path / LOCAL_STATE_DIR_NAME)
 
 
 def ensure_directory(location: Path) -> Path:

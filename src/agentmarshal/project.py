@@ -6,7 +6,7 @@ import errno
 import json
 import os
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TextIO, cast
 
@@ -329,8 +329,25 @@ def _scaffold_outbox(project_directory: Path) -> tuple[Path, str | None]:
     return outbox, None
 
 
-def git_common_dir(worktree: Path) -> Path | None:
-    """Return a worktree's shared git directory, or ``None`` if git cannot say.
+@dataclass(frozen=True)
+class GitCommonDir:
+    """What git answers when asked for a worktree's shared git directory.
+
+    ``path`` is the common directory git names, or ``None`` where it can
+    name none — no repository there, a stale ``.git`` pointer, a git too
+    old for the question. ``reason`` is git's own stderr from that answer,
+    decoded lossily, so a caller that must refuse can quote git instead of
+    inventing a cause. It takes no part in equality: two answers are the
+    same answer when they name the same directory, which is all the
+    sidecar check in ``initialize_project`` ever compared.
+    """
+
+    path: Path | None
+    reason: str = field(default="", compare=False)
+
+
+def git_common_dir(worktree: Path) -> GitCommonDir:
+    """Return what git says a worktree's shared git directory is.
 
     Two worktrees of one repository report the same common directory even
     though their paths are unrelated — which is how a sidecar that is secretly
@@ -340,7 +357,8 @@ def git_common_dir(worktree: Path) -> Path | None:
     The contract mirrors ``find_git_root``: git that cannot run and git
     output that is not a UTF-8 path raise ``GitNotAvailableError``, while a
     worktree git simply cannot describe — there is no repository there —
-    yields ``None``.
+    yields an answer whose ``path`` is ``None`` and whose ``reason``
+    carries git's own words for the refusal.
     """
 
     try:
@@ -359,14 +377,15 @@ def git_common_dir(worktree: Path) -> Path | None:
     except OSError as error:
         raise GitNotAvailableError(f"cannot run git: {error}") from error
     if result.returncode != 0:
-        return None
+        reason = result.stderr.decode("utf-8", errors="replace").strip()
+        return GitCommonDir(None, reason)
     try:
         text = result.stdout.decode("utf-8").strip()
     except UnicodeDecodeError as error:
         raise GitNotAvailableError(
             f"git reported a common directory that is not valid UTF-8: {error}"
         ) from error
-    return Path(text).resolve() if text else None
+    return GitCommonDir(Path(text).resolve() if text else None)
 
 
 def initialize_project(
@@ -405,17 +424,7 @@ def initialize_project(
         # sits elsewhere on disk and still writes into the host's object
         # database, which is the thing the check above exists to prevent. The
         # shared git directory is what actually distinguishes them.
-        try:
-            same_repository = git_common_dir(git_root) == git_common_dir(resolved_host)
-        except GitNotAvailableError as error:
-            # The relation cannot be determined, which is no ground to release
-            # the sidecar: an unanswerable comparison used to refuse by
-            # accident (two Nones compared equal) or pass silently (one) —
-            # now it refuses once, naming why.
-            raise AgentMarshalProjectError(
-                f"cannot compare {git_root} with host {resolved_host}: {error}"
-            ) from error
-        if same_repository:
+        if git_common_dir(git_root) == git_common_dir(resolved_host):
             raise AgentMarshalProjectError(
                 f"sidecar journal {git_root} is a worktree of host "
                 f"{resolved_host}: its commits would land in the host's "

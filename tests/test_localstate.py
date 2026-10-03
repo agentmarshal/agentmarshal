@@ -51,11 +51,13 @@ def _init_project(path: Path, *, host: Path | None = None) -> None:
     )
 
 
-def _tree_snapshot(root: Path) -> dict[str, tuple[int, bytes]]:
+def _tree_snapshot(root: Path) -> dict[str, tuple[int, bytes | None]]:
     return {
-        str(path.relative_to(root)): (path.stat().st_mode, path.read_bytes())
+        str(path.relative_to(root)): (
+            path.stat().st_mode,
+            path.read_bytes() if path.is_file() else None,
+        )
         for path in root.rglob("*")
-        if path.is_file()
     }
 
 
@@ -195,3 +197,27 @@ def test_a_project_outside_git_fails_cleanly(tmp_path: Path) -> None:
     message = str(raised.value)
     assert str(project.resolve()) in message
     assert "common directory" in message
+    assert "not a git repository" in message
+
+
+def test_a_stale_git_pointer_reports_gits_reason(tmp_path: Path) -> None:
+    """Scenario: a project outside git fails cleanly — git's own reason.
+
+    A `.git` file pointing at a missing directory is a case where the
+    canned "(not a git worktree)" would be false: git says which repository
+    it could not find, and that is what the failure must repeat.
+    """
+
+    project = tmp_path / "project"
+    project.mkdir()
+    _init_project(project)
+    missing = tmp_path / "missing-gitdir"
+    (project / ".git").write_text(f"gitdir: {missing}\n", encoding="utf-8")
+
+    with pytest.raises(LocalStateError) as raised:
+        local_state(resolve_placement(project))
+
+    message = str(raised.value)
+    assert str(project.resolve()) in message
+    assert str(missing) in message
+    assert "not a git worktree" not in message
