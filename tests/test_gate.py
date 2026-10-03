@@ -1,6 +1,7 @@
 """Tests for the merge gate."""
 
 import difflib
+import hashlib
 import json
 import os
 import re
@@ -222,6 +223,59 @@ def _require_changes(
     for finding in findings:
         arguments.extend(["--finding", finding])
     assert main(arguments) == 0
+
+
+def _record_finding(repo: Path) -> str:
+    """Record a research finding and return its record id."""
+
+    digest = hashlib.sha256(b"remote conclusion").hexdigest()
+    assert (
+        main(
+            [
+                "finding",
+                "--task",
+                "CR-001",
+                "--summary",
+                "Conclusion",
+                "--artifact",
+                f"evidence/conclusion.md={digest}",
+            ]
+        )
+        == 0
+    )
+    findings = [
+        record
+        for record in read_records(repo / ".agentmarshal" / "journal", "CR-001")
+        if record["record_type"] == "finding"
+    ]
+    return str(findings[-1]["id"])
+
+
+def _require_changes_on_finding(repo: Path, finding: str) -> None:
+    assert (
+        main(
+            [
+                "submit-review",
+                "--task",
+                "CR-001",
+                "--reviewed-finding",
+                finding,
+                "--verdict",
+                "changes_required",
+                "--finding",
+                "F-finding",
+                "--role",
+                "qa",
+                "--vendor",
+                "test",
+                "--model",
+                "test-model",
+                "--email",
+                _REVIEWER_EMAIL,
+            ]
+        )
+        == 0
+    )
 
 
 def _accept(
@@ -572,6 +626,170 @@ def test_a_fixture_changes_only_when_the_output_changes_on_purpose(
         "PASS: pipeline attested for <head-sha>\ngate: passed\n"
     )
     assert (fixture_root / "case.exit").read_text(encoding="utf-8") == "0\n"
+
+
+def _set_review_threshold(repo: Path, value: object) -> None:
+    """Write ``review.changes_required_threshold`` into the test project file.
+
+    Left uncommitted on purpose: the gate reads the setting from the
+    working tree, and committing it would put ``project.json`` in the
+    candidate's diff outside its scope.
+    """
+
+    project_path = repo / ".agentmarshal" / "project.json"
+    project = json.loads(project_path.read_text(encoding="utf-8"))
+    project.setdefault("review", {})["changes_required_threshold"] = value
+    project_path.write_text(json.dumps(project), encoding="utf-8")
+
+
+def test_the_implementation_lane_prints_the_count(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: the implementation lane prints the count."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    head = _implement(repo, "src/module.py")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    assert passed, output
+    assert "INFO: changes_required verdicts for CR-001: 0 (threshold 3)" in output
+
+
+def test_the_implementation_lane_prints_the_count_in_a_sidecar(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: the implementation lane prints the count.
+
+    The same line in the other placement: the sidecar's project.json
+    carries no ``review`` section, so the threshold is the default.
+    """
+
+    _host, sidecar, base, head = _host_and_sidecar(tmp_path, monkeypatch)
+    assert main(["open", "--title", "Sidecar gate", "--scope", "app.txt"]) == 0
+    _approve(sidecar, head)
+    capsys.readouterr()
+
+    code = main(_gate_arguments(base, head))
+
+    transcript = capsys.readouterr()
+    assert code == 0, transcript.err
+    assert (
+        "INFO: changes_required verdicts for CR-001: 0 (threshold 3)" in transcript.out
+    )
+
+
+def test_the_count_is_over_the_whole_task(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: the count is over the whole task."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    first = _implement(repo, "src/module.py")
+    second = _implement(repo, "src/module.py", "more code\n")
+    # The earlier commit drew the changes_required verdict; the candidate's
+    # own review approves. Both records stay uncommitted, as the launcher
+    # leaves them, so the candidate diff stays inside its scope.
+    _require_changes(repo, first, "F-001")
+    _approve(repo, second)
+
+    passed, output = _run(repo, second, base, second)
+
+    assert passed, output
+    assert f"PASS: latest review of {second[:12]} is approved" in output
+    assert "INFO: changes_required verdicts for CR-001: 1 (threshold 3)" in output
+
+
+def test_a_review_bound_to_a_research_finding_is_not_counted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a review bound to a research finding is not counted."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    # The finding record needs a resolvable recorder; CI has neither
+    # AGENTMARSHAL_ACTOR nor a git identity, so the test sets both itself,
+    # as tests/test_findings.py's _repo does.
+    monkeypatch.setenv("AGENTMARSHAL_ACTOR", "researcher")
+    _git(repo, "config", "user.name", "Recorder")
+    _git(repo, "config", "user.email", "recorder@test.invalid")
+    first = _implement(repo, "src/module.py")
+    second = _implement(repo, "src/module.py", "more code\n")
+    # Two kinds of changes_required verdict on the one task: the review of
+    # a research finding (ADR-0009) is not a candidate's return, so only the
+    # first commit's review counts.
+    _require_changes_on_finding(repo, _record_finding(repo))
+    _require_changes(repo, first, "F-001")
+    _approve(repo, second)
+
+    passed, output = _run(repo, second, base, second)
+
+    assert passed, output
+    assert "INFO: changes_required verdicts for CR-001: 1 (threshold 3)" in output
+
+
+def test_a_count_at_the_threshold_is_marked(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a count at the threshold is marked."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    head = _implement(repo, "src/module.py")
+    _require_changes(repo, head, "F-001")
+    _approve(repo, head)
+    _set_review_threshold(repo, 1)
+    capsys.readouterr()
+
+    passed, output = _run(repo, head, base, head)
+
+    # The mark is a WARN — a report, never a verdict: an approved
+    # candidate at the threshold still passes, and the run still exits 0.
+    assert passed, output
+    assert (
+        "WARN: changes_required verdicts for CR-001: 1 (threshold 1 reached "
+        "— stop and revisit the contract)" in output
+    )
+    assert main(_gate_arguments(base, head)) == 0
+
+
+def test_a_malformed_threshold_is_reported_on_the_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a malformed threshold is reported on the line."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    head = _implement(repo, "src/module.py")
+    _approve(repo, head)
+    _set_review_threshold(repo, "high")
+
+    passed, output = _run(repo, head, base, head)
+
+    assert passed, output
+    assert (
+        "WARN: changes_required verdicts for CR-001: 0 (threshold unreadable: "
+        "project.json key 'review.changes_required_threshold' must be an "
+        "integer of at least 1)" in output
+    )
+
+
+def test_the_journal_only_lane_prints_no_count_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: the journal-only lane prints no count line."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    note = repo / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "note.md"
+    note.write_text("journal-only change\n", encoding="utf-8")
+    head = _commit_all(repo, "journal-only")
+
+    passed, output = _run(repo, head, base, head)
+
+    assert passed, output
+    assert "changes_required" not in output
 
 
 def test_a_default_run_prints_the_transcript_it_printed_before(

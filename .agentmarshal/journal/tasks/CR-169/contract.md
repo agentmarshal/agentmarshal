@@ -12,6 +12,7 @@ scope = [
   "openspec/changes/archive/",
   "openspec/specs/review-evidence/",
   "openspec/specs/reviewer-adapter/",
+  "openspec/specs/process-log/",
 ]
 acceptance = [
   "the change review-prose-to-process-log has a proposal, a design.md and deltas: review-evidence's requirement 'The capture policy decides where a review's prose goes' is MODIFIED (exact header) so that at `hash` the prose is kept under the clone's local state instead of a temporary file, and reviewer-adapter's 'The reviewer command's diagnostics survive a successful run' is MODIFIED likewise for diagnostics; every scenario is demonstrated by a test whose docstring names it; the change is archived with the archive command",
@@ -20,7 +21,7 @@ acceptance = [
   "when local state cannot be used (git cannot name it, the directory cannot be created), the output falls back to a temporary file as today, and stderr says why; levels `commit` and `off`, and the rejected-verdict copy, behave exactly as before",
   "in a sidecar the files and events go to the journal repository's local state, never the host's; docs/overview.md and docs/quickstart.md say where the prose and diagnostics now go instead of a temporary file; the full CI sequence passes",
 ]
-documents = ["openspec/specs/review-evidence/", "openspec/specs/reviewer-adapter/"]
+documents = ["openspec/specs/review-evidence/", "openspec/specs/reviewer-adapter/", "openspec/specs/process-log/"]
 +++
 
 # CR-169: review prose and diagnostics in the process log

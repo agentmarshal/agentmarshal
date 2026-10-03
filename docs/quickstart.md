@@ -387,6 +387,7 @@ PASS: evidence records are append-only
 PASS: added records are valid
 PASS: no record-path collisions with the base tree
 PASS: task lifecycle records are consistent
+INFO: changes_required verdicts for CR-001: 0 (threshold 3)
 gate: passed
 ```
 
