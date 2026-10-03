@@ -1,0 +1,33 @@
+{
+  "advisory_findings": [
+    "status-surface-added-beyond-the-approved-decision",
+    "deferral-reason-inverts-proposal-020",
+    "unqualified-print-guarantee-ignores-the-bounded-gate-line"
+  ],
+  "artifacts": [
+    {
+      "hash": "b4b36a61401cdf68f473ec83645e5f58b1a7064f58bea5362fcfc86cecca2251",
+      "ref": ".agentmarshal/journal/tasks/CR-141/artifacts/01M3ZK5PBW4PRKD883N26SVW1J-review.md"
+    }
+  ],
+  "created_at": "2026-10-03T00:38:37.692815Z",
+  "findings": [
+    "consequences-bullet-contradicts-the-transcript-change-it-revises"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "355f89a9f569b13b90c333829310044e20885a70",
+  "reviewed_contract": "b47b9584d6a28721d8ce89bf08f01fa94bed09b50fcdfd39f1fb6c43fb6e8884",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-141",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "changes_required"
+}
