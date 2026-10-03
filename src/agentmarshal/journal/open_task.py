@@ -8,8 +8,14 @@ import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 from agentmarshal import __version__
+from agentmarshal.journal.contracts import (
+    JournalContractError,
+    contract_sha256,
+    parse_contract_text,
+)
 from agentmarshal.journal.records import (
     JournalRecordError,
     create_opened_record,
@@ -33,6 +39,8 @@ class OpenedTask:
     task_id: str
     contract_path: Path
     record_path: Path
+    scope: tuple[str, ...] = ()
+    replaced_id: str | None = None
 
 
 def journal_root(project_root: Path) -> Path:
@@ -59,6 +67,72 @@ def next_task_id(root: Path) -> str:
         if match is not None:
             highest = max(highest, int(match.group(1)))
     return f"CR-{highest + 1:03d}"
+
+
+_CONTRACT_ID_KEY = re.compile(r"^[ \t]*(?:id|\"id\"|'id')[ \t]*=")
+
+
+def _read_provided_contract(contract_file: Path) -> tuple[str, str, tuple[str, ...]]:
+    """Read and validate a contract supplied on the command line.
+
+    Returns the contract's text, the id its header declares and its declared
+    scope. The header is validated exactly as ``parse_contract_text``
+    validates a contract already in the journal — the boundary a malformed
+    declaration is refused at, before anything it names is trusted.
+    """
+
+    try:
+        content = contract_file.read_bytes()
+    except OSError as error:
+        raise TaskOpenError(
+            f"could not read contract file {contract_file}: {error}"
+        ) from error
+    try:
+        text = content.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise TaskOpenError(
+            f"contract file is not valid UTF-8: {contract_file}"
+        ) from error
+    try:
+        header = parse_contract_text(text, str(contract_file))
+    except JournalContractError as error:
+        raise TaskOpenError(str(error)) from error
+    return text, header.id, header.scope
+
+
+def _retarget_contract_id(text: str, task_id: str) -> str:
+    """Return *text* with the header's ``id`` set to *task_id*.
+
+    Every other byte is kept: the contract was written first, and the text
+    its hash is pinned over should differ from the author's only in the id
+    the open assigns. The ``id`` key lives in the header's top-level table,
+    so the search stops at the first ``[table]`` line.
+    """
+
+    bom = text.startswith("\ufeff")
+    lines = (text[1:] if bom else text).splitlines(keepends=True)
+    start = next(index for index, line in enumerate(lines) if line.strip() == "+++")
+    end = next(
+        index
+        for index, line in enumerate(lines[start + 1 :], start + 1)
+        if line.strip() == "+++"
+    )
+    for index in range(start + 1, end):
+        line = lines[index]
+        if line.lstrip().startswith("["):
+            break
+        if _CONTRACT_ID_KEY.match(line):
+            ending = (
+                "\r\n" if line.endswith("\r\n") else "\n" if line.endswith("\n") else ""
+            )
+            lines[index] = f"id = {json.dumps(task_id)}{ending}"
+            break
+    rewritten = ("\ufeff" if bom else "") + "".join(lines)
+    # The header parsed before the rewrite, so this confirms rather than
+    # checks: the retargeted contract still parses and now names the task.
+    if parse_contract_text(rewritten, "the rewritten contract").id != task_id:
+        raise TaskOpenError("could not set the contract id to the assigned task id")
+    return rewritten
 
 
 def _contract_content(task_id: str, title: str, scope: list[str]) -> str:
@@ -131,11 +205,29 @@ def scope_warnings(project_root: Path, scope: list[str]) -> list[str]:
     return warnings
 
 
-def open_task(project_root: Path, title: str, scope: list[str]) -> OpenedTask:
-    """Create a task contract and its opened record."""
+def open_task(
+    project_root: Path,
+    title: str | None,
+    scope: list[str],
+    *,
+    contract_file: Path | None = None,
+) -> OpenedTask:
+    """Create a task contract and its opened record.
 
-    if not title:
-        raise TaskOpenError("task title must not be empty")
+    The contract is the template *title* and *scope* describe, or the text
+    of *contract_file* — a contract already written, whose header ``id`` is
+    set to the assigned task id. Either way the `opened` record pins the
+    contract's hash, the sha256 of the exact text written (ADR-0018
+    decision 1), so a contract supplied through *contract_file* is read and
+    validated before the journal is touched.
+    """
+
+    provided: tuple[str, str, tuple[str, ...]] | None = None
+    if contract_file is None:
+        if not title:
+            raise TaskOpenError("task title must not be empty")
+    else:
+        provided = _read_provided_contract(contract_file)
     root = journal_root(project_root)
     metadata_directory = root.parent
     if metadata_directory.is_symlink():
@@ -161,15 +253,26 @@ def open_task(project_root: Path, title: str, scope: list[str]) -> OpenedTask:
     staged_task_directory = staging_root / "tasks" / task_id
     staged_contract_path = staged_task_directory / "contract.md"
     try:
+        if provided is None:
+            contract_text = _contract_content(task_id, cast(str, title), scope)
+            declared_scope = tuple(scope)
+            replaced_id = None
+        else:
+            provided_text, provided_id, declared_scope = provided
+            contract_text = _retarget_contract_id(provided_text, task_id)
+            replaced_id = provided_id if provided_id != task_id else None
+        contract_hash = contract_sha256(
+            contract_text.encode("utf-8"), str(staged_contract_path)
+        )
         staged_task_directory.mkdir(parents=True)
         with staged_contract_path.open(
             "x", encoding="utf-8", newline="\n"
-        ) as contract_file:
-            contract_file.write(_contract_content(task_id, title, scope))
+        ) as staged_contract_file:
+            staged_contract_file.write(contract_text)
         staged_record_path = write_record(
             staging_root,
             task_id,
-            create_opened_record(task_id, __version__),
+            create_opened_record(task_id, __version__, contract=contract_hash),
         )
         if task_directory.exists() or task_directory.is_symlink():
             raise TaskOpenError(f"task directory already exists: {task_directory}")
@@ -193,4 +296,10 @@ def open_task(project_root: Path, title: str, scope: list[str]) -> OpenedTask:
     finally:
         shutil.rmtree(staging_root, ignore_errors=True)
     record_path = task_directory / staged_record_path.relative_to(staged_task_directory)
-    return OpenedTask(task_id, task_directory / "contract.md", record_path)
+    return OpenedTask(
+        task_id,
+        task_directory / "contract.md",
+        record_path,
+        scope=declared_scope,
+        replaced_id=replaced_id,
+    )

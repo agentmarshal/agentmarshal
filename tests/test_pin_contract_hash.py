@@ -1,0 +1,382 @@
+"""The contract's hash pinned where the contract is written.
+
+CR-171 is the transition task of ADR-0018 decision 1: `open`, `amend` and
+`migrate` pin the sha256 of the contract they establish, `open
+--contract-file` takes a contract written first, and `status` says when the
+contract drifted from its last pin.
+"""
+
+from __future__ import annotations
+
+import subprocess
+from pathlib import Path
+
+import pytest
+
+from agentmarshal.cli import main
+from agentmarshal.journal.contracts import contract_sha256, parse_contract
+from agentmarshal.journal.open_task import journal_root
+from agentmarshal.journal.records import (
+    create_opened_record,
+    read_records,
+    write_record,
+)
+from agentmarshal.migrate import migrate_journal
+from test_migrate import write_task
+from test_placement import _host_and_sidecar
+
+
+def _repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(
+        ["git", "init", "--quiet"], cwd=repo, check=True, capture_output=True
+    )
+    project_file = repo / ".agentmarshal" / "project.json"
+    project_file.parent.mkdir()
+    project_file.write_text('{"schema": 1}\n', encoding="utf-8")
+    monkeypatch.chdir(repo)
+    return repo
+
+
+def _contract_file(tmp_path: Path, task_id: str = "CR-099") -> Path:
+    path = tmp_path / "contract.md"
+    path.write_text(
+        "+++\n"
+        "schema = 1\n"
+        f'id = "{task_id}"\n'
+        'title = "Add a greeting helper"\n'
+        'scope = ["src/"]\n'
+        'acceptance = ["the helper greets"]\n'
+        "+++\n\n"
+        "# Add a greeting helper\n\n"
+        "## Objective\n\n"
+        "Greet.\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def _task_contract(repo: Path, task_id: str = "CR-001") -> Path:
+    return journal_root(repo) / "tasks" / task_id / "contract.md"
+
+
+def _pinned_hash(repo: Path, task_id: str = "CR-001") -> str:
+    contract_path = _task_contract(repo, task_id)
+    return contract_sha256(contract_path.read_bytes(), str(contract_path))
+
+
+# --- the writers pin the contract they establish -------------------------
+
+
+def test_open_pins_the_contract_it_writes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: open pins the contract it writes.
+
+    The `opened` record carries `contract` — the `contract_sha256` of the
+    contract the open wrote — and therefore stamps schema 7.
+    """
+
+    repo = _repo(tmp_path, monkeypatch)
+
+    assert main(["open", "--title", "Task", "--scope", "src/"]) == 0
+
+    opened = read_records(journal_root(repo), "CR-001")[0]
+    assert opened["record_type"] == "opened"
+    assert opened["contract"] == _pinned_hash(repo)
+    assert opened["schema"] == 7
+
+
+def test_amend_pins_the_contract_as_it_stands(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: amend pins the contract as it stands.
+
+    The amendment's `contract` is the `contract_sha256` of the task's
+    contract.md as it is at that moment — here, of a contract edited after
+    the open pinned it.
+    """
+
+    repo = _repo(tmp_path, monkeypatch)
+    assert main(["open", "--title", "Task"]) == 0
+    capsys.readouterr()
+    contract_path = _task_contract(repo)
+    contract_path.write_text(
+        contract_path.read_text(encoding="utf-8") + "\nA late note.\n",
+        encoding="utf-8",
+    )
+
+    assert main(["amend", "--task", "CR-001", "--reason", "a note"]) == 0
+
+    amendment = read_records(journal_root(repo), "CR-001")[-1]
+    assert amendment["record_type"] == "amendment"
+    assert amendment["contract"] == _pinned_hash(repo)
+    assert amendment["schema"] == 7
+
+
+def test_amend_refuses_a_contract_that_does_not_parse(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: amend refuses a contract that does not parse."""
+
+    repo = _repo(tmp_path, monkeypatch)
+    assert main(["open", "--title", "Task"]) == 0
+    capsys.readouterr()
+    contract_path = _task_contract(repo)
+    contract_path.write_text("not a contract\n", encoding="utf-8")
+
+    assert main(["amend", "--task", "CR-001", "--reason", "a note"]) == 1
+
+    assert [
+        record["record_type"] for record in read_records(journal_root(repo), "CR-001")
+    ] == ["opened"]
+
+
+def test_amend_pins_the_journal_repositorys_copy_in_a_sidecar(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: amend pins the journal repository's copy in a sidecar."""
+
+    _host, sidecar, _base, _head = _host_and_sidecar(tmp_path, monkeypatch)
+    assert main(["open", "--title", "Task"]) == 0
+    capsys.readouterr()
+
+    assert main(["amend", "--task", "CR-001", "--reason", "a note"]) == 0
+
+    journal = sidecar / ".agentmarshal" / "journal"
+    contract_path = journal / "tasks" / "CR-001" / "contract.md"
+    amendment = read_records(journal, "CR-001")[-1]
+    assert amendment["contract"] == contract_sha256(
+        contract_path.read_bytes(), str(contract_path)
+    )
+
+
+def test_migrate_pins_each_contract_it_writes(tmp_path: Path) -> None:
+    """Scenario: migrate pins each contract it writes."""
+
+    source = tmp_path / "v1"
+    target = tmp_path / "v2"
+    write_task(source, "open", "CR-001", "open")
+    write_task(source, "open", "CR-002", "open")
+
+    migrate_journal(source, target)
+
+    for task_id in ("CR-001", "CR-002"):
+        contract_path = target / "tasks" / task_id / "contract.md"
+        opened = read_records(target, task_id)[0]
+        assert opened["contract"] == contract_sha256(
+            contract_path.read_bytes(), str(contract_path)
+        )
+
+
+# --- open takes a contract already written -------------------------------
+
+
+def test_a_contract_written_first_becomes_the_tasks_contract(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a contract written first becomes the task's contract."""
+
+    repo = _repo(tmp_path, monkeypatch)
+    provided = _contract_file(tmp_path)
+
+    assert main(["open", "--contract-file", str(provided)]) == 0
+
+    contract_path = _task_contract(repo)
+    header = parse_contract(contract_path)
+    assert header.id == "CR-001"
+    assert header.title == "Add a greeting helper"
+    assert header.scope == ("src/",)
+    assert header.acceptance == ("the helper greets",)
+    assert contract_path.read_text(encoding="utf-8").endswith("Greet.\n")
+    opened = read_records(journal_root(repo), "CR-001")[0]
+    assert opened["contract"] == _pinned_hash(repo)
+
+
+def test_a_different_id_is_replaced_and_named_on_stderr(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a different id is replaced and named on stderr."""
+
+    repo = _repo(tmp_path, monkeypatch)
+    provided = _contract_file(tmp_path, task_id="CR-099")
+
+    assert main(["open", "--contract-file", str(provided)]) == 0
+
+    captured = capsys.readouterr()
+    assert "CR-099" in captured.err
+    assert "CR-001" in captured.err
+    header = parse_contract(_task_contract(repo))
+    assert header.id == "CR-001"
+
+
+@pytest.mark.parametrize("extra", [["--title", "Task"], ["--scope", "src/"]])
+def test_contract_file_cannot_combine_with_title_or_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    extra: list[str],
+) -> None:
+    """Scenario: --contract-file cannot combine with --title or --scope."""
+
+    repo = _repo(tmp_path, monkeypatch)
+    provided = _contract_file(tmp_path)
+
+    assert main(["open", "--contract-file", str(provided), *extra]) == 1
+
+    assert "--contract-file" in capsys.readouterr().err
+    assert not (journal_root(repo) / "tasks").exists()
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        None,
+        "not a contract\n",
+        "+++\nschema = 9\n+++\n",
+        "+++\nschema = 1\nid = 'CR-001'\n+++\n",
+    ],
+    ids=["missing", "no header", "unknown schema", "incomplete header"],
+)
+def test_a_missing_unreadable_or_invalid_file_is_refused_writing_nothing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    content: str | None,
+) -> None:
+    """Scenario: a missing, unreadable or invalid file is refused writing
+    nothing."""
+
+    repo = _repo(tmp_path, monkeypatch)
+    provided = tmp_path / "contract.md"
+    if content is not None:
+        provided.write_text(content, encoding="utf-8")
+
+    assert main(["open", "--contract-file", str(provided)]) == 1
+
+    assert capsys.readouterr().err
+    assert not (journal_root(repo) / "tasks").exists()
+
+
+# --- status shows when the contract drifted from its last pin ------------
+
+
+def _open_and_edit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> Path:
+    repo = _repo(tmp_path, monkeypatch)
+    assert main(["open", "--title", "Task"]) == 0
+    capsys.readouterr()
+    contract_path = _task_contract(repo)
+    contract_path.write_text(
+        contract_path.read_text(encoding="utf-8") + "\nA late note.\n",
+        encoding="utf-8",
+    )
+    return repo
+
+
+def test_a_drifted_contract_prints_the_drift_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a drifted contract prints the drift line.
+
+    The line names both short hashes — the pin's and the current
+    contract's — and says the edit should be recorded with `amend`.
+    """
+
+    repo = _open_and_edit(tmp_path, monkeypatch, capsys)
+    pinned = read_records(journal_root(repo), "CR-001")[0]["contract"]
+
+    assert main(["status", "CR-001"]) == 0
+
+    out = capsys.readouterr().out
+    drift = [line for line in out.splitlines() if "drift" in line.lower()]
+    assert len(drift) == 1
+    assert str(pinned)[:7] in drift[0]
+    assert _pinned_hash(repo)[:7] in drift[0]
+    assert "amend" in drift[0]
+
+
+def test_a_contract_matching_its_pin_prints_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a contract matching its pin prints nothing."""
+
+    _repo(tmp_path, monkeypatch)
+    assert main(["open", "--title", "Task"]) == 0
+    capsys.readouterr()
+
+    assert main(["status", "CR-001"]) == 0
+
+    out = capsys.readouterr().out
+    assert not any("drift" in line.lower() for line in out.splitlines())
+
+
+def test_a_task_whose_records_carry_no_hash_prints_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a task whose records carry no hash prints nothing."""
+
+    repo = _repo(tmp_path, monkeypatch)
+    journal = journal_root(repo)
+    task_directory = journal / "tasks" / "CR-001"
+    task_directory.mkdir(parents=True)
+    contract_path = task_directory / "contract.md"
+    contract_path.write_text(
+        "+++\nschema = 1\nid = 'CR-001'\ntitle = 'Task'\nscope = []\n"
+        "acceptance = []\n+++\n",
+        encoding="utf-8",
+    )
+    write_record(journal, "CR-001", create_opened_record("CR-001", "test"))
+
+    assert main(["status", "CR-001"]) == 0
+
+    out = capsys.readouterr().out
+    assert not any("drift" in line.lower() for line in out.splitlines())
+
+
+def test_the_drift_never_fails_the_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: the drift never fails the command.
+
+    A drifted contract is reported, not refused: `status` answers with the
+    drift line and exit status 0.
+    """
+
+    _open_and_edit(tmp_path, monkeypatch, capsys)
+
+    assert main(["status", "CR-001"]) == 0
+
+
+def test_the_latest_hash_carrying_record_is_the_pin_compared(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: the latest hash-carrying record is the pin compared.
+
+    After `amend` re-pins the edited contract, the drift line compares
+    against the amendment's hash — a match — until the contract moves away
+    from it too.
+    """
+
+    repo = _open_and_edit(tmp_path, monkeypatch, capsys)
+    assert main(["amend", "--task", "CR-001", "--reason", "the note stays"]) == 0
+    capsys.readouterr()
+
+    assert main(["status", "CR-001"]) == 0
+    out = capsys.readouterr().out
+    assert not any("drift" in line.lower() for line in out.splitlines())
+
+    contract_path = _task_contract(repo)
+    contract_path.write_text(
+        contract_path.read_text(encoding="utf-8") + "\nAnother note.\n",
+        encoding="utf-8",
+    )
+    amendment_hash = read_records(journal_root(repo), "CR-001")[-1]["contract"]
+
+    assert main(["status", "CR-001"]) == 0
+    out = capsys.readouterr().out
+    drift = [line for line in out.splitlines() if "drift" in line.lower()]
+    assert len(drift) == 1
+    assert str(amendment_hash)[:7] in drift[0]

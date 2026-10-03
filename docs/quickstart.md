@@ -235,18 +235,37 @@ the directory is still initialized.
 
 ### 2. Open a task
 
-A **task** declares a **scope** — the paths it may touch. Opening one creates
-its contract and an `opened` record:
+A **task** declares a **scope** — the paths it may touch. Write its contract
+first — the TOML header carries the scope and the machine-readable acceptance
+criteria, the markdown body below it the objective and prose — then open the
+task from it:
 
 ```sh
-agentmarshal open --title "Add a greeting helper" --scope src/
+cat > contract.md <<'EOF'
++++
+schema = 1
+id = "CR-000"
+title = "Add a greeting helper"
+scope = ["src/"]
+acceptance = ["the helper greets by name"]
++++
+
+# Add a greeting helper
+
+Return a greeting for a name. The greeting stays friendly.
+EOF
+agentmarshal open --contract-file contract.md
+rm contract.md
 ```
 
-The first task is `CR-001`, under `.agentmarshal/journal/tasks/CR-001/`:
-
-- `contract.md` — fill in the acceptance criteria and objective; this is the
-  task's specification.
-- `records/…-opened.json` — the append-only lifecycle record.
+`open` assigns the task id — `CR-001` for the first task — sets the header's
+`id` to it, and names on stderr any different value it replaced, so a
+placeholder id is fine. The file becomes
+`.agentmarshal/journal/tasks/CR-001/contract.md`, and the `opened` record
+pins the contract's SHA-256 — the hash of the exact text written. The
+`records/…-opened.json` next to it is the append-only lifecycle record.
+(`open --title "…" --scope src/` also works: it writes a template contract
+to fill in and pins that.)
 
 Commit the opening so the contract is in history before any work builds on it.
 The gate always reads the contract from the committed base, never from the
@@ -258,16 +277,22 @@ git commit -m "open CR-001: add a greeting helper"
 BASE=$(git rev-parse HEAD)   # the base the work is gated against
 ```
 
-If an open task's contract needs correction, edit it and record the repair
-before continuing, then commit the journal-only repair and advance the base:
+If an open task's contract needs correction, edit it, and `status` will say
+the contract drifted from its last pin — one line naming the pinned and the
+current hashes — until the edit is recorded. Record the repair, then commit
+the journal-only change and advance the base:
 
 ```sh
+printf '\nGreetings are also remembered across calls.\n' \
+  >> .agentmarshal/journal/tasks/CR-001/contract.md
+agentmarshal status "CR-001"
 agentmarshal amend --task CR-001 --reason "Clarify the greeting behaviour"
 git add .agentmarshal && git commit -m "amend CR-001 contract"
 BASE=$(git rev-parse HEAD)
 ```
 
-`amend` records the reason; git history remains the contract's content trail.
+`amend` records the reason and pins the contract as it stands; git history
+remains the contract's content trail.
 When a task has amendment records, both `brief` and the model-review prompt show
 their recorded time, reason, and recorder (when one was recorded) immediately
 after the contract. They read that history from the active journal, so a review
