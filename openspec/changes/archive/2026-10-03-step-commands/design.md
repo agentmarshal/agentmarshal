@@ -82,7 +82,9 @@ reading them back is a later task.
   free string the commands take is held to `forges_rendered_text`, the
   predicate the journal applies to text it renders: `step end`'s optional
   outcome is any non-empty word — no whitespace — that passes it, and
-  `step start`'s `--actor` and `--run-dir` must pass it too.
+  `step start`'s `--actor` and `--run-dir` must pass it too and be
+  non-empty — the journal's own `actor` field follows the same non-empty
+  rule, and a given option that names nothing is refused.
 - **The writer refuses what strict JSON cannot carry, before the line
   lands.** `json.dumps` with `allow_nan=False` raises on NaN, infinity and
   types JSON cannot carry; `write_event` wraps that in a `ProcessLogError`
@@ -92,7 +94,17 @@ reading them back is a later task.
   write happen inside the `try`; a failure — permissions, a full
   filesystem, a directory where the file was — becomes a `ProcessLogError`
   naming `writer.path` and what to do, so the CLI prints a sentence, never
-  a traceback (carried from the CR-153 review).
+  a traceback (carried from the CR-153 review). The open path follows the
+  same rule: `open_writer` lets an `OSError` through — a `log/` that
+  cannot be created or a writer file that cannot be claimed on a
+  read-only or full filesystem — so the step commands catch it, and any
+  other `OSError` on the way to the log, and report an error naming the
+  log directory and what to do rather than exiting on a traceback.
+- **One writer file per command run.** Every `step` run opens a writer of
+  its own, so `log/` gains one file per command for a single event; that
+  churn stays — the process log bounds the directory as a whole by bytes
+  (CR-153), which is where the bound belongs since per-writer retention
+  bounds nothing.
 
 ## Risks
 

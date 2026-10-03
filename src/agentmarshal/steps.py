@@ -112,17 +112,35 @@ def _writer_for(command: str, stderr: TextIO) -> ProcessLogWriter | None:
     sidecar's own log and the host never enters the call.
     """
 
-    project_root = find_project_root(Path.cwd())
-    if project_root is None:
-        print(
-            f"agentmarshal step {command} must be run inside an initialized project",
-            file=stderr,
-        )
-        return None
+    directory: Path | None = None
     try:
-        return open_writer(local_state(resolve_placement(project_root)))
+        directory = Path.cwd()
+        project_root = find_project_root(directory)
+        if project_root is None:
+            print(
+                f"agentmarshal step {command} must be run inside an "
+                "initialized project",
+                file=stderr,
+            )
+            return None
+        state = local_state(resolve_placement(project_root))
+        directory = state.log
+        return open_writer(state)
     except (LocalStateError, PlacementError, ProcessLogError) as error:
         print(error, file=stderr)
+        return None
+    except OSError as error:
+        # ``open_writer`` lets an OSError through — a ``log/`` a mkdir
+        # cannot create or a writer file that cannot be claimed — and so
+        # does any earlier filesystem read on the step path; name the
+        # directory the command had reached.
+        reason = error.strerror or str(error)
+        where = directory if directory is not None else Path(".")
+        print(
+            f"{where}: cannot open the process log ({reason}); check the "
+            "directory's permissions and free space and retry",
+            file=stderr,
+        )
         return None
 
 
@@ -132,7 +150,7 @@ def _run_start(args: argparse.Namespace, stderr: TextIO) -> int:
         deadline = _parse_deadline(args.deadline)
         for option, value in (("--actor", args.actor), ("--run-dir", args.run_dir)):
             if value is not None:
-                _refuse_forgeable(value, option)
+                _refuse_unclean_text(value, option)
     except (JournalRecordError, StepError) as error:
         print(f"step start: {error}", file=stderr)
         return 1
@@ -191,13 +209,16 @@ def _run_end(args: argparse.Namespace, stderr: TextIO) -> int:
     return 0
 
 
-def _refuse_forgeable(value: str, option: str) -> None:
-    """Raise ``StepError`` when *value* could forge rendered text.
+def _refuse_unclean_text(value: str, option: str) -> None:
+    """Raise ``StepError`` when *value* is empty or could forge rendered text.
 
     ``status`` and ``doctor`` will print these fields inline, so they
-    follow the same rule the journal applies to text it renders.
+    follow the same rule the journal applies to text it renders, which is
+    also non-empty: an empty field claims a giver that names nothing.
     """
 
+    if not value:
+        raise StepError(f"{option} must be non-empty")
     if forges_rendered_text(value):
         raise StepError(f"{option} must not hold characters that forge rendered text")
 

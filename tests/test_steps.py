@@ -3,6 +3,7 @@ amended, ADR-0022 section 7)."""
 
 from __future__ import annotations
 
+import errno
 import os
 import subprocess
 import sys
@@ -14,7 +15,7 @@ import pytest
 from agentmarshal import steps
 from agentmarshal.cli import main
 from agentmarshal.localstate import LocalState
-from agentmarshal.process_log import read_events
+from agentmarshal.process_log import ProcessLogWriter, read_events
 
 
 def _git(repo: Path, *arguments: str) -> None:
@@ -245,14 +246,17 @@ def test_a_deadline_that_overflows_is_refused(
     assert _events(repo) == []
 
 
-def test_an_actor_or_run_dir_that_could_forge_rendered_text_is_refused(
+def test_an_actor_or_run_dir_that_is_empty_or_could_forge_rendered_text_is_refused(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Scenario: an actor or run_dir that could forge rendered text is
-    refused."""
+    """Scenario: an actor or run_dir that is empty or could forge rendered
+    text is refused."""
     repo = _project(tmp_path, monkeypatch)
     capsys.readouterr()
 
+    for option in ("--actor", "--run-dir"):
+        assert _start(option, "") == 1
+        assert "non-empty" in capsys.readouterr().err
     for option, value in (
         ("--actor", "impl\u202eactor"),
         ("--run-dir", "line\nbreak"),
@@ -482,6 +486,36 @@ def test_in_a_sidecar_the_step_event_lands_in_the_journal_repositorys_log(
     assert len(events) == 1
     assert events[0]["event"] == "step-started"
     assert not (host / ".git" / "agentmarshal").exists()
+
+
+def test_a_filesystem_failure_opening_the_log_is_a_named_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a filesystem failure opening the log is a named error."""
+    repo = _project(tmp_path, monkeypatch)
+    capsys.readouterr()
+    log_dir = tmp_path / "state" / "log"
+
+    monkeypatch.setattr(
+        steps, "local_state", lambda _placement: LocalState(tmp_path / "state")
+    )
+
+    def refusing_writer(_state: LocalState) -> ProcessLogWriter:
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    monkeypatch.setattr(steps, "open_writer", refusing_writer)
+
+    assert _start() == 1
+    error = capsys.readouterr().err
+    assert str(log_dir) in error
+    assert "retry" in error
+    assert (
+        main(["step", "end", "--task", "CR-1", "--step", "01ARZ3NDEKTSV4RRFFQ69G5FAV"])
+        == 1
+    )
+    assert str(log_dir) in capsys.readouterr().err
+
+    assert _events(repo) == []
 
 
 def test_step_help_lists_both_subcommands(

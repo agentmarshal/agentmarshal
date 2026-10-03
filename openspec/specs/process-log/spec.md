@@ -205,11 +205,12 @@ the command's run — recorded as a UTC ISO-8601 timestamp. The event SHALL
 carry `step` — the fresh identifier the command prints — `activity`, `pid`,
 `pid_started_at` and `deadline`, and `actor` and `run_dir` only when
 `--actor` and `--run-dir` are given; a given `--actor` or `--run-dir`
-SHALL hold nothing that can forge rendered text. Without `--pid` the
-command SHALL record its own parent process. `pid_started_at` SHALL be the
-process's real start time where the platform exposes it — Linux `/proc`,
-and the portable fallback the design states — and a value naming it unknown
-where it cannot be read, never a guess; the command SHALL work either way.
+SHALL be non-empty and hold nothing that can forge rendered text.
+Without `--pid` the command SHALL record its own parent process.
+`pid_started_at` SHALL be the process's real start time where the
+platform exposes it — Linux `/proc`, and the portable fallback the
+design states — and a value naming it unknown where it cannot be
+read, never a guess; the command SHALL work either way.
 
 #### Scenario: a started step lands as one step-started event and its id is printed
 - **WHEN** a harness runs `step start` with task, activity and deadline
@@ -245,9 +246,9 @@ where it cannot be read, never a guess; the command SHALL work either way.
   deadline that is neither a readable ISO-8601 time nor a duration
 - **THEN** the command refuses and no event lands
 
-#### Scenario: an actor or run_dir that could forge rendered text is refused
-- **WHEN** `step start` is given an `--actor` or a `--run-dir` holding a
-  character that could forge rendered text
+#### Scenario: an actor or run_dir that is empty or could forge rendered text is refused
+- **WHEN** `step start` is given an `--actor` or a `--run-dir` that is
+  empty or holds a character that could forge rendered text
 - **THEN** the command refuses and no event lands
 
 ### Requirement: `step end` records a step's close
@@ -280,7 +281,10 @@ SHALL carry `step` and, when given, `outcome`.
 Neither `step` command SHALL write the journal: they append events to the
 process log and nothing else. Both SHALL open the log through the resolved
 local state, so in a sidecar the event lands in the journal repository's
-process log and the host is never written.
+process log and the host is never written. An `OSError` opening the
+log — or any other filesystem error on the step path — SHALL reach
+the caller as an error naming the log directory and what to do, never
+a traceback.
 
 #### Scenario: a step command leaves the journal untouched
 - **WHEN** `step start` and `step end` run against an initialized project
@@ -290,3 +294,9 @@ process log and the host is never written.
 - **WHEN** `step start` runs inside a sidecar project
 - **THEN** the event lands in the sidecar repository's process log and the
   host's local state is untouched
+
+#### Scenario: a filesystem failure opening the log is a named error
+- **WHEN** a step command cannot open the process log — a read-only
+  filesystem, a permission denial, a full disk
+- **THEN** the caller gets an error naming the log directory and what
+  to do — never a bare traceback — and no event lands

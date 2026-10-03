@@ -15,8 +15,8 @@
   vocabulary) and `--deadline` (required: an ISO-8601 time or a `<n><unit>`
   duration, units `s`/`m`/`h`/`d`, an overflowing value refused), plus
   optional `--pid`, `--actor` and `--run-dir` — the last two refused when
-  they could forge rendered text — verify: the refusal tests and the help
-  listing.
+  empty or when they could forge rendered text — verify: the refusal tests
+  and the help listing.
 - [x] 2.2 `step start` writes one `step-started` event — a ULID `step`, the
   activity, `pid` (the command's parent by default), `pid_started_at`, the
   deadline normalized to a UTC ISO-8601 timestamp, and `actor`/`run_dir`
@@ -45,3 +45,8 @@
 - [x] 4.2 Neither command writes the journal; in a sidecar the event lands
   in the journal repository's process log — verify: the untouched-journal
   test and the sidecar test.
+- [x] 4.3 An `OSError` opening the writer — a `log/` that cannot be
+  created or a writer file that cannot be claimed — or any other
+  filesystem error on the step path reaches the caller as an error naming
+  the log directory and what to do, never a traceback — verify: the test
+  patching `open_writer` to raise `OSError`.

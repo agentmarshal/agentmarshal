@@ -29,7 +29,8 @@ deadline from one still inside it.
   cannot be encoded as strict JSON — a non-finite number or a value whose
   type JSON cannot carry — with a `ProcessLogError`, and an `OSError`
   appending reaches the caller as an error naming the log file and what to
-  do, never a traceback.
+  do, never a traceback. A filesystem failure opening the log follows the
+  same rule and names the log directory.
 
 ## Capabilities
 
