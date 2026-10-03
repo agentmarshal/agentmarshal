@@ -8,7 +8,8 @@ clone. In a sidecar that is the journal repository's directory, never the
 host's: the host is never written (ADR-0008).
 
 Resolving answers "where" and creates nothing; a writer that needs a
-directory location creates it explicitly with :func:`ensure_directory`.
+directory location creates it explicitly with
+:meth:`LocalState.ensure_directory`.
 """
 
 from __future__ import annotations
@@ -71,6 +72,32 @@ class LocalState:
 
         return self.root / "plan.toml"
 
+    def ensure_directory(self, location: Path) -> Path:
+        """Create a directory location under this root, with any missing parents.
+
+        The explicit counterpart of resolving: a writer passes one of the
+        named locations — the root, ``log``, ``extensions``, ``deps``, or a
+        path under them — when it is about to write into it. The location is
+        resolved before the check, so a path that only comes under the root
+        through ``..`` segments or symlinks is refused, like any other path
+        outside the root.
+        """
+
+        try:
+            root = self.root.resolve()
+            target = location.resolve()
+        except OSError as error:
+            raise LocalStateError(f"cannot resolve {location}: {error}") from error
+        if not target.is_relative_to(root):
+            raise LocalStateError(
+                f"{location}: outside the local state root {self.root}"
+            )
+        try:
+            target.mkdir(parents=True, exist_ok=True)
+        except OSError as error:
+            raise LocalStateError(f"cannot create {location}: {error}") from error
+        return target
+
 
 def local_state(placement: Placement) -> LocalState:
     """Resolve the project's local state locations; creates nothing.
@@ -91,18 +118,3 @@ def local_state(placement: Placement) -> LocalState:
             f"{worktree}: git cannot name a common directory: {reason}"
         )
     return LocalState(answer.path / LOCAL_STATE_DIR_NAME)
-
-
-def ensure_directory(location: Path) -> Path:
-    """Create a directory location for a writer, with any missing parents.
-
-    The explicit counterpart of resolving: callers pass one of the directory
-    locations — the root, ``log``, ``extensions``, ``deps``, or a path under
-    them — when they are about to write into it.
-    """
-
-    try:
-        location.mkdir(parents=True, exist_ok=True)
-    except OSError as error:
-        raise LocalStateError(f"cannot create {location}: {error}") from error
-    return location

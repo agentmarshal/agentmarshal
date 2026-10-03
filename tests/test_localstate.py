@@ -11,11 +11,7 @@ from typing import NoReturn
 import pytest
 
 from agentmarshal.journal.placement import resolve_placement
-from agentmarshal.localstate import (
-    LocalStateError,
-    ensure_directory,
-    local_state,
-)
+from agentmarshal.localstate import LocalStateError, local_state
 from agentmarshal.project import GitNotAvailableError, git_common_dir
 
 
@@ -170,10 +166,10 @@ def test_host_is_unchanged_after_resolving_and_creating_everything(
     before = _tree_snapshot(host)
 
     state = local_state(resolve_placement(sidecar, require_host=True))
-    ensure_directory(state.root)
-    ensure_directory(state.log)
-    ensure_directory(state.extensions)
-    ensure_directory(state.deps)
+    state.ensure_directory(state.root)
+    state.ensure_directory(state.log)
+    state.ensure_directory(state.extensions)
+    state.ensure_directory(state.deps)
     state.trust_file.write_text("", encoding="utf-8")
     state.switches_file.write_text("", encoding="utf-8")
     state.plan_file.write_text("", encoding="utf-8")
@@ -206,7 +202,7 @@ def test_a_writer_creates_a_directory_location_explicitly(tmp_path: Path) -> Non
     _init_project(project)
     state = local_state(resolve_placement(project))
 
-    created = ensure_directory(state.log)
+    created = state.ensure_directory(state.log)
 
     assert created == state.log
     assert state.log.is_dir()
