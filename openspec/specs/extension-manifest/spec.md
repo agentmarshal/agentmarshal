@@ -19,9 +19,11 @@ non-integer or other version SHALL be refused as an unknown or missing
 schema version. Every schema-1 rule applies unchanged to schema 2 — the
 declared `name` matching the manifest's file name, `version` a non-empty
 string, `footprint`, `documents` and `artifacts` paths in scope syntax with
-the latter two under the footprint — with one relaxation: `install` and
-`remove` are OPTIONAL in schema 2, where schema 1 requires them as non-empty
-strings.
+the latter two under the footprint — with one relaxation: `install`,
+`remove` and `artifacts` are OPTIONAL in schema 2 (ADR-0013's example
+carries none of them), where schema 1 requires all three. Every free-text
+string a schema-2 manifest declares — a present `install` or `remove`
+included — SHALL pass the control-character rule.
 
 Each of `stage`, `dependencies`, `wraps`, `records` and `isolation` is a
 schema-2 field: any of them in a schema-1 manifest SHALL be refused with a
@@ -37,9 +39,19 @@ message naming the field and that it requires schema 2.
 - **THEN** it is refused with a message naming the field and that it
   requires schema 2
 
-#### Scenario: install and remove are optional in schema 2
-- **WHEN** a schema-2 manifest declares neither `install` nor `remove`
-- **THEN** it parses, and the parsed manifest carries neither
+#### Scenario: install, remove and artifacts are optional in schema 2
+- **WHEN** a schema-2 manifest declares none of `install`, `remove` or
+  `artifacts`
+- **THEN** it parses, and the parsed manifest carries none of them
+
+#### Scenario: schema 1 requires install, remove and artifacts
+- **WHEN** a schema-1 manifest lacks `install`, `remove` or `artifacts`
+- **THEN** it is refused naming the field
+
+#### Scenario: a schema-2 free-text field carrying control characters is refused
+- **WHEN** a schema-2 manifest's `install` or `remove` contains a control
+  character
+- **THEN** it is refused naming the field and the source
 
 #### Scenario: a schema-1 manifest parses exactly as before
 - **WHEN** a schema-1 manifest carries no schema-2 field
@@ -51,8 +63,10 @@ A schema-2 manifest MAY carry `[[stage]]` entries. Each entry SHALL declare
 `phase`, one of `post-gate`, `pre-gate-warn` or `pre-gate-stop`, and
 `command`, a relative path under the extension's own `bin/` — never an
 absolute path, never a `..` component, never a bare program name, which
-would be a `PATH` lookup. A malformed `stage` list or entry SHALL be refused
-with a message naming the field and the source.
+would be a `PATH` lookup, and carrying no whitespace or shell
+metacharacters, because the core runs it as an argv path, never through a
+shell. A malformed `stage` list or entry SHALL be refused with a message
+naming the field and the source.
 
 #### Scenario: a stage entry parses its phase and command
 - **WHEN** a schema-2 manifest declares a `[[stage]]` entry with
@@ -68,6 +82,11 @@ with a message naming the field and the source.
 #### Scenario: a command outside the extension's bin/ is refused
 - **WHEN** a `[[stage]]` entry's `command` is absolute, carries a `..`
   component, or names no path under `bin/` — a bare program name included
+- **THEN** the manifest is refused naming `command`
+
+#### Scenario: a command carrying whitespace or a shell metacharacter is refused
+- **WHEN** a `[[stage]]` entry's `command` contains whitespace or a shell
+  metacharacter
 - **THEN** the manifest is refused naming `command`
 
 #### Scenario: a malformed stage declaration is refused
@@ -97,8 +116,10 @@ A schema-2 manifest MAY carry `[wraps]` for the wrapper form. The section
 SHALL declare `product`, `version`, `ecosystem`, `lock`, `runtime` and
 `license`: `lock` a relative path under `lock/` in the extension's own
 directory, and `runtime` of the form `<name> >= <version>` — a minimum, the
-one `PATH` exception being the wrapped product's runtime. A missing or
-malformed field SHALL be refused naming it and the source.
+one `PATH` exception being the wrapped product's runtime. Each free-text
+field — `product`, `version`, `ecosystem`, `runtime` and `license` — SHALL
+pass the control-character rule. A missing or malformed field SHALL be
+refused naming it and the source.
 
 #### Scenario: a wraps section parses every field
 - **WHEN** a schema-2 manifest declares `[wraps]` with all six fields
@@ -119,12 +140,17 @@ malformed field SHALL be refused naming it and the source.
   path under `lock/`
 - **THEN** the manifest is refused naming `lock`
 
+#### Scenario: a wraps field carrying control characters is refused
+- **WHEN** `product`, `version`, `ecosystem`, `runtime` or `license`
+  contains a control character
+- **THEN** the manifest is refused naming the field and the source
+
 ### Requirement: Declared record kinds name the extension itself
 
 A schema-2 manifest MAY carry `[records].kinds`, the `ext` record kinds it
 writes. Each entry SHALL have the form `<name>/<kind>@<version>` whose
 `<name>` is the manifest's own name — an extension declares only its own
-kinds.
+kinds — and SHALL pass the control-character rule.
 
 #### Scenario: declared record kinds parse
 - **WHEN** the `openspec` manifest declares
@@ -137,6 +163,10 @@ kinds.
 
 #### Scenario: a malformed kind is refused
 - **WHEN** a `kinds` entry is not of the form `<name>/<kind>@<version>`
+- **THEN** the manifest is refused naming `kinds` and the entry
+
+#### Scenario: a kind carrying a control character is refused
+- **WHEN** a `kinds` entry contains a control character
 - **THEN** the manifest is refused naming `kinds` and the entry
 
 ### Requirement: Declared isolation is complete and well-formed

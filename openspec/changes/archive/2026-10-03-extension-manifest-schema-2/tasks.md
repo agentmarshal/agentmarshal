@@ -21,8 +21,15 @@
 - [x] 1.8 `[isolation]` requires a boolean `network`, `env` variable names,
   `writes` of `none` or `process-log` and an integer `timeout_seconds` above
   zero — verify: parametrized tests.
-- [x] 1.9 `install` and `remove` are optional in schema 2, required in
-  schema 1 — verify: tests.
+- [x] 1.9 `install`, `remove` and `artifacts` are optional in schema 2, all
+  three required in schema 1 — verify: tests.
+- [x] 1.10 `command` and each `lock` are plain relative paths — no
+  whitespace or shell metacharacters — refused naming the field and the
+  source — verify: parametrized tests.
+- [x] 1.11 Every free-text field of a schema-2 manifest — the `[wraps]`
+  strings, `[records].kinds` entries and a present `install`/`remove` —
+  passes the control-character rule, refused naming the field and the
+  source — verify: parametrized tests.
 
 ## 2. The change itself
 

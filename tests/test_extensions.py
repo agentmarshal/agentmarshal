@@ -185,21 +185,27 @@ def test_dangling_symlink_at_the_manifest_path_is_refused_as_a_symlink(
         read_extension_manifest(tmp_path, "openspec")
 
 
-def _manifest_text(body: str = "", *, schema: int = 2) -> str:
+def _manifest_text(
+    body: str = "", *, schema: int = 2, artifacts: str | None = "[]"
+) -> str:
     return (
         f"schema = {schema}\n"
         'name = "openspec"\n'
         'version = "1.0.0"\n'
         'footprint = ["openspec/"]\n'
         'documents = ["openspec/specs/"]\n'
-        "artifacts = []\n"
-        f"{body}"
+        + (f"artifacts = {artifacts}\n" if artifacts is not None else "")
+        + body
     )
 
 
-def _parse(body: str = "", *, schema: int = 2) -> ExtensionManifest:
+def _parse(
+    body: str = "", *, schema: int = 2, artifacts: str | None = "[]"
+) -> ExtensionManifest:
     return parse_extension_manifest_text(
-        _manifest_text(body, schema=schema), "openspec", "the test manifest"
+        _manifest_text(body, schema=schema, artifacts=artifacts),
+        "openspec",
+        "the test manifest",
     )
 
 
@@ -260,12 +266,82 @@ def test_schema_2_field_in_schema_1_manifest_requires_schema_2(
     assert "the test manifest" in str(raised.value)
 
 
-def test_install_and_remove_are_optional_in_schema_2() -> None:
-    """Scenario: install and remove are optional in schema 2."""
-    manifest = _parse()
+def test_install_remove_and_artifacts_are_optional_in_schema_2() -> None:
+    """Scenario: install, remove and artifacts are optional in schema 2."""
+    manifest = _parse(artifacts=None)
 
     assert manifest.install is None
     assert manifest.remove is None
+    assert manifest.artifacts == ()
+
+
+@pytest.mark.parametrize("field", ["install", "remove", "artifacts"])
+def test_schema_1_requires_install_remove_and_artifacts(field: str) -> None:
+    """Scenario: schema 1 requires install, remove and artifacts."""
+    lines = {
+        "install": 'install = "npx openspec init"',
+        "remove": 'remove = "rm -rf openspec"',
+        "artifacts": "artifacts = []",
+    }
+    del lines[field]
+
+    with pytest.raises(ExtensionManifestError, match=rf"'{field}'") as raised:
+        parse_extension_manifest_text(
+            _manifest_text("\n".join(lines.values()) + "\n", schema=1, artifacts=None),
+            "openspec",
+            "the test manifest",
+        )
+    assert "the test manifest" in str(raised.value)
+
+
+@pytest.mark.parametrize("field", ["install", "remove"])
+def test_schema_2_free_text_carrying_control_characters_is_refused(
+    field: str,
+) -> None:
+    """Scenario: a schema-2 free-text field carrying control characters is refused."""
+    with pytest.raises(ExtensionManifestError, match="control characters") as raised:
+        _parse(f'{field} = "do\\u001bevil"\n')
+    assert f"'{field}'" in str(raised.value)
+    assert "the test manifest" in str(raised.value)
+
+
+def test_adr_0013s_manifest_example_parses() -> None:
+    """ADR-0013's wrapper example declares none of install, remove or artifacts."""
+    manifest = parse_extension_manifest_text(
+        "schema = 2\n"
+        'name = "openspec"\n'
+        'version = "1.0.0"\n'
+        'footprint = ["openspec/", "..."]\n'
+        'documents = ["openspec/specs/"]\n'
+        "[[stage]]\n"
+        'phase = "pre-gate-stop"\n'
+        'command = "bin/validate.py"\n'
+        "[dependencies]\n"
+        'lock = "lock/uv.lock"\n'
+        "[wraps]\n"
+        'product = "openspec"\n'
+        'version = "1.13.2"\n'
+        'ecosystem = "npm"\n'
+        'lock = "lock/package-lock.json"\n'
+        'runtime = "node >= 20"\n'
+        'license = "MIT"\n'
+        "[records]\n"
+        'kinds = ["openspec/change-archived@1"]\n'
+        "[isolation]\n"
+        "network = false\n"
+        "env = []\n"
+        'writes = "none"\n'
+        "timeout_seconds = 120\n",
+        "openspec",
+        "the test manifest",
+    )
+
+    assert manifest.install is None
+    assert manifest.remove is None
+    assert manifest.artifacts == ()
+    assert manifest.stages[0].command == "bin/validate.py"
+    assert manifest.wraps is not None
+    assert manifest.wraps.runtime == "node >= 20"
 
 
 def test_schema_1_manifest_parses_exactly_as_before(tmp_path: Path) -> None:
@@ -326,6 +402,38 @@ def test_command_outside_the_extensions_bin_is_refused(command: str) -> None:
     assert "the test manifest" in str(raised.value)
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        "bin/my file.py",
+        "bin/x.py --strict",
+        "bin/x;y",
+        "bin/x|y",
+        "bin/x&y",
+        "bin/x>y",
+        "bin/x<y",
+        "bin/$x",
+        "bin/`x`",
+        "bin/x(y)",
+        "bin/{x}",
+        "bin/~x",
+        "bin/x'y",
+        'bin/x\\"y',  # a quote, escaped in the TOML source
+        "bin/x=y",
+        "bin/x#y",
+        "bin/x!y",
+        "bin/\\ty",  # a tab, escaped in the TOML source
+    ],
+)
+def test_command_carrying_whitespace_or_a_shell_metacharacter_is_refused(
+    command: str,
+) -> None:
+    """Scenario: a command carrying whitespace or a shell metacharacter is refused."""
+    with pytest.raises(ExtensionManifestError, match="'command'") as raised:
+        _parse(f'[[stage]]\nphase = "post-gate"\ncommand = "{command}"\n')
+    assert "the test manifest" in str(raised.value)
+
+
 def test_malformed_stage_declaration_is_refused() -> None:
     """Scenario: a malformed stage declaration is refused."""
     with pytest.raises(ExtensionManifestError, match="'stage'") as raised:
@@ -349,7 +457,7 @@ def test_dependencies_lock_under_lock_parses() -> None:
 
 @pytest.mark.parametrize(
     "lock",
-    ["/lock/uv.lock", "lock/../uv.lock", "uv.lock", "deps/uv.lock"],
+    ["/lock/uv.lock", "lock/../uv.lock", "uv.lock", "deps/uv.lock", "lock/u v.lock"],
 )
 def test_dependencies_lock_outside_lock_is_refused(lock: str) -> None:
     """Scenario: a dependencies lock outside lock/ is refused."""
@@ -381,6 +489,27 @@ def test_missing_wraps_field_is_refused(missing: str) -> None:
 
 
 @pytest.mark.parametrize(
+    ("field", "line"),
+    [
+        ("product", 'product = "open\\u202espec"'),
+        ("version", 'version = "1.13\\u000b2"'),
+        ("ecosystem", 'ecosystem = "n\\u001bpm"'),
+        ("license", 'license = "MIT\\u2028"'),
+        ("runtime", 'runtime = "no\\u200ede >= 20"'),
+        ("runtime", 'runtime = "node >= 2\\u202e0"'),
+    ],
+)
+def test_wraps_field_carrying_control_characters_is_refused(
+    field: str, line: str
+) -> None:
+    """Scenario: a wraps field carrying control characters is refused."""
+    with pytest.raises(ExtensionManifestError, match="control characters") as raised:
+        _parse(_wraps_body(**{field: line}))
+    assert f"'{field}'" in str(raised.value)
+    assert "the test manifest" in str(raised.value)
+
+
+@pytest.mark.parametrize(
     "runtime",
     ["node>=20", "node 20", ">= 20", "node >=", "node = 20", "node >= 20 x"],
 )
@@ -393,7 +522,7 @@ def test_runtime_not_of_the_declared_form_is_refused(runtime: str) -> None:
 
 @pytest.mark.parametrize(
     "lock",
-    ["/lock/package-lock.json", "lock/../x", "package-lock.json", "deps/x"],
+    ["/lock/package-lock.json", "lock/../x", "package-lock.json", "deps/x", "lock/x y"],
 )
 def test_product_lock_outside_lock_is_refused(lock: str) -> None:
     """Scenario: a product lock outside lock/ is refused."""
@@ -432,6 +561,21 @@ def test_malformed_kind_is_refused(kind: str) -> None:
     """Scenario: a malformed kind is refused."""
     with pytest.raises(ExtensionManifestError, match="'kinds'") as raised:
         _parse(f'[records]\nkinds = ["{kind}"]\n')
+    assert "the test manifest" in str(raised.value)
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "openspec/change-arch\\u202eived@1",
+        "openspec/change-archived@\\u001b1",
+    ],
+)
+def test_kind_carrying_a_control_character_is_refused(kind: str) -> None:
+    """Scenario: a kind carrying a control character is refused."""
+    with pytest.raises(ExtensionManifestError, match="control characters") as raised:
+        _parse(f'[records]\nkinds = ["{kind}"]\n')
+    assert "'kinds'" in str(raised.value)
     assert "the test manifest" in str(raised.value)
 
 

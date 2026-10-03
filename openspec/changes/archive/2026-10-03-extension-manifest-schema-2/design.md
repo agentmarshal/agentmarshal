@@ -39,19 +39,31 @@ they describe is a later task.
   `[[stage]]`. A section that is present is validated in full — every field
   it declares is required — matching how the schema-1 fields are required
   today.
-- **The schema-1 field set stays required.** `name`, `version`, `footprint`,
-  `documents` and `artifacts` keep their schema-1 requiredness in schema 2:
-  the file form is the shared form, and a shared extension declares a
-  footprint. Only `install` and `remove` relax to optional — they stay
-  recorded declarations the tool never runs (ADR-0013), so schema 2 does not
-  require them.
-- **`command` and the locks name a file under a declared directory.**
+- **The schema-1 field set stays required, minus three relaxations.**
+  `name`, `version`, `footprint` and `documents` keep their schema-1
+  requiredness in schema 2: the file form is the shared form, and a shared
+  extension declares a footprint and named documents. `install`, `remove`
+  and `artifacts` relax to optional — ADR-0013's wrapper example carries
+  none of them, `install`/`remove` stay recorded declarations the tool
+  never runs, and an extension without artifact paths declares no
+  `artifacts`. A present `artifacts` is validated exactly as in schema 1.
+- **`command` and the locks name a plain file under a declared directory.**
   `command` names only a file in the `bin/` of its own directory — the
   `PATH` ban of ADR-0013 D13 — and each `lock` names one under `lock/`. The
   existing `validate_scope_entry` supplies the relative-path, no-dot
   component and control-character refusals; on top of it the first path
   component must be the declared directory and a non-empty filename must
-  follow, so a bare program name is refused.
+  follow, so a bare program name is refused. The allowed character set is
+  ASCII letters, digits, `_`, `.`, `-` and `/` — a plain relative path,
+  never whitespace or a shell metacharacter, because the core runs a
+  command as an argv path, never through a shell; the locks share the rule
+  because the spec validates them exactly as a `command`.
+- **Every schema-2 free-text string passes the control-character rule.**
+  The `[wraps]` strings (`product`, `version`, `ecosystem`, `runtime`,
+  `license`), the `[records].kinds` entries and a present `install` or
+  `remove` all go through `reject_control_characters` — the record side's
+  rule — with the refusal naming the field and the source, so no text the
+  manifest declares can forge a line when a later task renders it.
 - **`runtime` keeps the ADR's exact shape.** `<name> >= <version>` — three
   whitespace-separated tokens with `>=` in the middle — because the manifest
   declares a minimum, never a pin; the wrapped product itself comes only

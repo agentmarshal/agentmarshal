@@ -41,6 +41,7 @@ _STAGE_PHASES: tuple[ExtensionPhase, ...] = (
 _WRITES_MODES: tuple[ExtensionWrites, ...] = ("none", "process-log")
 _ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _RECORD_KIND = re.compile(r"[^/@\s]+/[^/@\s]+@[^/@\s]+")
+_PLAIN_PATH = re.compile(r"[A-Za-z0-9_./-]+")
 
 
 @dataclass(frozen=True)
@@ -119,12 +120,27 @@ def _require_string_array(
     return tuple(cast(list[str], value))
 
 
-def _optional_string(
+def _reject_forgeable_text(value: str, what: str, source: str | Path) -> None:
+    try:
+        reject_control_characters(value, what)
+    except JournalContractError as error:
+        raise ExtensionManifestError(f"{error}: {source}") from error
+
+
+def _require_text(data: dict[str, object], field: str, source: str | Path) -> str:
+    """A non-empty string field that also passes the control-character rule."""
+
+    value = _require_string(data, field, source)
+    _reject_forgeable_text(value, f"extension manifest field {field!r}", source)
+    return value
+
+
+def _optional_text(
     data: dict[str, object], field: str, source: str | Path
 ) -> str | None:
     if field not in data:
         return None
-    return _require_string(data, field, source)
+    return _require_text(data, field, source)
 
 
 def _optional_table(
@@ -147,7 +163,9 @@ def _require_directory_file(
 
     ``command`` names only a file in the extension's ``bin/`` and a ``lock``
     only one in its ``lock/`` (ADR-0013 D13): a relative path — no ``PATH``
-    lookup — whose first component is the declared directory.
+    lookup — whose first component is the declared directory. The core runs a
+    command as an argv path, never through a shell, so the path itself carries
+    no whitespace or shell metacharacters either.
     """
 
     value = _require_string(data, field, source)
@@ -155,6 +173,12 @@ def _require_directory_file(
         validate_scope_entry(value, f"extension manifest field {field!r}")
     except JournalContractError as error:
         raise ExtensionManifestError(f"{error}: {source}") from error
+    if _PLAIN_PATH.fullmatch(value) is None:
+        raise ExtensionManifestError(
+            f"extension manifest field {field!r} must be a plain relative path: "
+            "only ASCII letters, digits, '_', '.', '-' and '/' are allowed: "
+            f"{source}"
+        )
     parts = value.split("/")
     if len(parts) < 2 or parts[0] != directory or any(not part for part in parts):
         raise ExtensionManifestError(
@@ -216,28 +240,24 @@ def _parse_wraps(data: dict[str, object], source: str | Path) -> ExtensionWraps 
     section = _optional_table(data, "wraps", source)
     if section is None:
         return None
-    product = _require_string(section, "product", source)
-    version = _require_string(section, "version", source)
-    ecosystem = _require_string(section, "ecosystem", source)
+    product = _require_text(section, "product", source)
+    version = _require_text(section, "version", source)
+    ecosystem = _require_text(section, "ecosystem", source)
     lock = _require_directory_file(section, "lock", "lock", source)
-    runtime = _require_string(section, "runtime", source)
+    runtime = _require_text(section, "runtime", source)
     tokens = runtime.split()
     if len(tokens) != 3 or tokens[1] != ">=":
         raise ExtensionManifestError(
             "extension manifest field 'runtime' must be of the form "
             f"'<name> >= <version>': {source}"
         )
-    try:
-        reject_control_characters(runtime, "extension manifest field 'runtime'")
-    except JournalContractError as error:
-        raise ExtensionManifestError(f"{error}: {source}") from error
     return ExtensionWraps(
         product=product,
         version=version,
         ecosystem=ecosystem,
         lock=lock,
         runtime=runtime,
-        license=_require_string(section, "license", source),
+        license=_require_text(section, "license", source),
     )
 
 
@@ -249,6 +269,9 @@ def _parse_record_kinds(
         return ()
     kinds = _require_string_array(section, "kinds", source)
     for kind in kinds:
+        _reject_forgeable_text(
+            kind, f"extension manifest field 'kinds' entry {kind!r}", source
+        )
         if _RECORD_KIND.fullmatch(kind) is None:
             raise ExtensionManifestError(
                 f"extension manifest field 'kinds' entry {kind!r} must be of "
@@ -351,7 +374,10 @@ def parse_extension_manifest_text(
         )
     footprint = _require_string_array(data, "footprint", source)
     documents = _require_string_array(data, "documents", source)
-    artifacts = _require_string_array(data, "artifacts", source)
+    if schema == 1 or "artifacts" in data:
+        artifacts = _require_string_array(data, "artifacts", source)
+    else:
+        artifacts = ()
     for field, entries in (
         ("footprint", footprint),
         ("documents", documents),
@@ -376,8 +402,8 @@ def parse_extension_manifest_text(
         record_kinds: tuple[str, ...] = ()
         isolation: ExtensionIsolation | None = None
     else:
-        install = _optional_string(data, "install", source)
-        remove = _optional_string(data, "remove", source)
+        install = _optional_text(data, "install", source)
+        remove = _optional_text(data, "remove", source)
         stages = _parse_stages(data, source)
         dependencies = _parse_dependencies(data, source)
         wraps = _parse_wraps(data, source)
