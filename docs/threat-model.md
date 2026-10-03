@@ -236,11 +236,11 @@ default mode trusts the SHA the invoker reports — and `init` names the
 preconditions the tool cannot establish, including that squash and rebase
 merges rewrite a reviewed SHA and that a harness must declare its actor;
 `doctor` reports what it can reach and is a report, not a gate.
-(ADR-0004, "Consequences"; ADR-0014, decision 3; ADR-0017, "Context"
-and decision 2; reviewer-adapter specification, "The reviewer command's
-contract is documented where it is configured"; trust-preconditions
-specification, "`init` names the preconditions it cannot verify" and
-"`doctor` checks the preconditions it can reach".)
+(SECURITY.md; ADR-0004, "Consequences"; ADR-0014, decision 3; ADR-0017,
+"Context" and decision 2; reviewer-adapter specification, "The reviewer
+command's contract is documented where it is configured";
+trust-preconditions specification, "`init` names the preconditions it
+cannot verify" and "`doctor` checks the preconditions it can reach".)
 
 **Local state and the process log do not resist a process running as the
 same OS user.** The process log promises no protection against forgery —
@@ -258,16 +258,18 @@ decisions 2, 8 and 12; ADR-0013, decision 15, "Consequences" and
 "Alternatives considered".)
 
 **The leak scan is best-effort and advisory.** It warns and never blocks
-a merge; its heuristics miss content, so a hit is not proof of a leak and
-a clean run is not proof of safety; it is not authorization to publish,
-and it does not run on the findings lane. An acknowledgement, once its
-surfaces exist, changes what the standalone command refuses and adds a
-mark — it never removes a hit from a surface that shows it, and the scan
-stays advisory with or without one. Mandatory block-on-leak enforcement
-is roadmap. (ADR-0005, implementation-boundary note and decision 2;
-ADR-0021, "Context", decision 3 and "The readers and the advisory follow
-from what is already there" — the marking is decided, not yet
-implemented; ADR-0009, decision 3.)
+a merge; its heuristics miss content — a candidate crafted to leave the
+scan reporting nothing is the stated best-effort limit — so a hit is not
+proof of a leak and a clean run is not proof of safety; it is not
+authorization to publish, and it does not run on the findings lane. An
+acknowledgement, once its surfaces exist, changes what the standalone
+command refuses and adds a mark — it never removes a hit from a surface
+that shows it, and the scan stays advisory with or without one.
+Mandatory block-on-leak enforcement is roadmap. (ADR-0005,
+implementation-boundary note and decision 2; ADR-0021, "Context",
+decision 3 and "The readers and the advisory follow from what is already
+there" — the marking is decided, not yet implemented; ADR-0009,
+decision 3.)
 
 **Nothing is signed, and no SLSA level is claimed.** Review records carry
 no signature; signing and provenance are roadmap. The in-toto Statement
@@ -311,16 +313,17 @@ protection.** Defects in the harness are out of scope by design, and
 provisioning and enforcement of the execution environment stay with the
 harness. A manifest's presence records a declaration — the tool does not
 verify that `install` or `remove` ran, succeeded or produced the files
-the footprint names — and nothing pins an extension's version; a
-supplied extension — a class decided, of which none ships — is
-guaranteed for compatibility with the task cycle at the pinned version,
-not for quality or security. Where stages exist the core is to enforce
-declared isolation as far as the platform allows, naming what it cannot
-enforce, and it restricts only the extension processes it launches
-itself — decided, not yet implemented; the local protection further
-rests on the executor sandbox the adopter kit's implementer-launch
-template is to provide — decided, not yet implemented.
-(ADR-0001, "Consequences"; ADR-0002, "Decision"; ADR-0010,
+the footprint names. A declared extension is recorded, unpinned and
+unchecked — nothing pins its version; a supplied extension — a class
+decided, of which none ships — is pinned by version and a
+package-integrity value and guaranteed for compatibility with the task
+cycle at that version, not for quality or security. Where stages exist
+the core is to enforce declared isolation as far as the platform allows,
+naming what it cannot enforce, and it restricts only the extension
+processes it launches itself — decided, not yet implemented; the local
+protection further rests on the executor sandbox the adopter kit's
+implementer-launch template is to provide — decided, not yet
+implemented. (ADR-0001, "Consequences"; ADR-0002, "Decision"; ADR-0010,
 decisions 1 and 6; ADR-0012, decision 3; ADR-0013, decisions 8, 11 and
 15 — decided, not yet implemented; ADR-0014, decision 12.)
 
@@ -359,23 +362,7 @@ stop short, and this document does not resolve them.
    here". The boundary between a lifecycle-valid record and a gate-earned
    one is not drawn. (SECURITY.md; ADR-0009, decision 3.)
 
-2. **Records read from the working tree.** The gate projects the
-   journal's records — reviews, acceptances, the lifecycle state — from
-   the calling checkout's working tree, where the review attesting the
-   candidate may still be uncommitted, and an untrusted caller can run
-   the gate on a mismatched tree. Where "bypassing the gate" ends when
-   the working tree is itself the untrusted input is not delineated.
-   (ADR-0014, decision 3; ADR-0013, decision 6, as amended; ADR-0004,
-   "Consequences"; SECURITY.md.)
-
-3. **Pipeline attestation is the invoker's assertion.** The default
-   attestation mode trusts the SHA the invoker reports — an assertion
-   spoofable by the invoker by design — while "bypassing the gate" is a
-   vulnerability by SECURITY.md's list. Whether a false attestation is a
-   bypass or a trusted input the boundary assigns to the invoker is not
-   stated. (ADR-0017, "Context" and decision 2; SECURITY.md.)
-
-4. **Symlinks inside the journal.** Symlink refusal is specified for the
+2. **Symlinks inside the journal.** Symlink refusal is specified for the
    extension manifest and its `bin/` and `lock/` paths, for the
    process-log sweep, for local-state creation and for non-regular
    entries of the outbox. No published statement covers a symlink inside
@@ -388,7 +375,7 @@ stop short, and this document does not resolve them.
    outbox specification, "`outbox check` scans what would be sent and
    refuses by exit status".)
 
-5. **Block content the reviewer prompt carries.** A value taken from a
+3. **Block content the reviewer prompt carries.** A value taken from a
    record or a contract prints escaped where it joins a line, but
    material the tool presents as a block — a contract document inlined
    into a brief or a prompt, a diff, an artifact's embedded content — is
@@ -400,7 +387,7 @@ stop short, and this document does not resolve them.
    "Artifact content cannot introduce a verdict" and "The commit path is
    unchanged".)
 
-6. **A sidecar contract that changes under an approved candidate.** A
+4. **A sidecar contract that changes under an approved candidate.** A
    review record may name the contract it judged, and in a sidecar the
    contract text can change under an approved candidate with no host
    commit anywhere. Whether the sidecar gate should say anything when an
@@ -408,19 +395,7 @@ stop short, and this document does not resolve them.
    reads — and what the findings lane does with any of it — is left open
    by the decision itself. (ADR-0011, decisions 3 and 4 and "Left open".)
 
-7. **What the scan covers, and what a defeat of it means.** The
-   added-content scan reads the `merge-base..candidate` diff's added
-   lines; a file that does not decode costs its own readability while
-   the rest are still scanned; the gate's line may bound how many hits it
-   shows provided it says how many it did not; and the scan stays
-   advisory. Whether a candidate crafted to leave the scan reporting
-   nothing is a defect or the stated best-effort limit is not classified.
-   (ADR-0021, "Context"; leak-scan specification, "A leak-scan hit names
-   where it matched and what matched" and "A file that does not decode
-   costs its own readability, not every file's scan"; ADR-0005,
-   implementation-boundary note.)
-
-8. **A record written around the writer with a lowered schema.** Read
+5. **A record written around the writer with a lowered schema.** Read
    time checks such a record by the rules of its own schema — a rule
    bound to a later schema does not apply — so what the design promises
    for it is escaping on display, not refusal. Whether anything beyond
@@ -428,7 +403,7 @@ stop short, and this document does not resolve them.
    record is checked by the current rules at write time and by the rules
    of its own schema at read time"; ADR-0015, decisions 4 and 5.)
 
-9. **A shared extension switched off without review.** The operational
+6. **A shared extension switched off without review.** The operational
    lane — decided, not yet implemented — admits a diff touching only
    `.agentmarshal/switches.toml` and the task's own records, requires no
    review, and skips the extensions' `pre-gate` stages; the reason is
@@ -438,18 +413,18 @@ stop short, and this document does not resolve them.
    review is not assessed. (ADR-0013, decisions 16 and 17, header and
    "Consequences" — decided, not yet implemented; ADR-0010, decision 2.)
 
-10. **`next` reads local, forgeable inputs.** `next` — decided, not yet
-    implemented — reads the process log for an open step and for an
-    extension pause standing without its acceptance, and the plan file;
-    the log promises no protection against forgery and no visibility
-    between machines, so two machines can print different actions for the
-    same task. `next` is not the gate and substitutes for none of its
-    checks — `complete` still re-runs the gate — and whether a forged
-    input can mislead a driver beyond printing a different action is
-    unstated, as is what a consumer may assume of `--json`, which prints
-    the same strings unescaped. (ADR-0023, "Context", decisions 2 and 6
-    and "Consequences" — decided, not yet implemented; ADR-0014,
-    decision 8.)
+7. **`next` reads local, forgeable inputs.** `next` — decided, not yet
+   implemented — reads the process log for an open step and for an
+   extension pause standing without its acceptance, and the plan file;
+   the log promises no protection against forgery and no visibility
+   between machines, so two machines can print different actions for the
+   same task. `next` is not the gate and substitutes for none of its
+   checks — `complete` still re-runs the gate — and whether a forged
+   input can mislead a driver beyond printing a different action is
+   unstated, as is what a consumer may assume of `--json`, which prints
+   the same strings unescaped. (ADR-0023, "Context", decisions 2 and 6
+   and "Consequences" — decided, not yet implemented; ADR-0014,
+   decision 8.)
 
 ## How to classify a finding
 
@@ -470,10 +445,11 @@ own rule. (SECURITY.md.)
 **A weakness the second or third part covers is a hardening suggestion,
 not a vulnerability.** The documented trust boundary is out of scope: a
 person with write access authoring a record under any identity they
-choose, a mismatched checkout, a forged process log, a leak the
-best-effort scan misses — each is stated, and each is reportable as a
-hardening suggestion rather than a vulnerability. Where the boundary
-truly is not drawn, the third part says so and names the sources.
+choose, a mismatched checkout, a pipeline attestation the invoker
+asserts falsely, a forged process log, a leak the best-effort scan
+misses — each is stated, and each is reportable as a hardening
+suggestion rather than a vulnerability. Where the boundary truly is not
+drawn, the third part says so and names the sources.
 
 **Report a vulnerability** only through GitHub private vulnerability
 reporting — the **Report a vulnerability** button on the repository's
