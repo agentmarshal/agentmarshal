@@ -404,13 +404,25 @@ def _is_regular(entry: Path) -> bool:
 
 
 def _run_check(stderr: TextIO) -> int:
+    return _check(stderr, pin=False)[0]
+
+
+def _check(stderr: TextIO, *, pin: bool) -> tuple[int, dict[bytes, bytes]]:
+    """The ``outbox check`` run: its status and, when *pin*, its pins.
+
+    A pin is the blob id the file stages as, computed by ``git
+    hash-object --stdin --path`` from the very bytes this run read — the
+    same clean filters the add applies, so the id is the one staging
+    writes. Pinning at the read leaves no second read for an edit to
+    slip through: a later send verifies it commits what was checked.
+    """
     located = _locate("check", stderr)
     if located is None:
-        return 1
+        return 1, {}
     project_root, outbox = located
     markers = _markers("check", project_root, stderr)
     if markers is None:
-        return 1
+        return 1, {}
     try:
         entries = sorted(outbox.iterdir())
     except OSError as error:
@@ -419,10 +431,11 @@ def _run_check(stderr: TextIO) -> int:
             f"{safe_path(_shown_name(outbox), markers)}: {_os_error_text(error)}",
             file=stderr,
         )
-        return 1
+        return 1, {}
 
     refused = False
     checked = 0
+    pinned: dict[bytes, bytes] = {}
     hits: list[LeakHit] = []
     for entry in entries:
         # The escaped printable form of the name — a surrogate-carrying
@@ -450,6 +463,21 @@ def _run_check(stderr: TextIO) -> int:
         except OSError as error:
             problems.append(f"cannot be read: {_os_error_text(error)}")
         else:
+            if pin:
+                # The key is the repository-relative path's real bytes —
+                # the form `ls-files` reports — so a non-UTF-8 name is
+                # pinned without ever becoming text.
+                relative = f"{_OUTBOX_PREFIX}{entry.name}"
+                try:
+                    pinned[os.fsencode(relative)] = _git(
+                        project_root,
+                        ["hash-object", "--stdin", f"--path={relative}"],
+                        raw,
+                    ).strip()
+                except _OutboxGitError as error:
+                    problems.append(
+                        f"cannot be pinned: {safe_path(str(error), markers)}"
+                    )
             try:
                 text = raw.decode("utf-8")
             except UnicodeDecodeError:
@@ -483,12 +511,12 @@ def _run_check(stderr: TextIO) -> int:
         )
     if refused:
         print("outbox check: refused", file=stderr)
-        return 1
+        return 1, pinned
     print(
         f"outbox check: {checked} draft(s) checked; all conform; "
         "no known leak signatures"
     )
-    return 0
+    return 0, pinned
 
 
 # --- `outbox send` ---------------------------------------------------------
@@ -598,35 +626,6 @@ def _restore_outbox_index(project_root: Path, records: bytes) -> str | None:
     return None
 
 
-def _checked_blob_ids(project_root: Path, outbox: Path) -> dict[bytes, bytes]:
-    """The blob id each regular outbox file stages as, keyed by path bytes.
-
-    ``git hash-object`` applies the same clean filters ``git add`` does,
-    so the id it computes from the worktree file is the id the add
-    writes. A draft can change between the check and the commit; pinning
-    every checked file here is what lets the send compare the staged set
-    against what was vetted. Keys are the repository-relative path's real
-    bytes — the same form ``ls-files`` reports — so a non-UTF-8 name is
-    pinned without ever becoming text.
-    """
-
-    try:
-        entries = sorted(outbox.iterdir())
-    except OSError as error:
-        raise _OutboxGitError(
-            f"cannot read the outbox: {_os_error_text(error)}"
-        ) from error
-    expected: dict[bytes, bytes] = {}
-    for entry in entries:
-        if not _is_regular(entry):
-            continue
-        relative = f"{_OUTBOX_PREFIX}{entry.name}"
-        expected[os.fsencode(relative)] = _git(
-            project_root, ["hash-object", "--", relative]
-        ).strip()
-    return expected
-
-
 def _batch_mismatch(project_root: Path, expected: dict[bytes, bytes]) -> list[str]:
     """The outbox names whose staged blob is not what the check saw.
 
@@ -655,8 +654,10 @@ def _batch_mismatch(project_root: Path, expected: dict[bytes, bytes]) -> list[st
 
 def _run_send(stderr: TextIO) -> int:
     # The check runs literally: its report is the operator's reason, and
-    # any refusal it voices refuses the send.
-    if _run_check(stderr) != 0:
+    # any refusal it voices refuses the send. The pins it brings back are
+    # the blob ids of the very bytes it read — what the commit must show.
+    check_status, expected = _check(stderr, pin=True)
+    if check_status != 0:
         print("outbox send: refused — the check did not pass", file=stderr)
         return 1
     located = _locate("send", stderr)
@@ -704,9 +705,6 @@ def _run_send(stderr: TextIO) -> int:
         index_records = _git(
             project_root, ["ls-files", "--stage", "-z", "--", _OUTBOX_DIR_SPEC]
         )
-        # What the check just vetted, pinned as the blob id each file
-        # stages as: what is committed must be what was checked.
-        expected = _checked_blob_ids(project_root, outbox)
         # --force: an ignore rule must not silently drop a draft the check
         # just passed — the whole outbox is what leaves.
         _git(project_root, ["add", "--force", "--", _OUTBOX_DIR_SPEC])

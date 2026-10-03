@@ -40,10 +40,11 @@ such lines — a digest, a concatenation, `docs/proposals/README.md` itself
 ## Decisions
 
 - **`send` runs `check` literally.** The first thing `send` does is run
-  the same `_run_check` the `outbox check` command runs — its report is
-  the operator's reason when it refuses. Any non-zero result refuses the
-  send: a non-conforming draft, a scan hit, an unchecked entry, a missing
-  outbox, an unreadable config.
+  the same check the `outbox check` command runs — its report is the
+  operator's reason when it refuses, and when it runs under `send` it
+  also brings back the per-file digests the next decision verifies. Any
+  non-zero result refuses the send: a non-conforming draft, a scan hit,
+  an unchecked entry, a missing outbox, an unreadable config.
 - **`send` refuses when anything outside the outbox is already staged.**
   The staged set is `git diff --cached --name-status -z` — which reads an
   unborn-HEAD repository against the empty tree, so a first send needs no
@@ -73,13 +74,14 @@ such lines — a digest, a concatenation, `docs/proposals/README.md` itself
   whatever delivery the operator chooses. Delivery itself, and any
   push, is not the command's.
 - **What is committed is what was checked.** A draft can change between
-  `check` and `add`, so before the add the command pins every regular
-  outbox file as the blob id `git hash-object` computes for it — the
-  same clean filters the add applies, so the id is the one staging
-  writes. After the add, `git ls-files --stage` under the outbox must
-  show exactly those paths at stage 0 with those ids: a changed,
-  removed or newly arrived file is a refusal naming the mismatched
-  names, and the index goes back.
+  the check's read and the commit, so the check itself pins every
+  regular outbox file it reads: the blob id `git hash-object --stdin
+  --path` computes from the very bytes the check vetted — the same clean
+  filters the add applies, so the id is the one staging writes, and no
+  second read gives an edit a window. After the add, `git ls-files
+  --stage` under the outbox must show exactly those paths at stage 0
+  with those ids: a changed, removed or newly arrived file is a refusal
+  naming the mismatched names, and the index goes back.
 - **A refused send — and only a refused send — puts the index back.**
   Before the add, the command records `git ls-files --stage -z` under
   the outbox. On a refusal after the add — a mismatch, a hook refusing

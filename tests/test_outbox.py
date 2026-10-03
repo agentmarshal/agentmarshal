@@ -901,6 +901,98 @@ def test_send_refuses_when_a_draft_changed_since_the_check(
     assert _git_out(repo, "diff", "--cached", "--name-only") == ""
 
 
+def test_send_pins_the_bytes_the_check_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The pin is the blob id of the very bytes the check read — a draft
+    edited between that read and the staging is refused, where a pin
+    taken by re-reading the file later would bless the edit."""
+    repo = _project(tmp_path, monkeypatch)
+    draft = _conforming_draft(_outbox(repo))
+    read_bytes = Path.read_bytes
+
+    def mutate_after_read(self: Path) -> bytes:
+        raw = read_bytes(self)
+        if self.name == draft.name:
+            self.write_text(_CONFORMING + "\nedited late\n", encoding="utf-8")
+        return raw
+
+    monkeypatch.setattr(Path, "read_bytes", mutate_after_read)
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    assert main(["outbox", "send"]) == 1
+
+    captured = capsys.readouterr()
+    assert "changed since the check" in captured.err
+    assert "0001-filled.md" in captured.err
+    assert _git_out(repo, "rev-list", "--count", "--all") == "0"
+    # What the send staged is put back — the changed draft is unstaged.
+    assert _git_out(repo, "diff", "--cached", "--name-only") == ""
+
+
+def test_a_draft_renamed_since_the_last_batch_is_sent_as_a_rename(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A staged rename's paths are both counted: a draft renamed inside
+    the outbox since the last batch is inside on both ends — it sends as
+    one rename and the message names both its paths."""
+    repo = _project(tmp_path, monkeypatch)
+    _conforming_draft(_outbox(repo))
+    assert main(["outbox", "send"]) == 0
+    _git(
+        repo,
+        "mv",
+        ".agentmarshal/upstream/0001-filled.md",
+        ".agentmarshal/upstream/0002-renamed.md",
+    )
+    capsys.readouterr()
+
+    assert main(["outbox", "send"]) == 0
+
+    assert _git_out(repo, "rev-list", "--count", "HEAD") == "2"
+    message = _git_out(repo, "show", "-s", "--format=%B", "HEAD")
+    assert ".agentmarshal/upstream/0001-filled.md" in message
+    assert ".agentmarshal/upstream/0002-renamed.md" in message
+    committed = _git_out(
+        repo, "diff-tree", "-M", "--no-commit-id", "--name-status", "-r", "HEAD"
+    )
+    assert "R100" in committed
+    assert ".agentmarshal/upstream/0001-filled.md" in committed
+    assert ".agentmarshal/upstream/0002-renamed.md" in committed
+
+
+def test_send_refuses_a_staged_rename_reaching_outside_the_outbox(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Both halves of a staged rename are judged: a rename whose source
+    sits outside the outbox refuses the send, naming the outside path,
+    even though the name it lands on is inside the outbox."""
+    repo = _project(tmp_path, monkeypatch)
+    (repo / "tracked.md").write_text(_CONFORMING, encoding="utf-8")
+    _git(repo, "add", "tracked.md")
+    _git(repo, "commit", "-m", "base")
+    _conforming_draft(_outbox(repo))
+    _git(repo, "mv", "tracked.md", ".agentmarshal/upstream/0009-moved.md")
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    assert main(["outbox", "send"]) == 1
+
+    captured = capsys.readouterr()
+    assert "staged outside the outbox" in captured.err
+    assert "tracked.md" in captured.err
+    assert _git_out(repo, "rev-list", "--count", "HEAD") == "1"
+    # The operator's staged rename is untouched — nothing send added.
+    assert ".agentmarshal/upstream/0009-moved.md" in _git_out(
+        repo, "diff", "--cached", "--name-only"
+    )
+
+
 def test_a_made_commit_is_never_put_back(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
