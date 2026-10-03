@@ -1,0 +1,31 @@
+{
+  "advisory_findings": [
+    "send-git-error-echoes-commit-message",
+    "restore-hardcodes-sha1-null-oid",
+    "restore-runs-after-successful-commit"
+  ],
+  "artifacts": [
+    {
+      "hash": "924d731168db4c1708255e2f415cc0caac5fd31ec15f2b4fc235548c4c7d52a2",
+      "ref": ".agentmarshal/journal/tasks/CR-156/artifacts/01M4030SXMQTW3AETDNEM3RAFP-review.md"
+    }
+  ],
+  "created_at": "2026-10-03T05:15:34.708126Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "7fc703877c75255a43e1cb4e707d7189c1fe567d",
+  "reviewed_contract": "7a59c33dfd4e6559f3dcea92a041a17ceca797bfeb7012b9a7eff87823c4882e",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-156",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "approved"
+}

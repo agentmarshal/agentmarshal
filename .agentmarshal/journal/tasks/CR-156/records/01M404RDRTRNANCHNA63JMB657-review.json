@@ -1,0 +1,31 @@
+{
+  "advisory_findings": [
+    "send-pins-blobs-after-the-check-not-during-it",
+    "source-line-regex-has-no-left-boundary-and-no-digest-end-anchor",
+    "status-validates-the-outbox-before-the-index"
+  ],
+  "artifacts": [
+    {
+      "hash": "e5e13fac4a14c96679464340044e7905246eb1bd3f52b211b6a9d99d1348278e",
+      "ref": ".agentmarshal/journal/tasks/CR-156/artifacts/01M404RDRTRNANCHNA63JMB657-review.md"
+    }
+  ],
+  "created_at": "2026-10-03T05:45:57.274402Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "bf95df9219441f7fb60d72ac71618db5492b3740",
+  "reviewed_contract": "7a59c33dfd4e6559f3dcea92a041a17ceca797bfeb7012b9a7eff87823c4882e",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-156",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "approved"
+}
