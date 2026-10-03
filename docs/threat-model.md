@@ -8,8 +8,8 @@ suggestion.
 This document decides nothing itself. Every statement cites the material
 it restates — a decision record by its number and decision or section, a
 specification under `openspec/specs/` by its capability and requirement,
-or README.md, SECURITY.md or another document by name and section — and
-where this text and a source differ, the source wins. A statement marked
+or README.md or SECURITY.md by name and section — and where this text
+and a source differ, the source wins. A statement marked
 *decided, not yet implemented* is design the published decisions fix but
 the code does not yet carry out: a promise about direction, not about what
 the tool does today. The decision records from ADR-0007 onward mark their
@@ -72,8 +72,8 @@ is compared, on git identities, with the finding's recorder; a recorder
 that resolves to no git identity leaves independence unestablished and the
 lane refuses — and the review launcher refuses the same cases before it
 spends a reviewer run. What this comparison is — and is not — is stated
-in the next part. (README.md, "Trust boundary"; docs/overview.md,
-"Terminology"; ADR-0009, decision 3; findings-review specification, "The
+in the next part. (README.md, "Trust boundary"; ADR-0012, decision 6;
+ADR-0009, decision 3; findings-review specification, "The
 launcher refuses before it spends a reviewer run".)
 
 **An acceptance is not a bypass.** An acceptance is a record, not a mode:
@@ -86,7 +86,7 @@ reviewer independence, pipeline attestation, append-only integrity,
 record validity and lifecycle consistency apply unchanged. Accepted work
 is never displayed as approved, and an acceptance by a writer of the
 candidate is permitted and always marked as self-acceptance. (ADR-0007,
-decisions 1, 2, 3, 4 and 5; docs/overview.md, "Terminology".)
+decisions 1, 2, 3, 4 and 5.)
 
 **Forgeable text cannot forge output.** Values a record or a contract
 header carries — finding ids, acceptance fields, artifact references,
@@ -210,9 +210,11 @@ out of scope: the line is whether the gate's own checks hold, not whether
 a record's author is who it says. Signing is on the roadmap, and roles
 arrive with it — a permission over unauthenticated identity would be the
 appearance of a control. A recorder that is not a declared actor is still
-accepted and shown as such, and a rule whose field is absent reads "not
-checked" rather than refusing or silently skipping. Self-acceptance and
-self-acknowledgement are permitted and marked — visible rather than
+accepted and shown for what it is, and a rule whose field is absent
+reads "not checked" rather than refusing or silently skipping — the
+record types that require a recorder exist; the showing and the
+"not checked" lines are decided, not yet implemented. Self-acceptance
+and self-acknowledgement are permitted and marked — visible rather than
 impossible; an acknowledgement establishes that someone claiming to be
 the named actor recorded it — declared and durable, not proven (the
 record type exists; the surfaces that mark acknowledged hits are decided,
@@ -234,12 +236,11 @@ default mode trusts the SHA the invoker reports — and `init` names the
 preconditions the tool cannot establish, including that squash and rebase
 merges rewrite a reviewed SHA and that a harness must declare its actor;
 `doctor` reports what it can reach and is a report, not a gate.
-(ADR-0004, "Consequences"; ADR-0014, decision 3; docs/overview.md,
-"Terminology"; ADR-0017, "Context" and decision 2; reviewer-adapter
-specification, "The reviewer command's contract is documented where it
-is configured"; trust-preconditions specification, "`init` names the
-preconditions it cannot verify" and "`doctor` checks the preconditions it
-can reach".)
+(ADR-0004, "Consequences"; ADR-0014, decision 3; ADR-0017, "Context"
+and decision 2; reviewer-adapter specification, "The reviewer command's
+contract is documented where it is configured"; trust-preconditions
+specification, "`init` names the preconditions it cannot verify" and
+"`doctor` checks the preconditions it can reach".)
 
 **Local state and the process log do not resist a process running as the
 same OS user.** The process log promises no protection against forgery —
@@ -266,8 +267,7 @@ stays advisory with or without one. Mandatory block-on-leak enforcement
 is roadmap. (ADR-0005, implementation-boundary note and decision 2;
 ADR-0021, "Context", decision 3 and "The readers and the advisory follow
 from what is already there" — the marking is decided, not yet
-implemented; ADR-0009, decision 3; docs/overview.md, "Direction
-(roadmap)".)
+implemented; ADR-0009, decision 3.)
 
 **Nothing is signed, and no SLSA level is claimed.** Review records carry
 no signature; signing and provenance are roadmap. The in-toto Statement
@@ -277,8 +277,7 @@ attestation; SLSA Source alignment is adjacency and roadmap, never
 asserted as a derived level, and the completeness invariant is normative
 intent, not a property a validator enforces. Imported evidence is marked
 and is provenance-weaker than live capture. (README.md, "Trust boundary";
-ADR-0005, decisions 1, 4 and 5; ADR-0006, decision 5; docs/overview.md,
-"Direction (roadmap)".)
+ADR-0005, decisions 1, 4 and 5; ADR-0006, decision 5.)
 
 **Records written around the tool get checked, not trusted.** The gate
 still checks records another tool wrote, and a record a candidate adds is
@@ -313,14 +312,15 @@ provisioning and enforcement of the execution environment stay with the
 harness. A manifest's presence records a declaration — the tool does not
 verify that `install` or `remove` ran, succeeded or produced the files
 the footprint names — and nothing pins an extension's version; a
-supplied extension is guaranteed for compatibility with the task cycle at
-the pinned version, not for quality or security. Where stages exist the
-core is to enforce declared isolation as far as the platform allows,
-naming what it cannot enforce, and it restricts only the extension
-processes it launches itself — decided, not yet implemented; the local
-protection further rests on the executor sandbox the adopter kit's
-implementer-launch template is to provide — decided, not yet
-implemented. (ADR-0001, "Consequences"; ADR-0002, "Decision"; ADR-0010,
+supplied extension — a class decided, of which none ships — is
+guaranteed for compatibility with the task cycle at the pinned version,
+not for quality or security. Where stages exist the core is to enforce
+declared isolation as far as the platform allows, naming what it cannot
+enforce, and it restricts only the extension processes it launches
+itself — decided, not yet implemented; the local protection further
+rests on the executor sandbox the adopter kit's implementer-launch
+template is to provide — decided, not yet implemented.
+(ADR-0001, "Consequences"; ADR-0002, "Decision"; ADR-0010,
 decisions 1 and 6; ADR-0012, decision 3; ADR-0013, decisions 8, 11 and
 15 — decided, not yet implemented; ADR-0014, decision 12.)
 
@@ -330,19 +330,21 @@ decides nothing from it, and nothing downstream re-verifies it; the
 `record-check` command that writes one is decided, not yet implemented.
 The `changes_required` count reports and decides nothing — it blocks no
 merge. Why a run fell back to a later entry in an assignment list is
-shown, not verified. A documents check checks the presence of a change,
-not its truth. The session outcome vocabulary is documentation, not
-code — `outcome` accepts any non-empty string. An `ext` record's body is
-opaque to the core — the type is decided, not yet implemented. The
-outbox is neither evidence nor journal — not append-only, not
-task-scoped and not gated — and the tool transmits nothing and opens no
-network for it. And nothing in the tool can tell an honest acceptance
-from a convenient one. (ADR-0017, decision 2 and "Consequences";
-gate-lanes specification, "The transcript reports the task's
-changes_required count"; ADR-0016, decision 4; ADR-0018, decision 3;
-ADR-0010, decision 3; ADR-0019, decision 5; ADR-0013, decision 18 —
-decided, not yet implemented; ADR-0020, decision 6 and "Alternatives
-considered"; ADR-0007, "Consequences".)
+shown, not verified — the contract header admits the lists and the
+`fallback_reason` field exists; the checking and the display are
+decided, not yet implemented. A documents check checks the presence of
+a change, not its truth. The session outcome vocabulary is
+documentation, not code — `outcome` accepts any non-empty string. An
+`ext` record's body is opaque to the core — the type is decided, not
+yet implemented. The outbox is neither evidence nor journal — not
+append-only, not task-scoped and not gated — and the tool transmits
+nothing and opens no network for it. And nothing in the tool can tell
+an honest acceptance from a convenient one. (ADR-0017, decision 2 and
+"Consequences"; gate-lanes specification, "The transcript reports the
+task's changes_required count"; ADR-0016, decision 4; ADR-0018,
+decision 3; ADR-0010, decision 3; ADR-0019, decision 5; ADR-0013,
+decision 18 — decided, not yet implemented; ADR-0020, decision 6 and
+"Alternatives considered"; ADR-0007, "Consequences".)
 
 ## Open questions
 
@@ -371,8 +373,7 @@ stop short, and this document does not resolve them.
    spoofable by the invoker by design — while "bypassing the gate" is a
    vulnerability by SECURITY.md's list. Whether a false attestation is a
    bypass or a trusted input the boundary assigns to the invoker is not
-   stated. (docs/overview.md, "Terminology"; ADR-0017, "Context" and
-   decision 2; SECURITY.md.)
+   stated. (ADR-0017, "Context" and decision 2; SECURITY.md.)
 
 4. **Symlinks inside the journal.** Symlink refusal is specified for the
    extension manifest and its `bin/` and `lock/` paths, for the
@@ -443,11 +444,12 @@ stop short, and this document does not resolve them.
     the log promises no protection against forgery and no visibility
     between machines, so two machines can print different actions for the
     same task. `next` is not the gate and substitutes for none of its
-    checks — `complete` still re-runs the gate — and whether a forged input can
-    mislead a driver beyond printing a different action is unstated, as
-    is what a consumer may assume of `--json`, which prints the same
-    strings unescaped. (ADR-0023, decisions 2 and 6 and "Consequences" —
-    decided, not yet implemented; ADR-0014, decision 8.)
+    checks — `complete` still re-runs the gate — and whether a forged
+    input can mislead a driver beyond printing a different action is
+    unstated, as is what a consumer may assume of `--json`, which prints
+    the same strings unescaped. (ADR-0023, "Context", decisions 2 and 6
+    and "Consequences" — decided, not yet implemented; ADR-0014,
+    decision 8.)
 
 ## How to classify a finding
 
