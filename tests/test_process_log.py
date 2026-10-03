@@ -603,3 +603,33 @@ def test_open_writer_retries_on_a_name_collision(
     assert first.path.name.endswith(f"-{'a' * 16}.jsonl")
     assert second.path.name.endswith(f"-{'b' * 16}.jsonl")
     assert second.path.stem.split("-")[0] == first.path.stem.split("-")[0]
+
+
+def test_an_event_that_cannot_be_encoded_as_strict_json_is_refused(
+    tmp_path: Path,
+) -> None:
+    """Scenario: an event that cannot be encoded as strict JSON is refused."""
+
+    writer = open_writer(LocalState(tmp_path / "agentmarshal"))
+
+    for value in (float("nan"), float("inf"), object()):
+        with pytest.raises(ProcessLogError, match="strict JSON"):
+            write_event(writer, "bad", value=value)
+
+    assert writer.path.read_bytes() == b""
+
+
+def test_a_failed_append_names_the_log_file_and_what_to_do(
+    tmp_path: Path,
+) -> None:
+    """Scenario: a failed append names the log file and what to do."""
+
+    writer = open_writer(LocalState(tmp_path / "agentmarshal"))
+    writer.path.unlink()
+    writer.path.mkdir()
+
+    with pytest.raises(ProcessLogError) as raised:
+        write_event(writer, "blocked")
+
+    assert str(writer.path) in str(raised.value)
+    assert "retry the write" in str(raised.value)

@@ -1,26 +1,34 @@
 """The ``outbox`` command group: finding drafts for upstream.
 
-ADR-0020 decisions 1-3: one command group named ``outbox`` covers the life
+ADR-0020 decisions 1-5: one command group named ``outbox`` covers the life
 of a finding for upstream; ``finding`` stays the journal command of
 ADR-0009. ``outbox new`` scaffolds a draft carrying the five fields of
 CONTRIBUTING's finding form, Version and Environment filled from the
 machine. ``outbox check`` names, per draft, the file and each missing or
 still-unfilled field, runs the merge boundary's leak scan over what would
 be sent, and refuses by exit status so a batch wrapper can refuse to send.
-``send`` and ``status`` are the same ADR's decisions 4-5, a later task.
+``outbox send`` runs that check, stages only the outbox, verifies the
+staged blobs are what the check vetted and makes one batch commit —
+delivery stays with the operator. ``outbox status`` hashes
+the outbox files and compares them with the ``Source:`` lines of an index
+file the operator passes. The group opens no network.
 
 The outbox is ``project_root/.agentmarshal/upstream`` — the directory
 ``init`` scaffolds beside ``project.json`` — which is the same expression
 in both placements: in an embedded project it is the host repository's
-``.agentmarshal``, in a sidecar the journal repository's.
+``.agentmarshal``, in a sidecar the journal repository's, so a batch
+commit lands in the journal repository and never touches the host.
 """
 
 from __future__ import annotations
 
 import argparse
 import errno
+import hashlib
+import os
 import platform
 import re
+import subprocess
 from pathlib import Path
 from typing import TextIO
 
@@ -37,6 +45,11 @@ from agentmarshal.project import PROJECT_DIR_NAME, find_project_root
 
 _UPSTREAM_DIR = "upstream"
 _README = "README.md"
+# The outbox as a repository-relative path and as the prefix staged paths
+# carry: `.agentmarshal/upstream` — the README's exclude pathspec applied
+# the other way.
+_OUTBOX_DIR_SPEC = f"{PROJECT_DIR_NAME}/{_UPSTREAM_DIR}"
+_OUTBOX_PREFIX = f"{_OUTBOX_DIR_SPEC}/"
 
 # The five fields of CONTRIBUTING's "Reporting a finding", in its order,
 # with the hint each carries there. The hint is also the scaffold's
@@ -75,7 +88,7 @@ def register(
     """Add the ``outbox`` group and its subcommands to *subparsers*."""
 
     outbox_parser = subparsers.add_parser(
-        "outbox", help="scaffold and check finding drafts for upstream"
+        "outbox", help="scaffold, check, send and report finding drafts"
     )
     outbox_commands = outbox_parser.add_subparsers(dest="outbox_command", required=True)
     new_parser = outbox_commands.add_parser(
@@ -84,6 +97,18 @@ def register(
     new_parser.add_argument("gist", help="one-line gist naming the finding")
     outbox_commands.add_parser(
         "check", help="name what the drafts lack and what the leak scan finds"
+    )
+    outbox_commands.add_parser(
+        "send", help="check, then commit the outbox as one batch"
+    )
+    status_parser = outbox_commands.add_parser(
+        "status", help="report which outbox files an index file claims"
+    )
+    status_parser.add_argument(
+        "--index",
+        required=True,
+        type=Path,
+        help="file whose Source: lines name published digests",
     )
 
 
@@ -94,6 +119,10 @@ def run(args: argparse.Namespace, stderr: TextIO) -> int:
         return _run_new(args.gist, stderr)
     if args.outbox_command == "check":
         return _run_check(stderr)
+    if args.outbox_command == "send":
+        return _run_send(stderr)
+    if args.outbox_command == "status":
+        return _run_status(args.index, stderr)
     print(f"outbox: unknown command {args.outbox_command}", file=stderr)
     return 1
 
@@ -148,6 +177,53 @@ def _config_error_text(error: GateError) -> str:
     if cause is not None:
         return type(cause).__name__
     return "unreadable"
+
+
+def _shown_name(name: str | bytes | os.PathLike[str]) -> str:
+    """The printable form of a file name or path.
+
+    ``os.fsencode`` reverses the surrogateescape decode the filesystem
+    layer applied — and passes bytes through — so a ``backslashreplace``
+    decode writes one ``\\xNN`` escape per undecodable byte: the escaped
+    printable form the leak scan uses for undecodable diff header lines.
+    The surrogate-carrying ``str`` a non-UTF-8 name arrives as could not
+    be printed at all; this form can, and is also what the name scan and
+    the marker masking see.
+    """
+
+    return os.fsencode(name).decode("utf-8", errors="backslashreplace")
+
+
+def _markers(
+    command: str, project_root: Path, stderr: TextIO
+) -> tuple[str, ...] | None:
+    """The configured private markers, or a printed refusal.
+
+    A malformed ``leak_scan`` section is a fixed diagnosis: the
+    ``CaptureError``'s text echoes the unknown configured keys, so no part
+    of the exception's text is printed; a failed read is described without
+    the ``GateError``'s path-carrying text, like every error in this
+    group.
+    """
+
+    try:
+        return markers_from_config(project_root)
+    except CaptureError:
+        # A malformed leak_scan section is a fixed diagnosis: the
+        # CaptureError's text echoes the unknown configured keys, so no
+        # part of the exception's text is printed.
+        print(
+            f"outbox {command}: the leak-scan configuration in project.json "
+            "is malformed; run `agentmarshal doctor`",
+            file=stderr,
+        )
+    except GateError as error:
+        print(
+            f"outbox {command}: cannot read project config: "
+            f"{_config_error_text(error)}",
+            file=stderr,
+        )
+    return None
 
 
 # --- `outbox new` ---------------------------------------------------------
@@ -328,48 +404,51 @@ def _is_regular(entry: Path) -> bool:
 
 
 def _run_check(stderr: TextIO) -> int:
+    return _check(stderr, pin=False)[0]
+
+
+def _check(stderr: TextIO, *, pin: bool) -> tuple[int, dict[bytes, bytes]]:
+    """The ``outbox check`` run: its status and, when *pin*, its pins.
+
+    A pin is the blob id the file stages as, computed by ``git
+    hash-object --stdin --path`` from the very bytes this run read — the
+    same clean filters the add applies, so the id is the one staging
+    writes. Pinning at the read leaves no second read for an edit to
+    slip through: a later send verifies it commits what was checked.
+    """
     located = _locate("check", stderr)
     if located is None:
-        return 1
+        return 1, {}
     project_root, outbox = located
-    try:
-        markers = markers_from_config(project_root)
-    except CaptureError:
-        # A malformed leak_scan section is a fixed diagnosis: the
-        # CaptureError's text echoes the unknown configured keys, so no
-        # part of the exception's text is printed.
-        print(
-            "outbox check: the leak-scan configuration in project.json is "
-            "malformed; run `agentmarshal doctor`",
-            file=stderr,
-        )
-        return 1
-    except GateError as error:
-        print(
-            f"outbox check: cannot read project config: {_config_error_text(error)}",
-            file=stderr,
-        )
-        return 1
+    markers = _markers("check", project_root, stderr)
+    if markers is None:
+        return 1, {}
     try:
         entries = sorted(outbox.iterdir())
     except OSError as error:
         print(
             f"outbox check: cannot read the outbox at "
-            f"{safe_path(str(outbox), markers)}: {_os_error_text(error)}",
+            f"{safe_path(_shown_name(outbox), markers)}: {_os_error_text(error)}",
             file=stderr,
         )
-        return 1
+        return 1, {}
 
     refused = False
     checked = 0
+    pinned: dict[bytes, bytes] = {}
     hits: list[LeakHit] = []
     for entry in entries:
+        # The escaped printable form of the name — a surrogate-carrying
+        # non-UTF-8 name used to crash the print below (CR-156's carried
+        # advisory); this form is also what the name scan and the masking
+        # see.
+        name = _shown_name(entry.name)
         if not _is_regular(entry):
             # Not a draft and not checkable, but a later send would stage
             # it unchecked — nothing in the outbox passes in silence.
             refused = True
-            hits.extend(_name_hits(entry.name, markers))
-            print(f"{safe_path(entry.name, markers)}: not a draft, not checked")
+            hits.extend(_name_hits(name, markers))
+            print(f"{safe_path(name, markers)}: not a draft, not checked")
             continue
         # The README init writes is not a draft — the field check below
         # skips it — but it leaves with the batch like every file, so its
@@ -384,6 +463,21 @@ def _run_check(stderr: TextIO) -> int:
         except OSError as error:
             problems.append(f"cannot be read: {_os_error_text(error)}")
         else:
+            if pin:
+                # The key is the repository-relative path's real bytes —
+                # the form `ls-files` reports — so a non-UTF-8 name is
+                # pinned without ever becoming text.
+                relative = f"{_OUTBOX_PREFIX}{entry.name}"
+                try:
+                    pinned[os.fsencode(relative)] = _git(
+                        project_root,
+                        ["hash-object", "--stdin", f"--path={relative}"],
+                        raw,
+                    ).strip()
+                except _OutboxGitError as error:
+                    problems.append(
+                        f"cannot be pinned: {safe_path(str(error), markers)}"
+                    )
             try:
                 text = raw.decode("utf-8")
             except UnicodeDecodeError:
@@ -400,10 +494,10 @@ def _run_check(stderr: TextIO) -> int:
                         problems.append("missing " + ", ".join(missing))
                     if unfilled:
                         problems.append("unfilled " + ", ".join(unfilled))
-        hits.extend(_draft_hits(entry.name, text, markers))
+        hits.extend(_draft_hits(name, text, markers))
         if problems:
             refused = True
-            print(f"{safe_path(entry.name, markers)}: {'; '.join(problems)}")
+            print(f"{safe_path(name, markers)}: {'; '.join(problems)}")
     if hits:
         refused = True
         print(
@@ -417,9 +511,325 @@ def _run_check(stderr: TextIO) -> int:
         )
     if refused:
         print("outbox check: refused", file=stderr)
-        return 1
+        return 1, pinned
     print(
         f"outbox check: {checked} draft(s) checked; all conform; "
         "no known leak signatures"
     )
+    return 0, pinned
+
+
+# --- `outbox send` ---------------------------------------------------------
+
+
+class _OutboxGitError(Exception):
+    """A git invocation for the outbox failed or could not be run."""
+
+
+def _git(project_root: Path, arguments: list[str], feed: bytes = b"") -> bytes:
+    """Run git in the project repository and return stdout bytes.
+
+    Mirrors ``gate``'s ``_run_git_bytes``: a missing git is described by
+    its errno text — never ``str(OSError)``, which carries a path — and a
+    non-zero exit by git's own stderr decoded lossily. The error names
+    only the subcommand: the arguments stay out of it because one of them
+    can be the whole commit message. A path git quotes back can itself
+    carry a marker, so the caller prints the message masked. *feed* is
+    piped to git's stdin — the plumbing ``send`` uses to put index
+    entries back takes its records there.
+    """
+
+    try:
+        result = subprocess.run(
+            ["git", *arguments],
+            cwd=project_root,
+            capture_output=True,
+            check=False,
+            input=feed,
+        )
+    except OSError as error:
+        raise _OutboxGitError(f"cannot run git: {_os_error_text(error)}") from error
+    if result.returncode != 0:
+        detail = result.stderr.decode("utf-8", errors="backslashreplace").strip()
+        raise _OutboxGitError(
+            f"git {arguments[0]} failed" + (f": {detail}" if detail else "")
+        )
+    return result.stdout
+
+
+def _staged_paths(project_root: Path) -> set[str]:
+    """Every path the index's difference from HEAD names.
+
+    ``git diff --cached`` reads an unborn-HEAD repository against the
+    empty tree, so a first send needs no special case. ``-z`` keeps names
+    as bytes; each is decoded to the escaped printable form — a non-UTF-8
+    path can be staged as easily as created. A rename or copy contributes
+    both its paths because either can be the one outside the outbox.
+    """
+
+    raw = _git(project_root, ["diff", "--cached", "--name-status", "-z"])
+    tokens = [token for token in raw.split(b"\0") if token]
+    paths: set[str] = set()
+    index = 0
+    while index < len(tokens):
+        status = tokens[index].decode("ascii", errors="replace")[0]
+        if status in "RC":
+            if index + 2 >= len(tokens):
+                raise _OutboxGitError("unparseable rename in the staged list")
+            paths.add(_shown_name(tokens[index + 1]))
+            paths.add(_shown_name(tokens[index + 2]))
+            index += 3
+        else:
+            if index + 1 >= len(tokens):
+                raise _OutboxGitError("unparseable entry in the staged list")
+            paths.add(_shown_name(tokens[index + 1]))
+            index += 2
+    return paths
+
+
+def _restore_outbox_index(project_root: Path, records: bytes) -> str | None:
+    """Un-stage exactly what a refused send staged under the outbox.
+
+    *records* is the ``git ls-files --stage -z`` output taken before the
+    batch was staged. Replaying it through ``update-index --index-info``
+    puts every recorded entry back — including one the add rewrote —
+    while ``--force-remove`` drops each path now staged under the outbox
+    that no record names: the additions the send made. Neither step
+    writes an object id, so the repository's object format cannot break
+    it — a mode-0 index-info line would have to name the format's null
+    id — and the plumbing form works where ``restore --staged`` cannot,
+    an unborn HEAD. Nothing outside the outbox is ever in either list. A
+    failure is returned as text for the caller to warn about; the refusal
+    stands either way.
+    """
+
+    try:
+        current = _git(project_root, ["ls-files", "-z", "--", _OUTBOX_DIR_SPEC])
+        recorded = {
+            token.split(b"\t", 1)[1] for token in records.split(b"\0") if b"\t" in token
+        }
+        additions = b"".join(
+            path + b"\0"
+            for path in current.split(b"\0")
+            if path and path not in recorded
+        )
+        if additions:
+            _git(
+                project_root,
+                ["update-index", "--force-remove", "-z", "--stdin"],
+                additions,
+            )
+        if records:
+            _git(project_root, ["update-index", "-z", "--index-info"], records)
+    except _OutboxGitError as error:
+        return str(error)
+    return None
+
+
+def _batch_mismatch(project_root: Path, expected: dict[bytes, bytes]) -> list[str]:
+    """The outbox names whose staged blob is not what the check saw.
+
+    Every pinned path must sit in the index at stage 0 with exactly the
+    pinned blob id, and nothing else may be staged under the outbox: a
+    file that arrived after the check was never vetted, and a changed or
+    removed one would commit content nobody checked.
+    """
+
+    raw = _git(project_root, ["ls-files", "--stage", "-z", "--", _OUTBOX_DIR_SPEC])
+    staged: dict[bytes, list[tuple[bytes, bytes]]] = {}
+    for token in raw.split(b"\0"):
+        if not token:
+            continue
+        meta, separator, path = token.partition(b"\t")
+        fields = meta.split(b" ")
+        if not separator or len(fields) != 3:
+            raise _OutboxGitError("unparseable index record")
+        staged.setdefault(path, []).append((fields[1], fields[2]))
+    bad = [
+        path for path, blob in expected.items() if staged.get(path) != [(blob, b"0")]
+    ]
+    bad.extend(path for path in staged if path not in expected)
+    return sorted(_shown_name(path) for path in bad)
+
+
+def _run_send(stderr: TextIO) -> int:
+    # The check runs literally: its report is the operator's reason, and
+    # any refusal it voices refuses the send. The pins it brings back are
+    # the blob ids of the very bytes it read — what the commit must show.
+    check_status, expected = _check(stderr, pin=True)
+    if check_status != 0:
+        print("outbox send: refused — the check did not pass", file=stderr)
+        return 1
+    located = _locate("send", stderr)
+    if located is None:
+        return 1
+    project_root, outbox = located
+    markers = _markers("send", project_root, stderr)
+    if markers is None:
+        return 1
+    try:
+        # The check just passed, so every entry is a regular file and a
+        # draft is any name but the README init writes — a batch of no
+        # drafts would commit the README alone.
+        if not any(entry.name != _README for entry in outbox.iterdir()):
+            print("outbox send: no drafts to send", file=stderr)
+            return 1
+    except OSError as error:
+        print(
+            f"outbox send: cannot read the outbox at "
+            f"{safe_path(_shown_name(outbox), markers)}: {_os_error_text(error)}",
+            file=stderr,
+        )
+        return 1
+    try:
+        staged = _staged_paths(project_root)
+    except _OutboxGitError as error:
+        print(f"outbox send: {safe_path(str(error), markers)}", file=stderr)
+        return 1
+    outside = sorted(path for path in staged if not path.startswith(_OUTBOX_PREFIX))
+    if outside:
+        # Findings must not ride along in another commit, nor another
+        # commit's work in the batch — the staged set outside the outbox
+        # is the operator's to commit or unstage first.
+        print(
+            "outbox send: staged outside the outbox — commit or unstage it "
+            "first: " + ", ".join(safe_path(path, markers) for path in outside),
+            file=stderr,
+        )
+        return 1
+    index_records: bytes | None = None
+    committed = False
+    try:
+        # Taken before the add so a refused send can put the index back
+        # exactly as it found it under the outbox.
+        index_records = _git(
+            project_root, ["ls-files", "--stage", "-z", "--", _OUTBOX_DIR_SPEC]
+        )
+        # --force: an ignore rule must not silently drop a draft the check
+        # just passed — the whole outbox is what leaves.
+        _git(project_root, ["add", "--force", "--", _OUTBOX_DIR_SPEC])
+        batch = sorted(
+            path
+            for path in _staged_paths(project_root)
+            if path.startswith(_OUTBOX_PREFIX)
+        )
+        if not batch:
+            raise _OutboxGitError(
+                "nothing to send — the outbox has no uncommitted changes"
+            )
+        changed = _batch_mismatch(project_root, expected)
+        if changed:
+            raise _OutboxGitError("changed since the check: " + ", ".join(changed))
+        message = "outbox: findings batch\n\n" + "\n".join(
+            f"- {path}" for path in batch
+        )
+        _git(project_root, ["commit", "--message", message])
+        committed = True
+    except _OutboxGitError as error:
+        # The refusal stands, but whatever the add staged must not stay:
+        # the index goes back to what the send found. Only a refusal
+        # touches it — a made commit is never rolled back.
+        if index_records is not None and not committed:
+            restore_error = _restore_outbox_index(project_root, index_records)
+            if restore_error is not None:
+                print(
+                    f"outbox send: could not restore the index: "
+                    f"{safe_path(restore_error, markers)}",
+                    file=stderr,
+                )
+        print(f"outbox send: {safe_path(str(error), markers)}", file=stderr)
+        return 1
+    try:
+        commit = _git(project_root, ["rev-parse", "HEAD"]).decode("ascii").strip()
+    except _OutboxGitError as error:
+        print(
+            f"outbox send: the batch is committed but its id could not be "
+            f"read: {safe_path(str(error), markers)}",
+            file=stderr,
+        )
+        return 1
+    print(commit)
+    return 0
+
+
+# --- `outbox status` -------------------------------------------------------
+
+
+# One index entry: `Source:` — optionally `**`-decorated the way a
+# published digest header writes it — followed by whitespace, an optional
+# backtick, `sha256:` and 64 hexadecimal digits, then an optional closing
+# backtick. Each occurrence is an entry, identified by its digest — the
+# line it sits on is kept for the report, and a digest carried by two
+# lines is still one entry.
+_SOURCE_LINE = re.compile(r"(?:\*\*Source:\*\*|Source:)\s*`?sha256:([0-9A-Fa-f]{64})`?")
+
+
+def _run_status(index_path: Path, stderr: TextIO) -> int:
+    located = _locate("status", stderr)
+    if located is None:
+        return 1
+    project_root, outbox = located
+    markers = _markers("status", project_root, stderr)
+    if markers is None:
+        return 1
+    try:
+        index_text = index_path.read_bytes().decode("utf-8", errors="replace")
+    except OSError as error:
+        print(
+            f"outbox status: cannot read the index "
+            f"{safe_path(_shown_name(index_path), markers)}: "
+            f"{_os_error_text(error)}",
+            file=stderr,
+        )
+        return 1
+    by_digest: dict[str, list[int]] = {}
+    for line_number, line in enumerate(index_text.split("\n"), start=1):
+        for match in _SOURCE_LINE.finditer(line):
+            claim_lines = by_digest.setdefault(match.group(1).lower(), [])
+            if line_number not in claim_lines:
+                claim_lines.append(line_number)
+    try:
+        entries = sorted(outbox.iterdir())
+    except OSError as error:
+        print(
+            f"outbox status: cannot read the outbox at "
+            f"{safe_path(_shown_name(outbox), markers)}: {_os_error_text(error)}",
+            file=stderr,
+        )
+        return 1
+
+    refused = False
+    claimed: set[str] = set()
+    for entry in entries:
+        name = safe_path(_shown_name(entry.name), markers)
+        if not _is_regular(entry):
+            # Not a file and not hashable — the check's "nothing passes in
+            # silence" rule, applied to the channel's other direction.
+            refused = True
+            print(f"{name}: not a regular file, not hashed")
+            continue
+        try:
+            raw = entry.read_bytes()
+        except OSError as error:
+            refused = True
+            print(f"{name}: cannot be read: {_os_error_text(error)}")
+            continue
+        digest = hashlib.sha256(raw).hexdigest()
+        lines = by_digest.get(digest)
+        if lines:
+            claimed.add(digest)
+            plural = "s" if len(lines) > 1 else ""
+            print(f"{name}: claimed by index line{plural} {', '.join(map(str, lines))}")
+        else:
+            print(f"{name}: no index entry")
+    for digest, lines in by_digest.items():
+        if digest not in claimed:
+            plural = "s" if len(lines) > 1 else ""
+            print(
+                f"index line{plural} {', '.join(map(str, lines))}: "
+                f"sha256:{digest} claims no outbox file"
+            )
+    if refused:
+        print("outbox status: refused", file=stderr)
+        return 1
     return 0

@@ -1,0 +1,31 @@
+{
+  "advisory_findings": [
+    "untabled-write-only-refusal",
+    "fourth-validator-beyond-criterion",
+    "recorded-by-reorder-changes-message"
+  ],
+  "artifacts": [
+    {
+      "hash": "5b28b4f290214b4a5bb30c0beac363ef7171fbe1db7976868a8cde6fe39f553e",
+      "ref": ".agentmarshal/journal/tasks/CR-154/artifacts/01M40A6P0E7K95A5XRV9X746AV-review.md"
+    }
+  ],
+  "created_at": "2026-10-03T07:21:07.342902Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "f0507981fd8a709a290f907a86d557956f5b1ebd",
+  "reviewed_contract": "fad559b19a563f2791688c292c649e31858732f873404d5b97111599d54560de",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-154",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "approved"
+}
