@@ -136,8 +136,9 @@ permission over unauthenticated identity — the appearance of a control
 — which is the reason
 [ADR-0006](ADR-0006-actors-and-identity.md) deferred roles until
 signing. Roles arrive with signing; this decision introduces none.
-`status` shows who acknowledged — visibility, not permission, is what
-the journal can honestly give.
+The decision pairs admission with visibility: `status` shows who
+acknowledged — visibility, not permission, is what the journal can
+honestly give.
 
 ### 5. Self-acknowledgement is permitted, and marked
 
@@ -160,18 +161,21 @@ for an acceptance: someone claiming to be the named actor recorded this
 acknowledgement, with this reason, at this time — declared and durable,
 not proven.
 
-### 6. The readers and the advisory stay where they are
+### The readers and the advisory follow from what is already there
 
-The gate, the command and `status` find acknowledgements among the
-journal's records, read where the gate reads records today — the
-calling checkout's working tree in the embedded placement, the
-journal repository's working tree in a sidecar
-([ADR-0014](ADR-0014-where-things-live.md)). A repository with no
-journal has no records to find, and the command behaves there exactly
-as today.
+Where an acknowledgement is found follows from where the records it
+joins already live: the gate, the command and `status` find
+acknowledgements among the journal's records, read where the gate
+reads records today — the calling checkout's working tree in the
+embedded placement, the journal repository's working tree in a
+sidecar ([ADR-0014](ADR-0014-where-things-live.md)). A repository
+with no journal has no records to find, and the command behaves there
+exactly as today.
 
-The gate's leak scan stays advisory and never blocks — with an
-acknowledgement or without one.
+And that the scan stays advisory follows from what an acknowledgement
+is: a mark on the hits an advisory scan prints, not a verdict the
+scan gains. The gate's leak scan stays advisory and never blocks —
+with an acknowledgement or without one.
 
 ### What this revises
 
