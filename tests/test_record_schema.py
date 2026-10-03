@@ -3,6 +3,7 @@
 import json
 from collections.abc import Mapping
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -417,6 +418,60 @@ def test_session_record_schema_uses_the_same_derivation(
     """Scenario: each writer stamps the minimum schema its record needs."""
 
     assert session_record_schema(activity) == expected
+
+
+def test_no_writer_stamps_a_schema_no_field_needs() -> None:
+    """Scenario: no writer stamps a schema no field needs.
+
+    A record carrying no field a schema-7 family admits keeps the stamp it
+    always had — the family existing does not lift a record that uses none
+    of it.
+    """
+
+    records = [
+        create_opened_record("CR-001", "t"),
+        create_completed_record("CR-001", "t", _COMMIT),
+        create_abandoned_record("CR-001", "t", "r"),
+        create_review_record("CR-001", "t", _COMMIT, "approved", *_REVIEWER, []),
+        create_acceptance_record("CR-001", "t", _COMMIT, "op", ["F-1"], "r"),
+        create_session_record("CR-001", "t", "r", "a", "implementation", "d", 1, 2, 3),
+        create_session_record("CR-001", "t", "r", "a", "coordination", "d", 1, 2, 3),
+    ]
+    for record in records:
+        assert cast(int, record["schema"]) < 7, record
+    assert session_record_schema("coordination") < 7
+
+
+def test_a_writer_stamps_schema_7_when_its_record_needs_it() -> None:
+    """Scenario: a writer stamps schema 7 when its record needs it.
+
+    Each field of the family — `report_ready` included, on the `False`
+    that is a value carried rather than a field omitted — raises the
+    session's stamp to 7 through the one derivation.
+    """
+
+    family: tuple[tuple[str, Any], ...] = (
+        ("commit", _COMMIT),
+        ("model", "m"),
+        ("trace", "https://t.example/run"),
+        ("cli_session", "c-1"),
+        ("report_ready", False),
+        ("fallback_reason", "fell back"),
+    )
+    for field, value in family:
+        record = create_session_record(
+            "CR-001",
+            "t",
+            "r",
+            "a",
+            "implementation",
+            "d",
+            1,
+            2,
+            3,
+            **{field: value},
+        )
+        assert record["schema"] == 7, field
 
 
 def test_a_record_is_checked_against_where_it_lies_on_read(tmp_path: Path) -> None:

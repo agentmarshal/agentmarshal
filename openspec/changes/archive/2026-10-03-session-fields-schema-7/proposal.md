@@ -24,10 +24,19 @@ produced or with what.
   through the minimum-schema derivation; a session without them stamps
   what it stamps today — 3, or 6 for coordination.
 - `create_session_record` accepts the six as optional keyword arguments.
+- The first schema-7 family registering makes published requirements
+  untrue; they are modified in place: `session-activity`'s
+  coordination-schema requirement (a session carrying a family field
+  carries 7, not the schema it had) and, in `record-schema`, the schema-7
+  requirement (a writer stamps 7 exactly when a field needs it), the
+  minimum-schema enumeration (which gains 7) and the rule-table
+  requirement's enumeration of the non-schema-1 bindings (which gains the
+  family's own shape rule).
 
 ## Capabilities
 
 - modified: `session-activity`
+- modified: `record-schema`
 
 ## Impact
 

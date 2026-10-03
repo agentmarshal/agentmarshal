@@ -28,9 +28,10 @@ reader of session records.
 ### Requirement: An older reader refuses a coordination session by its schema
 A session record whose activity is `coordination` SHALL carry the schema number
 that introduced the value, and a record with any other activity SHALL keep the
-schema it had. A reader that predates the value then refuses the record as an
-unsupported schema rather than as a malformed field, and a journal that never
-records coordination stays readable by it.
+schema it had unless a field of the schema-7 session family raises it to 7. A
+reader that predates the value then refuses the record as an unsupported schema
+rather than as a malformed field, and a journal that never records coordination
+stays readable by it.
 
 #### Scenario: coordination stamps the newer schema
 - **WHEN** a session is recorded with the activity `coordination`
@@ -38,7 +39,13 @@ records coordination stays readable by it.
 
 #### Scenario: other activities keep their schema
 - **WHEN** a session is recorded with `implementation`, `review` or `other`
+  carrying none of the schema-7 session fields
 - **THEN** the record carries the same schema number as before this change
+
+#### Scenario: a non-coordination session carrying a schema-7 field carries 7
+- **WHEN** a session is recorded with `implementation`, `review` or `other`
+  carrying a field of the schema-7 session family
+- **THEN** the record carries schema 7
 
 ### Requirement: A session record can say what it produced and with what
 From schema 7, a session record MAY carry `commit` — the commit the
@@ -49,9 +56,9 @@ never fetched; `cli_session` — a non-empty string naming the CLI session a
 resume needs; `report_ready` — a boolean saying the run's report was
 finished; and `fallback_reason` — a non-empty string saying why a run
 moved down the fallback list, shown and never verified. Each field is
-optional. Each string field SHALL pass the forgeable-text rule registered
-for the session record type and that field, and no length bound SHALL
-apply to any of them.
+optional. Each of `model`, `trace`, `cli_session` and `fallback_reason`
+SHALL pass the forgeable-text rule registered for the session record type
+and that field, and no length bound SHALL apply to any of them.
 
 #### Scenario: a session carrying the new fields is written and read back
 - **WHEN** a session record carries `commit`, `model`, `trace`,
@@ -69,7 +76,7 @@ apply to any of them.
 
 #### Scenario: an empty string field is refused
 - **WHEN** a session record's `model`, `trace`, `cli_session` or
-  `fallback_reason` is empty or is not a string
+  `fallback_reason` is empty, all whitespace or is not a string
 - **THEN** it is refused and nothing is written
 
 #### Scenario: a report_ready that is not a boolean is refused

@@ -144,9 +144,10 @@ _SCHEMA_2_FIELDS = frozenset(
 _SCHEMA_2_SESSION_FIELDS = frozenset({"usage"})
 _RECORDED_BY_SOURCES = frozenset({"project-actor", "git-identity", "override"})
 # Schema 7 (ADR-0022) is the schema the 0.5.0 record model arrives under.
-# Its field families and record types register in the tasks that introduce
-# them; until then a record stamped 7 may carry only what the earlier
-# schemas admit, and no writer stamps it — nothing requires it yet.
+# Its remaining field families and record types register in the tasks that
+# introduce them; a record stamped 7 without a registered family may carry
+# only what the earlier schemas admit, and a writer stamps 7 only when the
+# record it builds carries a field a schema-7 family admits.
 _SUPPORTED_SCHEMAS = frozenset({1, 2, 3, 4, 5, 6, 7})
 _SCHEMA_4_FIELDS = frozenset(
     {"reviewed_finding", "accepted_finding", "completed_finding"}
@@ -302,11 +303,12 @@ def _allowed_fields(record_type: str, schema: int) -> frozenset[str]:
 # into the validators it needs and nothing more. The schema-7 session
 # family registers its displayed strings below; ADR-0022 section 8 bounds
 # no length for them, so the three limit tables stay empty of the family.
+# `commit` has no entry: its 40-lowercase-hex shape admits no character the
+# rule refuses, so a registration would be dead weight beside it.
 _TEXT_CHAR_LIMITS: dict[tuple[str | None, str], int] = {}
 _TEXT_BYTE_LIMITS: dict[tuple[str | None, str], int] = {}
 _JSON_BYTE_LIMITS: dict[tuple[str | None, str], int] = {}
 _FORGEABLE_TEXT_FIELDS: dict[tuple[str | None, str], None] = {
-    ("session", "commit"): None,
     ("session", "model"): None,
     ("session", "trace"): None,
     ("session", "cli_session"): None,
@@ -549,7 +551,7 @@ def _check_session_fields_7(data: Mapping[str, object], _context: _RuleContext) 
         if field not in data:
             continue
         value = data[field]
-        if not isinstance(value, str) or not value:
+        if not isinstance(value, str) or not value.strip():
             raise JournalRecordError(
                 f"session record field {field!r} must be a non-empty string"
             )

@@ -31,15 +31,18 @@ the `record-session` flags that write all of them, are separate tasks.
   them at write and, on read, under the record's own schema — the same
   field-admission rule that gates `usage` from 2 and `reviewed_contract`
   from 5.
-- **Each string field registers into `_FORGEABLE_TEXT_FIELDS` keyed
-  `("session", field)`; `report_ready` does not.** `commit`, `model`,
-  `trace`, `cli_session` and `fallback_reason` are displayed strings, so
-  ADR-0022 section 8 puts them under the forgeable-text rule. The
-  registration keys on the record type as the mechanism requires — a
-  `None` ("every type") key would claim the rule guards these names
-  wherever they lie, and no other type carries them. `report_ready` is a
-  boolean: the rule refuses a registered non-string fail-closed, so
-  registering it would refuse every honest value.
+- **`model`, `trace`, `cli_session` and `fallback_reason` register into
+  `_FORGEABLE_TEXT_FIELDS` keyed `("session", field)`; `commit` and
+  `report_ready` do not.** The four are displayed strings, so ADR-0022
+  section 8 puts them under the forgeable-text rule. The registration
+  keys on the record type as the mechanism requires — a `None` ("every
+  type") key would claim the rule guards these names wherever they lie,
+  and no other type carries them. `report_ready` is a boolean: the rule
+  refuses a registered non-string fail-closed, so registering it would
+  refuse every honest value. `commit` gets no entry: the 40-lowercase-hex
+  shape the `session-fields-7` rule checks first admits no character the
+  forgeable-text rule refuses, so the registration could never fire —
+  dead weight beside the shape rule, not a second layer.
 - **No field registers into a length-bound table.** ADR-0022 section 8
   bounds `excerpt`, `payload` and the new record types' `reason` alone —
   none of these fields — so `_TEXT_CHAR_LIMITS`, `_TEXT_BYTE_LIMITS` and
@@ -50,7 +53,11 @@ the `record-session` flags that write all of them, are separate tasks.
   `_REVIEWED_COMMIT_PATTERN` the binding fields already measure by), the
   non-empty-string shapes and `report_ready`'s boolean are not any of the
   four shared validators, and a family with no shape check would admit a
-  malformed value the spec refuses. The rule is its own table entry bound
+  malformed value the spec refuses. "Non-empty" is measured after
+  `strip()`: a string of only whitespace carries nothing for a reader, so
+  it is refused like the empty string — the same check `reopened`,
+  `amendment` and `acceptance` already run on their reasons. The rule is
+  its own table entry bound
   to the schema whose fields it guards — the same binding the shared
   validators and the `coordination` gate take — never folded into the
   schema-1 `session-fields` rule, where a tightening would claim to apply

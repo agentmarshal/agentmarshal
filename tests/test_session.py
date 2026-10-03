@@ -139,11 +139,16 @@ def test_a_commit_that_is_not_40_lowercase_hex_is_refused(
 
 
 @pytest.mark.parametrize("field", ("model", "trace", "cli_session", "fallback_reason"))
-@pytest.mark.parametrize("value", ["", 5])
+@pytest.mark.parametrize("value", ["", "   ", 5])
 def test_an_empty_string_field_is_refused(
     field: str, value: object, tmp_path: Path
 ) -> None:
-    """Scenario: an empty string field is refused."""
+    """Scenario: an empty string field is refused.
+
+    All-whitespace is refused with the empty string: it carries nothing a
+    reader could use, so the check measures non-empty after a strip, as
+    the `reopened`, `amendment` and `acceptance` reasons already do.
+    """
 
     journal_root = tmp_path / "journal"
     with pytest.raises(JournalRecordError, match="non-empty string"):
@@ -165,15 +170,32 @@ def test_a_report_ready_that_is_not_a_boolean_is_refused(
     assert not journal_root.exists()
 
 
+def test_report_ready_false_is_written_and_read_back(tmp_path: Path) -> None:
+    """`report_ready: false` is a value carried, not a field omitted.
+
+    `create_session_record` sets each family field on `is not None`, so a
+    false report_ready is written — and its presence is a family field, so
+    the record stamps 7. A truthiness test would silently drop it.
+    """
+
+    journal_root = tmp_path / "journal"
+    write_record(journal_root, "CR-001", _session_with(report_ready=False))
+
+    stored = read_records(journal_root, "CR-001")[0]
+    assert stored["report_ready"] is False
+    assert stored["schema"] == 7
+
+
 @pytest.mark.parametrize("field", _STRING_FIELDS)
 def test_a_string_field_that_could_forge_a_rendered_line_is_refused(
     field: str, tmp_path: Path
 ) -> None:
     """Scenario: a string field that could forge a rendered line is refused.
 
-    The commit field passes its own shape check first only on hex input, so
-    a forgeable value still meets the forgeable-text refusal through the
-    other registered fields — and through `commit` itself.
+    `model`, `trace`, `cli_session` and `fallback_reason` meet the
+    forgeable-text refusal; `commit` meets its own 40-hex shape refusal
+    first, which admits no forgeable character — the registration would
+    never fire, so the family registers the four displayed strings only.
     """
 
     journal_root = tmp_path / "journal"
@@ -245,3 +267,31 @@ def test_a_session_without_the_family_keeps_its_schema(
     write_record(journal_root, "CR-001", _session_record(activity))
 
     assert read_records(journal_root, "CR-001")[0]["schema"] == expected
+
+
+@pytest.mark.parametrize("activity", ("implementation", "review", "other"))
+def test_a_non_coordination_session_carrying_a_schema_7_field_carries_7(
+    activity: str, tmp_path: Path
+) -> None:
+    """Scenario: a non-coordination session carrying a schema-7 field
+    carries 7."""
+
+    journal_root = tmp_path / "journal"
+    write_record(
+        journal_root,
+        "CR-001",
+        create_session_record(
+            "CR-001",
+            "test",
+            "implementer",
+            "agent",
+            activity,
+            "done",
+            1,
+            2,
+            3,
+            model="m",
+        ),
+    )
+
+    assert read_records(journal_root, "CR-001")[0]["schema"] == 7
