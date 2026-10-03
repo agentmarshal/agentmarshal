@@ -25,6 +25,18 @@ from test_journal import initialize_status_repo
 _COMMIT = "a" * 40
 
 
+@pytest.fixture(autouse=True)
+def _actor_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the recorder resolution independent of the runner's environment.
+
+    A check record requires a resolvable recorder, and the ambient
+    `AGENTMARSHAL_ACTOR` must not decide whether a test resolves one —
+    every test that needs a recorder names the actor itself.
+    """
+
+    monkeypatch.delenv("AGENTMARSHAL_ACTOR", raising=False)
+
+
 def _check_record(**overrides: Any) -> dict[str, object]:
     record = create_check_record(
         "CR-001",
@@ -88,10 +100,11 @@ def test_the_optional_fields_may_be_absent(
     ["a" * 39, "a" * 41, "A" * 40, "g" * 40, "a" * 40 + " ", 40, None],
 )
 def test_a_commit_that_is_not_40_lowercase_hex_is_refused(
-    commit: object, tmp_path: Path
+    commit: object, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Scenario: a commit that is not 40 lowercase hex is refused."""
 
+    monkeypatch.setenv("AGENTMARSHAL_ACTOR", "ci-runner")
     journal_root = tmp_path / "journal"
     record = _check_record(commit=commit) if commit is not None else _check_record()
     if commit is None:
@@ -104,10 +117,11 @@ def test_a_commit_that_is_not_40_lowercase_hex_is_refused(
 
 @pytest.mark.parametrize("name", ["", "   ", 5, None])
 def test_a_name_that_is_missing_or_empty_is_refused(
-    name: object, tmp_path: Path
+    name: object, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Scenario: a name that is missing or empty is refused."""
 
+    monkeypatch.setenv("AGENTMARSHAL_ACTOR", "ci-runner")
     journal_root = tmp_path / "journal"
     record = _check_record()
     if name is None:
@@ -122,10 +136,11 @@ def test_a_name_that_is_missing_or_empty_is_refused(
 
 @pytest.mark.parametrize("result", ["success", "", 5, None])
 def test_a_result_outside_the_outcome_vocabulary_is_refused(
-    result: object, tmp_path: Path
+    result: object, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Scenario: a result outside the outcome vocabulary is refused."""
 
+    monkeypatch.setenv("AGENTMARSHAL_ACTOR", "ci-runner")
     journal_root = tmp_path / "journal"
     record = _check_record()
     if result is None:
@@ -141,10 +156,11 @@ def test_a_result_outside_the_outcome_vocabulary_is_refused(
 @pytest.mark.parametrize("field", ("failed_step", "excerpt", "run_url"))
 @pytest.mark.parametrize("value", ["", "   ", 5])
 def test_an_optional_field_that_is_empty_is_refused(
-    field: str, value: object, tmp_path: Path
+    field: str, value: object, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Scenario: an optional field that is empty is refused."""
 
+    monkeypatch.setenv("AGENTMARSHAL_ACTOR", "ci-runner")
     journal_root = tmp_path / "journal"
     with pytest.raises(JournalRecordError, match="non-empty string"):
         write_record(journal_root, "CR-001", _check_record(**{field: value}))
@@ -152,7 +168,9 @@ def test_an_optional_field_that_is_empty_is_refused(
     assert not journal_root.exists()
 
 
-def test_an_excerpt_beyond_the_byte_bound_is_refused(tmp_path: Path) -> None:
+def test_an_excerpt_beyond_the_byte_bound_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Scenario: an excerpt beyond the byte bound is refused.
 
     The bound is measured on the field's UTF-8 encoding — 'é' is two
@@ -160,6 +178,7 @@ def test_an_excerpt_beyond_the_byte_bound_is_refused(tmp_path: Path) -> None:
     character count would pass.
     """
 
+    monkeypatch.setenv("AGENTMARSHAL_ACTOR", "ci-runner")
     journal_root = tmp_path / "journal"
     with pytest.raises(JournalRecordError, match="at most 4096 UTF-8 bytes"):
         write_record(journal_root, "CR-001", _check_record(excerpt="é" * 2049))
@@ -169,7 +188,7 @@ def test_an_excerpt_beyond_the_byte_bound_is_refused(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("field", ("name", "failed_step", "excerpt", "run_url"))
 def test_a_displayed_string_that_could_forge_a_line_is_refused(
-    field: str, tmp_path: Path
+    field: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Scenario: a displayed string that could forge a line is refused.
 
@@ -178,6 +197,7 @@ def test_a_displayed_string_that_could_forge_a_line_is_refused(
     admit no forgeable character, so they carry no registration.
     """
 
+    monkeypatch.setenv("AGENTMARSHAL_ACTOR", "ci-runner")
     journal_root = tmp_path / "journal"
     with pytest.raises(JournalRecordError, match="control characters"):
         write_record(journal_root, "CR-001", _check_record(**{field: "ok\nforged"}))
@@ -206,7 +226,9 @@ def test_a_check_record_stamps_schema_7() -> None:
     assert record["schema"] == 7
 
 
-def test_a_check_record_stamped_below_7_is_refused_at_write(tmp_path: Path) -> None:
+def test_a_check_record_stamped_below_7_is_refused_at_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Scenario: a check record stamped below 7 is refused at write.
 
     A check carrying its fields meets the field-admission refusal first,
@@ -214,6 +236,7 @@ def test_a_check_record_stamped_below_7_is_refused_at_write(tmp_path: Path) -> N
     record-type gate. Both are refused before anything is written.
     """
 
+    monkeypatch.setenv("AGENTMARSHAL_ACTOR", "ci-runner")
     journal_root = tmp_path / "journal"
     record = _check_record()
     record["schema"] = 6
