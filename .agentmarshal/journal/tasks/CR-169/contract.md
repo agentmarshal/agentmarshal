@@ -6,6 +6,8 @@ scope = [
   "src/agentmarshal/journal/review.py",
   "src/agentmarshal/process_log.py",
   "tests/",
+  "docs/overview.md",
+  "docs/quickstart.md",
   "openspec/changes/review-prose-to-process-log/",
   "openspec/changes/archive/",
   "openspec/specs/review-evidence/",
@@ -16,7 +18,7 @@ acceptance = [
   "at capture level `hash`, the accepted verdict's output is written byte for byte to a file under the local state's process-log area (the layout is stated in design.md), and a `review-prose` event carrying the task, the file's path and its sha256 is appended to the process log; stderr names the path as today; the journal holds nothing — no artifact, no field",
   "whatever the reviewer command wrote to its error stream on a successful run is written the same way and announced by a `review-diagnostics` event, at every capture level",
   "when local state cannot be used (git cannot name it, the directory cannot be created), the output falls back to a temporary file as today, and stderr says why; levels `commit` and `off`, and the rejected-verdict copy, behave exactly as before",
-  "in a sidecar the files and events go to the journal repository's local state, never the host's; the full CI sequence passes",
+  "in a sidecar the files and events go to the journal repository's local state, never the host's; docs/overview.md and docs/quickstart.md say where the prose and diagnostics now go instead of a temporary file; the full CI sequence passes",
 ]
 documents = ["openspec/specs/review-evidence/", "openspec/specs/reviewer-adapter/"]
 +++
