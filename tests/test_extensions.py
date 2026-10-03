@@ -686,3 +686,329 @@ def test_absent_sections_expose_as_absent() -> None:
     assert manifest.wraps is None
     assert manifest.record_kinds == ()
     assert manifest.isolation is None
+
+
+def _write_directory_manifest(
+    repo: Path,
+    body: str = "",
+    *,
+    text: str | None = None,
+    files: tuple[str, ...] = (),
+) -> Path:
+    """Write ``<name>/manifest.toml`` and the files it names."""
+
+    path = repo / ".agentmarshal" / "extensions" / "openspec" / "manifest.toml"
+    path.parent.mkdir(parents=True)
+    path.write_text(_manifest_text(body) if text is None else text, encoding="utf-8")
+    for relative in files:
+        target = path.parent / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("", encoding="utf-8")
+    return path
+
+
+def test_directory_form_is_found_at_name_manifest_toml(tmp_path: Path) -> None:
+    """Scenario: the directory form is found at <name>/manifest.toml."""
+    _write_directory_manifest(tmp_path)
+
+    manifest = read_extension_manifest(tmp_path, "openspec")
+
+    assert manifest.schema == 2
+    assert manifest.name == "openspec"
+    assert manifest.version == "1.0.0"
+
+
+def test_manifest_in_both_forms_is_refused_naming_both_paths(
+    tmp_path: Path,
+) -> None:
+    """Scenario: a manifest in both forms is refused naming both paths."""
+    _write_manifest(tmp_path)
+    _write_directory_manifest(tmp_path)
+
+    with pytest.raises(ExtensionManifestError, match="both") as raised:
+        read_extension_manifest(tmp_path, "openspec")
+
+    assert "openspec.toml" in str(raised.value)
+    assert "manifest.toml" in str(raised.value)
+
+
+def test_missing_extension_is_reported_missing_in_either_form(
+    tmp_path: Path,
+) -> None:
+    """Scenario: a missing extension is reported missing in either form."""
+    (tmp_path / ".agentmarshal" / "extensions" / "openspec").mkdir(parents=True)
+
+    with pytest.raises(ExtensionManifestMissing, match="missing"):
+        read_extension_manifest(tmp_path, "openspec")
+
+
+def test_symlinked_manifest_inside_the_directory_is_refused(
+    tmp_path: Path,
+) -> None:
+    """Scenario: a symlinked manifest inside the directory is refused."""
+    path = _write_directory_manifest(tmp_path)
+    path.rename(tmp_path / "elsewhere.toml")
+    path.symlink_to(tmp_path / "elsewhere.toml")
+
+    with pytest.raises(ExtensionManifestError, match="symlink"):
+        read_extension_manifest(tmp_path, "openspec")
+
+
+def test_symlinked_extension_directory_is_refused(tmp_path: Path) -> None:
+    """Scenario: a symlinked extension directory is refused."""
+    target_dir = tmp_path / "elsewhere"
+    target_dir.mkdir()
+    (target_dir / "manifest.toml").write_text(_manifest_text(), encoding="utf-8")
+    link = tmp_path / ".agentmarshal" / "extensions" / "openspec"
+    link.parent.mkdir(parents=True)
+    link.symlink_to(target_dir, target_is_directory=True)
+
+    with pytest.raises(ExtensionManifestError, match="symlink"):
+        read_extension_manifest(tmp_path, "openspec")
+
+
+def test_dangling_symlink_at_the_extension_directory_is_refused(
+    tmp_path: Path,
+) -> None:
+    """Scenario: a dangling symlink at the extension's directory is refused."""
+    link = tmp_path / ".agentmarshal" / "extensions" / "openspec"
+    link.parent.mkdir(parents=True)
+    link.symlink_to(tmp_path / "nowhere", target_is_directory=True)
+
+    with pytest.raises(ExtensionManifestError, match="symlink") as raised:
+        read_extension_manifest(tmp_path, "openspec")
+
+    assert not isinstance(raised.value, ExtensionManifestMissing)
+
+
+def test_dangling_symlinked_manifest_inside_the_directory_is_refused(
+    tmp_path: Path,
+) -> None:
+    """Scenario: a symlinked manifest inside the directory is refused."""
+    path = _write_directory_manifest(tmp_path)
+    path.unlink()
+    path.symlink_to(tmp_path / "nowhere.toml")
+
+    with pytest.raises(ExtensionManifestError, match="symlink") as raised:
+        read_extension_manifest(tmp_path, "openspec")
+
+    assert not isinstance(raised.value, ExtensionManifestMissing)
+
+
+@pytest.mark.parametrize("blocked", [".agentmarshal", ".agentmarshal/extensions"])
+def test_component_of_the_manifest_path_that_is_not_a_directory_is_refused(
+    tmp_path: Path, blocked: str
+) -> None:
+    """Scenario: a component of the manifest path that is not a directory is refused."""
+    blocked_path = tmp_path / blocked
+    blocked_path.parent.mkdir(parents=True, exist_ok=True)
+    blocked_path.write_text("", encoding="utf-8")
+
+    with pytest.raises(ExtensionManifestError, match="cannot resolve") as raised:
+        read_extension_manifest(tmp_path, "openspec")
+
+    assert not isinstance(raised.value, ExtensionManifestMissing)
+
+
+def test_name_that_is_a_regular_file_is_absent_for_the_directory_form(
+    tmp_path: Path,
+) -> None:
+    extensions_dir = tmp_path / ".agentmarshal" / "extensions"
+    extensions_dir.mkdir(parents=True)
+    (extensions_dir / "openspec").write_text("", encoding="utf-8")
+
+    with pytest.raises(ExtensionManifestMissing, match="missing"):
+        read_extension_manifest(tmp_path, "openspec")
+
+
+def test_schema_1_manifest_in_the_directory_form_is_refused(
+    tmp_path: Path,
+) -> None:
+    """Scenario: a schema-1 manifest in the directory form is refused."""
+    _write_directory_manifest(
+        tmp_path,
+        text="schema = 1\n"
+        'name = "openspec"\n'
+        'version = "1.2.3"\n'
+        'footprint = ["openspec/"]\n'
+        'documents = ["openspec/specs/"]\n'
+        'artifacts = ["openspec/changes/archive/"]\n'
+        'install = "npx openspec init"\n'
+        'remove = "rm -rf openspec"\n',
+    )
+
+    with pytest.raises(
+        ExtensionManifestError, match="directory form requires a manifest of schema 2"
+    ):
+        read_extension_manifest(tmp_path, "openspec")
+
+
+_DIRECTORY_PATH_BODIES = (
+    ('[[stage]]\nphase = "post-gate"\ncommand = "bin/x.py"\n', "bin/x.py"),
+    ('[dependencies]\nlock = "lock/uv.lock"\n', "lock/uv.lock"),
+    (_wraps_body(), "lock/package-lock.json"),
+)
+
+
+@pytest.mark.parametrize(("body", "named"), _DIRECTORY_PATH_BODIES)
+def test_single_file_manifest_naming_a_directory_path_is_refused(
+    tmp_path: Path, body: str, named: str
+) -> None:
+    """Scenario: a single-file manifest naming a bin/ or lock/ path is refused."""
+    path = tmp_path / ".agentmarshal" / "extensions" / "openspec.toml"
+    path.parent.mkdir(parents=True)
+    path.write_text(_manifest_text(body), encoding="utf-8")
+
+    with pytest.raises(
+        ExtensionManifestError, match="no extension directory"
+    ) as raised:
+        read_extension_manifest(tmp_path, "openspec")
+
+    assert named in str(raised.value)
+
+
+def test_schema_2_single_file_naming_no_directory_path_parses(
+    tmp_path: Path,
+) -> None:
+    """Scenario: a schema-2 single file naming no directory path parses."""
+    path = tmp_path / ".agentmarshal" / "extensions" / "openspec.toml"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        _manifest_text(
+            '[records]\nkinds = ["openspec/change-archived@1"]\n' + _isolation_body()
+        ),
+        encoding="utf-8",
+    )
+
+    manifest = read_extension_manifest(tmp_path, "openspec")
+
+    assert manifest.schema == 2
+    assert manifest.record_kinds == ("openspec/change-archived@1",)
+    assert manifest.isolation is not None
+
+
+def test_named_paths_that_exist_as_regular_files_are_read(tmp_path: Path) -> None:
+    """Scenario: named paths that exist as regular files are read."""
+    _write_directory_manifest(
+        tmp_path,
+        '[[stage]]\nphase = "pre-gate-stop"\ncommand = "bin/validate.py"\n'
+        '[dependencies]\nlock = "lock/uv.lock"\n' + _wraps_body(),
+        files=("bin/validate.py", "lock/uv.lock", "lock/package-lock.json"),
+    )
+
+    manifest = read_extension_manifest(tmp_path, "openspec")
+
+    assert manifest.stages[0].command == "bin/validate.py"
+    assert manifest.dependencies is not None
+    assert manifest.dependencies.lock == "lock/uv.lock"
+    assert manifest.wraps is not None
+    assert manifest.wraps.lock == "lock/package-lock.json"
+
+
+@pytest.mark.parametrize(("body", "named"), _DIRECTORY_PATH_BODIES)
+def test_named_path_absent_from_the_directory_is_refused(
+    tmp_path: Path, body: str, named: str
+) -> None:
+    """Scenario: a named path absent from the directory is refused."""
+    _write_directory_manifest(tmp_path, body)
+
+    with pytest.raises(ExtensionManifestError, match="does not exist") as raised:
+        read_extension_manifest(tmp_path, "openspec")
+
+    assert named in str(raised.value)
+
+
+def test_named_path_that_is_a_directory_is_refused(tmp_path: Path) -> None:
+    """Scenario: a named path that is a directory is refused."""
+    _write_directory_manifest(
+        tmp_path,
+        '[[stage]]\nphase = "post-gate"\ncommand = "bin/x.py"\n',
+    )
+    (tmp_path / ".agentmarshal" / "extensions" / "openspec" / "bin" / "x.py").mkdir(
+        parents=True
+    )
+
+    with pytest.raises(ExtensionManifestError, match="not a regular file") as raised:
+        read_extension_manifest(tmp_path, "openspec")
+
+    assert "bin/x.py" in str(raised.value)
+
+
+def test_named_path_that_is_a_symlink_is_refused(tmp_path: Path) -> None:
+    """Scenario: a named path that is a symlink is refused."""
+    _write_directory_manifest(
+        tmp_path,
+        '[[stage]]\nphase = "post-gate"\ncommand = "bin/x.py"\n',
+    )
+    real = tmp_path / "elsewhere.py"
+    real.write_text("", encoding="utf-8")
+    target = tmp_path / ".agentmarshal" / "extensions" / "openspec" / "bin" / "x.py"
+    target.parent.mkdir(parents=True)
+    target.symlink_to(real)
+
+    with pytest.raises(ExtensionManifestError, match="symlink") as raised:
+        read_extension_manifest(tmp_path, "openspec")
+
+    assert "bin/x.py" in str(raised.value)
+
+
+@pytest.mark.parametrize(
+    ("linked", "body"),
+    [
+        ("bin", '[[stage]]\nphase = "post-gate"\ncommand = "bin/x.py"\n'),
+        ("lock", '[dependencies]\nlock = "lock/uv.lock"\n'),
+    ],
+)
+def test_named_path_under_a_symlinked_directory_is_refused(
+    tmp_path: Path, linked: str, body: str
+) -> None:
+    """Scenario: a named path under a symlinked directory is refused."""
+    _write_directory_manifest(tmp_path, body)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / ("x.py" if linked == "bin" else "uv.lock")).write_text(
+        "", encoding="utf-8"
+    )
+    link = tmp_path / ".agentmarshal" / "extensions" / "openspec" / linked
+    link.symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(ExtensionManifestError, match="symlink"):
+        read_extension_manifest(tmp_path, "openspec")
+
+
+@pytest.mark.parametrize(
+    ("linked", "body"),
+    [
+        ("bin", '[[stage]]\nphase = "post-gate"\ncommand = "bin/x.py"\n'),
+        ("lock", '[dependencies]\nlock = "lock/uv.lock"\n'),
+    ],
+)
+def test_named_path_under_a_dangling_symlinked_directory_is_refused(
+    tmp_path: Path, linked: str, body: str
+) -> None:
+    """Scenario: a named path under a symlinked directory is refused."""
+    _write_directory_manifest(tmp_path, body)
+    link = tmp_path / ".agentmarshal" / "extensions" / "openspec" / linked
+    link.symlink_to(tmp_path / "nowhere", target_is_directory=True)
+
+    with pytest.raises(ExtensionManifestError, match="symlink"):
+        read_extension_manifest(tmp_path, "openspec")
+
+
+def test_directory_form_manifest_exposes_its_directory(tmp_path: Path) -> None:
+    """Scenario: a directory-form manifest exposes its directory."""
+    _write_directory_manifest(tmp_path)
+
+    manifest = read_extension_manifest(tmp_path, "openspec")
+
+    assert manifest.directory == (
+        tmp_path.resolve() / ".agentmarshal" / "extensions" / "openspec"
+    )
+
+
+def test_manifest_without_a_directory_exposes_none(tmp_path: Path) -> None:
+    """Scenario: a manifest without a directory exposes none."""
+    _write_manifest(tmp_path)
+
+    assert read_extension_manifest(tmp_path, "openspec").directory is None
+    assert _parse().directory is None
