@@ -32,22 +32,30 @@ launcher's two preservation paths at that place.
 
 ## Decisions
 
-- **Payload files live in `log/files/` under the local state, beside the
-  writer files rather than among them.** `read_events` reads every regular
-  file directly under `log/`, so a payload sitting there would have any
-  line that happens to be a JSON object surface as a phantom event; a
-  subdirectory is skipped by the reader and by the directory sweep alike —
-  the sweep counts only regular files directly under `log/`, so payloads
-  are neither swept nor counted. Retention for them beyond that bound is a
-  declared non-goal. The event carries the file's absolute path, so the
-  layout can move later without a format change.
+- **Payload files live in `log/files/` under the local state — the log
+  directory's one dedicated payload area — beside the writer files rather
+  than among them.** `read_events` reads every regular file directly under
+  `log/`, so a payload sitting there would have any line that happens to be
+  a JSON object surface as a phantom event; the subdirectory is skipped by
+  the reader, but not by the directory sweep: the bound counts every file
+  the area holds, so payloads ride the same 50 MiB cap as the writer files
+  and shed oldest first by modification time. A payload's bytes are written
+  to a `.part` staging name and published by a rename to the `.txt` name
+  the event names, so a file under its final name is always complete — a
+  candidate at any age, like a rotated writer file, since nothing ever
+  writes it again — while a `.part` file is a candidate only past the
+  abandonment age, since a younger one may still be mid-write. Retention
+  beyond the bound is a declared non-goal. The event carries the file's
+  absolute path, so the layout can move later without a format change.
 - **`write_payload(state, prefix, content)` joins the process-log module.**
   It creates `log/files/` through `LocalState.ensure_directory` — the same
-  contained creation the writer uses — and writes the bytes through
-  `mkstemp` in that directory, returning the path. Keeping it in
-  `process_log.py` puts the area's layout where the `log/` layout already
-  lives and gives the later producers that name files in events —
-  `check-output`, `provider-export` — the same primitive.
+  contained creation the writer uses — refuses a prefix that is not a
+  plain file name (a separator would let `mkstemp` land the file outside
+  the area), and publishes by rename after a `.part` staging write,
+  returning the final path. Keeping it in `process_log.py` puts the area's
+  layout where the `log/` layout already lives and gives the later
+  producers that name files in events — `check-output`,
+  `provider-export` — the same primitive.
 - **One helper in the launcher does resolve → payload → event.**
   `_local_state_output` resolves the local state of the repository that
   holds the journal — `local_state(resolve_placement(...))`, which asks git
@@ -79,10 +87,16 @@ launcher's two preservation paths at that place.
   `_keep_diagnostics` still runs before the verdict is judged, so the file
   and the `review-diagnostics` event exist even when the verdict is later
   refused — the run succeeded and its diagnostics survive it, which is what
-  the requirement promises. A dry run resolves the local state of the
-  project it runs in — `find_project_root` of the working directory, the
-  same project the command resolved — so its diagnostics land in the
-  journal repository's log too, with no task on the event.
+  the requirement promises. A dry run resolves the journal root the way a
+  recorded run resolves one its caller does not name — under the project
+  the command runs against, never the working directory — and a caller
+  holding a resolved placement passes `journal_root`, the same keyword
+  `launch_review` takes, so a sidecar's dry run lands its diagnostics in
+  the sidecar's log with no task on the event. Today's CLI passes only the
+  host root, so through the CLI a sidecar dry run resolves under the host —
+  the temporary-file fallback with the reason said covers a host that is no
+  project — and wiring `placement.journal_root` through is left to a
+  contract that has `cli.py` in scope.
 - **Levels `commit` and `off`, and the rejected-verdict copy, are
   untouched.** `commit` still pins the prose as a journal artifact; `off`
   keeps nothing; a rejected verdict's output still goes to a temporary
@@ -92,11 +106,15 @@ launcher's two preservation paths at that place.
 
 - [A payload file orphaned by an event-append failure] → the bytes are
   already under `log/files/` when the event fails; the note falls back to a
-  temporary copy and says why, and the orphan is local working state under
-  no retention promise — the same standing an abandoned writer file has.
-- [Payloads grow `log/files/` without bound] → declared non-goal: retention
-  beyond the log's existing bound is a later task, and the directory map's
-  rule that nothing local is evidence means nothing depends on the files.
+  temporary copy and says why, and the orphan rides the directory bound
+  like any published payload — the same standing an abandoned writer file
+  has.
+- [Payloads grow `log/files/` without bound] → they ride the directory
+  bound now: counted like every file the log directory holds and shed
+  oldest first, a published payload at any age and a `.part` staging file
+  only once abandoned; the bound stays best-effort, so a flood of files
+  younger than the abandonment age can outrun it — the same way a flood of
+  young writer files can, and acceptable for the same reason.
 - [A sidecar resolves the wrong repository] → `local_state` asks git about
   `placement.project_root` — the journal's repository — by construction, so
   the host can only appear as a resolution failure, never as a write.

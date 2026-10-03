@@ -13,8 +13,12 @@ per-writer retention alone bounds nothing. The reader tolerates an
 unfinished last line, lines that are not JSON objects and event kinds it
 does not know, and reads rotated files as well as current ones. Files an
 event names — payloads too free-form to be event fields — live in
-``files/`` beside the writer files; a subdirectory is skipped by the reader
-and the sweep alike.
+``files/``, the log directory's one dedicated payload area, beside the
+writer files rather than among them. The subdirectory is skipped by the
+reader, but the sweep counts its bytes toward the bound: a published
+payload sheds at any age — its publish rename is the last write it ever
+sees — while a ``.part`` staging file sheds only once it is abandoned,
+like a current writer file.
 """
 
 from __future__ import annotations
@@ -39,6 +43,7 @@ ROTATED_KEEP = 5
 DIRECTORY_CAP_BYTES = 50 * 1024 * 1024
 ABANDONED_AFTER_SECONDS = 24 * 60 * 60
 FILES_DIR_NAME = "files"
+PAYLOAD_STAGING_SUFFIX = ".part"
 
 _NAME_ATTEMPTS = 8
 
@@ -155,16 +160,38 @@ def write_payload(state: LocalState, prefix: str, content: bytes) -> Path:
     diagnostics — too free-form to be an event field. ``files/`` sits beside
     the writer files rather than among them: the reader reads only regular
     files directly under ``log/``, so a payload's lines can never surface as
-    events, and the sweep counts only those same files, so a payload is
-    never swept. The directory is created through the local state's
-    contained creation call, the same one the writer uses for ``log/``.
+    events. The directory is created through the local state's contained
+    creation call, the same one the writer uses for ``log/``. The prefix is
+    confined to a plain file name — one carrying a path separator is refused
+    with :class:`ProcessLogError`, so a payload cannot land outside the
+    area. The bytes are written to a ``.part`` staging name and published by
+    a rename to the ``.txt`` name the event names, so a file under its final
+    name is always complete: the sweep counts it toward the directory bound
+    and may shed it at any age, while a staging file counts toward the bound
+    too but sheds only once abandoned — younger, a writer may still be
+    writing it.
     """
 
+    if Path(prefix).name != prefix:
+        raise ProcessLogError(
+            f"payload prefix {prefix!r} would land outside the log's "
+            f"{FILES_DIR_NAME}/ area"
+        )
     files = state.ensure_directory(state.log / FILES_DIR_NAME)
-    descriptor, name = tempfile.mkstemp(prefix=prefix, suffix=".txt", dir=files)
-    with os.fdopen(descriptor, "wb") as handle:
-        handle.write(content)
-    return Path(name)
+    descriptor, name = tempfile.mkstemp(
+        prefix=prefix, suffix=PAYLOAD_STAGING_SUFFIX, dir=files
+    )
+    staging = Path(name)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(content)
+        published = staging.with_suffix(".txt")
+        staging.rename(published)
+    except OSError:
+        with suppress(OSError):
+            staging.unlink()
+        raise
+    return published
 
 
 def read_events(state: LocalState) -> list[dict[str, object]]:
@@ -189,18 +216,31 @@ def read_events(state: LocalState) -> list[dict[str, object]]:
     return events
 
 
+def _regular_file_info(path: Path) -> os.stat_result | None:
+    """The stat of a regular file, ``None`` for anything else or an error."""
+
+    try:
+        info = path.stat()
+    except OSError:
+        return None
+    return info if stat.S_ISREG(info.st_mode) else None
+
+
 def _bound_directory(log_dir: Path) -> None:
     """Delete the directory's oldest files while it exceeds the cap.
 
     Every process run is a writer of its own, so per-writer retention
-    bounds nothing; this bounds the directory. Candidates go oldest first
-    by modification time. A rotated file is a candidate at any age — a
-    writer never appends to one again — and a current ``.jsonl`` file only
-    once its last write is older than :data:`ABANDONED_AFTER_SECONDS`:
-    younger, another writer may still be appending to it and it is left
-    alone. Everything else counts toward the cap but is never deleted, a
-    failed removal is skipped and an unreadable entry ignored — the bound
-    is best-effort and never fails the open that runs it.
+    bounds nothing; this bounds the directory — writer files and the
+    ``files/`` payload area alike. Candidates go oldest first by
+    modification time. A rotated file is a candidate at any age — a writer
+    never appends to one again — and so is a published payload, whose
+    publish rename is the last write it ever sees. A current ``.jsonl``
+    file and a ``.part`` staging file are candidates only once their last
+    write is older than :data:`ABANDONED_AFTER_SECONDS`: younger, another
+    writer may still be writing them and they are left alone. Everything
+    else counts toward the cap but is never deleted, a failed removal is
+    skipped and an unreadable entry ignored — the bound is best-effort and
+    never fails the open that runs it.
     """
 
     try:
@@ -211,11 +251,21 @@ def _bound_directory(log_dir: Path) -> None:
     total = 0
     candidates: list[tuple[float, int, Path]] = []
     for path in entries:
-        try:
-            info = path.stat()
-        except OSError:
+        if path.name == FILES_DIR_NAME and path.is_dir():
+            try:
+                payloads = list(path.iterdir())
+            except OSError:
+                continue
+            for payload in payloads:
+                info = _regular_file_info(payload)
+                if info is None:
+                    continue
+                total += info.st_size
+                if payload.suffix != PAYLOAD_STAGING_SUFFIX or info.st_mtime <= cutoff:
+                    candidates.append((info.st_mtime, info.st_size, payload))
             continue
-        if not stat.S_ISREG(info.st_mode):
+        info = _regular_file_info(path)
+        if info is None:
             continue
         total += info.st_size
         if _ROTATED_NAME.search(path.name) or (

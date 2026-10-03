@@ -22,6 +22,7 @@ from agentmarshal.journal.records import (
 )
 from agentmarshal.localstate import local_state
 from agentmarshal.process_log import read_events
+from test_placement import _host_and_sidecar
 
 
 @pytest.fixture(autouse=True)
@@ -575,6 +576,45 @@ def test_a_dry_run_keeps_the_command_diagnostics_in_the_local_state(
     assert str(kept[0]) in captured.err
     assert len(events) == 1
     assert "task" not in events[0]
+
+
+def test_a_dry_run_resolves_the_journal_root_like_a_recorded_run(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A dry run resolves the journal root like a recorded run.
+
+    A caller holding a resolved placement names the journal directory
+    itself — the same ``journal_root`` ``launch_review`` takes — so in a
+    sidecar the diagnostics land in the sidecar repository's process log
+    and the host's local state is never consulted, whatever the working
+    directory is.
+    """
+
+    host, sidecar, _base, _head = _host_and_sidecar(tmp_path, monkeypatch)
+    stub = _reviewer_stub(
+        tmp_path,
+        _verdict(review._DRY_RUN_COMMIT, "approved", []),
+        error_output="wrapper used a fallback\n",
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+    capsys.readouterr()
+
+    tree, note = review.dry_run_review(
+        host, "test-model", journal_root=sidecar / ".agentmarshal" / "journal"
+    )
+
+    assert tree == "a snapshot of HEAD"
+    kept = _kept_diagnostics(sidecar)
+    events = _diagnostics_events(sidecar)
+    assert len(kept) == 1
+    assert kept[0].read_bytes() == b"wrapper used a fallback\n"
+    assert note is not None
+    assert str(kept[0]) in note
+    assert len(events) == 1
+    assert "task" not in events[0]
+    assert not (host / ".git" / "agentmarshal").exists()
 
 
 def test_review_uses_contract_from_reviewed_commit(

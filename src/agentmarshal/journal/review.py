@@ -54,7 +54,6 @@ from agentmarshal.journal.submit_review import (
     ReviewSubmitError,
     submit_review,
 )
-from agentmarshal.project import find_project_root
 
 _VERDICT_BEGIN = "AGENTMARSHAL_VERDICT_BEGIN"
 _VERDICT_END = "AGENTMARSHAL_VERDICT_END"
@@ -859,7 +858,10 @@ def _extract_snapshot(project_root: Path, commit: str, snapshot: Path) -> None:
 
 
 def dry_run_review(
-    project_root: Path, reviewer_model: str | None
+    project_root: Path,
+    reviewer_model: str | None,
+    *,
+    journal_root: Path | None = None,
 ) -> tuple[str, str | None]:
     """Exercise the configured reviewer without writing to any journal.
 
@@ -867,6 +869,10 @@ def dry_run_review(
     relative path in the template resolves as it will in earnest. The tree is
     the current ``HEAD`` rather than a commit the operator names, which is a
     departure from this change's design note and is recorded there.
+    ``journal_root`` is the journal directory a recorded review would write
+    against — the diagnostics land in that repository's process log; left
+    ``None`` it resolves under ``project_root``, the same default
+    ``launch_review`` applies when its own caller names no journal.
     """
 
     template = os.environ.get("AGENTMARSHAL_REVIEWER_CMD")
@@ -901,10 +907,15 @@ def dry_run_review(
             _reviewer_command(reviewer_model or "", prompt_file), snapshot, prompt
         )
         # The diagnostics belong to the journal repository's log like a
-        # recorded run's: the project the command runs in is that repository
-        # in every placement, so a sidecar's dry run never touches the host.
+        # recorded run's, and the journal resolves the way a recorded run
+        # resolves one its caller does not name — under the project the
+        # command runs against, never the working directory. A caller
+        # holding a resolved placement passes the journal root itself, so a
+        # sidecar's diagnostics land in the sidecar's log and the host is
+        # never consulted.
+        journal_root = journal_root or project_root / ".agentmarshal" / "journal"
         diagnostics_note = _keep_diagnostics(
-            raw_diagnostics, journal_project_root=find_project_root(Path.cwd())
+            raw_diagnostics, journal_project_root=journal_root.parents[1]
         )
         output = raw_output.decode("utf-8", errors="replace")
         try:

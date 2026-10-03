@@ -145,6 +145,46 @@ def test_a_payload_sits_beside_the_writer_files_never_among_them(
     assert [event["event"] for event in read_events(state)] == ["made"]
 
 
+def test_a_payload_is_staged_then_published_under_its_final_name(
+    tmp_path: Path,
+) -> None:
+    """A ``.part`` file is the only witness of a write still in flight.
+
+    The write lands under a staging suffix and is published by rename, so a
+    file under its final ``.txt`` name is always complete and the area holds
+    no staging name once the call returns.
+    """
+
+    state = LocalState(tmp_path / "agentmarshal")
+
+    kept = write_payload(state, "agentmarshal-review-prose-", b"whole bytes\n")
+
+    assert kept.suffix == ".txt"
+    assert kept.parent == state.log / "files"
+    assert kept.read_bytes() == b"whole bytes\n"
+    assert list((state.log / "files").iterdir()) == [kept]
+
+
+@pytest.mark.parametrize("prefix", ("../escape-", "sub/dir-", "/absolute-"))
+def test_a_payload_prefix_leaving_the_area_is_refused(
+    tmp_path: Path, prefix: str
+) -> None:
+    """A prefix carrying a path separator is refused before anything is made.
+
+    ``mkstemp`` appends its random suffix to the prefix verbatim, so a prefix
+    with a separator would land the payload under ``log/`` — where a line
+    shaped like a JSON object would surface as an event — or out of the log
+    entirely.
+    """
+
+    state = LocalState(tmp_path / "agentmarshal")
+
+    with pytest.raises(ProcessLogError, match="files/ area"):
+        write_payload(state, prefix, b"data")
+
+    assert not state.log.exists()
+
+
 def test_two_processes_writing_at_once_never_interleave_or_tear_each_others_lines(
     tmp_path: Path,
 ) -> None:
@@ -325,6 +365,100 @@ def test_a_rotated_file_is_a_candidate_whatever_its_age(
     writer = open_writer(state)
 
     assert not rotated.exists()
+    assert writer.path.is_file()
+
+
+def test_a_published_payload_counts_toward_the_bound_whatever_its_age(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A finished payload is shed at any age, like a rotated writer file.
+
+    The publish rename is the last write a payload ever sees, so even a young
+    one is a deletion candidate — there is no writer left to hold it.
+    """
+
+    monkeypatch.setattr(process_log, "DIRECTORY_CAP_BYTES", 10)
+    state = LocalState(tmp_path / "agentmarshal")
+
+    kept = write_payload(state, "agentmarshal-review-prose-", b"x" * 100)
+    writer = open_writer(state)
+
+    assert not kept.exists()
+    assert writer.path.is_file()
+
+
+def test_a_staging_file_is_never_deleted_while_a_writer_may_hold_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A young ``.part`` file survives the sweep, like a young current file.
+
+    A staging file exists only between its creation and its publish rename,
+    so a fresh one may still belong to a writer mid-write; the bound gives
+    way before it.
+    """
+
+    monkeypatch.setattr(process_log, "DIRECTORY_CAP_BYTES", 10)
+    state = LocalState(tmp_path / "agentmarshal")
+    files_dir = state.ensure_directory(state.log / "files")
+    staged = files_dir / "agentmarshal-review-prose-inflight.part"
+    staged.write_bytes(b"x" * 100)
+
+    writer = open_writer(state)
+
+    assert staged.exists()
+    assert writer.path.is_file()
+
+
+def test_an_abandoned_staging_file_is_a_candidate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A ``.part`` file quiet past the abandonment age sheds like a current one.
+
+    Its writer is gone — a live one could not still be writing it — so the
+    orphan a crashed publish left behind is swept.
+    """
+
+    monkeypatch.setattr(process_log, "DIRECTORY_CAP_BYTES", 10)
+    monkeypatch.setattr(process_log, "ABANDONED_AFTER_SECONDS", 0)
+    state = LocalState(tmp_path / "agentmarshal")
+    files_dir = state.ensure_directory(state.log / "files")
+    staged = files_dir / "agentmarshal-review-prose-orphaned.part"
+    staged.write_bytes(b"x" * 100)
+    moment = time.time() - 100
+    os.utime(staged, (moment, moment))
+
+    writer = open_writer(state)
+
+    assert not staged.exists()
+    assert writer.path.is_file()
+
+
+def test_the_oldest_files_shed_first_across_writer_files_and_payloads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Payloads and writer files are ordered by age in the one bound."""
+
+    monkeypatch.setattr(process_log, "DIRECTORY_CAP_BYTES", 300)
+    monkeypatch.setattr(process_log, "ABANDONED_AFTER_SECONDS", 0)
+    state = LocalState(tmp_path / "agentmarshal")
+    log_dir = state.ensure_directory(state.log)
+    files_dir = state.ensure_directory(state.log / "files")
+    oldest = files_dir / "agentmarshal-review-prose-old.txt"
+    oldest.write_bytes(b"x" * 200)
+    middle = log_dir / "writer.jsonl.1"
+    middle.write_bytes(b"x" * 200)
+    newest = files_dir / "agentmarshal-review-prose-new.txt"
+    newest.write_bytes(b"x" * 200)
+    base = time.time() - 100
+    for index, path in enumerate((oldest, middle, newest)):
+        moment = base + index * 10
+        os.utime(path, (moment, moment))
+
+    writer = open_writer(state)
+
+    assert not oldest.exists()
+    assert not middle.exists()
+    assert newest.exists()
     assert writer.path.is_file()
 
 
