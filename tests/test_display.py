@@ -39,12 +39,13 @@ def test_what_the_write_refuses_the_display_escapes() -> None:
     the escape disagree, in either direction.
     """
 
-    expected: list[str] = []
-    refused: list[tuple[str, str]] = []
+    # One pass over the whole plane, character by character: a failure names
+    # the codepoint, and comparing per character pins the accepted ones too —
+    # each prints as it is.
     for codepoint in range(0x110000):
         character = chr(codepoint)
         if not forges_rendered_text(character):
-            expected.append(character)
+            assert escape_for_display(character) == character, f"U+{codepoint:04X}"
             continue
         if character == "\n":
             escape = "\\n"
@@ -56,17 +57,30 @@ def test_what_the_write_refuses_the_display_escapes() -> None:
             escape = f"\\u{codepoint:04x}"
         else:
             escape = f"\\U{codepoint:08x}"
-        expected.append(escape)
-        refused.append((character, escape))
+        assert escape_for_display(character) == escape, f"U+{codepoint:04X}"
 
-    # The refused characters first: a failure here names the codepoint.
-    for character, escape in refused:
-        assert escape_for_display(character) == escape, f"U+{ord(character):04X}"
 
-    # Then every character at once, which pins the accepted ones too: each
-    # prints as it is.
-    every_character = "".join(chr(codepoint) for codepoint in range(0x110000))
-    assert escape_for_display(every_character) == "".join(expected)
+def test_a_refusal_past_the_bmp_escapes_as_UXXXXXXXX(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Scenario: what the write refuses, the display escapes.
+
+    Today's rule refuses nothing past the Basic Multilingual Plane, so the
+    ``\\UXXXXXXXX`` form is unreachable through the real predicate. The
+    escape consults the predicate per character, so a rule stood in that
+    refuses U+1F600 demonstrates the form for the day the rule grows to
+    reach it — the escape follows whatever the predicate refuses.
+    """
+
+    def refuses_an_astral_character(value: str) -> bool:
+        return any(ord(character) > 0xFFFF for character in value)
+
+    monkeypatch.setattr(
+        "agentmarshal.journal.display.forges_rendered_text",
+        refuses_an_astral_character,
+    )
+
+    assert escape_for_display("x\U0001f600y") == "x\\U0001f600y"
 
 
 def test_a_refused_character_prints_escaped_in_status(

@@ -50,9 +50,9 @@ approval), and an override would reorder what is seen.
   `report` prints them unescaped — as the status views already did.
   Escaping applies to the values a record or a contract supplies: `task_id`,
   the contract's `title` and `scope`, record fields, and `usage` methods.
-- **The baseline spec's `## Purpose` is edited by hand.** The delta format
-  carries no Purpose section and the archive command does not rewrite the
-  Purpose of an existing capability, so the paragraph that still described
-  the capability as refusal only was updated in
-  `openspec/specs/record-text-safety/spec.md` directly — the one permitted
-  hand edit to the applied spec.
+- **The baseline spec's `## Purpose` is left as it is.** A delta may carry a
+  `## Purpose` section, but the archive command does not rewrite the Purpose
+  of an existing spec either way, and the contract names rewriting it a
+  non-goal — so the paragraph still describes the capability as refusal at
+  the boundary and the requirements carry the change alone. How a Purpose is
+  updated is a separate decision.
