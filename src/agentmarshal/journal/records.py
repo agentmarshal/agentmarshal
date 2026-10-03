@@ -144,14 +144,21 @@ _SCHEMA_2_FIELDS = frozenset(
 _SCHEMA_2_SESSION_FIELDS = frozenset({"usage"})
 _RECORDED_BY_SOURCES = frozenset({"project-actor", "git-identity", "override"})
 # Schema 7 (ADR-0022) is the schema the 0.5.0 record model arrives under.
-# Its field families and record types register in the tasks that introduce
-# them; until then a record stamped 7 may carry only what the earlier
-# schemas admit, and no writer stamps it — nothing requires it yet.
+# Its remaining field families and record types register in the tasks that
+# introduce them; a record stamped 7 without a registered family may carry
+# only what the earlier schemas admit, and a writer stamps 7 only when the
+# record it builds carries a field a schema-7 family admits.
 _SUPPORTED_SCHEMAS = frozenset({1, 2, 3, 4, 5, 6, 7})
 _SCHEMA_4_FIELDS = frozenset(
     {"reviewed_finding", "accepted_finding", "completed_finding"}
 )
 _SCHEMA_5_FIELDS = frozenset({"reviewed_contract"})
+# What a session produced and with what (ADR-0022 section 2): the commit
+# the run produced, the model it ran, an external trace link, the CLI
+# session a resume needs, the report-ready flag and the fallback reason.
+_SCHEMA_7_SESSION_FIELDS = frozenset(
+    {"commit", "model", "trace", "cli_session", "report_ready", "fallback_reason"}
+)
 _SHA256_HEX_PATTERN = re.compile(r"[0-9a-f]{64}$")
 _REVIEWED_COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}$")
 _REVIEW_VERDICTS = frozenset({"approved", "changes_required", "blocked", "rejected"})
@@ -259,13 +266,15 @@ def _rule(name: str) -> Callable[[_RuleCheck], _RuleCheck]:
 
 
 # The field families a record's own schema admits (ADR-0005, ADR-0011): the
-# schema-2 provenance fields on every record, ``usage`` on sessions, and
-# ``reviewed_contract`` on reviews. The fields rule computes the admitted
-# set from the record's schema; a later schema registers its family here.
+# schema-2 provenance fields on every record, ``usage`` on sessions,
+# ``reviewed_contract`` on reviews, and the schema-7 session fields of
+# ADR-0022 section 2. The fields rule computes the admitted set from the
+# record's schema; a later schema registers its family here.
 _FIELD_FAMILIES: tuple[tuple[int, str | None, frozenset[str]], ...] = (
     (2, None, _SCHEMA_2_FIELDS),
     (2, "session", _SCHEMA_2_SESSION_FIELDS),
     (5, "review", _SCHEMA_5_FIELDS),
+    (7, "session", _SCHEMA_7_SESSION_FIELDS),
 )
 
 
@@ -290,13 +299,23 @@ def _allowed_fields(record_type: str, schema: int) -> frozenset[str]:
 # the explicit "every type" form, for a field the rule guards on every type
 # that carries it; a name shared with an older record type is never that
 # case. All four tables are dicts, so iteration is registration order and
-# the field a refusal names is stable; all four are empty until a schema-7
-# field family registers into them, and a field family registers its fields
-# into the validators it needs and nothing more.
+# the field a refusal names is stable; a field family registers its fields
+# into the validators it needs and nothing more. The schema-7 session
+# family registers its five string fields below; ADR-0022 section 8 bounds
+# no length for them, so the three limit tables stay empty of the family.
+# `commit`'s entry never fires — the 40-lowercase-hex shape rule refuses
+# every character the forgeable-text rule would, and runs first — but the
+# family registers every string field, so the entry stands beside it.
 _TEXT_CHAR_LIMITS: dict[tuple[str | None, str], int] = {}
 _TEXT_BYTE_LIMITS: dict[tuple[str | None, str], int] = {}
 _JSON_BYTE_LIMITS: dict[tuple[str | None, str], int] = {}
-_FORGEABLE_TEXT_FIELDS: dict[tuple[str | None, str], None] = {}
+_FORGEABLE_TEXT_FIELDS: dict[tuple[str | None, str], None] = {
+    ("session", "commit"): None,
+    ("session", "model"): None,
+    ("session", "trace"): None,
+    ("session", "cli_session"): None,
+    ("session", "fallback_reason"): None,
+}
 
 
 def _check_schema_version(data: Mapping[str, object]) -> None:
@@ -516,6 +535,34 @@ def _check_session_usage(data: Mapping[str, object], _context: _RuleContext) -> 
         )
 
 
+@_rule("session-fields-7")
+def _check_session_fields_7(data: Mapping[str, object], _context: _RuleContext) -> None:
+    if cast(str, data["record_type"]) != "session":
+        return
+    if "commit" in data:
+        commit = data["commit"]
+        if (
+            not isinstance(commit, str)
+            or _REVIEWED_COMMIT_PATTERN.fullmatch(commit) is None
+        ):
+            raise JournalRecordError(
+                "session record field 'commit' must be exactly 40 "
+                "lowercase hex characters"
+            )
+    for field in ("model", "trace", "cli_session", "fallback_reason"):
+        if field not in data:
+            continue
+        value = data[field]
+        if not isinstance(value, str) or not value.strip():
+            raise JournalRecordError(
+                f"session record field {field!r} must be a non-empty string"
+            )
+    if "report_ready" in data and type(data["report_ready"]) is not bool:
+        raise JournalRecordError(
+            "session record field 'report_ready' must be a boolean"
+        )
+
+
 @_rule("provenance")
 def _check_provenance(data: Mapping[str, object], _context: _RuleContext) -> None:
     # Provenance was introduced at schema 2 (ADR-0005 Decision 4); the rule
@@ -652,7 +699,8 @@ def _check_forgeable_text(data: Mapping[str, object], _context: _RuleContext) ->
 # apply a rule only to records of this schema and above. The shared
 # validators are bound to 7 — the schema whose fields they guard — and are
 # entries of their own, never folded into a schema-1 rule: a tightening
-# hidden inside one would apply to records older schemas wrote.
+# hidden inside one would apply to records older schemas wrote. The
+# session-fields-7 shape rule takes the same binding for the same reason.
 _RULE_FROM_SCHEMA: dict[str, int] = {
     "record-type": 1,
     "record-type-predicate": 1,
@@ -672,6 +720,7 @@ _RULE_FROM_SCHEMA: dict[str, int] = {
     "coordination": 6,
     "session-tokens": 1,
     "session-usage": 1,
+    "session-fields-7": 7,
     "provenance": 2,
     "recorded-by": 1,
     "finding-binding": 4,
@@ -1192,6 +1241,8 @@ def _minimum_schema(record: Mapping[str, object]) -> int:
         schema = max(schema, 5)
     if record.get("activity") == "coordination":
         schema = max(schema, _COORDINATION_SESSION_SCHEMA)
+    if record.keys() & _SCHEMA_7_SESSION_FIELDS:
+        schema = max(schema, 7)
     return schema
 
 
@@ -1339,6 +1390,12 @@ def create_session_record(
     *,
     usage_provider: str | None = None,
     usage_method: str | None = None,
+    commit: str | None = None,
+    model: str | None = None,
+    trace: str | None = None,
+    cli_session: str | None = None,
+    report_ready: bool | None = None,
+    fallback_reason: str | None = None,
     source: str = SOURCE_LIVE,
 ) -> dict[str, object]:
     """Build an attributed work session record."""
@@ -1366,6 +1423,16 @@ def create_session_record(
     }
     if usage_provider is not None:
         record["usage"] = {"provider": usage_provider, "method": usage_method}
+    for field, value in (
+        ("commit", commit),
+        ("model", model),
+        ("trace", trace),
+        ("cli_session", cli_session),
+        ("report_ready", report_ready),
+        ("fallback_reason", fallback_reason),
+    ):
+        if value is not None:
+            record[field] = value
     record["schema"] = _minimum_schema(record)
     return record
 

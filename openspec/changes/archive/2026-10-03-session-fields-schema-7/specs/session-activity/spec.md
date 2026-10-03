@@ -1,29 +1,4 @@
-# session-activity Specification
-
-## Purpose
-What a session record can say about the kind of work it measures. An
-activity vocabulary that has no word for the most expensive role in an
-agent-driven loop turns three quarters of a task's cost into "other", which is
-not accounting.
-
-## Requirements
-
-### Requirement: A session can be recorded as coordination
-A session record SHALL accept `coordination` as its activity, beside
-`implementation`, `review` and `other`: the work of the agent that writes the
-contract, launches the implementer, reads the verdict and reports to the
-operator. The vocabulary SHALL be defined once and read by every writer and
-reader of session records.
-
-#### Scenario: a coordinating session is recorded as such
-- **WHEN** a session is recorded with the activity `coordination`
-- **THEN** the record is written and validated, and its activity reads back as
-  `coordination`
-
-#### Scenario: an activity outside the vocabulary is still refused
-- **WHEN** a session is recorded with an activity that is not in the
-  vocabulary
-- **THEN** it is refused and nothing is written
+## MODIFIED Requirements
 
 ### Requirement: An older reader refuses a coordination session by its schema
 A session record whose activity is `coordination` SHALL carry at least the
@@ -54,6 +29,8 @@ records coordination stays readable by it.
 - **WHEN** a session is recorded with `implementation`, `review` or `other`
   carrying a field of the schema-7 session family
 - **THEN** the record carries schema 7
+
+## ADDED Requirements
 
 ### Requirement: A session record can say what it produced and with what
 From schema 7, a session record MAY carry `commit` — the commit the
