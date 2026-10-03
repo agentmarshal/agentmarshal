@@ -17,6 +17,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TextIO, cast
 
+from agentmarshal.journal.contracts import JournalContractError, contract_sha256
 from agentmarshal.journal.display import escape_for_display
 from agentmarshal.journal.status import TaskStatus
 from agentmarshal.localstate import LocalState
@@ -155,7 +156,37 @@ _RECORD_RENDERERS: dict[str, RecordRenderer] = {
 }
 
 
-def print_task_detail(project_root: Path, task: TaskStatus) -> None:
+def _contract_drift_line(journal_root: Path, task: TaskStatus) -> str | None:
+    """One line when the contract drifted from its last pin, else ``None``.
+
+    The pin is the `contract` hash carried by the task's latest `opened` or
+    `amendment` record that carries one — the hash of the contract text that
+    record established (ADR-0018 decision 1). A contract that cannot be read
+    or hashed reads as no drift: the line is a reminder, never a failure.
+    """
+
+    pinned: str | None = None
+    for record in task.records:
+        if record["record_type"] in ("opened", "amendment"):
+            contract = record.get("contract")
+            if isinstance(contract, str):
+                pinned = contract
+    if pinned is None:
+        return None
+    contract_path = journal_root / "tasks" / task.task_id / "contract.md"
+    try:
+        current = contract_sha256(contract_path.read_bytes(), str(contract_path))
+    except (JournalContractError, OSError):
+        return None
+    if current == pinned:
+        return None
+    return (
+        f"Contract drifted from its pin {pinned[:7]} (now {current[:7]}); "
+        "record the edit with amend"
+    )
+
+
+def print_task_detail(project_root: Path, task: TaskStatus, journal_root: Path) -> None:
     """Print one task's detail view: header, acceptance trail, scope, records."""
 
     # Every line built from a record or a contract goes through
@@ -204,6 +235,9 @@ def print_task_detail(project_root: Path, task: TaskStatus) -> None:
             )
         else:
             print(escape_for_display(renderer(project_root, record)))
+    drift = _contract_drift_line(journal_root, task)
+    if drift is not None:
+        print(escape_for_display(drift))
 
 
 def print_paths(

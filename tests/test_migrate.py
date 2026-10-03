@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from agentmarshal.cli import main
+from agentmarshal.journal.contracts import contract_sha256
 from agentmarshal.journal.status import load_task_status
 from agentmarshal.migrate import JournalMigrationError, migrate_journal
 
@@ -82,9 +83,11 @@ def test_migrate_journal_converts_lifecycle_states(tmp_path: Path) -> None:
     assert open_task.records[1]["verdict"] == "changes_required"
 
 
-def test_migrated_records_are_schema_3_imported_from_host(tmp_path: Path) -> None:
+def test_migrated_records_are_imported_from_host(tmp_path: Path) -> None:
     # Migrated evidence is imported, not live: every record carries the
-    # honest imported-from-host provenance (ADR-0005 Decision 4).
+    # honest imported-from-host provenance (ADR-0005 Decision 4). The opened
+    # record also pins the contract it establishes (ADR-0018 decision 1),
+    # which stamps it schema 7 while the rest keep the base stamp.
     source = tmp_path / "v1"
     target = tmp_path / "v2"
     write_task(
@@ -100,8 +103,16 @@ def test_migrated_records_are_schema_3_imported_from_host(tmp_path: Path) -> Non
 
     records = load_task_status(target, "CR-001").records
     assert records  # opened + review + completed
-    for record in records:
+    opened, *rest = records
+    assert opened["record_type"] == "opened"
+    assert opened["schema"] == 7
+    assert opened["contract"] == contract_sha256(
+        (target / "tasks" / "CR-001" / "contract.md").read_bytes(),
+        "contract.md",
+    )
+    for record in rest:
         assert record["schema"] == 3
+    for record in records:
         assert record["source"] == "imported-from-host"
 
 

@@ -29,6 +29,7 @@ from agentmarshal.journal.complete import (
     complete_findings_task,
     complete_task,
 )
+from agentmarshal.journal.contracts import contract_sha256
 from agentmarshal.journal.display import escape_for_display
 from agentmarshal.journal.gate import (
     GateError,
@@ -109,12 +110,17 @@ def _build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("doctor", help="check AgentMarshal project health")
     subparsers.add_parser("validate", help="validate the whole journal for integrity")
     open_parser = subparsers.add_parser("open", help="open a journal task")
-    open_parser.add_argument("--title", required=True, help="task title")
+    open_parser.add_argument("--title", help="task title")
     open_parser.add_argument(
         "--scope",
         action="append",
         default=[],
         help="path included in the task scope (repeatable)",
+    )
+    open_parser.add_argument(
+        "--contract-file",
+        type=Path,
+        help="contract already written (header and body) to open the task from",
     )
     brief_parser = subparsers.add_parser(
         "brief", help="print an open task's implementer briefing"
@@ -466,17 +472,38 @@ def _run_doctor() -> int:
     return 0
 
 
-def _run_open(title: str, scope: list[str], stderr: TextIO) -> int:
+def _run_open(args: argparse.Namespace, stderr: TextIO) -> int:
+    if args.contract_file is not None:
+        if args.title is not None or args.scope:
+            print(
+                "open --contract-file cannot be combined with --title or --scope",
+                file=stderr,
+            )
+            return 1
+    elif args.title is None:
+        print("open requires --title or --contract-file", file=stderr)
+        return 1
     placement = _placement("open", stderr, require_host=True)
     if placement is None:
         return 1
     try:
-        opened_task = open_task(placement.project_root, title, scope)
+        opened_task = open_task(
+            placement.project_root,
+            args.title,
+            args.scope,
+            contract_file=args.contract_file,
+        )
     except TaskOpenError as error:
         print(error, file=stderr)
         return 1
-    for warning in scope_warnings(placement.host_root, scope):
+    for warning in scope_warnings(placement.host_root, list(opened_task.scope)):
         print(f"warning: {warning}", file=stderr)
+    if opened_task.replaced_id is not None:
+        print(
+            f"contract id {opened_task.replaced_id!r} replaced with the "
+            f"assigned task id {opened_task.task_id!r}",
+            file=stderr,
+        )
     print(opened_task.contract_path)
     print(opened_task.record_path)
     return 0
@@ -918,7 +945,15 @@ def _run_amend(args: argparse.Namespace, stderr: TextIO) -> int:
     journal_root = placement.journal_root
     try:
         load_task_for_record(journal_root, args.task, "amendment")
-        record = create_amendment_record(args.task, __version__, args.reason)
+        # The amendment pins the contract as it stands at this moment — the
+        # journal repository's copy, in a sidecar as here (ADR-0018 decision
+        # 1). A contract that does not parse was refused by the load above,
+        # and bytes that do not decode are refused by the hash itself.
+        contract_path = journal_root / "tasks" / args.task / "contract.md"
+        contract_hash = contract_sha256(contract_path.read_bytes(), str(contract_path))
+        record = create_amendment_record(
+            args.task, __version__, args.reason, contract=contract_hash
+        )
         record_path = write_record(journal_root, args.task, record)
     except (JournalRecordError, OSError, TaskStatusError, ValueError) as error:
         print(error, file=stderr)
@@ -1050,7 +1085,7 @@ def _run_status(task_id: str | None, stderr: TextIO) -> int:
                 if checked_placement is None:
                     return 1
                 placement = checked_placement
-            print_task_detail(placement.host_root, task)
+            print_task_detail(placement.host_root, task, journal)
             print_overdue_steps(
                 steps.open_steps(
                     task.task_id,
@@ -1285,7 +1320,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "validate":
         return _run_validate(sys.stderr)
     if args.command == "open":
-        return _run_open(args.title, args.scope, sys.stderr)
+        return _run_open(args, sys.stderr)
     if args.command == "brief":
         return _run_brief(args.task, sys.stderr)
     if args.command == "status":
