@@ -132,27 +132,38 @@ action was determined; otherwise the output says what to do.
 
 ### 2. What `next` reads
 
-- the task's journal;
+- the task's journal — the records every rule decides from: sessions,
+  reviews, acceptances, the lifecycle, the agreement record and the
+  contract's amendments;
 - git — the head, the base, the conflict check, and whether the latest
   contract amendment reached the branch;
+- the contract — read the way the gate reads it: from the merge-base
+  tree in the embedded placement, from the journal's working tree in a
+  sidecar — and, with it, the manifests of the extensions it names,
+  whose footprints join the scope rule 11 checks;
 - the plan file — `hold`, `not_before`, `implementer`;
-- the process log — an open step for the task;
-- the project settings — the `changes_required` threshold
-  (`review.changes_required_threshold`, default 3, of
-  [ADR-0022](ADR-0022-the-0-5-0-record-model-one-transition.md)).
+- the process log — an open step for the task, and the extension events
+  rule 11 reads for a `pre-gate-stop` pause standing without its
+  acceptance;
+- the project settings — `review.changes_required_threshold` (default 3)
+  and `contract.require_agreement` (default false — whether rule 11 asks
+  for the agreement record), both of
+  [ADR-0022](ADR-0022-the-0-5-0-record-model-one-transition.md).
 
 A missing plan file, log file or field is not an error: the rule that
 needs it does not fire, and the output carries `inputs_missing`. In a
-sidecar the journal, the plan and the log come from the journal
-repository; git state is read from the host, read-only; and the log is
-visible only on the machine that wrote it — the process log promises no
-visibility between machines
+sidecar the journal, the contract, the plan and the log come from the
+journal repository; git state is read from the host, read-only; and the
+log is visible only on the machine that wrote it — the process log
+promises no visibility between machines
 ([ADR-0014](ADR-0014-where-things-live.md)).
 
 ### 3. The actions
 
 `done` · `hold` · `wait` (until a stated time) · `stop` (a person is
-needed, with the reason) · `integrate` · `implement` · `fix` (which
+needed, with the reason) · `integrate` · `implement` (which implementer —
+the plan's `implementer` for the task, or the contract's list — carried
+in its details and JSON, as `fix` carries it) · `fix` (which
 implementer; the latest review's findings; `resume` as a hint for
 continuing the session) · `review` (which reviewer, where the rule names
 one; with `mode: resolution` and `carried_approval` where they apply) ·
@@ -169,7 +180,11 @@ sessions and acceptances alike.
 
 1. The task is closed → `done`.
 2. The contract is not in the base tree — the opening transaction has
-   not merged (`gate.py`) → `stop` "merge the opening".
+   not merged (`gate.py`) → `stop` "merge the opening". The rule is the
+   embedded placement's: in a sidecar the contract is not in the host's
+   history at all — the gate reads it from the journal's working tree
+   there — and the check that stands in for it is that the contract file
+   exists in the journal.
 3. An open step for the task in the process log — a `step-started` with
    neither a `step-ended` nor a record of its kind after the start: its
    deadline not yet reached → `wait` until it; passed → `stop` "step
