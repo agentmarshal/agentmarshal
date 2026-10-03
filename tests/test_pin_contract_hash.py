@@ -380,6 +380,70 @@ def test_the_id_forms_open_rewrites(
 
 
 @pytest.mark.parametrize(
+    "value",
+    [
+        '"CR-099"',
+        "'CR-099'",
+        '"""CR-099"""',
+        "'''CR-099'''",
+        '"""CR-099""""',
+        '"""CR-099"""""',
+        "'''CR-099''''",
+        '"CR-\\"099"',
+    ],
+    ids=[
+        "basic string",
+        "literal string",
+        "one-line multi-line basic",
+        "one-line multi-line literal",
+        "a quote before the closing delimiter",
+        "two quotes before the closing delimiter",
+        "a quote before a literal closing delimiter",
+        "escaped quote",
+    ],
+)
+@pytest.mark.parametrize(
+    "comment", ["", "   # written by hand"], ids=["bare", "with comment"]
+)
+def test_the_one_line_string_values_open_rewrites(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    value: str,
+    comment: str,
+) -> None:
+    """Scenario: a contract written first becomes the task's contract.
+
+    Every one-line string form TOML gives the ``id`` value — a basic or
+    literal string, a one-line multi-line string of either kind carrying
+    up to two quote characters before its closing delimiter, a basic
+    string's escaped quote — is rewritten; the contract `open` writes
+    differs from the file only in the value, and its hash is pinned.
+    """
+
+    repo = _repo(tmp_path, monkeypatch)
+    provided = tmp_path / "contract.md"
+    original = (
+        "+++\n"
+        "schema = 1\n"
+        f"id = {value}{comment}\n"
+        'title = "Task"\n'
+        "scope = []\n"
+        "acceptance = []\n"
+        "+++\n\n"
+        "Body.\n"
+    )
+    provided.write_text(original, encoding="utf-8")
+
+    assert main(["open", "--contract-file", str(provided)]) == 0
+
+    written = _task_contract(repo).read_text(encoding="utf-8")
+    assert written == original.replace(value, '"CR-001"', 1)
+    opened = read_records(journal_root(repo), "CR-001")[0]
+    assert opened["contract"] == _pinned_hash(repo)
+
+
+@pytest.mark.parametrize(
     "id_line",
     ['"i\\u0064" = "CR-099"', 'id = """\nCR-099\n"""'],
     ids=["escaped key", "multi-line value"],

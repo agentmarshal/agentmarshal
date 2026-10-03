@@ -6,6 +6,7 @@ import json
 import re
 import shutil
 import tempfile
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -69,15 +70,26 @@ def next_task_id(root: Path) -> str:
     return f"CR-{highest + 1:03d}"
 
 
-_CONTRACT_ID_VALUE = re.compile(
-    r"^[ \t]*(?:id|\"id\"|'id')[ \t]*=[ \t]*"
-    r"(?P<value>"
-    r"\"{3}(?:(?!\"{3})(?:[^\\]|\\.))*?\"{3}"
-    r"|\"(?:[^\"\\]|\\.)*\""
-    r"|'{3}(?:(?!'{3}).)*?'{3}"
-    r"|'[^']*'"
-    r")"
+_CONTRACT_ID_KEY = re.compile(r"^[ \t]*(?:id|\"id\"|'id')[ \t]*=[ \t]*")
+
+# Every boundary ``splitlines`` honours, longest first so ``\r\n`` is not
+# mistaken for ``\r``: ``parse_contract_text`` splits on each of them and
+# rejoins with ``\n``, so any is a line ending a contract may carry.
+_LINE_ENDINGS = (
+    "\r\n",
+    "\n",
+    "\r",
+    "\v",
+    "\f",
+    "\x1c",
+    "\x1d",
+    "\x1e",
+    "\x85",
+    "\u2028",
+    "\u2029",
 )
+
+_AFTER_VALUE = re.compile(r"[ \t]*(?:#.*)?")
 
 _ID_FORMS_MESSAGE = (
     "the header's `id` is not written in a form `open` can rewrite: it "
@@ -100,43 +112,88 @@ def _split_for_rewrite(text: str) -> tuple[str, list[str]]:
     return bom, stripped.splitlines(keepends=True)
 
 
-def _id_line_candidates(lines: list[str]) -> list[tuple[int, re.Match[str]]]:
-    """Header lines that write ``id`` in a form the open can rewrite."""
+def _line_content(line: str) -> str:
+    """A ``splitlines`` line without the boundary it was split on."""
+
+    for ending in _LINE_ENDINGS:
+        if line.endswith(ending):
+            return line[: -len(ending)]
+    return line
+
+
+def _string_value_end(text: str) -> int | None:
+    """The end of the one-line TOML string value opening *text*.
+
+    *text* is what follows the ``=`` of an ``id`` line, its line ending
+    excluded. A pattern cannot decide where the value ends — a multi-line
+    string may carry up to two quote characters just before its closing
+    delimiter, so ``id = \"\"\"CR-099\"\"\"\"`` is one string ending at
+    the last quote — so TOML itself decides: the end is the shortest
+    prefix that parses as a string, after which only whitespace and an
+    optional comment remain on the line.
+    """
+
+    if not text.startswith(('"', "'")):
+        return None
+    for end in range(1, len(text) + 1):
+        try:
+            value = tomllib.loads("k = " + text[:end])["k"]
+        except tomllib.TOMLDecodeError:
+            continue
+        if not isinstance(value, str):
+            continue
+        if _AFTER_VALUE.fullmatch(text[end:]) is not None:
+            return end
+    return None
+
+
+def _id_line_candidates(lines: list[str]) -> list[tuple[int, int, int]]:
+    """Header lines writing ``id`` in a form the open can rewrite.
+
+    Each entry is the line's index and the offsets within it of the id's
+    value: a line whose key is ``id``, ``"id"`` or ``'id'`` followed by
+    ``=``, and whose value is a one-line string.
+    """
+
     start = next(index for index, line in enumerate(lines) if line.strip() == "+++")
     end = next(
         index
         for index, line in enumerate(lines[start + 1 :], start + 1)
         if line.strip() == "+++"
     )
-    return [
-        (index, match)
-        for index in range(start + 1, end)
-        if (match := _CONTRACT_ID_VALUE.match(lines[index])) is not None
-    ]
+    candidates = []
+    for index in range(start + 1, end):
+        match = _CONTRACT_ID_KEY.match(lines[index])
+        if match is None:
+            continue
+        value_end = _string_value_end(_line_content(lines[index])[match.end() :])
+        if value_end is not None:
+            candidates.append((index, match.end(), match.end() + value_end))
+    return candidates
 
 
 def _id_source_line(
     lines: list[str], header_id: str, bom: str
-) -> tuple[int, re.Match[str]] | None:
+) -> tuple[int, int, int] | None:
     """Which candidate line actually declares the parsed ``id``.
 
     A line in a supported form is the declaration only where rewriting it
     changes what the header parses as ``id``: the same text inside a
     multi-line string value, or under a ``[table]`` header, matches the
-    pattern without being it. The probe is the parsed id plus a character
-    no rewrite of another line can produce, so exactly the source line
-    answers it.
+    key pattern without being it. The probe is the parsed id plus a
+    character no rewrite of another line can produce, so exactly the
+    source line answers it.
     """
 
     probe_id = header_id + "\x00"
-    for index, match in _id_line_candidates(lines):
+    for index, value_start, value_end in _id_line_candidates(lines):
         line = lines[index]
         rewritten = (
             bom
             + "".join(lines[:index])
-            + line[: match.start("value")]
+            + line[:value_start]
             + json.dumps(probe_id)
-            + line[match.end("value") :]
+            + line[value_end:]
             + "".join(lines[index + 1 :])
         )
         try:
@@ -144,7 +201,7 @@ def _id_source_line(
         except JournalContractError:
             continue
         if parsed.id == probe_id:
-            return index, match
+            return index, value_start, value_end
     return None
 
 
@@ -198,11 +255,9 @@ def _retarget_contract_id(text: str, task_id: str) -> str:
     )
     if located is None:
         raise TaskOpenError(_ID_FORMS_MESSAGE)
-    index, match = located
+    index, value_start, value_end = located
     line = lines[index]
-    lines[index] = (
-        line[: match.start("value")] + json.dumps(task_id) + line[match.end("value") :]
-    )
+    lines[index] = line[:value_start] + json.dumps(task_id) + line[value_end:]
     rewritten = bom + "".join(lines)
     # The header parsed before the rewrite and the line the probe named
     # was rewritten, so this confirms rather than checks: the retargeted
