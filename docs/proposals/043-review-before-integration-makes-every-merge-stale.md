@@ -54,6 +54,14 @@ Measurements, as reported:
   second review remain; they shorten the stale window, they do not remove
   it.
 
+> Note (2026-10-03): the published
+> [self-hosting workflow](../self-hosting-workflow.md) numbers the loop
+> differently — merge is step 4 and complete step 5 — while allowing that
+> completion may run before or after the implementation merges. The
+> stale-merge observation above holds either way: the window it measures
+> is between "reviewed" and "merged", on whichever side of the merge
+> `complete` falls.
+
 ## Proposed
 
 1. **The recommended order is integration → review → merge.** The final

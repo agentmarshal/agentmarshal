@@ -182,10 +182,13 @@ or after the implementation merges.
 
     Amended 2026-10-03: "its own state" lives in the local-state place of
     its scope — `.git/agentmarshal/` for the personal-in-clone scope, and
-    at user scope under the user directories the scope table names
+    at user scope under the user directories named for that scope
     (`~/.config/agentmarshal/`, `~/.local/share/agentmarshal/`; Windows:
     `%APPDATA%\agentmarshal\`, `%LOCALAPPDATA%\agentmarshal\`), as
-    Decision 11 places them.
+    Decision 11 places them. The scope table names the configuration
+    directory with its Windows form; the data directory's Windows form
+    is named on
+    [ADR-0014](ADR-0014-where-things-live.md)'s map of places.
 11. **Local state lives outside the working tree.** The clone's local state
     — extensions of the personal-in-clone scope, dependencies, local grants
     and switches — lives in `.git/agentmarshal/`, the location the separate
@@ -318,7 +321,7 @@ phase = "pre-gate-stop"                # post-gate | pre-gate-warn | pre-gate-st
 command = "bin/validate.py"            # only from this directory's bin/; run by the core's interpreter
 
 [dependencies]
-lock = "lock/adapter-lock.json"        # the adapter's Python dependencies, hashed; stdlib alone preferred
+lock = "lock/uv.lock"                  # the adapter's Python dependencies, hashed; stdlib alone preferred
 
 [wraps]
 product = "openspec"
@@ -407,3 +410,15 @@ deleted with it, writable by the executor, protected by a single line.
 the same user usually has access to it; complexity without protection.
 
 **`ext` records from personal extensions.** Would clutter the shared journal.
+
+## Corrections
+
+- 2026-10-03: the amended state paragraph of decision 10 attributed both
+  Windows user-scope directories to the scope table; the table names the
+  configuration directory's Windows form, and the data directory's is on
+  [ADR-0014](ADR-0014-where-things-live.md)'s map of places — the
+  paragraph now says so.
+- 2026-10-03: the manifest example named the adapter's lock
+  `lock/adapter-lock.json`; the dependency decision installs Python
+  dependencies with `uv sync --locked`, which reads a `uv.lock`, so the
+  example now names `lock/uv.lock`.

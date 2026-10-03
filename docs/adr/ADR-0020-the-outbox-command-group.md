@@ -43,7 +43,8 @@ the channel: since the batch of 2026-09-16 each published digest carries a
 outbox copy and searches the proposals directory for the result.
 
 Between those documents sits everything an adopter does with a finding, and
-the tool touches none of it. Two proposals measured what that costs:
+the tool touches none of it. Two proposals measured what that costs; a
+third opened the channel itself:
 
 - [proposal 023](../proposals/023-upstream-outbox-has-no-transaction.md):
   the outbox has a convention but no transaction — of the reporter's first
@@ -54,8 +55,8 @@ the tool touches none of it. Two proposals measured what that costs:
   findings written after reading and agreeing with the convention, the full
   Environment line survived in one, while the Version field survived in all
   thirteen, and it is the only one of the five a command fills in;
-- [proposal 012](../proposals/012-upstream-feedback-channel.md) opened the
-  channel itself: a documented convention instead of a local invention —
+- [proposal 012](../proposals/012-upstream-feedback-channel.md):
+  a documented convention instead of a local invention —
   shipped — with the transaction behind it still missing.
 
 ## Decision
@@ -107,8 +108,9 @@ obtains it and passes its path. The command opens no network.
 
 The map of places
 ([ADR-0014](ADR-0014-where-things-live.md)) states it plainly: the outbox
-is **neither evidence nor journal** — the one directory under
-`.agentmarshal/` that does not record the adopter's own work. Findings for
+is **neither evidence nor journal** — a directory under `.agentmarshal/`
+that does not record the adopter's own work, and not the only one:
+`.agentmarshal/extensions/` is another. Findings for
 upstream are not append-only, not task-scoped and not gated; the exclude
 pathspec stays the mechanism that keeps them out of journal commits.
 
@@ -155,9 +157,9 @@ extension with its isolation declared under
 core command. `status` reads a file for the same reason: the group keeps
 no network.
 
-**Fold the outbox into the journal.** Refused — the outbox is the one
-directory under the project directory that is not evidence about the
-adopter's own work
+**Fold the outbox into the journal.** Refused — the outbox is a directory
+under the project directory that is not evidence about the
+adopter's own work — `.agentmarshal/extensions/` is another —
 ([proposal 023](../proposals/023-upstream-outbox-has-no-transaction.md));
 journal records are append-only, task-scoped and gated, and a finding
 draft is none of those.
@@ -165,3 +167,15 @@ draft is none of those.
 **Enforce the fields at the gate.** Refused — the gate decides on
 evidence and the contract; the outbox is neither, and its check is a
 command a batch wrapper calls, not a gate lane.
+
+## Corrections
+
+- 2026-10-03: the Context introduced three proposals as "two proposals
+  measured what that costs"; two measured it, and
+  [proposal 012](../proposals/012-upstream-feedback-channel.md) opened
+  the channel itself — the introduction now says so.
+- 2026-10-03: Decision 6 and the fold-into-the-journal alternative called
+  the outbox the one directory under `.agentmarshal/` that does not
+  record the adopter's own work; `.agentmarshal/extensions/` on
+  [ADR-0014](ADR-0014-where-things-live.md)'s map of places is another,
+  and both sentences now say so.

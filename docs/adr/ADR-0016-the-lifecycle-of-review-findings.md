@@ -82,7 +82,10 @@ What is required is that a disposition exists, not which one it is. This
 finding still blocks nothing, and shipping past one still overrides
 nothing — but silence is replaced by a recorded choice. `status` and
 `report` show the deferrals still open. The findings lane — the task lane
-of [ADR-0009](ADR-0009-research-findings-lifecycle.md) — is untouched.
+of [ADR-0009](ADR-0009-research-findings-lifecycle.md) — is untouched by
+this: the new check and its refusal sit in the `complete` of a candidate,
+and `complete --findings` takes no dispositions and gains no refusal for
+want of one.
 
 ### 2. Reviews of one task link in order
 
@@ -130,6 +133,13 @@ of defect as a principle covering the whole class and how the class is
 closed, and a line of the review protocol asks that a new instance of an
 already-covered class be reported as advisory unless the principle itself
 is violated.
+
+The same documentation answers
+[proposal 039](../proposals/039-review-findings-do-not-feed-back-into-the-next-round.md)'s
+fifth ask — the whole-set check over a sample: the contract guidance also
+states the pattern that an acceptance criterion over a large set of items
+requires a mechanical check of the whole set, shipped with the candidate
+and verified by the reviewer rather than sampled.
 
 ## Left open
 
@@ -190,3 +200,13 @@ The threshold marks the count; a person reads it.
 **Automatic matching of findings across rounds by id.** Not taken: the
 review records link, and the decision automates no per-finding status
 across the link.
+
+## Corrections
+
+- 2026-10-03: Decision 5 now answers
+  [proposal 039](../proposals/039-review-findings-do-not-feed-back-into-the-next-round.md)'s
+  fifth ask — the whole-set check over a sample — which the proposal's
+  own disposition accepted as documentation; and the closing sentence of
+  Decision 1 now says which effect the findings lane excludes: the new
+  check and refusal sit in a candidate's `complete`, and
+  `complete --findings` takes no dispositions.
