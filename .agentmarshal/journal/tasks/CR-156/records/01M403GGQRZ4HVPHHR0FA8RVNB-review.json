@@ -1,0 +1,31 @@
+{
+  "advisory_findings": [
+    "restore-null-oid-assumes-sha1-object-format",
+    "staged-paths-returns-unused-status-element",
+    "send-stdout-mixes-check-report-with-commit-sha"
+  ],
+  "artifacts": [
+    {
+      "hash": "f3e4dd61dfe9dc90942008ca9e1ff9dc465ca381c4c5d6be64b378c4ae27165e",
+      "ref": ".agentmarshal/journal/tasks/CR-156/artifacts/01M403GGQRZ4HVPHHR0FA8RVNB-review.md"
+    }
+  ],
+  "created_at": "2026-10-03T05:24:09.592910Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "7fc703877c75255a43e1cb4e707d7189c1fe567d",
+  "reviewed_contract": "7a59c33dfd4e6559f3dcea92a041a17ceca797bfeb7012b9a7eff87823c4882e",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-156",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "approved"
+}
