@@ -211,14 +211,14 @@ def test_status_says_when_self_acceptance_could_not_be_checked(
     commit this checkout cannot read is reported as unchecked, not as absent.
     """
 
-    from agentmarshal import cli as cli_module
+    from agentmarshal.journal import status_view
 
     _repo, _journal, commit = _initialize_task(tmp_path, monkeypatch)
     assert _review(commit, "changes_required", "F-1") == 0
     assert _accept(commit) == 0
     capsys.readouterr()
     monkeypatch.setattr(
-        cli_module, "_declared_commit_writers", lambda *args, **kwargs: None
+        status_view, "_declared_commit_writers", lambda *args, **kwargs: None
     )
 
     assert main(["status", "CR-001"]) == 0
