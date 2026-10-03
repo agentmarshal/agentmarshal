@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import platform
@@ -17,15 +18,34 @@ from agentmarshal.cli import main
 
 _TOKEN = f"ghp_{'A1' * 18}"
 
+_CONFORMING = (
+    "# filled\n\n"
+    "## Symptom\n\nit broke\n\n"
+    "## Measurements\n\n3 of 7 runs\n\n"
+    "## Version\n\n0.0.0\n\n"
+    "## Environment\n\na machine\n\n"
+    "## Expected\n\nit works\n"
+)
+
 
 def _git(repo: Path, *arguments: str) -> None:
     subprocess.run(["git", *arguments], cwd=repo, check=True, capture_output=True)
+
+
+def _git_out(repo: Path, *arguments: str) -> str:
+    return (
+        subprocess.run(["git", *arguments], cwd=repo, check=True, capture_output=True)
+        .stdout.decode("utf-8")
+        .strip()
+    )
 
 
 def _project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init", "--quiet", "-b", "master")
+    _git(repo, "config", "user.name", "Adopter")
+    _git(repo, "config", "user.email", "adopter@test.invalid")
     monkeypatch.chdir(repo)
     assert main(["init"]) == 0
     return repo
@@ -37,16 +57,18 @@ def _outbox(repo: Path) -> Path:
 
 def _conforming_draft(outbox: Path, name: str = "0001-filled.md") -> Path:
     draft = outbox / name
-    draft.write_text(
-        "# filled\n\n"
-        "## Symptom\n\nit broke\n\n"
-        "## Measurements\n\n3 of 7 runs\n\n"
-        "## Version\n\n0.0.0\n\n"
-        "## Environment\n\na machine\n\n"
-        "## Expected\n\nit works\n",
-        encoding="utf-8",
-    )
+    draft.write_text(_CONFORMING, encoding="utf-8")
     return draft
+
+
+def _byte_named_file(outbox: Path, name: bytes, content: bytes) -> None:
+    """Create a file whose name is not UTF-8, the way one exists on disk."""
+
+    fd = os.open(
+        os.fsencode(outbox) + b"/" + name, os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+    )
+    with os.fdopen(fd, "wb") as handle:
+        handle.write(content)
 
 
 def _configure_markers(repo: Path, markers: list[str]) -> None:
@@ -576,6 +598,330 @@ def test_an_unreadable_project_config_is_described_without_its_path(
     assert "JSONDecodeError" in captured.err
     assert str(repo) not in captured.out
     assert str(repo) not in captured.err
+
+
+def test_a_file_name_that_is_not_utf8_is_named_escaped_and_still_masked(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a file name that is not UTF-8 is named escaped and still
+    masked."""
+    repo = _project(tmp_path, monkeypatch)
+    _configure_markers(repo, ["internal.example.invalid"])
+    outbox = _outbox(repo)
+    _byte_named_file(outbox, b"\xffinternal.example.invalid.md", _CONFORMING.encode())
+    _byte_named_file(outbox, b"\xffnote.md", b"# nothing\n")
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    assert main(["outbox", "check"]) == 1
+
+    captured = capsys.readouterr()
+    assert "internal.example.invalid" not in captured.out
+    assert "internal.example.invalid" not in captured.err
+    assert "\\xff<private marker #1>.md: private-marker #1" in captured.out
+    assert "\\xffnote.md: missing" in captured.out
+
+
+def test_send_refuses_when_the_check_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: send refuses when the check fails."""
+    repo = _project(tmp_path, monkeypatch)
+    (_outbox(repo) / "0001-empty.md").write_text("# nothing\n", encoding="utf-8")
+
+    assert main(["outbox", "send"]) == 1
+
+    captured = capsys.readouterr()
+    assert "outbox send: refused" in captured.err
+    assert _git_out(repo, "rev-list", "--count", "--all") == "0"
+
+
+def test_send_refuses_when_something_outside_the_outbox_is_staged(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: send refuses when something outside the outbox is staged."""
+    repo = _project(tmp_path, monkeypatch)
+    _conforming_draft(_outbox(repo))
+    (repo / "journalish.txt").write_text("x\n", encoding="utf-8")
+    _git(repo, "add", "journalish.txt")
+
+    assert main(["outbox", "send"]) == 1
+
+    captured = capsys.readouterr()
+    assert "staged outside the outbox" in captured.err
+    assert "journalish.txt" in captured.err
+    # Nothing was committed and the staged set is the operator's, untouched.
+    assert _git_out(repo, "rev-list", "--count", "--all") == "0"
+    assert _git_out(repo, "diff", "--cached", "--name-only") == "journalish.txt"
+
+
+def test_send_makes_exactly_one_commit_of_the_batch_and_prints_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: send makes exactly one commit of the batch and prints it."""
+    repo = _project(tmp_path, monkeypatch)
+    (repo / "tracked.txt").write_text("v1\n", encoding="utf-8")
+    _git(repo, "add", "tracked.txt")
+    _git(repo, "commit", "-m", "base")
+    _conforming_draft(_outbox(repo))
+    (repo / "tracked.txt").write_text("v2\n", encoding="utf-8")
+
+    assert main(["outbox", "send"]) == 0
+
+    out = capsys.readouterr().out
+    assert "all conform" in out
+    assert out.strip().splitlines()[-1] == _git_out(repo, "rev-parse", "HEAD")
+    assert _git_out(repo, "rev-list", "--count", "HEAD") == "2"
+    message = _git_out(repo, "show", "-s", "--format=%B", "HEAD")
+    assert ".agentmarshal/upstream/0001-filled.md" in message
+    assert ".agentmarshal/upstream/README.md" in message
+    committed = _git_out(
+        repo, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"
+    )
+    assert committed
+    assert all(
+        path.startswith(".agentmarshal/upstream/") for path in committed.splitlines()
+    )
+    # The unstaged modification outside the outbox is still unstaged —
+    # raw output, since stripping would eat the leading status column.
+    porcelain = subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    ).stdout.decode("utf-8")
+    assert " M tracked.txt" in porcelain.splitlines()
+
+
+def test_send_refuses_an_empty_batch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: send refuses an empty batch."""
+    repo = _project(tmp_path, monkeypatch)
+    _conforming_draft(_outbox(repo))
+    _git(repo, "add", ".agentmarshal/upstream")
+    _git(repo, "commit", "-m", "an earlier batch")
+
+    assert main(["outbox", "send"]) == 1
+
+    assert "nothing to send" in capsys.readouterr().err
+    assert _git_out(repo, "rev-list", "--count", "HEAD") == "1"
+
+
+def test_in_a_sidecar_the_commit_lands_in_the_journal_repository(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: in a sidecar the commit lands in the journal repository."""
+    host = tmp_path / "host"
+    sidecar = tmp_path / "sidecar"
+    for repo in (host, sidecar):
+        repo.mkdir()
+        _git(repo, "init", "--quiet", "-b", "master")
+        _git(repo, "config", "user.name", "Adopter")
+        _git(repo, "config", "user.email", "adopter@test.invalid")
+    monkeypatch.chdir(sidecar)
+    assert main(["init", "--host", str(host)]) == 0
+    _conforming_draft(sidecar / ".agentmarshal" / "upstream")
+
+    assert main(["outbox", "send"]) == 0
+
+    assert _git_out(sidecar, "rev-list", "--count", "HEAD") == "1"
+    committed = _git_out(sidecar, "ls-tree", "-r", "--name-only", "HEAD")
+    assert ".agentmarshal/upstream/0001-filled.md" in committed.splitlines()
+    # The host gains no commit and no project directory at all.
+    assert (
+        subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD"],
+            cwd=host,
+            capture_output=True,
+            check=False,
+        ).returncode
+        != 0
+    )
+    assert not (host / ".agentmarshal").exists()
+
+
+def test_a_file_whose_name_is_not_utf8_is_sent_under_its_escaped_name(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a file whose name is not UTF-8 is sent under its escaped
+    name."""
+    repo = _project(tmp_path, monkeypatch)
+    _byte_named_file(_outbox(repo), b"\xffdraft.md", _CONFORMING.encode())
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    assert main(["outbox", "send"]) == 0
+
+    staged = subprocess.run(
+        ["git", "ls-files", "-z"], cwd=repo, check=True, capture_output=True
+    ).stdout
+    assert b".agentmarshal/upstream/\xffdraft.md" in staged
+    message = _git_out(repo, "show", "-s", "--format=%B", "HEAD")
+    assert "\\xffdraft.md" in message
+
+
+def test_a_file_the_index_claims_is_named_with_the_entry_claiming_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a file the index claims is named with the entry claiming it."""
+    repo = _project(tmp_path, monkeypatch)
+    draft = _conforming_draft(_outbox(repo))
+    digest = hashlib.sha256(draft.read_bytes()).hexdigest()
+    index = tmp_path / "index.txt"
+    index.write_text(f"# index\nSource: sha256:{digest}\n", encoding="utf-8")
+
+    assert main(["outbox", "status", "--index", str(index)]) == 0
+
+    assert "0001-filled.md: claimed by index line 2" in capsys.readouterr().out
+
+
+def test_a_file_no_entry_claims_is_reported_unclaimed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a file no entry claims is reported unclaimed."""
+    repo = _project(tmp_path, monkeypatch)
+    _conforming_draft(_outbox(repo))
+    index = tmp_path / "index.txt"
+    index.write_text("# index\n", encoding="utf-8")
+
+    assert main(["outbox", "status", "--index", str(index)]) == 0
+
+    out = capsys.readouterr().out
+    assert "0001-filled.md: no index entry" in out
+    assert "README.md: no index entry" in out
+
+
+def test_index_entries_matching_no_file_are_listed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: index entries matching no file are listed."""
+    repo = _project(tmp_path, monkeypatch)
+    draft = _conforming_draft(_outbox(repo))
+    digest = hashlib.sha256(draft.read_bytes()).hexdigest()
+    other = hashlib.sha256(b"not in the outbox").hexdigest()
+    index = tmp_path / "index.txt"
+    index.write_text(
+        f"Source: sha256:{digest}\nSource: sha256:{other}\n", encoding="utf-8"
+    )
+
+    assert main(["outbox", "status", "--index", str(index)]) == 0
+
+    out = capsys.readouterr().out
+    assert "0001-filled.md: claimed by index line 1" in out
+    assert f"index line 2: sha256:{other} claims no outbox file" in out
+
+
+def test_the_markdown_decorated_source_line_is_parsed_like_the_bare_one(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: the markdown-decorated Source line is parsed like the bare
+    one."""
+    repo = _project(tmp_path, monkeypatch)
+    draft = _conforming_draft(_outbox(repo))
+    digest = hashlib.sha256(draft.read_bytes()).hexdigest()
+    index = tmp_path / "index.txt"
+    index.write_text(
+        f"- **Reporter:** Adopter A · **Source:** `sha256:{digest}` · "
+        "**Disposition:** accepted\n",
+        encoding="utf-8",
+    )
+
+    assert main(["outbox", "status", "--index", str(index)]) == 0
+
+    assert "0001-filled.md: claimed by index line 1" in capsys.readouterr().out
+
+
+def test_status_refuses_a_missing_or_unreadable_index(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: status refuses a missing or unreadable index."""
+    _project(tmp_path, monkeypatch)
+
+    missing = tmp_path / "missing.txt"
+    assert main(["outbox", "status", "--index", str(missing)]) == 1
+    assert "cannot read the index" in capsys.readouterr().err
+
+    assert main(["outbox", "status", "--index", str(tmp_path)]) == 1
+    assert "cannot read the index" in capsys.readouterr().err
+
+
+def test_an_entry_that_is_not_a_regular_file_is_named_as_not_hashed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: an entry that is not a regular file is named as not hashed."""
+    repo = _project(tmp_path, monkeypatch)
+    _conforming_draft(_outbox(repo))
+    (_outbox(repo) / "bundled").mkdir()
+    (_outbox(repo) / "linked.md").symlink_to("missing-target")
+    index = tmp_path / "index.txt"
+    index.write_text("# index\n", encoding="utf-8")
+
+    assert main(["outbox", "status", "--index", str(index)]) == 1
+
+    captured = capsys.readouterr()
+    assert "bundled: not a regular file, not hashed" in captured.out
+    assert "linked.md: not a regular file, not hashed" in captured.out
+    assert "outbox status: refused" in captured.err
+
+
+def test_a_name_that_is_not_utf8_is_printed_escaped_under_the_masking(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a name that is not UTF-8 is printed escaped under the
+    masking."""
+    repo = _project(tmp_path, monkeypatch)
+    _configure_markers(repo, ["internal.example.invalid"])
+    _byte_named_file(_outbox(repo), b"\xffinternal.example.invalid.md", b"# nothing\n")
+    index = tmp_path / "index.txt"
+    index.write_text("# index\n", encoding="utf-8")
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    assert main(["outbox", "status", "--index", str(index)]) == 0
+
+    captured = capsys.readouterr()
+    assert "internal.example.invalid" not in captured.out
+    assert "internal.example.invalid" not in captured.err
+    assert "\\xff<private marker #1>.md: no index entry" in captured.out
+
+
+def test_status_refuses_when_there_is_no_outbox(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: status refuses when there is no outbox."""
+    repo = _project(tmp_path, monkeypatch)
+    shutil.rmtree(_outbox(repo))
+    index = tmp_path / "index.txt"
+    index.write_text("# index\n", encoding="utf-8")
+
+    assert main(["outbox", "status", "--index", str(index)]) == 1
+    assert "no outbox" in capsys.readouterr().err
 
 
 def test_outbox_help_lists_both_subcommands(
