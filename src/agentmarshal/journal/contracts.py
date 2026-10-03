@@ -26,6 +26,17 @@ class ContractHeader:
     decisions: tuple[str, ...] = ()
     documents: tuple[str, ...] = ()
     extensions: tuple[str, ...] = ()
+    implementers: tuple[str, ...] = ()
+    reviewers: tuple[str, ...] = ()
+    independence: tuple[str, ...] = ()
+
+
+INDEPENDENCE_RULES: tuple[str, ...] = (
+    "reviewer-not-writer",
+    "distinct-actor",
+    "distinct-vendor",
+    "distinct-model",
+)
 
 
 def _require_string(data: dict[str, object], field: str) -> str:
@@ -50,6 +61,38 @@ def _optional_string_array(data: dict[str, object], field: str) -> tuple[str, ..
     if field not in data:
         return ()
     return _require_string_array(data, field)
+
+
+def _optional_unique_nonempty_array(
+    data: dict[str, object], field: str
+) -> tuple[str, ...]:
+    """An optional list that names at least one non-empty entry, once each.
+
+    The field is either absent or a non-empty list of distinct non-empty
+    strings: an empty list would read as "none permitted", which the absent
+    field does not mean, and a repeated entry adds nothing to an ordered list.
+    """
+
+    if field not in data:
+        return ()
+    entries = _require_string_array(data, field)
+    if not entries:
+        raise JournalContractError(
+            f"contract header field {field!r} must name at least one entry"
+        )
+    seen: set[str] = set()
+    for entry in entries:
+        if not entry:
+            raise JournalContractError(
+                f"contract header field {field!r} entry {entry!r} is empty"
+            )
+        if entry in seen:
+            raise JournalContractError(
+                f"contract header field {field!r} repeats entry {entry!r}"
+            )
+        seen.add(entry)
+        reject_control_characters(entry, f"contract header field {field!r} entry")
+    return entries
 
 
 def reject_control_characters(value: str, what: str) -> None:
@@ -144,7 +187,7 @@ def parse_contract_text(text: str, source: str) -> ContractHeader:
 
     data = cast(dict[str, object], parsed)
     schema = data.get("schema")
-    if type(schema) is not int or schema not in {1, 2}:
+    if type(schema) is not int or schema not in {1, 2, 3}:
         raise JournalContractError(
             f"contract header has an unknown or missing schema version: {source}"
         )
@@ -154,10 +197,25 @@ def parse_contract_text(text: str, source: str) -> ContractHeader:
                 raise JournalContractError(
                     f"contract header field {field!r} requires schema 2: {source}"
                 )
+    if schema < 3:
+        for field in ("implementers", "reviewers", "independence"):
+            if field in data:
+                raise JournalContractError(
+                    f"contract header field {field!r} requires schema 3: {source}"
+                )
     try:
         decisions = _optional_string_array(data, "decisions")
         documents = _optional_string_array(data, "documents")
         extensions = _optional_string_array(data, "extensions")
+        implementers = _optional_unique_nonempty_array(data, "implementers")
+        reviewers = _optional_unique_nonempty_array(data, "reviewers")
+        independence = _optional_unique_nonempty_array(data, "independence")
+        for rule in independence:
+            if rule not in INDEPENDENCE_RULES:
+                raise JournalContractError(
+                    f"contract header field 'independence' entry {rule!r} is not"
+                    " a known independence rule"
+                )
         for decision in decisions:
             reject_control_characters(
                 decision, "contract header field 'decisions' entry"
@@ -177,6 +235,9 @@ def parse_contract_text(text: str, source: str) -> ContractHeader:
             decisions=decisions,
             documents=documents,
             extensions=extensions,
+            implementers=implementers,
+            reviewers=reviewers,
+            independence=independence,
         )
     except JournalContractError as error:
         raise JournalContractError(f"{error}: {source}") from error
