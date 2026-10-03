@@ -1210,8 +1210,9 @@ def launch_review(
         # the same trusted source (a sidecar's own config, else the
         # merge-base tree). Naming is required, so a marker read that fails
         # refuses rather than prints the names unmasked. The prompt's names
-        # stay raw: they must match the names inside the diff text the
-        # reviewer is shown, which masking cannot change anyway.
+        # are not masked — they must match the names inside the diff text the
+        # reviewer is shown — but they go through escape_for_display like
+        # every value the prompt places into a line.
         try:
             markers = (
                 markers_from_config(journal_root.parents[1])

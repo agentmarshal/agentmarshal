@@ -53,9 +53,12 @@ so a value a later rule would refuse can still reach these renderers.
   The renderer splits on `\n` alone — not `splitlines()`, which would also
   break on refused separators like U+2028 and hide them as structure — and
   escapes each rendered line, so every refused character except the real
-  newline the quoting is built around prints as its escape. The recorder
-  keeps its whitespace fold (a name renders on one line) and the fold's
-  result is escaped, so a bidirectional override in it shows.
+  newline the quoting is built around prints as its escape. Trailing real
+  newlines are stripped before quoting, so a reason that ends in one does
+  not close with an empty quoted line. The recorder keeps its whitespace
+  fold (a name renders on one line), applied to the escaped name so a
+  refused character in it — a newline included — prints as its escape
+  rather than folding to a space.
 - **The prompt escapes each field it places into a line.** The named
   contract material (decisions, documents, absent extensions), the finding
   id, the claim summary, artifact references and the undecodable-file names

@@ -41,10 +41,11 @@ def render_amendment_history(records: Sequence[Mapping[str, object]]) -> str:
         recorder = amendment.get("recorded_by")
         # The actor name is recorded text like any other: a newline in it would
         # forge an entry of its own, so it renders on one line or not at all.
-        # The fold keeps ordinary spacing byte-identical; what a record could
-        # still carry past it — a bidirectional override — prints escaped.
+        # Escaping precedes the fold so a refused character — a newline or a
+        # bidirectional override included — prints as its escape rather than
+        # dropping to a space; ordinary spacing folds exactly as before.
         byline = (
-            f"; recorded by {escape_for_display(' '.join(recorder.split()))}"
+            f"; recorded by {' '.join(escape_for_display(recorder).split())}"
             if isinstance(recorder, str)
             else ""
         )
@@ -55,8 +56,10 @@ def render_amendment_history(records: Sequence[Mapping[str, object]]) -> str:
         # rendering chose for reasons, while every other character the
         # forgeable-text rule refuses — splitlines() would have hidden Zl and
         # the C1 separators as structure — prints as its visible escape.
+        # Trailing real newlines are stripped first, so a reason ending in one
+        # does not close with an empty quoted line.
         quoted_reason = "\n".join(
-            f"> {escape_for_display(line)}" for line in reason.split("\n")
+            f"> {escape_for_display(line)}" for line in reason.rstrip("\n").split("\n")
         )
         entries.append(
             f"- {escape_for_display(str(amendment['created_at']))}{byline}:\n"

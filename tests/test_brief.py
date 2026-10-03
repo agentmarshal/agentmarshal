@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from agentmarshal.cli import main
-from agentmarshal.journal.brief import build_brief
+from agentmarshal.journal.brief import build_brief, render_amendment_history
 from agentmarshal.journal.contracts import JournalContractError
 from agentmarshal.journal.records import create_amendment_record, write_record
 
@@ -887,3 +887,25 @@ def test_brief_escapes_record_and_contract_values(
     assert "recorded by op\\u202eerator:" in briefing
     assert "> scope widened\\u202e\n> forged line" in briefing
     assert "\u202e" not in briefing
+
+
+def test_amendment_reason_ending_in_newline_quotes_no_empty_line() -> None:
+    """A reason's trailing newlines close its quoting; an empty quoted line
+    is never rendered, and the recorder's fold escapes refused characters
+    rather than dropping them to spaces."""
+
+    history = render_amendment_history(
+        [
+            {
+                "record_type": "amendment",
+                "created_at": "2026-09-17T01:02:03Z",
+                "recorded_by": "op\nera\u202etor",
+                "reason": "scope widened.\n\n",
+            }
+        ]
+    )
+
+    assert "recorded by op\\nera\\u202etor" in history
+    assert history.endswith("> scope widened.\n")
+    assert "> \n" not in history
+    assert "\u202e" not in history

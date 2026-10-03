@@ -2664,7 +2664,7 @@ def test_a_refused_character_prints_escaped_in_the_reviewer_prompt() -> None:
                 "record_type": "amendment",
                 "created_at": "t\n1\u202e",
                 "recorded_by": "op\nera\u202etor",
-                "reason": "scope widened\u202e\nforged line",
+                "reason": "scope widened\u202e\nforged line\n",
             }
         ]
     )
@@ -2683,9 +2683,11 @@ def test_a_refused_character_prints_escaped_in_the_reviewer_prompt() -> None:
     assert "- docs/a\\nb.md" in prompt
     assert "- ext\\u202e-1" in prompt
     assert "blob\\u202e.bin" in prompt
-    assert "recorded by op era\\u202etor" in prompt
+    assert "recorded by op\\nera\\u202etor" in prompt
     assert "> scope widened\\u202e\n> forged line" in prompt
     assert "- t\\n1\\u202e; recorded by" in prompt
+    # A reason ending in a real newline does not close with an empty quote.
+    assert "> \n" not in prompt
     assert "\u202e" not in prompt
 
 
