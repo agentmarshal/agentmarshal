@@ -415,7 +415,7 @@ def _run_check(stderr: TextIO) -> int:
     except OSError as error:
         print(
             f"outbox check: cannot read the outbox at "
-            f"{safe_path(str(outbox), markers)}: {_os_error_text(error)}",
+            f"{safe_path(_shown_name(outbox), markers)}: {_os_error_text(error)}",
             file=stderr,
         )
         return 1
@@ -497,14 +497,15 @@ class _OutboxGitError(Exception):
     """A git invocation for the outbox failed or could not be run."""
 
 
-def _git(project_root: Path, arguments: list[str]) -> bytes:
+def _git(project_root: Path, arguments: list[str], feed: bytes = b"") -> bytes:
     """Run git in the project repository and return stdout bytes.
 
     Mirrors ``gate``'s ``_run_git_bytes``: a missing git is described by
     its errno text — never ``str(OSError)``, which carries a path — and a
     non-zero exit by git's own stderr decoded lossily. A path git quotes
     back can itself carry a marker, so the caller prints the message
-    masked.
+    masked. *feed* is piped to git's stdin — the plumbing ``send`` uses
+    to put index entries back takes its records there.
     """
 
     try:
@@ -513,6 +514,7 @@ def _git(project_root: Path, arguments: list[str]) -> bytes:
             cwd=project_root,
             capture_output=True,
             check=False,
+            input=feed,
         )
     except OSError as error:
         raise _OutboxGitError(f"cannot run git: {_os_error_text(error)}") from error
@@ -556,6 +558,35 @@ def _staged_paths(project_root: Path) -> list[tuple[str, str, str | None]]:
     return entries
 
 
+def _restore_outbox_index(project_root: Path, records: bytes) -> str | None:
+    """Un-stage exactly what a refused send staged under the outbox.
+
+    *records* is the ``git ls-files --stage -z`` output taken before the
+    batch was staged. Replaying it through ``update-index --index-info``
+    puts every recorded entry back — including one the add rewrote —
+    while a mode-0 line drops each path now staged under the outbox that
+    no record names: the additions the send made. Nothing outside the
+    outbox is ever in either list, and the plumbing form works where
+    ``restore --staged`` cannot — an unborn HEAD. A failure is returned
+    as text for the caller to warn about; the refusal stands either way.
+    """
+
+    try:
+        current = _git(project_root, ["ls-files", "-z", "--", _OUTBOX_DIR_SPEC])
+        recorded = {
+            token.split(b"\t", 1)[1] for token in records.split(b"\0") if b"\t" in token
+        }
+        removals = b"".join(
+            b"0 " + b"0" * 40 + b"\t" + path + b"\0"
+            for path in current.split(b"\0")
+            if path and path not in recorded
+        )
+        _git(project_root, ["update-index", "-z", "--index-info"], records + removals)
+    except _OutboxGitError as error:
+        return str(error)
+    return None
+
+
 def _run_send(stderr: TextIO) -> int:
     # The check runs literally: its report is the operator's reason, and
     # any refusal it voices refuses the send.
@@ -565,9 +596,23 @@ def _run_send(stderr: TextIO) -> int:
     located = _locate("send", stderr)
     if located is None:
         return 1
-    project_root, _ = located
+    project_root, outbox = located
     markers = _markers("send", project_root, stderr)
     if markers is None:
+        return 1
+    try:
+        # The check just passed, so every entry is a regular file and a
+        # draft is any name but the README init writes — a batch of no
+        # drafts would commit the README alone.
+        if not any(entry.name != _README for entry in outbox.iterdir()):
+            print("outbox send: no drafts to send", file=stderr)
+            return 1
+    except OSError as error:
+        print(
+            f"outbox send: cannot read the outbox at "
+            f"{safe_path(_shown_name(outbox), markers)}: {_os_error_text(error)}",
+            file=stderr,
+        )
         return 1
     try:
         staged = _staged_paths(project_root)
@@ -592,7 +637,13 @@ def _run_send(stderr: TextIO) -> int:
             file=stderr,
         )
         return 1
+    index_records: bytes | None = None
     try:
+        # Taken before the add so a refused send can put the index back
+        # exactly as it found it under the outbox.
+        index_records = _git(
+            project_root, ["ls-files", "--stage", "-z", "--", _OUTBOX_DIR_SPEC]
+        )
         # --force: an ignore rule must not silently drop a draft the check
         # just passed — the whole outbox is what leaves.
         _git(project_root, ["add", "--force", "--", _OUTBOX_DIR_SPEC])
@@ -605,17 +656,25 @@ def _run_send(stderr: TextIO) -> int:
             }
         )
         if not batch:
-            print(
-                "outbox send: nothing to send — the outbox has no uncommitted changes",
-                file=stderr,
+            raise _OutboxGitError(
+                "nothing to send — the outbox has no uncommitted changes"
             )
-            return 1
         message = "outbox: findings batch\n\n" + "\n".join(
             f"- {path}" for path in batch
         )
         _git(project_root, ["commit", "--message", message])
         commit = _git(project_root, ["rev-parse", "HEAD"]).decode("ascii").strip()
     except _OutboxGitError as error:
+        # The refusal stands, but a failed commit must not leave behind
+        # the batch the add already staged.
+        if index_records is not None:
+            restore_error = _restore_outbox_index(project_root, index_records)
+            if restore_error is not None:
+                print(
+                    f"outbox send: could not restore the index: "
+                    f"{safe_path(restore_error, markers)}",
+                    file=stderr,
+                )
         print(f"outbox send: {safe_path(str(error), markers)}", file=stderr)
         return 1
     print(commit)
@@ -628,7 +687,9 @@ def _run_send(stderr: TextIO) -> int:
 # One index entry: `Source:` — optionally `**`-decorated the way a
 # published digest header writes it — followed by whitespace, an optional
 # backtick, `sha256:` and 64 hexadecimal digits, then an optional closing
-# backtick. Each occurrence is an entry, identified by its line number.
+# backtick. Each occurrence is an entry, identified by its digest — the
+# line it sits on is kept for the report, and a digest carried by two
+# lines is still one entry.
 _SOURCE_LINE = re.compile(r"(?:\*\*Source:\*\*|Source:)\s*`?sha256:([0-9A-Fa-f]{64})`?")
 
 
@@ -650,26 +711,24 @@ def _run_status(index_path: Path, stderr: TextIO) -> int:
             file=stderr,
         )
         return 1
-    claims: list[tuple[int, str]] = [
-        (line_number, match.group(1).lower())
-        for line_number, line in enumerate(index_text.split("\n"), start=1)
-        for match in _SOURCE_LINE.finditer(line)
-    ]
     by_digest: dict[str, list[int]] = {}
-    for line_number, digest in claims:
-        by_digest.setdefault(digest, []).append(line_number)
+    for line_number, line in enumerate(index_text.split("\n"), start=1):
+        for match in _SOURCE_LINE.finditer(line):
+            claim_lines = by_digest.setdefault(match.group(1).lower(), [])
+            if line_number not in claim_lines:
+                claim_lines.append(line_number)
     try:
         entries = sorted(outbox.iterdir())
     except OSError as error:
         print(
             f"outbox status: cannot read the outbox at "
-            f"{safe_path(str(outbox), markers)}: {_os_error_text(error)}",
+            f"{safe_path(_shown_name(outbox), markers)}: {_os_error_text(error)}",
             file=stderr,
         )
         return 1
 
     refused = False
-    matched: set[int] = set()
+    claimed: set[str] = set()
     for entry in entries:
         name = safe_path(_shown_name(entry.name), markers)
         if not _is_regular(entry):
@@ -687,14 +746,18 @@ def _run_status(index_path: Path, stderr: TextIO) -> int:
         digest = hashlib.sha256(raw).hexdigest()
         lines = by_digest.get(digest)
         if lines:
-            matched.update(lines)
+            claimed.add(digest)
             plural = "s" if len(lines) > 1 else ""
             print(f"{name}: claimed by index line{plural} {', '.join(map(str, lines))}")
         else:
             print(f"{name}: no index entry")
-    for line_number, digest in claims:
-        if line_number not in matched:
-            print(f"index line {line_number}: sha256:{digest} claims no outbox file")
+    for digest, lines in by_digest.items():
+        if digest not in claimed:
+            plural = "s" if len(lines) > 1 else ""
+            print(
+                f"index line{plural} {', '.join(map(str, lines))}: "
+                f"sha256:{digest} claims no outbox file"
+            )
     if refused:
         print("outbox status: refused", file=stderr)
         return 1

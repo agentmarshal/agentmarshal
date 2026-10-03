@@ -717,6 +717,50 @@ def test_send_refuses_an_empty_batch(
     assert _git_out(repo, "rev-list", "--count", "HEAD") == "1"
 
 
+def test_send_refuses_when_the_outbox_holds_no_drafts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: send refuses when the outbox holds no drafts."""
+    repo = _project(tmp_path, monkeypatch)
+    assert list(_outbox(repo).iterdir()) == [_outbox(repo) / "README.md"]
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    assert main(["outbox", "send"]) == 1
+
+    assert "no drafts to send" in capsys.readouterr().err
+    assert _git_out(repo, "rev-list", "--count", "--all") == "0"
+
+
+def test_a_failed_commit_leaves_the_index_as_send_found_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a failed commit leaves the index as send found it."""
+    repo = _project(tmp_path, monkeypatch)
+    _conforming_draft(_outbox(repo))
+    _conforming_draft(_outbox(repo), name="0002-also-filled.md")
+    # Staged inside the outbox before the send: the operator's, and the
+    # restore must leave it staged.
+    _git(repo, "add", ".agentmarshal/upstream/0001-filled.md")
+    hook = repo / ".git" / "hooks" / "pre-commit"
+    hook.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    hook.chmod(0o755)
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    assert main(["outbox", "send"]) == 1
+
+    assert "outbox send:" in capsys.readouterr().err
+    assert _git_out(repo, "rev-list", "--count", "--all") == "0"
+    # Exactly what the operator staged remains; what send staged is gone.
+    assert (
+        _git_out(repo, "diff", "--cached", "--name-only")
+        == ".agentmarshal/upstream/0001-filled.md"
+    )
+
+
 def test_in_a_sidecar_the_commit_lands_in_the_journal_repository(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -828,6 +872,50 @@ def test_index_entries_matching_no_file_are_listed(
     assert f"index line 2: sha256:{other} claims no outbox file" in out
 
 
+def test_two_digests_on_one_index_line_are_two_entries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: two digests on one index line are two entries."""
+    repo = _project(tmp_path, monkeypatch)
+    draft = _conforming_draft(_outbox(repo))
+    digest = hashlib.sha256(draft.read_bytes()).hexdigest()
+    other = hashlib.sha256(b"not in the outbox").hexdigest()
+    index = tmp_path / "index.txt"
+    index.write_text(
+        f"Source: sha256:{digest} · Source: sha256:{other}\n", encoding="utf-8"
+    )
+
+    assert main(["outbox", "status", "--index", str(index)]) == 0
+
+    out = capsys.readouterr().out
+    assert "0001-filled.md: claimed by index line 1" in out
+    assert f"index line 1: sha256:{other} claims no outbox file" in out
+
+
+def test_a_digest_on_several_index_lines_is_listed_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a digest on several index lines is listed once."""
+    repo = _project(tmp_path, monkeypatch)
+    _conforming_draft(_outbox(repo))
+    other = hashlib.sha256(b"not in the outbox").hexdigest()
+    index = tmp_path / "index.txt"
+    index.write_text(
+        f"Source: sha256:{other}\n**Source:** `sha256:{other}`\n",
+        encoding="utf-8",
+    )
+
+    assert main(["outbox", "status", "--index", str(index)]) == 0
+
+    out = capsys.readouterr().out
+    assert f"index lines 1, 2: sha256:{other} claims no outbox file" in out
+    assert out.count("claims no outbox file") == 1
+
+
 def test_the_markdown_decorated_source_line_is_parsed_like_the_bare_one(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -924,13 +1012,15 @@ def test_status_refuses_when_there_is_no_outbox(
     assert "no outbox" in capsys.readouterr().err
 
 
-def test_outbox_help_lists_both_subcommands(
+def test_outbox_help_lists_all_four_subcommands(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    """The group's help names every subcommand — new, check, send, status —
+    so the registration in outbox.py is covered, not only the dispatch."""
     with pytest.raises(SystemExit) as raised:
         main(["outbox", "--help"])
 
     assert raised.value.code == 0
     out = capsys.readouterr().out
-    assert "new" in out
-    assert "check" in out
+    for name in ("new", "check", "send", "status"):
+        assert name in out

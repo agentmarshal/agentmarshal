@@ -12,19 +12,21 @@ proposals directory for a sha256 by hand.
 ## What Changes
 
 - `agentmarshal outbox send` runs the check first and refuses on any
-  failure; refuses when anything outside `.agentmarshal/upstream/` is
-  already staged; otherwise stages only the outbox — the README's exclude
-  pathspec applied the other way — and makes exactly one commit of the
-  batch with a message naming the files, then prints the commit. In a
-  sidecar the commit lands in the journal repository, never the host. The
-  command transmits nothing and opens no network: delivery stays with the
-  operator.
+  failure; refuses an outbox that holds no draft; refuses when anything
+  outside `.agentmarshal/upstream/` is already staged; otherwise stages
+  only the outbox — the README's exclude pathspec applied the other way —
+  and makes exactly one commit of the batch with a message naming the
+  files, then prints the commit. A commit that fails leaves the index as
+  the send found it. In a sidecar the commit lands in the journal
+  repository, never the host. The command transmits nothing and opens no
+  network: delivery stays with the operator.
 - `agentmarshal outbox status --index <file>` hashes each file in the
   outbox — the sha256 of the file as it is, lowercase hex — and compares
   the hashes with the `Source:` lines of an index file the operator
-  obtains, printing for each outbox file whether an entry claims it and
-  which, and listing index entries that match no file. A missing or
-  unreadable index is refused with a message; no network.
+  obtains — each occurrence an entry identified by its digest — printing
+  for each outbox file whether an entry claims it and which, and listing
+  once each index entry that matches no file. A missing or unreadable
+  index is refused with a message; no network.
 - A file name that is not UTF-8 is named in the escaped printable form the
   leak scan uses for undecodable diff header lines — under the same
   masking — so it no longer crashes `check`, and cannot crash `send` or

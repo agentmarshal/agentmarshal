@@ -54,6 +54,10 @@ such lines — a digest, a concatenation, `docs/proposals/README.md` itself
   commits nothing. The rule protects both directions the ADR measured:
   findings riding along in another commit, and another commit's work
   riding along in the batch.
+- **`send` refuses an outbox that holds no draft.** The README `init`
+  writes is not a draft, so an outbox holding only it — or nothing —
+  has no batch to make: the command says there are no drafts to send
+  rather than committing the README alone.
 - **`send` stages the outbox pathspec and commits once.** `git add
   --force -- .agentmarshal/upstream` — the README's
   `:(exclude).agentmarshal/upstream/**` applied the other way. `-f`
@@ -66,6 +70,15 @@ such lines — a digest, a concatenation, `docs/proposals/README.md` itself
   per staged outbox path, and `git rev-parse HEAD` is printed — the
   commit, for whatever delivery the operator chooses. Delivery itself,
   and any push, is not the command's.
+- **A refused send puts the index back.** Before the add, the command
+  records `git ls-files --stage -z` under the outbox; when the commit
+  fails — a hook, no identity — those records are replayed through
+  `git update-index --index-info` and every path now staged under the
+  outbox that no record names is dropped with a mode-0 line. That puts
+  back exactly what the send staged — additions removed, a pre-staged
+  entry the add rewrote restored — on an unborn HEAD too, where
+  `restore --staged` cannot run. Index entries outside the outbox are
+  never in either list, so nothing else is touched.
 - **Git runs with `subprocess`, captured bytes in, domain error out.** A
   helper mirrors `gate`'s `_run_git_bytes`: `subprocess.run` with
   `capture_output`, `check=False`; a missing git is described by its
@@ -92,17 +105,20 @@ such lines — a digest, a concatenation, `docs/proposals/README.md` itself
   so the exit is non-zero — the check's "nothing in the outbox passes in
   silence" rule, applied to the other direction of the channel. A symlink
   is never followed: the file as sent is the link, not its target.
-- **What the index contributes is every `Source:` line, identified by its
-  line number.** Parsed: per line, each occurrence of `Source:` —
+- **What the index contributes is every `Source:` occurrence, identified
+  by its digest.** Parsed: per line, each occurrence of `Source:` —
   optionally wrapped as `**Source:**` — followed by whitespace, an
   optional backtick, `sha256:` and 64 hexadecimal digits (either case,
   normalized to lowercase), then an optional closing backtick. Each
-  occurrence is one index entry. For each outbox file the report says
-  either `claimed by index line N` (or lines N, M) or `no index entry`;
-  afterwards each index entry that claimed no file is printed —
-  `index line N: sha256:<digest> claims no outbox file`. A missing or
-  unreadable index is refused with a message before the outbox is
-  touched; an index that holds no `Source:` line simply claims nothing.
+  occurrence is one index entry, but the entry's identity is the digest:
+  two digests on one line are two entries, and the same digest on two
+  lines is one. The line numbers stay for the report. For each outbox
+  file the report says either `claimed by index line N` (or lines N, M)
+  or `no index entry`; afterwards each entry that claimed no file is
+  printed once per distinct digest — `index line N:` or `index lines N,
+  M: sha256:<digest> claims no outbox file`. A missing or unreadable
+  index is refused with a message before the outbox is touched; an index
+  that holds no `Source:` line simply claims nothing.
 - **The group keeps registering itself.** `outbox.py` gains the two
   subcommand parsers and two dispatch arms; `cli.py` is untouched — its
   hook already calls `outbox.register` and `outbox.run`.
@@ -111,7 +127,8 @@ such lines — a digest, a concatenation, `docs/proposals/README.md` itself
 
 - [A hook configured on the repository alters or blocks `git commit`] →
   the operator's hooks are theirs, like their identity configuration; a
-  hook failure surfaces as a masked git error and no commit is claimed.
+  hook failure surfaces as a masked git error, no commit is claimed, and
+  what the send staged is put back.
 - [The check runs twice on a `send` — once as the send's gate, once if
   the operator ran it before] → the check is read-only and cheap; running
   it inside `send` is what makes the refusal point unconditional rather

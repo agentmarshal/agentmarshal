@@ -24,6 +24,12 @@
   `_run_git_bytes`; failures are masked messages, never tracebacks; in a
   sidecar the commit lands in the journal repository — verify: the
   tests.
+- [x] 2.5 `send` refuses "no drafts to send" when the outbox holds only
+  the README — verify: the test named after the scenario.
+- [x] 2.6 A failed `git commit` unstages exactly what `send` staged —
+  the pre-add `ls-files --stage -z` records replayed through
+  `update-index --index-info`, so a refused send leaves the index as it
+  found it — verify: the test named after the scenario.
 
 ## 3. `outbox status`
 
@@ -38,6 +44,10 @@
   verify: the tests named after the scenarios.
 - [x] 3.3 Every printed name is masked and non-UTF-8 names are escaped —
   verify: the test named after the scenario.
+- [x] 3.4 An index entry is identified by its digest, its line kept for
+  the report: two digests on one line are two entries, and an unmatched
+  digest is listed once however many lines carry it — verify: the tests
+  named after the scenarios.
 
 ## 4. Closeout
 

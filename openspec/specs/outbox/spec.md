@@ -172,24 +172,36 @@ nothing, and non-zero otherwise, so a batch wrapper can refuse to send.
 ### Requirement: `outbox send` commits the checked batch
 
 `agentmarshal outbox send` SHALL first run the check of the `outbox
-check` requirements and SHALL refuse when it fails for any reason. With
-the check passed, the command SHALL refuse — naming each staged path —
-when anything outside `.agentmarshal/upstream/` is already staged, so
-findings never ride along in another commit and another commit's work
-never rides along in the batch. Otherwise the command SHALL stage only
+check` requirements and SHALL refuse when it fails for any reason; it
+SHALL refuse, saying there are no drafts to send, when the outbox holds
+no finding draft — the README `init` writes is not a draft and a batch
+of no drafts sends nothing. With the check passed, the command SHALL
+refuse — naming each staged path — when anything outside
+`.agentmarshal/upstream/` is already staged, so findings never ride
+along in another commit and another commit's work never rides along in
+the batch. Otherwise the command SHALL stage only
 `.agentmarshal/upstream/` — the outbox README's exclude pathspec applied
 the other way — SHALL refuse when nothing under the outbox is staged for
 commit, and SHALL otherwise make exactly one commit of the batch with a
 message naming the files, in the repository the outbox belongs to — in a
 sidecar the journal repository, never the host — and SHALL print the
-commit it made. Every name the command prints SHALL be masked and a name
-that is not UTF-8 SHALL be written in escaped printable form, exactly as
-`outbox check` names files. The command SHALL transmit nothing and SHALL
-open no network: delivery stays with the operator.
+commit it made. If the commit fails after the batch was staged, the
+command SHALL put back the index entries it staged under the outbox — a
+refused send leaves the index as it found it. Every name the command
+prints SHALL be masked and a name that is not UTF-8 SHALL be written in
+escaped printable form, exactly as `outbox check` names files. The
+command SHALL transmit nothing and SHALL open no network: delivery stays
+with the operator.
 
 #### Scenario: send refuses when the check fails
 - **WHEN** a draft does not conform or the scan reports a hit
 - **THEN** `outbox send` refuses and makes no commit
+
+#### Scenario: send refuses when the outbox holds no drafts
+- **WHEN** the outbox holds no finding draft — only the README `init`
+  writes
+- **THEN** the command refuses saying there are no drafts to send, and
+  commits nothing
 
 #### Scenario: send refuses when something outside the outbox is staged
 - **WHEN** a path outside `.agentmarshal/upstream/` is already staged
@@ -206,6 +218,13 @@ open no network: delivery stays with the operator.
 - **WHEN** the outbox's files are all committed and unchanged — nothing
   under the outbox would be staged for commit
 - **THEN** the command refuses and makes no commit
+
+#### Scenario: a failed commit leaves the index as send found it
+- **WHEN** `git commit` fails — a hook refuses it — after the batch was
+  staged
+- **THEN** the command refuses, and the index holds nothing `send`
+  staged: the outbox paths it added are unstaged and what was staged
+  before stays staged
 
 #### Scenario: in a sidecar the commit lands in the journal repository
 - **WHEN** `outbox send` runs in a project whose journal is a sidecar
@@ -224,17 +243,19 @@ the operator names and SHALL refuse with a message when it is missing or
 unreadable. From the index the command SHALL take every `Source:` line —
 the bare form `Source: sha256:<64 hex>` as much as the markdown-decorated
 form `**Source:** \`sha256:<64 hex>\`` a published digest carries — each
-one an index entry identified by its line in the index file. The command
-SHALL hash each file in the outbox — the sha256 of the file's bytes,
-lowercase hex — SHALL print for each outbox file whether an index entry
-claims it and which, and SHALL print each index entry that claims no
-outbox file. An entry that is not a regular file, and a file that cannot
-be read, SHALL be named as not hashed and SHALL make the command exit
-non-zero. Every name the command prints SHALL be masked and a name that
-is not UTF-8 SHALL be written in escaped printable form, exactly as
-`outbox check` names files. When there is no outbox the command SHALL
-refuse with a message saying so. The command SHALL open no network: the
-index is a file the operator obtains and passes.
+occurrence an index entry identified by its digest, the line or lines it
+sits on kept for the report. The command SHALL hash each file in the
+outbox — the sha256 of the file's bytes, lowercase hex — SHALL print for
+each outbox file whether an index entry claims it and which, and SHALL
+print each index entry that claims no outbox file — once per distinct
+digest, naming the line or lines it sits on. An entry that is not a
+regular file, and a file that cannot be read, SHALL be named as not
+hashed and SHALL make the command exit non-zero. Every name the command
+prints SHALL be masked and a name that is not UTF-8 SHALL be written in
+escaped printable form, exactly as `outbox check` names files. When
+there is no outbox the command SHALL refuse with a message saying so.
+The command SHALL open no network: the index is a file the operator
+obtains and passes.
 
 #### Scenario: a file the index claims is named with the entry claiming it
 - **WHEN** an outbox file's hash appears on a `Source:` line of the index
@@ -247,6 +268,17 @@ index is a file the operator obtains and passes.
 #### Scenario: index entries matching no file are listed
 - **WHEN** the index holds a `Source:` line matching no outbox file
 - **THEN** the report names that index entry
+
+#### Scenario: two digests on one index line are two entries
+- **WHEN** one index line carries two `Source:` digests and one matches
+  an outbox file
+- **THEN** the file is claimed by the matching entry, and the other
+  digest is still listed as claiming no outbox file
+
+#### Scenario: a digest on several index lines is listed once
+- **WHEN** the same digest appears on several `Source:` lines and
+  matches no outbox file
+- **THEN** the report names it once, with the lines it sits on
 
 #### Scenario: the markdown-decorated Source line is parsed like the bare one
 - **WHEN** the index carries `**Source:** \`sha256:<64 hex>\``
