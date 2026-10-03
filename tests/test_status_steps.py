@@ -9,6 +9,7 @@ the local state live.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from collections.abc import Mapping, Sequence
@@ -127,7 +128,7 @@ def _paths_lines(repo: Path) -> str:
 
     state = _state(repo)
     return (
-        f"journal: {repo.resolve()}/.agentmarshal/journal\n"
+        f"journal: {repo.resolve() / '.agentmarshal' / 'journal'}\n"
         f"process log: {state.log}\n"
         f"local state: {state.root}\n"
     )
@@ -325,7 +326,8 @@ def test_both_forms_of_status_print_the_three_paths_once(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Scenario: both forms of status print the three paths once, on
-    stderr — stdout keeping what it printed before this change."""
+    stderr. Scenario: stdout stays what the documentation promises —
+    the paths land on stderr and nothing new reaches stdout."""
     repo = _project(tmp_path, monkeypatch)
     _task(repo, "CR-001")
 
@@ -377,7 +379,7 @@ def test_in_a_sidecar_the_paths_are_the_journal_repositorys(
     error_output = capsys.readouterr().err
     state = _state(sidecar)
     assert (
-        f"journal: {sidecar.resolve()}/.agentmarshal/journal\n"
+        f"journal: {sidecar.resolve() / '.agentmarshal' / 'journal'}\n"
         f"process log: {state.log}\n"
         f"local state: {state.root}\n"
     ) in error_output
@@ -419,7 +421,7 @@ def test_a_local_state_that_cannot_be_resolved_is_named_unavailable(
     assert main(["status", "CR-001"]) == 0
 
     err = capsys.readouterr().err
-    assert f"journal: {repo.resolve()}/.agentmarshal/journal\n" in err
+    assert f"journal: {repo.resolve() / '.agentmarshal' / 'journal'}\n" in err
     assert "process log: unavailable (" in err
     assert "local state: unavailable (" in err
 
@@ -428,7 +430,8 @@ def test_a_task_without_steps_prints_what_it_printed_before(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Scenario: a task without steps prints on stdout exactly what it
-    printed before."""
+    printed before. Scenario: stdout stays what the documentation
+    promises — the byte-exact stdout pin does not move."""
     repo = _project(tmp_path, monkeypatch)
     _task(repo, "CR-001")
     record = read_records(repo / ".agentmarshal" / "journal", "CR-001")[0]
@@ -485,7 +488,7 @@ def test_a_process_log_that_cannot_be_read_is_named_on_stderr(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Scenario: a process log that cannot be read is named on stderr —
-    a file where the directory should be, and a permission denial."""
+    a file where the directory should be."""
     repo = _project(tmp_path, monkeypatch)
     _task(repo, "CR-001")
     state = _state(repo)
@@ -501,9 +504,22 @@ def test_a_process_log_that_cannot_be_read_is_named_on_stderr(
     )
     assert "Overdue" not in captured.out
 
-    state.log.unlink()
-    state.log.mkdir()
+
+@pytest.mark.skipif(
+    getattr(os, "geteuid", lambda: -1)() == 0,
+    reason="root can read a permission-denied directory",
+)
+def test_a_permission_denied_process_log_is_named_on_stderr(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a process log that cannot be read is named on stderr —
+    a permission denial on the ``log/`` directory."""
+    repo = _project(tmp_path, monkeypatch)
+    _task(repo, "CR-001")
+    state = _state(repo)
+    state.log.mkdir(parents=True)
     state.log.chmod(0)
+
     try:
         assert main(["status", "CR-001"]) == 0
     finally:
@@ -513,6 +529,48 @@ def test_a_process_log_that_cannot_be_read_is_named_on_stderr(
     assert "cannot read the process log" in captured.err
     assert str(state.log) in captured.err
     assert "Overdue" not in captured.out
+
+
+def test_the_list_indexes_the_step_events_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The list groups the step events by task in one pass — each
+    ``open_steps`` call sees its task's own slice, not the whole log."""
+    repo = _project(tmp_path, monkeypatch)
+    _task(repo, "CR-001")
+    _task(repo, "CR-002")
+    _log_step(repo, "S1")
+    index_calls: list[int] = []
+    original_index = steps.step_events_by_task
+    slices: dict[str, int] = {}
+    original_open = open_steps
+
+    def index_spy(
+        events: Sequence[Mapping[str, object]],
+    ) -> dict[str, list[Mapping[str, object]]]:
+        index_calls.append(len(events))
+        return original_index(events)
+
+    def open_spy(
+        task_id: str,
+        records: Sequence[Mapping[str, object]],
+        events: Sequence[Mapping[str, object]],
+        *,
+        now: datetime | None = None,
+    ) -> list[OpenStep]:
+        slices[task_id] = len(events)
+        return original_open(task_id, records, events, now=now)
+
+    monkeypatch.setattr(steps, "step_events_by_task", index_spy)
+    monkeypatch.setattr(steps, "open_steps", open_spy)
+
+    assert main(["status"]) == 0
+    capsys.readouterr()
+
+    assert index_calls == [1]
+    # Each task's lookup saw only its own slice — the log is not
+    # re-scanned per task.
+    assert slices == {"CR-001": 1, "CR-002": 0}
 
 
 def test_the_process_log_is_read_once_per_status_run(

@@ -76,9 +76,11 @@ the `status` half of both; `doctor` is a separate task.
   saying where it came from, as ADR-0014's one-machine log requires —
   and the whole line goes through `escape_for_display` like every other
   rendered line (ADR-0015 decision 5). The span past the deadline prints
-  in the duration units `step start --deadline` already accepts —
-  `1h30m`, `2h5m`, `1d3h4m7s` — so an operator reads "how long past" in
-  the units a deadline is given.
+  in the duration spelling `step start --deadline` accepts — one or more
+  `<n><unit>` pairs, a unit used at most once and in the order `d`, `h`,
+  `m`, `s`: `90m`, `1h30m`, `2h5m`, `1d3h4m7s` — so an operator reads
+  "how long past" in the units a deadline is given and can paste one
+  back into `step start`.
 - **The list marks a task with an overdue step.** The tab-separated line
   gains a fourth field, `overdue-step`, only when the task has one — the
   id, state and title fields are untouched, so consumers of today's
@@ -103,7 +105,11 @@ the `status` half of both; `doctor` is a separate task.
   but cannot be read (a permission denial, a file where the directory
   should be) is named on stderr and reads as no steps rather than
   failing the run. The log is read once per run — not once per task —
-  with `now` taken once, so a list's marks all judge the same moment.
+  and its step events are grouped under their task once per run
+  (`step_events_by_task`), so the list form's per-task `open_steps`
+  calls each scan only their task's own slice rather than the whole
+  log; `now` is taken once, so a list's marks all judge the same
+  moment.
 
 ## Risks
 

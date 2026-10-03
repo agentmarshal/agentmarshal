@@ -82,6 +82,8 @@ def test_status_task_detail_output_is_pinned(
 
     Byte-exact output is the pin: with escaping on display (ADR-0015
     decision 5) a record carrying no refused character renders identically.
+    The detail form's stdout pin is also the ``status`` paths change's
+    scenario — stdout stays what the documentation promises.
     """
 
     repo = tmp_path / "repo"
@@ -303,7 +305,7 @@ def test_status_task_detail_output_is_pinned(
     # the stdout pin does not move (ADR-0014 decision 13).
     assert captured.err == (
         "Placement: embedded\n"
-        f"journal: {repo.resolve()}/.agentmarshal/journal\n"
-        f"process log: {repo.resolve()}/.git/agentmarshal/log\n"
-        f"local state: {repo.resolve()}/.git/agentmarshal\n"
+        f"journal: {repo.resolve() / '.agentmarshal' / 'journal'}\n"
+        f"process log: {repo.resolve() / '.git' / 'agentmarshal' / 'log'}\n"
+        f"local state: {repo.resolve() / '.git' / 'agentmarshal'}\n"
     )

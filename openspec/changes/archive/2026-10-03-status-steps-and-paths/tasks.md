@@ -13,6 +13,10 @@
   boundary, each naming its scenario.
 - [x] 1.2 `steps.py` gains the overdue-span formatter spelling the span
   in `--deadline`'s duration units — verify: the format test.
+- [x] 1.3 `--deadline` accepts the compound durations the formatter
+  prints — one or more `<n><unit>` pairs, a unit at most once, in the
+  order `d`, `h`, `m`, `s` (`90m`, `1h30m`, `2h5m`, `1d3h4m7s`) —
+  verify: the duration tests.
 
 ## 2. The views
 
@@ -23,11 +27,12 @@
   process log — verify: the unit tests of the line shapes, the escape
   included.
 - [x] 2.2 `cli.py`'s `_run_status` resolves the local state, prints the
-  paths once on stderr, reads the events once per run — a log that
-  cannot be read named on stderr, never a failure — prints the detail's
-  overdue lines and marks list tasks that have an overdue step —
-  verify: the command-level tests, sidecar and unreadable-log cases
-  included.
+  paths once on stderr, reads the events once per run and groups them
+  by task once (`step_events_by_task`), so the list form's per-task
+  lookups each scan only their task's slice — a log that cannot be
+  read named on stderr, never a failure — prints the detail's overdue
+  lines and marks list tasks that have an overdue step — verify: the
+  command-level tests, sidecar and unreadable-log cases included.
 - [x] 2.3 The two byte-exact `status` stdout pins keep their pre-change
   output, the paths asserted on stderr — verify: `test_status_view.py`
   and `test_display.py` diffs.

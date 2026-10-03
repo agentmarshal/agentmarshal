@@ -50,7 +50,11 @@ from agentmarshal.project import find_project_root
 
 UNKNOWN_PID_STARTED_AT = "unknown"
 
-_DURATION = re.compile(r"^(\d+)([smhd])$")
+#: A duration is one or more ``<n><unit>`` pairs — a unit used at most
+#: once, in the order ``d``, ``h``, ``m``, ``s``: ``90m``, ``1h30m``,
+#: ``1d3h4m7s``.
+_DURATION = re.compile(r"(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?")
+_DURATION_UNITS = "dhms"
 _UNIT_SECONDS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
 
 
@@ -80,7 +84,8 @@ def register(
     start_parser.add_argument(
         "--deadline",
         required=True,
-        help="when the step is due: an ISO-8601 time or a duration such as 90m",
+        help="when the step is due: an ISO-8601 time or a duration "
+        "such as 90m or 1h30m",
     )
     start_parser.add_argument(
         "--pid",
@@ -258,15 +263,23 @@ def _parse_deadline(value: str) -> str:
     """Return *value* as a UTC ISO-8601 timestamp.
 
     Two spellings: an ISO-8601 time — a naive one reads as UTC, the way the
-    writer reads a naive ``at`` — or a duration ``<n><unit>`` measured from
-    now, ``unit`` one of ``s``, ``m``, ``h`` and ``d``.
+    writer reads a naive ``at`` — or a duration measured from now, spelled
+    as one or more ``<n><unit>`` pairs with a unit used at most once and
+    in the order ``d``, ``h``, ``m``, ``s``: ``90m``, ``1h30m``,
+    ``1d3h4m7s``.
     """
 
     match = _DURATION.fullmatch(value.strip())
     try:
-        if match is not None:
+        if match is not None and match.group(0):
             moment = datetime.now(UTC) + timedelta(
-                seconds=int(match.group(1)) * _UNIT_SECONDS[match.group(2)]
+                seconds=sum(
+                    int(amount) * _UNIT_SECONDS[unit]
+                    for amount, unit in zip(
+                        match.groups(), _DURATION_UNITS, strict=True
+                    )
+                    if amount is not None
+                )
             )
         else:
             moment = datetime.fromisoformat(value.strip())
@@ -275,7 +288,8 @@ def _parse_deadline(value: str) -> str:
         return moment.astimezone(UTC).isoformat(timespec="microseconds")
     except (ValueError, OverflowError) as error:
         raise StepError(
-            f"deadline {value!r} is neither an ISO-8601 time nor a duration such as 90m"
+            f"deadline {value!r} is neither an ISO-8601 time nor a duration "
+            "such as 90m or 1h30m"
         ) from error
 
 
@@ -406,6 +420,26 @@ class OpenStep:
     overdue_by: timedelta | None
 
 
+def step_events_by_task(
+    events: Sequence[Mapping[str, object]],
+) -> dict[str, list[Mapping[str, object]]]:
+    """Group a process log's step events under their task — one pass.
+
+    ``status``'s list form asks :func:`open_steps` about every task it
+    lists; handing each call its task's own slice keeps the run one pass
+    over the log rather than one pass per task.
+    """
+
+    by_task: dict[str, list[Mapping[str, object]]] = {}
+    for event in events:
+        task = event.get("task")
+        if event.get("event") in ("step-started", "step-ended") and isinstance(
+            task, str
+        ):
+            by_task.setdefault(task, []).append(event)
+    return by_task
+
+
 def open_steps(
     task_id: str,
     records: Sequence[Mapping[str, object]],
@@ -426,8 +460,10 @@ def open_steps(
     ``completed`` among the records a step ends with;
     ADR-0022 section 7, where ``step end`` is the optional close for a
     step that ends with no record). ``records`` is the task's journal
-    records and ``events`` the process log's events, both read as data.
-    A step is overdue once it is open and its deadline has passed;
+    records and ``events`` the task's process-log events — the slice
+    :func:`step_events_by_task` groups under the task, though the whole
+    log reads the same since only the task's events match — both read as
+    data. A step is overdue once it is open and its deadline has passed;
     ``now`` defaults to the real clock and is injectable so a test
     decides what has passed.
     """

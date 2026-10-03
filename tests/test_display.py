@@ -180,7 +180,9 @@ def test_status_task_list_escapes_contract_text(
     The contract header leaves `title` unchecked (`contracts.py`), so a TOML
     escape is how a contract file carries a character the rule refuses: the
     header is split with `str.splitlines()`, which is why the title below
-    carries the bidirectional override and not a raw newline.
+    carries the bidirectional override and not a raw newline. The list
+    form's stdout pin is also the ``status`` paths change's scenario —
+    stdout stays what the documentation promises.
     """
 
     repo = tmp_path / "repo"
@@ -217,9 +219,9 @@ def test_status_task_list_escapes_contract_text(
     # stdout keeps the pin (ADR-0014 decision 13).
     assert captured.err == (
         "Placement: embedded\n"
-        f"journal: {repo.resolve()}/.agentmarshal/journal\n"
-        f"process log: {repo.resolve()}/.git/agentmarshal/log\n"
-        f"local state: {repo.resolve()}/.git/agentmarshal\n"
+        f"journal: {repo.resolve() / '.agentmarshal' / 'journal'}\n"
+        f"process log: {repo.resolve() / '.git' / 'agentmarshal' / 'log'}\n"
+        f"local state: {repo.resolve() / '.git' / 'agentmarshal'}\n"
     )
 
 

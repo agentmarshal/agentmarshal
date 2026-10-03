@@ -137,6 +137,64 @@ def test_the_deadline_accepts_an_iso8601_time_or_a_duration(
     assert before + timedelta(minutes=90) <= deadline <= after + timedelta(minutes=90)
 
 
+def test_a_duration_is_one_or_more_units_in_order(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A duration compounds units, each at most once and in the order d,
+    h, m, s — the spelling ``status`` prints for an overdue span is a
+    deadline ``step start`` accepts."""
+    repo = _project(tmp_path, monkeypatch)
+    capsys.readouterr()
+
+    cases = {
+        "1h30m": timedelta(hours=1, minutes=30),
+        "2h5m": timedelta(hours=2, minutes=5),
+        "1d3h4m7s": timedelta(days=1, hours=3, minutes=4, seconds=7),
+        "42s": timedelta(seconds=42),
+    }
+    for spelling, span in cases.items():
+        before = datetime.now(UTC)
+        assert (
+            main(
+                [
+                    "step",
+                    "start",
+                    "--task",
+                    "CR-1",
+                    "--activity",
+                    "implementation",
+                    "--deadline",
+                    spelling,
+                ]
+            )
+            == 0
+        )
+        after = datetime.now(UTC)
+        capsys.readouterr()
+        deadline = datetime.fromisoformat(str(_events(repo)[-1]["deadline"]))
+        assert before + span <= deadline <= after + span
+
+    for bad in ("", "1h1h", "5m2h", "h30m", "1h30", "90x"):
+        assert (
+            main(
+                [
+                    "step",
+                    "start",
+                    "--task",
+                    "CR-1",
+                    "--activity",
+                    "implementation",
+                    "--deadline",
+                    bad,
+                ]
+            )
+            == 1
+        )
+        assert "ISO-8601" in capsys.readouterr().err
+
+    assert len(_events(repo)) == len(cases)
+
+
 def test_without_pid_the_parent_process_is_recorded(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -1001,9 +1001,12 @@ def _run_status(task_id: str | None, stderr: TextIO) -> int:
         state_error = str(error)
     print_paths(journal, state, state_error, stderr)
     now = datetime.now(UTC)
-    # The log is read once for the run — not once per task — and a log
-    # that cannot be read is named on stderr and reads as no steps.
+    # The log is read once for the run — not once per task — and the
+    # step events are indexed by task once, so each task's lookup scans
+    # only its own slice. A log that cannot be read is named on stderr
+    # and reads as no steps.
     events = _read_process_events(state, stderr) if state is not None else []
+    events_by_task = steps.step_events_by_task(events)
     try:
         if task_id is None:
             tasks = list_task_statuses(journal)
@@ -1014,7 +1017,10 @@ def _run_status(task_id: str | None, stderr: TextIO) -> int:
                 overdue = any(
                     step.overdue_by is not None
                     for step in steps.open_steps(
-                        task.task_id, task.records, events, now=now
+                        task.task_id,
+                        task.records,
+                        events_by_task.get(task.task_id, ()),
+                        now=now,
                     )
                 )
                 marker = "\toverdue-step" if overdue else ""
@@ -1033,7 +1039,12 @@ def _run_status(task_id: str | None, stderr: TextIO) -> int:
                 placement = checked_placement
             print_task_detail(placement.host_root, task)
             print_overdue_steps(
-                steps.open_steps(task.task_id, task.records, events, now=now)
+                steps.open_steps(
+                    task.task_id,
+                    task.records,
+                    events_by_task.get(task.task_id, ()),
+                    now=now,
+                )
             )
     except (OSError, TaskStatusError, ValueError) as error:
         print(error, file=stderr)
