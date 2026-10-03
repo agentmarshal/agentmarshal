@@ -1,0 +1,8 @@
+PASS: task CR-001 is not closed at base
+PASS: journal-only transaction (deterministic lane; review not required)
+PASS: pipeline attested for <head-sha>
+PASS: evidence records are append-only
+PASS: added records are valid
+PASS: no record-path collisions with the base tree
+PASS: task lifecycle records are consistent
+gate: passed

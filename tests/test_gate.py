@@ -1,7 +1,9 @@
 """Tests for the merge gate."""
 
+import difflib
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -25,6 +27,7 @@ from agentmarshal.journal.records import (
     write_record,
 )
 from agentmarshal.journal.status import load_task_status
+from test_placement import _commit, _host_and_sidecar
 
 _WRITER = ["-c", "user.name=Worker", "-c", "user.email=worker@test.invalid"]
 _REVIEWER_EMAIL = "reviewer@test.invalid"
@@ -242,6 +245,282 @@ def _run(
     return report.passed, "\n".join(report.lines)
 
 
+GATE_FIXTURES = Path(__file__).parent / "fixtures" / "gate"
+UPDATE_FIXTURES_ENV = "AGENTMARSHAL_UPDATE_GATE_FIXTURES"
+# A record id is a 26-character ULID (its first digit is 0-7 by construction);
+# a time is ISO-8601. Neither is a value the test setup can enumerate, so they
+# are replaced by pattern — see _normalize_transcript.
+_RECORD_ID = re.compile(r"\b[0-7][0123456789ABCDEFGHJKMNPQRSTVWXYZ]{25}\b")
+_TIME = re.compile(
+    r"\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?\b"
+)
+
+
+def _normalize_transcript(text: str, run_values: dict[str, str]) -> str:
+    """Substitute run-dependent values in *text* with named placeholders.
+
+    The one substitution applied to a gate run's actual output before it is
+    compared with a committed fixture. *run_values* maps each concrete value
+    this run produced — the candidate and base commits in full and
+    abbreviated form, the temporary repository roots — to the placeholder
+    the fixture holds for it; replacements are applied longest-first so an
+    abbreviated commit is never claimed inside a longer value. Values the
+    setup cannot enumerate are replaced by pattern instead: a record id
+    becomes ``<record-id>`` and a time becomes ``<time>`` wherever one
+    appears. Everything the substitution does not name must match the
+    fixture byte for byte — that is what makes the comparison a pin and not
+    a similarity check.
+    """
+
+    for value, placeholder in sorted(
+        run_values.items(), key=lambda item: len(item[0]), reverse=True
+    ):
+        text = text.replace(value, placeholder)
+    text = _RECORD_ID.sub("<record-id>", text)
+    return _TIME.sub("<time>", text)
+
+
+def _transcript_lines(text: str) -> list[str]:
+    # "\n" is the only line separator in a transcript; splitlines would also
+    # break on control bytes and misplace them in the reported diff.
+    parts = text.split("\n")
+    lines = [f"{part}\n" for part in parts[:-1]]
+    if parts[-1]:
+        lines.append(parts[-1])
+    return lines
+
+
+def _transcript_diff(label: str, fixture: str, actual: str) -> str:
+    return "".join(
+        difflib.unified_diff(
+            _transcript_lines(fixture),
+            _transcript_lines(actual),
+            fromfile=f"{label} (fixture)",
+            tofile=f"{label} (actual)",
+        )
+    )
+
+
+def _compare_transcript(
+    fixture_root: Path,
+    case: str,
+    exit_code: int,
+    stdout: str,
+    stderr: str,
+    run_values: dict[str, str],
+) -> None:
+    """Hold a gate run's transcript to its fixture — or rewrite the fixture.
+
+    The transcript is compared stream by stream after
+    :func:`_normalize_transcript`; any difference fails with a unified diff
+    between the fixture and the run. With ``AGENTMARSHAL_UPDATE_GATE_FIXTURES``
+    set to a non-empty value other than ``0`` the normalized transcript is
+    written to the fixture files first — the explicit act by which a task
+    that changes the output on purpose names its change in the reviewed diff.
+    Unset, this function never writes: a fixture cannot drift in silence.
+    """
+
+    streams = {
+        f"{case}.stdout": _normalize_transcript(stdout, run_values),
+        f"{case}.stderr": _normalize_transcript(stderr, run_values),
+        f"{case}.exit": f"{exit_code}\n",
+    }
+    if os.environ.get(UPDATE_FIXTURES_ENV) not in (None, "", "0"):
+        fixture_root.mkdir(parents=True, exist_ok=True)
+        for name, content in streams.items():
+            (fixture_root / name).write_text(content, encoding="utf-8")
+    differences = "".join(
+        _transcript_diff(
+            name,
+            (fixture_root / name).read_text(encoding="utf-8")
+            if (fixture_root / name).exists()
+            else "",
+            content,
+        )
+        for name, content in streams.items()
+    )
+    assert not differences, (
+        f"gate transcript differs from the {case} fixture:\n{differences}"
+    )
+
+
+def _gate_arguments(base: str, head: str) -> list[str]:
+    return [
+        "gate",
+        "--task",
+        "CR-001",
+        "--commit",
+        head,
+        "--base",
+        base,
+        "--pipeline-sha",
+        head,
+    ]
+
+
+def _run_values(base: str, head: str, roots: dict[Path, str]) -> dict[str, str]:
+    return {
+        head: "<head-sha>",
+        head[:12]: "<head-sha>",
+        base: "<base-sha>",
+        base[:12]: "<base-sha>",
+        **{str(root): placeholder for root, placeholder in roots.items()},
+    }
+
+
+def _embedded_implementation_case(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[list[str], dict[str, str]]:
+    """The embedded diff lane: an approved candidate inside its scope."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    head = _implement(repo, "src/module.py")
+    _approve(repo, head)
+    return _gate_arguments(base, head), _run_values(
+        base, head, {repo: "<repo>", tmp_path: "<tmp-root>"}
+    )
+
+
+def _embedded_journal_only_case(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[list[str], dict[str, str]]:
+    """The embedded deterministic lane: the candidate touches only the journal."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    note = repo / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "note.md"
+    note.write_text("journal-only change\n", encoding="utf-8")
+    head = _commit_all(repo, "journal-only")
+    return _gate_arguments(base, head), _run_values(
+        base, head, {repo: "<repo>", tmp_path: "<tmp-root>"}
+    )
+
+
+def _sidecar_implementation_case(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[list[str], dict[str, str]]:
+    """The sidecar diff lane: an approved host candidate, judged advisory."""
+
+    host, sidecar, base, head = _host_and_sidecar(tmp_path, monkeypatch)
+    assert main(["open", "--title", "Sidecar gate", "--scope", "app.txt"]) == 0
+    _approve(sidecar, head)
+    return _gate_arguments(base, head), _run_values(
+        base, head, {host: "<host>", sidecar: "<sidecar>", tmp_path: "<tmp-root>"}
+    )
+
+
+def _sidecar_journal_only_case(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[list[str], dict[str, str]]:
+    """The candidate that would take the deterministic lane in an embedded journal.
+
+    Built the way test_sidecar_gate_gives_no_deterministic_lane_to_a_host_journal
+    builds it — a host diff under .agentmarshal/journal/ only. The lane does
+    not exist in a sidecar, so the pinned transcript is a refusal.
+    """
+
+    host, sidecar, _base, _head = _host_and_sidecar(tmp_path, monkeypatch)
+    assert main(["open", "--title", "Private", "--scope", "app.txt"]) == 0
+    records = host / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "records"
+    records.mkdir(parents=True)
+    (records / "x.json").write_text("{}\n", encoding="utf-8")
+    base = _commit(host, "host journal")
+    (records / "y.json").write_text("{}\n", encoding="utf-8")
+    head = _commit(host, "host journal again")
+    return _gate_arguments(base, head), _run_values(
+        base, head, {host: "<host>", sidecar: "<sidecar>", tmp_path: "<tmp-root>"}
+    )
+
+
+_PINNED_TRANSCRIPT_CASES = {
+    "embedded-implementation": _embedded_implementation_case,
+    "embedded-journal-only": _embedded_journal_only_case,
+    "sidecar-implementation": _sidecar_implementation_case,
+    "sidecar-journal-only": _sidecar_journal_only_case,
+}
+
+
+@pytest.mark.parametrize("case", sorted(_PINNED_TRANSCRIPT_CASES))
+def test_default_run_transcript_matches_the_committed_fixture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    case: str,
+) -> None:
+    """Scenario: the pinned transcript still matches.
+
+    One fixture triple per lane and placement pins a default gate run's
+    stdout, stderr and exit status — the implementation lane and the
+    journal-only lane, in the embedded and the sidecar placement. Setting
+    AGENTMARSHAL_UPDATE_GATE_FIXTURES rewrites the fixtures from a run: the
+    way a task that changes the output on purpose names its change.
+    """
+
+    arguments, run_values = _PINNED_TRANSCRIPT_CASES[case](tmp_path, monkeypatch)
+    capsys.readouterr()
+
+    code = main(arguments)
+    transcript = capsys.readouterr()
+
+    _compare_transcript(
+        GATE_FIXTURES, case, code, transcript.out, transcript.err, run_values
+    )
+
+
+def test_a_transcript_difference_is_shown_as_a_readable_diff(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a transcript difference is shown, not hidden."""
+
+    fixture_root = tmp_path / "fixtures"
+    fixture_root.mkdir()
+    (fixture_root / "case.stdout").write_text(
+        "PASS: a line\nPASS: another\ngate: passed\n", encoding="utf-8"
+    )
+    (fixture_root / "case.stderr").write_text("", encoding="utf-8")
+    (fixture_root / "case.exit").write_text("0\n", encoding="utf-8")
+    monkeypatch.delenv(UPDATE_FIXTURES_ENV, raising=False)
+
+    with pytest.raises(AssertionError) as raised:
+        _compare_transcript(
+            fixture_root,
+            "case",
+            0,
+            "PASS: a line\nFAIL: another\ngate: passed\n",
+            "",
+            {},
+        )
+
+    diff = str(raised.value)
+    assert "-PASS: another" in diff
+    assert "+FAIL: another" in diff
+
+
+def test_a_fixture_changes_only_when_the_output_changes_on_purpose(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a fixture changes only when the output changes on purpose."""
+
+    fixture_root = tmp_path / "fixtures"
+    fixture_root.mkdir()
+    run_values = {"a" * 12: "<head-sha>"}
+    stdout = f"PASS: pipeline attested for {'a' * 12}\ngate: passed\n"
+
+    # Without the flag an absent fixture is a mismatch, never a file.
+    monkeypatch.delenv(UPDATE_FIXTURES_ENV, raising=False)
+    with pytest.raises(AssertionError):
+        _compare_transcript(fixture_root, "case", 0, stdout, "", run_values)
+    assert not list(fixture_root.iterdir())
+
+    # With the flag the run rewrites the fixture — the explicit act a task
+    # that changes the output on purpose uses to name it.
+    monkeypatch.setenv(UPDATE_FIXTURES_ENV, "1")
+    _compare_transcript(fixture_root, "case", 0, stdout, "", run_values)
+    assert (fixture_root / "case.stdout").read_text(encoding="utf-8") == (
+        "PASS: pipeline attested for <head-sha>\ngate: passed\n"
+    )
+    assert (fixture_root / "case.exit").read_text(encoding="utf-8") == "0\n"
+
+
 def test_a_default_run_prints_the_transcript_it_printed_before(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -249,11 +528,12 @@ def test_a_default_run_prints_the_transcript_it_printed_before(
 ) -> None:
     """Scenario: the pinned transcript still matches.
 
-    The byte-for-byte comparison against the released 0.3.0 is pinned and must
-    stay as it is, so this test names the scenario and delegates to it."""
+    The committed fixtures are the byte-for-byte pin, so this test names the
+    scenario and delegates to the fixture comparison for the embedded
+    implementation lane."""
 
-    test_embedded_diff_lane_transcript_matches_published_030_byte_for_byte(
-        tmp_path, monkeypatch, capsys
+    test_default_run_transcript_matches_the_committed_fixture(
+        tmp_path, monkeypatch, capsys, "embedded-implementation"
     )
 
 
@@ -430,45 +710,6 @@ def test_gate_passes_a_clean_candidate(
     assert "advisory" not in transcript.out
 
 
-def test_embedded_diff_lane_transcript_matches_published_030_byte_for_byte(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    published = released_030()
-    if published is None:
-        pytest.skip(SKIP_030)
-    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
-    head = _implement(repo, "src/module.py")
-    _approve(repo, head)
-    arguments = [
-        "gate",
-        "--task",
-        "CR-001",
-        "--commit",
-        head,
-        "--base",
-        base,
-        "--pipeline-sha",
-        head,
-    ]
-    capsys.readouterr()
-
-    current_code = main(arguments)
-    current = capsys.readouterr()
-    released = subprocess.run(
-        [str(published), *arguments],
-        cwd=repo,
-        capture_output=True,
-        env=os.environ.copy(),
-    )
-
-    assert current_code == released.returncode == 0
-    assert current.out.encode() == released.stdout
-    assert current.err.encode() == released.stderr
-    assert current.out.endswith("gate: passed\n")
-
-
 def test_a_candidate_without_renames_prints_the_transcript_it_printed_before(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -476,12 +717,12 @@ def test_a_candidate_without_renames_prints_the_transcript_it_printed_before(
 ) -> None:
     """Scenario: a candidate without renames prints the transcript it printed before.
 
-    The byte-for-byte comparison against the released 0.3.0 above is the
-    demonstration; it is pinned and must stay as it is, so this test names the
-    scenario and delegates rather than copying it."""
+    The committed fixture for the embedded implementation lane — a candidate
+    without renames — is the byte-for-byte demonstration, so this test names
+    the scenario and delegates rather than copying it."""
 
-    test_embedded_diff_lane_transcript_matches_published_030_byte_for_byte(
-        tmp_path, monkeypatch, capsys
+    test_default_run_transcript_matches_the_committed_fixture(
+        tmp_path, monkeypatch, capsys, "embedded-implementation"
     )
 
 
@@ -600,11 +841,7 @@ def test_empty_scope_candidate_takes_the_diff_lane_and_is_refused(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """The guard against host changes riding under an empty-scope task.
-
-    This runs everywhere; the comparison with the released 0.3.0 is the next
-    test and needs the release installed.
-    """
+    """The guard against host changes riding under an empty-scope task."""
 
     _, arguments = _empty_scope_candidate(tmp_path, monkeypatch)
     capsys.readouterr()
@@ -614,29 +851,6 @@ def test_empty_scope_candidate_takes_the_diff_lane_and_is_refused(
     assert "paths outside contract scope: host-change.py" in transcript.out
     assert "findings lane" not in transcript.out
     assert "gate: passed" not in transcript.out
-
-
-def test_empty_scope_candidate_stays_on_030_diff_lane(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    published = released_030()
-    if published is None:
-        pytest.skip(SKIP_030)
-    repo, arguments = _empty_scope_candidate(tmp_path, monkeypatch)
-    capsys.readouterr()
-
-    assert main(arguments) == 1
-    current = capsys.readouterr()
-    released = subprocess.run(
-        [str(published), *arguments], cwd=repo, capture_output=True
-    )
-
-    assert released.returncode == 1
-    assert current.out.encode() == released.stdout
-    assert current.err.encode() == released.stderr
-    assert b"paths outside contract scope: host-change.py" in released.stdout
 
 
 def test_gate_refuses_path_outside_scope(
