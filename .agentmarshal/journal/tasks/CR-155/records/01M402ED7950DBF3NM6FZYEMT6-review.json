@@ -1,0 +1,32 @@
+{
+  "advisory_findings": [
+    "design-misstates-delta-purpose-support",
+    "full-plane-sweep-test-cost"
+  ],
+  "artifacts": [
+    {
+      "hash": "b135a2a5611698bc93c683c6b9d7e0283a6aac0256ef2b274c67e5a3d88bc517",
+      "ref": ".agentmarshal/journal/tasks/CR-155/artifacts/01M402ED7950DBF3NM6FZYEMT6-review.md"
+    }
+  ],
+  "created_at": "2026-10-03T05:05:31.881681Z",
+  "findings": [
+    "applied-spec-purpose-hand-edited"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "4dae34257f6faf222a3b218580ab7a29b38b416a",
+  "reviewed_contract": "434ce1afd0092c64c4c5bfa999a72637cb4251575726aa1b95ff89c6a1a31023",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-155",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "changes_required"
+}

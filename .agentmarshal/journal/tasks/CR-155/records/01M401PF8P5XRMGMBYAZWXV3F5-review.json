@@ -1,0 +1,31 @@
+{
+  "advisory_findings": [
+    "spec-purpose-still-says-refusal-only",
+    "escape-not-injective-for-literal-backslash",
+    "full-unicode-sweep-test-cost"
+  ],
+  "artifacts": [
+    {
+      "hash": "dd89f4c7d14b873d49422f983324ded0b7eb0844fcd11f32dc3dc1f699eb2e10",
+      "ref": ".agentmarshal/journal/tasks/CR-155/artifacts/01M401PF8P5XRMGMBYAZWXV3F5-review.md"
+    }
+  ],
+  "created_at": "2026-10-03T04:52:27.542547Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "b7684935e01132bcdac1af188d491b8c153b09fa",
+  "reviewed_contract": "434ce1afd0092c64c4c5bfa999a72637cb4251575726aa1b95ff89c6a1a31023",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-155",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "approved"
+}
