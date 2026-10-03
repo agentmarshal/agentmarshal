@@ -836,3 +836,54 @@ def test_brief_reports_a_document_beneath_a_looping_ancestor_as_unresolvable(
         in briefing
     )
     assert "MISSING" not in briefing
+
+
+def test_brief_escapes_record_and_contract_values(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a refused character prints escaped in the brief.
+
+    The contract header refuses refused characters in `documents`,
+    `decisions` and `extensions` only — a contract written around `open`,
+    or one a lowered schema still reads, can carry a newline or a
+    right-to-left override in scope and acceptance entries. The amendment
+    record is written through the tool, since a reason is prose the writer
+    may legitimately give a newline, and the recorder name enters through
+    AGENTMARSHAL_ACTOR exactly where a misdeclared identity would.
+    """
+
+    repo = _repo(tmp_path, monkeypatch)
+    _contract(repo).write_text(
+        "+++\n"
+        "schema = 1\n"
+        'id = "CR-001"\n'
+        'title = "Brief task"\n'
+        'scope = ["src/app.py\\u202e", "tests/\\ntest_app.py"]\n'
+        'acceptance = ["prints\\u202e the body", "names\\nevery rule"]\n'
+        "+++\n\n# Body\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("AGENTMARSHAL_ACTOR", "op\u202eerator")
+    _record_amendment(
+        repo,
+        "scope widened\u202e\nforged line",
+        "2026-09-17T01:02:03Z",
+        "01J00000000000000000000001",
+    )
+    capsys.readouterr()
+
+    assert main(["brief", "--task", "CR-001"]) == 0
+
+    briefing = capsys.readouterr().out
+    assert "- src/app.py\\u202e" in briefing
+    assert "- tests/\\ntest_app.py" in briefing
+    assert "- prints\\u202e the body" in briefing
+    assert "- names\\nevery rule" in briefing
+    # The amendment entry: the recorder folds its whitespace as before and
+    # the override prints escaped; the reason keeps its line quoting while
+    # the override inside a line prints as its escape.
+    assert "recorded by op\\u202eerator:" in briefing
+    assert "> scope widened\\u202e\n> forged line" in briefing
+    assert "\u202e" not in briefing

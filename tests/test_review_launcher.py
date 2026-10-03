@@ -2644,3 +2644,86 @@ def test_a_rejection_without_a_diagnostics_note_is_not_its_own_cause(
         )
 
     assert caught.value.__cause__ is not caught.value
+
+
+def test_a_refused_character_prints_escaped_in_the_reviewer_prompt() -> None:
+    """Scenario: a refused character prints escaped in the reviewer prompt.
+
+    The hostile values are handed to the prompt builder directly — a journal
+    an earlier schema wrote, or a record written around the writer with a
+    lowered schema, reaches the renderer carrying what today's write rule
+    refuses. The amendment history comes through the shared renderer, as the
+    real prompt path builds it.
+    """
+
+    from agentmarshal.journal.brief import render_amendment_history
+
+    history = render_amendment_history(
+        [
+            {
+                "record_type": "amendment",
+                "created_at": "t\n1\u202e",
+                "recorded_by": "op\nera\u202etor",
+                "reason": "scope widened\u202e\nforged line",
+            }
+        ]
+    )
+    prompt = review._review_prompt(
+        "CONTRACT",
+        "DIFF",
+        "c" * 40,
+        decisions=("ADR-9\u202e",),
+        documents=("docs/a\nb.md",),
+        absent_extensions=("ext\u202e-1",),
+        amendment_history=history,
+        undecodable_files=("blob\u202e.bin",),
+    )
+
+    assert "- ADR-9\\u202e" in prompt
+    assert "- docs/a\\nb.md" in prompt
+    assert "- ext\\u202e-1" in prompt
+    assert "blob\\u202e.bin" in prompt
+    assert "recorded by op era\\u202etor" in prompt
+    assert "> scope widened\\u202e\n> forged line" in prompt
+    assert "- t\\n1\\u202e; recorded by" in prompt
+    assert "\u202e" not in prompt
+
+
+def test_a_refused_character_prints_escaped_in_the_finding_prompt() -> None:
+    """Scenario: a refused character prints escaped in the reviewer prompt.
+
+    The finding lane's prompt binds the finding id, its claim summary and
+    its artifact references — each a record value placed into a line, each
+    escaped.
+    """
+
+    from agentmarshal.journal.brief import render_amendment_history
+
+    artifact = review._VerifiedArtifact(
+        "evidence/x\u202e.md", "a" * 64, b"data\n", Path("evidence/x\u202e.md")
+    )
+    prompt = review._finding_review_prompt(
+        "CONTRACT",
+        "F\n1\u202e",
+        "claim\n\u202e text",
+        (artifact,),
+        ("missing\nref\u202e",),
+        documents=("docs/a\u202eb.md",),
+        amendment_history=render_amendment_history(
+            [
+                {
+                    "record_type": "amendment",
+                    "created_at": "t\u202e1",
+                    "reason": "amended\n\u202e",
+                }
+            ]
+        ),
+    )
+
+    assert "Your reviewed finding is F\\n1\\u202e." in prompt
+    assert "claim\\n\\u202e text" in prompt
+    assert "Verified artifact: evidence/x\\u202e.md" in prompt
+    assert "- missing\\nref\\u202e" in prompt
+    assert "- docs/a\\u202eb.md" in prompt
+    assert "- t\\u202e1:\n> amended\n> \\u202e" in prompt
+    assert "\u202e" not in prompt

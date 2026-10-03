@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from agentmarshal.journal.contracts import ContractHeader, scope_covers
+from agentmarshal.journal.display import escape_for_display
 from agentmarshal.journal.extensions import (
     ExtensionManifestError,
     ExtensionManifestMissing,
@@ -40,16 +41,27 @@ def render_amendment_history(records: Sequence[Mapping[str, object]]) -> str:
         recorder = amendment.get("recorded_by")
         # The actor name is recorded text like any other: a newline in it would
         # forge an entry of its own, so it renders on one line or not at all.
+        # The fold keeps ordinary spacing byte-identical; what a record could
+        # still carry past it — a bidirectional override — prints escaped.
         byline = (
-            f"; recorded by {' '.join(recorder.split())}"
+            f"; recorded by {escape_for_display(' '.join(recorder.split()))}"
             if isinstance(recorder, str)
             else ""
         )
         reason = amendment["reason"]
         if not isinstance(reason, str):  # validated on read; belt and braces
             continue
-        quoted_reason = "\n".join(f"> {line}" for line in reason.splitlines())
-        entries.append(f"- {amendment['created_at']}{byline}:\n{quoted_reason}\n")
+        # Split on a real newline alone: the quote is the line structure this
+        # rendering chose for reasons, while every other character the
+        # forgeable-text rule refuses — splitlines() would have hidden Zl and
+        # the C1 separators as structure — prints as its visible escape.
+        quoted_reason = "\n".join(
+            f"> {escape_for_display(line)}" for line in reason.split("\n")
+        )
+        entries.append(
+            f"- {escape_for_display(str(amendment['created_at']))}{byline}:\n"
+            f"{quoted_reason}\n"
+        )
     return "## Contract amendment history\n\n" + "\n".join(entries)
 
 
@@ -199,10 +211,11 @@ def _append_named_material(
         )
         if not matches:
             sections.append(
-                f"## Named decision: {decision}\n\nMISSING: docs/adr/{decision}-*.md\n"
+                f"## Named decision: {escape_for_display(decision)}\n\n"
+                f"MISSING: docs/adr/{escape_for_display(decision)}-*.md\n"
             )
             continue
-        content = [f"## Named decision: {decision}\n"]
+        content = [f"## Named decision: {escape_for_display(decision)}\n"]
         for path in matches:
             lexical = path.relative_to(material_root).as_posix()
             relative = _relative_file(material_root, path)
@@ -210,18 +223,20 @@ def _append_named_material(
                 # A decision file is inlined as the implementer's authority;
                 # one that resolves outside the governed tree is not read.
                 content.append(
-                    f"\n### {lexical}\n\n"
-                    f"UNRESOLVABLE (outside the tree or a broken link): {lexical}\n"
+                    f"\n### {escape_for_display(lexical)}\n\n"
+                    "UNRESOLVABLE (outside the tree or a broken link): "
+                    f"{escape_for_display(lexical)}\n"
                 )
                 continue
             try:
                 text = path.read_text(encoding="utf-8")
             except UnicodeDecodeError:
                 content.append(
-                    f"\n### {relative}\n\nUNREADABLE (not UTF-8): {relative}\n"
+                    f"\n### {escape_for_display(relative)}\n\n"
+                    f"UNREADABLE (not UTF-8): {escape_for_display(relative)}\n"
                 )
                 continue
-            content.append(f"\n### {relative}\n\n{text}")
+            content.append(f"\n### {escape_for_display(relative)}\n\n{text}")
             if not text.endswith("\n"):
                 content.append("\n")
         sections.append("".join(content))
@@ -232,25 +247,34 @@ def _append_named_material(
             entries.extend(read_extension_manifest(manifest_root, name).documents)
         except ExtensionManifestMissing:
             sections.append(
-                f"## Named extension: {name}\n\n"
-                f"MISSING: .agentmarshal/extensions/{name}.toml\n"
+                f"## Named extension: {escape_for_display(name)}\n\n"
+                "MISSING: .agentmarshal/extensions/"
+                f"{escape_for_display(name)}.toml\n"
             )
         except ExtensionManifestError as error:
             # Context, not authority: a manifest the brief cannot read is
-            # reported here; the gate, which decides, refuses it loudly.
-            sections.append(f"## Named extension: {name}\n\nMALFORMED: {error}\n")
+            # reported here; the gate, which decides, refuses it loudly. The
+            # error's own words carry no refused character; a manifest value
+            # quoted inside one is escaped with the rest of the line.
+            sections.append(
+                f"## Named extension: {escape_for_display(name)}\n\n"
+                f"MALFORMED: {escape_for_display(str(error))}\n"
+            )
     seen_files: set[str] = set()
     for entry in entries:
         files = _document_files(material_root, entry)
         if not files:
             target = material_root / entry.rstrip("/")
             state = "EMPTY" if entry.endswith("/") and target.is_dir() else "MISSING"
-            sections.append(f"## Named document: {entry}\n\n{state}: {entry}\n")
+            escaped_entry = escape_for_display(entry)
+            sections.append(
+                f"## Named document: {escaped_entry}\n\n{state}: {escaped_entry}\n"
+            )
             continue
         for listed in files:
             if listed.kind != "file":
                 reason = _LISTED_REASONS[listed.kind]
-                lexical = listed.lexical
+                lexical = escape_for_display(listed.lexical)
                 sections.append(
                     f"## Named document: {lexical}\n\n{reason}: {lexical}\n"
                 )
@@ -264,12 +288,13 @@ def _append_named_material(
             except UnicodeDecodeError:
                 # A documents directory can hold anything; a file the brief
                 # cannot render is reported, like a missing one, not skipped.
+                escaped_relative = escape_for_display(relative)
                 sections.append(
-                    f"## Named document: {relative}\n\n"
-                    f"UNREADABLE (not UTF-8): {relative}\n"
+                    f"## Named document: {escaped_relative}\n\n"
+                    f"UNREADABLE (not UTF-8): {escaped_relative}\n"
                 )
                 continue
-            section = f"## Named document: {relative}\n\n{text}"
+            section = f"## Named document: {escape_for_display(relative)}\n\n{text}"
             sections.append(section if section.endswith("\n") else section + "\n")
     if not sections:
         return brief
@@ -290,7 +315,9 @@ def build_brief(journal_root: Path, task_id: str, host_root: Path | None = None)
 
     task = load_task_status(journal_root, task_id)
     if task.state != "open":
-        raise TaskStatusError(f"task {task_id} is not open (state: {task.state})")
+        raise TaskStatusError(
+            f"task {escape_for_display(task_id)} is not open (state: {task.state})"
+        )
 
     contract_path = journal_root / "tasks" / task_id / "contract.md"
     with contract_path.open("r", encoding="utf-8-sig", newline="") as contract_file:
@@ -302,7 +329,7 @@ def build_brief(journal_root: Path, task_id: str, host_root: Path | None = None)
     # change" would read as "no limits", which is the opposite of what happens.
     if task.contract.scope:
         scope_section = "Declared scope (only these paths may change):\n" + "".join(
-            f"- {path}\n" for path in task.contract.scope
+            f"- {escape_for_display(path)}\n" for path in task.contract.scope
         )
     else:
         scope_section = (
@@ -312,7 +339,10 @@ def build_brief(journal_root: Path, task_id: str, host_root: Path | None = None)
             "pinned by reference and sha256 hash.\n"
         )
     acceptance = (
-        "".join(f"- {criterion}\n" for criterion in task.contract.acceptance)
+        "".join(
+            f"- {escape_for_display(criterion)}\n"
+            for criterion in task.contract.acceptance
+        )
         or "- (none)\n"
     )
     opening = (
@@ -321,7 +351,7 @@ def build_brief(journal_root: Path, task_id: str, host_root: Path | None = None)
         else "You are working on one governed AgentMarshal research task.\n\n"
     )
     brief = opening + (
-        f"Task id: {task.task_id}\n\n"
+        f"Task id: {escape_for_display(task.task_id)}\n\n"
         f"{scope_section}\n"
         "Acceptance criteria (the definition of done):\n"
         f"{acceptance}\n"

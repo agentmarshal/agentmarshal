@@ -35,6 +35,7 @@ from agentmarshal.journal.contracts import (
     parse_contract_text,
     scope_covers,
 )
+from agentmarshal.journal.display import escape_for_display
 from agentmarshal.journal.extensions import (
     ExtensionManifest,
     ExtensionManifestError,
@@ -100,14 +101,21 @@ def run_findings_gate(journal_root: Path, task_id: str) -> GateReport:
     lines: list[str] = []
     violations = 0
 
+    def say(message: str) -> None:
+        # Escaping the finished line is the one choice a line added later
+        # cannot forget: the line interpolates values taken from records and
+        # contracts, and the escaped set is exactly the forgeable-text
+        # rule's, so the tool's own fixed text passes through unchanged.
+        lines.append(escape_for_display(message))
+
     def check(passed: bool, message: str) -> None:
         nonlocal violations
-        lines.append(f"{'PASS' if passed else 'FAIL'}: {message}")
+        say(f"{'PASS' if passed else 'FAIL'}: {message}")
         if not passed:
             violations += 1
 
     if task.state == "open":
-        lines.append(f"PASS: task {task_id} is not closed")
+        say(f"PASS: task {task_id} is not closed")
     else:
         check(False, f"task {task_id} is already closed (state: {task.state})")
     if task.contract.scope:
@@ -117,12 +125,12 @@ def run_findings_gate(journal_root: Path, task_id: str) -> GateReport:
             + ", ".join(task.contract.scope),
         )
     else:
-        lines.append("NOT EXAMINED: scope diff (findings lane has no candidate)")
+        say("NOT EXAMINED: scope diff (findings lane has no candidate)")
 
     if task.contract.documents or task.contract.extensions:
         # This lane has no candidate to examine, so the contract's naming is
         # all it needs to say so; it reads no manifest and refuses nothing.
-        lines.append("NOT EXAMINED: named documents (findings lane has no candidate)")
+        say("NOT EXAMINED: named documents (findings lane has no candidate)")
 
     findings = [record for record in task.records if record["record_type"] == "finding"]
     latest_finding = findings[-1] if findings else None
@@ -162,7 +170,7 @@ def run_findings_gate(journal_root: Path, task_id: str) -> GateReport:
             cast(list[str], acceptance["findings"]) if acceptance is not None else []
         )
         if acceptance is not None and set(accepted) == set(reviewed):
-            lines.append(
+            say(
                 f"PASS: accepted over findings {', '.join(accepted)} by "
                 f"{acceptance['accepted_by']}; not an approving review"
             )
@@ -195,9 +203,7 @@ def run_findings_gate(journal_root: Path, task_id: str) -> GateReport:
             reference = artifact["ref"]
             path = artifact_path(journal_root.parents[1], reference)
             if path is None:
-                lines.append(
-                    f"NOT VERIFIED: artifact {reference} does not resolve locally"
-                )
+                say(f"NOT VERIFIED: artifact {reference} does not resolve locally")
                 continue
             verified += 1
             try:
@@ -216,8 +222,8 @@ def run_findings_gate(journal_root: Path, task_id: str) -> GateReport:
             "at least one finding artifact resolves under the journal project root",
         )
 
-    lines.append("NOT EXAMINED: pipeline attestation (findings lane has no pipeline)")
-    lines.append("NOT EXAMINED: candidate diff (findings lane has no candidate)")
+    say("NOT EXAMINED: pipeline attestation (findings lane has no pipeline)")
+    say("NOT EXAMINED: candidate diff (findings lane has no candidate)")
     try:
         tampered = _sidecar_tampered_records(journal_root)
     except GateError as error:
@@ -232,11 +238,9 @@ def run_findings_gate(journal_root: Path, task_id: str) -> GateReport:
     # load_task_status above reads every record from the journal working tree,
     # validates its shape, and projects the complete lifecycle.
     check(True, "added records are valid (journal working tree examined)")
-    lines.append(
-        "NOT EXAMINED: record-path collisions (findings lane has no candidate or base)"
-    )
+    say("NOT EXAMINED: record-path collisions (findings lane has no candidate or base)")
     check(True, "task lifecycle records are consistent (journal working tree examined)")
-    lines.append("NOT EXAMINED: advisory leak scan (findings lane has no diff)")
+    say("NOT EXAMINED: advisory leak scan (findings lane has no diff)")
     return GateReport(violations == 0, lines, "", finding_id or None)
 
 
@@ -612,13 +616,20 @@ def run_gate(
     lines: list[str] = []
     violations = 0
 
+    def say(message: str) -> None:
+        # As in the findings lane: the finished line is escaped, so the
+        # record and contract values interpolated into it can neither add a
+        # line nor reorder what is read, and a line added later cannot
+        # forget the escape.
+        lines.append(escape_for_display(message))
+
     def check(passed: bool, message: str) -> None:
         nonlocal violations
         if passed:
-            lines.append(f"PASS: {message}")
+            say(f"PASS: {message}")
         else:
             violations += 1
-            lines.append(f"FAIL: {message}")
+            say(f"FAIL: {message}")
 
     sidecar = journal_root is not None
     if journal_root is None:
@@ -764,15 +775,15 @@ def run_gate(
         )
     )
     if not closed_at_base:
-        lines.append(f"PASS: task {task_id} is not closed at base")
+        say(f"PASS: task {task_id} is not closed at base")
     elif admitted_records_only:
         if "reopened" in added_record_types:
-            lines.append(
+            say(
                 "PASS: reopening append to a task completed at base "
                 "(reopening is admitted post-terminal)"
             )
         else:
-            lines.append(
+            say(
                 "PASS: measurements-only append to a task closed at base "
                 "(session records accrue post-terminal)"
             )
@@ -783,9 +794,7 @@ def run_gate(
         )
 
     if journal_only:
-        lines.append(
-            "PASS: journal-only transaction (deterministic lane; review not required)"
-        )
+        say("PASS: journal-only transaction (deterministic lane; review not required)")
     else:
         # The contract is read from the merge-base tree: the trusted
         # side, so the candidate cannot widen its own scope.
@@ -832,7 +841,7 @@ def run_gate(
                     # base holds no valid manifest there: nothing declares a
                     # footprint, so there is no removal to verify — and no
                     # refusal the candidate could repair from its side.
-                    lines.append(
+                    say(
                         f"NOT EXAMINED: removal of extension {name!r} (base-side "
                         f"file is not a valid manifest: {error})"
                     )
@@ -967,7 +976,7 @@ def run_gate(
         if valid_acceptance is not None:
             accepted_by, accepted_findings = valid_acceptance
             findings = ", ".join(accepted_findings)
-            lines.append(
+            say(
                 f"PASS: accepted over findings {findings} by {accepted_by}; "
                 "not an approving review"
             )
@@ -992,12 +1001,12 @@ def run_gate(
             # candidate that *has* a review is judged below whatever the caller
             # asked for, so this cannot turn a refusal into a pass.
             review_not_examined = True
-            lines.append(
+            say(
                 "NOT EXAMINED: latest review "
                 f"(no review record for {resolved_commit[:12]}, and this run "
                 "was asked to judge without one)"
             )
-            lines.append(
+            say(
                 "NOT EXAMINED: reviewer independence (no review record to "
                 "compare against the candidate's writers)"
             )
@@ -1033,7 +1042,7 @@ def run_gate(
             )
 
     if attestation == "ci-required":
-        lines.append(
+        say(
             "PASS: pipeline attestation delegated to the provider's required "
             "checks (the test check must also be required for merge)"
         )
@@ -1174,16 +1183,16 @@ def run_gate(
             config_path=PROJECT_CONFIG_RELPATH if not sidecar else "",
         )
     except (ValueError, CaptureError, GateError) as error:
-        lines.append(f"WARN: leak-scan skipped ({error})")
+        say(f"WARN: leak-scan skipped ({error})")
     else:
         if leak_hits:
-            lines.append(
+            say(
                 "WARN: possible leak in candidate additions "
                 "(advisory, not blocking): "
                 f"{render_leak_hits(leak_hits, limit=_LEAK_HIT_RENDER_LIMIT)}"
             )
         if undecodable:
-            lines.append(
+            say(
                 "WARN: leak-scan could not decode as UTF-8 "
                 "(added bytes still searched): "
                 + render_undecodable_files(
