@@ -1,0 +1,316 @@
+"""The ``outbox`` command group: finding drafts for upstream.
+
+ADR-0020 decisions 1-3: one command group named ``outbox`` covers the life
+of a finding for upstream; ``finding`` stays the journal command of
+ADR-0009. ``outbox new`` scaffolds a draft carrying the five fields of
+CONTRIBUTING's finding form, Version and Environment filled from the
+machine. ``outbox check`` names, per draft, the file and each missing or
+still-unfilled field, runs the merge boundary's leak scan over what would
+be sent, and refuses by exit status so a batch wrapper can refuse to send.
+``send`` and ``status`` are the same ADR's decisions 4-5, a later task.
+
+The outbox is ``project_root/.agentmarshal/upstream`` — the directory
+``init`` scaffolds beside ``project.json`` — which is the same expression
+in both placements: in an embedded project it is the host repository's
+``.agentmarshal``, in a sidecar the journal repository's.
+"""
+
+from __future__ import annotations
+
+import argparse
+import platform
+import re
+from pathlib import Path
+from typing import TextIO
+
+from agentmarshal import __version__
+from agentmarshal.journal.capture import (
+    CaptureError,
+    LeakHit,
+    private_markers_from_project,
+    render_leak_hits,
+    safe_path,
+    scan_for_leaks,
+)
+from agentmarshal.project import (
+    PROJECT_DIR_NAME,
+    find_project_root,
+    project_file_path,
+    read_project_file,
+)
+
+_UPSTREAM_DIR = "upstream"
+_README = "README.md"
+
+# The five fields of CONTRIBUTING's "Reporting a finding", in its order,
+# with the hint each carries there. The hint is also the scaffold's
+# placeholder: a section left as written is unfilled.
+_FIELDS = ("Symptom", "Measurements", "Version", "Environment", "Expected")
+_FIELD_HINTS = {
+    "Symptom": "what you observed, with the exact command and its output",
+    "Measurements": 'counts, timings, how often it happens (e.g. "3 of 7 runs")',
+    "Version": "output of `agentmarshal --version`",
+    "Environment": "OS, Python version, git provider (GitHub / GitFlic / self-hosted)",
+    "Expected": "what you expected instead, and why",
+}
+
+_DRAFT_NAME = re.compile(r"^(\d+)-.*\.md$")
+_HEADING = re.compile(r"^## (.+?)\s*$")
+_SLUG_RUN = re.compile(r"[^a-z0-9]+")
+_SLUG_MAX = 60
+
+
+def register(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """Add the ``outbox`` group and its subcommands to *subparsers*."""
+
+    outbox_parser = subparsers.add_parser(
+        "outbox", help="scaffold and check finding drafts for upstream"
+    )
+    outbox_commands = outbox_parser.add_subparsers(dest="outbox_command", required=True)
+    new_parser = outbox_commands.add_parser(
+        "new", help="scaffold a finding draft in the outbox"
+    )
+    new_parser.add_argument("gist", help="one-line gist naming the finding")
+    outbox_commands.add_parser(
+        "check", help="name what the drafts lack and what the leak scan finds"
+    )
+
+
+def run(args: argparse.Namespace, stderr: TextIO) -> int:
+    """Dispatch the parsed ``outbox`` subcommand."""
+
+    if args.outbox_command == "new":
+        return _run_new(args.gist, stderr)
+    if args.outbox_command == "check":
+        return _run_check(stderr)
+    print(f"outbox: unknown command {args.outbox_command}", file=stderr)
+    return 1
+
+
+def _locate(command: str, stderr: TextIO) -> tuple[Path, Path] | None:
+    """Return the project root and outbox, or print why there is none."""
+
+    project_root = find_project_root(Path.cwd())
+    if project_root is None:
+        print(
+            f"agentmarshal outbox {command} must be run inside an initialized project",
+            file=stderr,
+        )
+        return None
+    outbox = project_root / PROJECT_DIR_NAME / _UPSTREAM_DIR
+    if not outbox.is_dir():
+        print(f"outbox {command}: no outbox at {outbox}", file=stderr)
+        return None
+    return project_root, outbox
+
+
+# --- `outbox new` ---------------------------------------------------------
+
+
+def _slug(gist: str) -> str:
+    """A filename-safe slug of the gist; ``draft`` when nothing survives.
+
+    Reports may arrive in any language, and a non-Latin alphabet slugs to
+    empty — that is a gist the fallback names, not an error.
+    """
+
+    slug = _SLUG_RUN.sub("-", gist.lower()).strip("-")
+    slug = slug[:_SLUG_MAX].rstrip("-")
+    return slug or "draft"
+
+
+def _placeholder(field: str) -> str:
+    """The scaffold's per-field placeholder: the CONTRIBUTING hint as a comment."""
+
+    return f"<!-- {_FIELD_HINTS[field]} -->"
+
+
+def _field_value(field: str) -> str:
+    if field == "Version":
+        return __version__
+    if field == "Environment":
+        return f"{platform.platform()}, Python {platform.python_version()}"
+    return _placeholder(field)
+
+
+def _render_draft(gist: str) -> str:
+    parts = [f"# {gist.strip().splitlines()[0]}", ""]
+    for field in _FIELDS:
+        parts += [f"## {field}", "", _field_value(field), ""]
+    return "\n".join(parts)
+
+
+def _write_draft(outbox: Path, slug: str, text: str) -> Path:
+    """Write *text* as the next free ``NNNN-<slug>.md``, never overwriting.
+
+    The number is one more than the largest already used — monotonic, so a
+    gap a removed draft left is never refilled and name order stays
+    creation order. Creation is exclusive; a collision — a race, or a file
+    placed by hand — advances the number rather than truncating what is
+    there.
+    """
+
+    used = [
+        int(match.group(1))
+        for entry in outbox.iterdir()
+        if (match := _DRAFT_NAME.match(entry.name))
+    ]
+    number = max(used, default=0)
+    while True:
+        number += 1
+        draft = outbox / f"{number:04d}-{slug}.md"
+        try:
+            with draft.open("x", encoding="utf-8", newline="\n") as handle:
+                handle.write(text)
+        except FileExistsError:
+            continue
+        return draft
+
+
+def _run_new(gist: str, stderr: TextIO) -> int:
+    if not gist.strip():
+        print("outbox new: the gist must not be empty", file=stderr)
+        return 1
+    located = _locate("new", stderr)
+    if located is None:
+        return 1
+    _, outbox = located
+    try:
+        draft = _write_draft(outbox, _slug(gist), _render_draft(gist))
+    except OSError as error:
+        print(f"outbox new: cannot write the draft: {error}", file=stderr)
+        return 1
+    print(draft)
+    return 0
+
+
+# --- `outbox check` --------------------------------------------------------
+
+
+def _field_bodies(text: str) -> dict[str, list[str]]:
+    """Map each level-2 heading to its stripped bodies, in order.
+
+    Split on ``"\\n"`` only: it is the one line separator in a text file,
+    and ``str.splitlines`` would also break a draft at control characters
+    and miscount a body around them.
+    """
+
+    bodies: dict[str, list[list[str]]] = {}
+    current: list[str] | None = None
+    for line in text.split("\n"):
+        match = _HEADING.match(line)
+        if match:
+            current = []
+            bodies.setdefault(match.group(1), []).append(current)
+        elif current is not None:
+            current.append(line)
+    return {
+        name: ["\n".join(raw).strip() for raw in raw_bodies]
+        for name, raw_bodies in bodies.items()
+    }
+
+
+def _missing_unfilled(text: str) -> tuple[list[str], list[str]]:
+    """The fields absent from *text* and those still unfilled, in form order."""
+
+    bodies = _field_bodies(text)
+    missing = [field for field in _FIELDS if field not in bodies]
+    unfilled = [
+        field
+        for field in _FIELDS
+        if field in bodies
+        and any(body == "" or body == _placeholder(field) for body in bodies[field])
+    ]
+    return missing, unfilled
+
+
+def _draft_hits(name: str, text: str, markers: tuple[str, ...]) -> list[LeakHit]:
+    """Scan one draft's content; the hit vocabulary is the diff scan's.
+
+    Every byte of a draft would be sent, so the whole text is scanned —
+    the diff scan's added-lines rule does not carry over: its reason was
+    not to re-flag what already sits in the tree, and a draft holds
+    nothing else.
+    """
+
+    safe_name = safe_path(name, markers)
+    hits = [LeakHit(safe_name, category) for category in scan_for_leaks(text)]
+    hits.extend(
+        LeakHit(safe_name, f"private-marker #{index}")
+        for index, marker in enumerate(markers, start=1)
+        if marker and marker in text
+    )
+    return hits
+
+
+def _run_check(stderr: TextIO) -> int:
+    located = _locate("check", stderr)
+    if located is None:
+        return 1
+    project_root, outbox = located
+    try:
+        markers = private_markers_from_project(
+            read_project_file(project_file_path(project_root))
+        )
+    except (OSError, ValueError, CaptureError) as error:
+        print(f"outbox check: cannot read project config: {error}", file=stderr)
+        return 1
+    try:
+        drafts = sorted(
+            entry
+            for entry in outbox.iterdir()
+            if entry.is_file() and entry.name != _README
+        )
+    except OSError as error:
+        print(f"outbox check: cannot read the outbox: {error}", file=stderr)
+        return 1
+
+    refused = False
+    hits: list[LeakHit] = []
+    for draft in drafts:
+        problems: list[str] = []
+        text = ""
+        try:
+            raw = draft.read_bytes()
+        except OSError as error:
+            problems.append(f"cannot be read: {error}")
+        else:
+            try:
+                text = raw.decode("utf-8")
+            except UnicodeDecodeError:
+                # The lossy-search rule the diff scan follows: undecodable
+                # spans become U+FFFD, a non-word character, so an ASCII
+                # signature or marker beside them still matches.
+                text = raw.decode("utf-8", errors="replace")
+                problems.append("not UTF-8 text")
+            else:
+                missing, unfilled = _missing_unfilled(text)
+                if missing:
+                    problems.append("missing " + ", ".join(missing))
+                if unfilled:
+                    problems.append("unfilled " + ", ".join(unfilled))
+        hits.extend(_draft_hits(draft.name, text, markers))
+        if problems:
+            refused = True
+            print(f"{safe_path(draft.name, markers)}: {'; '.join(problems)}")
+    if hits:
+        refused = True
+        print(
+            "outbox check: possible leaks in drafts (file: what matched): "
+            + render_leak_hits(sorted(set(hits)), limit=None)
+        )
+        print(
+            "(best-effort: a hit is not proof of a leak and a clean run is "
+            "not proof of safety — see ADR-0005)",
+            file=stderr,
+        )
+    if refused:
+        print("outbox check: refused", file=stderr)
+        return 1
+    print(
+        f"outbox check: {len(drafts)} draft(s) checked; all conform; "
+        "no known leak signatures"
+    )
+    return 0

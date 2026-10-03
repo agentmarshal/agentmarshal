@@ -10,7 +10,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import TextIO, cast
 
-from agentmarshal import __version__
+from agentmarshal import __version__, outbox
 from agentmarshal.doctor import run_doctor
 from agentmarshal.journal.acceptance import AcceptanceError, accept_findings
 from agentmarshal.journal.brief import build_brief
@@ -345,6 +345,7 @@ def _build_parser() -> argparse.ArgumentParser:
     leak_scan_parser.add_argument(
         "--commit", required=True, help="candidate head ref to scan"
     )
+    outbox.register(subparsers)
     return parser
 
 
@@ -1370,5 +1371,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     if args.command == "leak-scan":
         return _run_leak_scan(args, sys.stderr)
+    if args.command == "outbox":
+        return outbox.run(args, sys.stderr)
 
     parser.error(f"unknown command: {args.command}")
