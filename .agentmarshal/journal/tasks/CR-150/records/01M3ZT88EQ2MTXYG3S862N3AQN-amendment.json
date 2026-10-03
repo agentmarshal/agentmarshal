@@ -1,0 +1,11 @@
+{
+  "created_at": "2026-10-03T02:42:21.783697Z",
+  "reason": "what leaves with the batch includes file names and anything else in the outbox; check must cover both",
+  "record_type": "amendment",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "schema": 3,
+  "source": "live",
+  "task": "CR-150",
+  "tool_version": "0.5.0.dev0"
+}
