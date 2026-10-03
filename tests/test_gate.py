@@ -1,6 +1,7 @@
 """Tests for the merge gate."""
 
 import difflib
+import hashlib
 import json
 import os
 import re
@@ -221,6 +222,59 @@ def _require_changes(
     for finding in findings:
         arguments.extend(["--finding", finding])
     assert main(arguments) == 0
+
+
+def _record_finding(repo: Path) -> str:
+    """Record a research finding and return its record id."""
+
+    digest = hashlib.sha256(b"remote conclusion").hexdigest()
+    assert (
+        main(
+            [
+                "finding",
+                "--task",
+                "CR-001",
+                "--summary",
+                "Conclusion",
+                "--artifact",
+                f"evidence/conclusion.md={digest}",
+            ]
+        )
+        == 0
+    )
+    findings = [
+        record
+        for record in read_records(repo / ".agentmarshal" / "journal", "CR-001")
+        if record["record_type"] == "finding"
+    ]
+    return str(findings[-1]["id"])
+
+
+def _require_changes_on_finding(repo: Path, finding: str) -> None:
+    assert (
+        main(
+            [
+                "submit-review",
+                "--task",
+                "CR-001",
+                "--reviewed-finding",
+                finding,
+                "--verdict",
+                "changes_required",
+                "--finding",
+                "F-finding",
+                "--role",
+                "qa",
+                "--vendor",
+                "test",
+                "--model",
+                "test-model",
+                "--email",
+                _REVIEWER_EMAIL,
+            ]
+        )
+        == 0
+    )
 
 
 def _accept(
@@ -645,6 +699,27 @@ def test_the_count_is_over_the_whole_task(
 
     assert passed, output
     assert f"PASS: latest review of {second[:12]} is approved" in output
+    assert "INFO: changes_required verdicts for CR-001: 1 (threshold 3)" in output
+
+
+def test_a_review_bound_to_a_research_finding_is_not_counted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a review bound to a research finding is not counted."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    first = _implement(repo, "src/module.py")
+    second = _implement(repo, "src/module.py", "more code\n")
+    # Two kinds of changes_required verdict on the one task: the review of
+    # a research finding (ADR-0009) is not a candidate's return, so only the
+    # first commit's review counts.
+    _require_changes_on_finding(repo, _record_finding(repo))
+    _require_changes(repo, first, "F-001")
+    _approve(repo, second)
+
+    passed, output = _run(repo, second, base, second)
+
+    assert passed, output
     assert "INFO: changes_required verdicts for CR-001: 1 (threshold 3)" in output
 
 

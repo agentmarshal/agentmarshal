@@ -59,12 +59,14 @@ line — is the naming that requirement asks for.
   an integer, the task id, or a caught error's text — the line is the
   tool's own text, and `say` escapes what it is handed regardless.
 
-- **The count is over the task, not the commit.** It counts every record
-  of the task whose `record_type` is `review` and whose `verdict` is
-  `changes_required`, whatever `reviewed_commit` it names — the record
-  set `load_task_status` already validated into `task.records`, so the
-  line adds no read of its own. A review of an older commit counts; a
-  review's other verdicts do not.
+- **The count is over the task's candidates, not the commit.** It counts
+  every record of the task whose `record_type` is `review`, whose
+  `verdict` is `changes_required` and which binds a commit, whatever
+  `reviewed_commit` it names — the record set `load_task_status` already
+  validated into `task.records`, so the line adds no read of its own. A
+  review of an older commit counts; a review's other verdicts do not; and
+  a review bound to a research finding (`reviewed_finding`, ADR-0009)
+  does not — returning a conclusion is not returning a candidate.
 
 - **The threshold is read through the settings module.**
   `changes_required_threshold(journal_root.parents[1])` — the journal

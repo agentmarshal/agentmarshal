@@ -1247,16 +1247,19 @@ def run_gate(
 
     if not journal_only:
         # ADR-0016 decision 4: the count of changes_required verdicts over
-        # the whole task — every review record, whatever commit it names —
-        # is the signal to stop and revisit the contract. It closes the
-        # transcript and reports; it is never a check, so it cannot add a
-        # violation, change the exit status or refuse a merge. The
-        # journal-only lane carries no work to review and prints nothing.
+        # the whole task — every review of the task's candidates, whatever
+        # commit it names; a review bound to a research finding (ADR-0009)
+        # is not a candidate's return and is not counted — is the signal to
+        # stop and revisit the contract. It closes the transcript and
+        # reports; it is never a check, so it cannot add a violation,
+        # change the exit status or refuse a merge. The journal-only lane
+        # carries no work to review and prints nothing.
         count = sum(
             1
             for record in task.records
             if record.get("record_type") == "review"
             and record.get("verdict") == "changes_required"
+            and record.get("reviewed_finding") is None
         )
         try:
             threshold = changes_required_threshold(journal_root.parents[1])

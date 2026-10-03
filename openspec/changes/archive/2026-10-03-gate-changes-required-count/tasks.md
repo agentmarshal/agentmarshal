@@ -1,10 +1,13 @@
 ## 1. The count line
 
 - [x] 1.1 `run_gate` counts the task's `changes_required` review verdicts
-  over `task.records` — every review record of the task, whatever commit
-  it names — and, on the implementation lane only, ends the transcript
-  with the line design.md states: `INFO:` below the threshold, `WARN:`
-  when the count has reached it — verify: pytest.
+  over `task.records` — every review record of the task's candidates,
+  whatever commit it names; a review bound to a research finding
+  (`reviewed_finding`, ADR-0009) is not counted — and, on the
+  implementation lane only, ends the transcript with the line design.md
+  states: `INFO:` below the threshold, `WARN:` when the count has reached
+  it — verify: pytest, including a task that carries both kinds of
+  review.
 - [x] 1.2 The threshold is read with `changes_required_threshold` from
   the journal repository's `project.json`; an unreadable setting lands
   on the line as `threshold unreadable: <error>` and the run continues —

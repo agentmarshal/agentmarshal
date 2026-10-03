@@ -13,7 +13,8 @@ task.
 - On the implementation lane — in the embedded placement and in a sidecar —
   a gate run prints one line carrying the task's count of
   `changes_required` review verdicts over the whole task (every review
-  record of the task, whatever commit it names) and the project's
+  record of the task's candidates, whatever commit it names; a review
+  bound to a research finding, ADR-0009, is not counted) and the project's
   `review.changes_required_threshold` (default 3), read through the
   project settings module. When the count has reached the threshold the
   line is marked.
