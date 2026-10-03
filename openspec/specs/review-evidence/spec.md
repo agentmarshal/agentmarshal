@@ -70,13 +70,15 @@ task's line the total over the task's review records.
 - **THEN** the task's line shows the sum over those records
 
 ### Requirement: Nothing is required of a journal that keeps no prose
-A review record without `artifacts` SHALL be read, gated and displayed as in
-0.3.0; keeping prose is a capability, not an obligation.
+A review record without `artifacts` SHALL be read, gated and displayed as
+before this capability existed; keeping prose is a capability, not an
+obligation.
 
 #### Scenario: an old journal reads as before
 - **WHEN** a review record carries no `artifacts`
-- **THEN** every command behaves as it did in 0.3.0, and the gate's
-  transcript for such a candidate is unchanged
+- **THEN** every command behaves as it did before this capability existed, and
+  the gate's transcript for such a candidate is byte-for-byte the transcript
+  the committed fixtures pin for a default run
 
 ### Requirement: A refused record leaves no artifact behind
 A review path SHALL refuse a record for every reason the record writer can

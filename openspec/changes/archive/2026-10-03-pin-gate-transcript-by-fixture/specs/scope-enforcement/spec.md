@@ -1,13 +1,4 @@
-# scope-enforcement Specification
-
-## Purpose
-What the gate holds a candidate's paths to: the set of paths the candidate
-touches, read from one listing in which a rename is its source deleted and
-its destination added, compared against the contract's scope and the
-footprints of the extensions it names. The check that keeps a candidate
-inside what its contract declared, on whichever lane it takes.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: A candidate's change set names every path it touches
 The gate SHALL derive the set of paths a candidate changes from one listing in
