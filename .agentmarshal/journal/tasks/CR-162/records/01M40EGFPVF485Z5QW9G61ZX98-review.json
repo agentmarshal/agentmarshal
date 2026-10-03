@@ -1,0 +1,34 @@
+{
+  "advisory_findings": [
+    "paths-line-on-stdout-contradicts-docs",
+    "moment-overflow-error-traceback",
+    "unreadable-log-dir-now-fails-status",
+    "overdue-line-escape-untested",
+    "status-list-rescans-every-event-per-task",
+    "format-overdue-docstring-misstates-deadline-units"
+  ],
+  "artifacts": [
+    {
+      "hash": "e071374f684942b0c45daac1af141b8494787297a4f2c4ee765a72530139d9ce",
+      "ref": ".agentmarshal/journal/tasks/CR-162/artifacts/01M40EGFPVF485Z5QW9G61ZX98-review.md"
+    }
+  ],
+  "created_at": "2026-10-03T08:36:22.875828Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "5df0e150218be734b5c0f886b845dcafa994153c",
+  "reviewed_contract": "a6c817ad056503e05a17049c9060425d1e4d20058cef541eb14fec126bd60a69",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-162",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "approved"
+}
