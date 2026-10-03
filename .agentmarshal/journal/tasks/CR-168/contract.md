@@ -5,6 +5,7 @@ title = "The gate's output carries the task's count of changes_required verdicts
 scope = [
   "src/agentmarshal/journal/gate.py",
   "tests/",
+  "docs/quickstart.md",
   "openspec/changes/gate-changes-required-count/",
   "openspec/changes/archive/",
   "openspec/specs/gate-lanes/",
@@ -14,7 +15,7 @@ acceptance = [
   "on the implementation lane, in both placements, the gate prints one line carrying the task's count of `changes_required` verdicts over the whole task (every review record of the task, whatever commit it names) and the project's threshold from `review.changes_required_threshold` (default 3, read through the settings module of CR-151), and marks the line when the count has reached the threshold; the wording is stated in design.md and the line is the tool's own text",
   "the line never adds a violation, never changes the exit status and never blocks a merge; a malformed threshold setting is reported on the line and does not fail the run",
   "the gate fixtures for the implementation lane are regenerated through the test's explicit update path and the fixture diff is exactly the new line; the embedded journal-only lane prints no count line and its fixture is unchanged; in a sidecar there is no journal-only lane (ADR-0008 decision 2), so the sidecar case whose candidate touches only the journal runs the implementation lane and its fixture gains the line too",
-  "the full CI sequence passes",
+  "every gate transcript the documentation shows and a test pins (docs/quickstart.md's main path) shows the new line, and the full CI sequence passes",
 ]
 documents = ["openspec/specs/gate-lanes/"]
 +++
