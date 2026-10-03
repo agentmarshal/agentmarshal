@@ -1,0 +1,18 @@
+## Review of CR-160 — session fields of schema 7
+
+**What I checked against the contract**
+
+- **Field admission and gating.** `_FIELD_FAMILIES` gains exactly one entry, `(7, "session", _SCHEMA_7_SESSION_FIELDS)` (`src/agentmarshal/journal/records.py:265`), and `_allowed_fields` computes the admitted set from the record's own schema. Registration order in `_RULES` is source order, so `fields` (bound to 1) runs ahead of `session-fields-7` (bound to 7): a family field on a session stamped 6 meets the "unsupported fields" refusal at write *and* on read, which is what both new tests assert.
+- **Shape rule ordering.** `_check_session_fields_7` (`records.py:538`) is defined before `_check_forgeable_text` (`records.py:680`), so the design's claim that `commit`'s 40-hex refusal arrives first is true on the read path as well as at write; the `[0-9a-f]{40}` shape admits no character `forges_rendered_text` refuses, so the forgeable entry for `commit` genuinely cannot fire.
+- **Validator tables.** The three length tables stay empty of the family, matching ADR-0022 §8 (which bounds only `excerpt`, `payload` and the new types' `reason`); the five string fields register keyed `("session", field)`, never `None`. The existing shared-validator tests all monkeypatch their own registrations, so none is disturbed.
+- **Minimum schema.** The one new clause `record.keys() & _SCHEMA_7_SESSION_FIELDS` sits beside the 4/5/6 clauses and is reached by every writer; `create_session_record` sets each field on `is not None`, so `report_ready=False` is carried (and pinned by `test_report_ready_false_is_written_and_read_back`) and a session without the family is byte-identical to today's.
+- **Nothing else moved.** `session_record_schema` is untouched, and that is safe: `backfill.py:157` folds vendor and model into `actor` and never writes a top-level `model`, so a backfilled session still stamps 3/6. No other consumer of a bare `commit`, `model` or `trace` key exists in `src/` — the commit-bearing readers all name `reviewed_commit`/`accepted_commit`/`completed_commit`.
+- **Specs.** The archived delta's requirement bodies are identical to what landed in `openspec/specs/session-activity/spec.md` and `openspec/specs/record-schema/spec.md`; the three MODIFIED headers are unchanged word for word; `openspec/changes/session-fields-schema-7/` is gone and `archive/2026-10-03-session-fields-schema-7/` holds proposal, design, tasks and both deltas. Every scenario in the delta has a test whose docstring names it, including the reworded `no writer stamps a schema no field needs` and the new `a writer stamps schema 7 when its record needs it`. No requirement elsewhere (`record-text-safety`, the shared-validator requirement) is made untrue.
+
+**Advisory**
+
+`advisory-commit-forgeable-registration-unpinned` — the spec requires that `commit` pass "the forgeable-text rule registered for the session record type and that field", but no test holds that registration: `tests/test_session.py:202` accepts either refusal message (`match=r"control characters|lowercase hex"`), and since the hex shape rule always wins, deleting `("session", "commit"): None` from `_FORGEABLE_TEXT_FIELDS` (`src/agentmarshal/journal/records.py:313`) would leave the suite green. The sibling requirement is pinned by direct table assertions elsewhere (`test_the_shared_validators_are_their_own_entries_bound_to_7`), so a one-line membership assertion would close this; not blocking, since the code does satisfy the requirement.
+
+AGENTMARSHAL_VERDICT_BEGIN
+{"reviewed_commit": "940d496b00522215065ad65f60800e960fce6b65", "verdict": "approved", "findings": [], "advisory_findings": ["advisory-commit-forgeable-registration-unpinned"]}
+AGENTMARSHAL_VERDICT_END

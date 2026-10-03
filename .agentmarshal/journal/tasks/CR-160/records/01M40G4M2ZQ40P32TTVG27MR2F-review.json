@@ -1,0 +1,30 @@
+{
+  "advisory_findings": [
+    "minimum-schema-assertion-is-tautological",
+    "duplicate-session-helper-in-test-session"
+  ],
+  "artifacts": [
+    {
+      "hash": "0cf3cb0a184b10497f73ae59379029cb74ab9f308112a872e15f4f9cc2f4de80",
+      "ref": ".agentmarshal/journal/tasks/CR-160/artifacts/01M40G4M2ZQ40P32TTVG27MR2F-review.md"
+    }
+  ],
+  "created_at": "2026-10-03T09:04:51.295413Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "940d496b00522215065ad65f60800e960fce6b65",
+  "reviewed_contract": "9f9457afd09e4717395cddf28643c912e90f00861d9bfa8860e8ed7595693e2f",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-160",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "approved"
+}

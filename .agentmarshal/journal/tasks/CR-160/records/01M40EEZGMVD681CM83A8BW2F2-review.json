@@ -1,0 +1,30 @@
+{
+  "advisory_findings": [
+    "advisory-commit-not-registered-in-forgeable-text",
+    "advisory-vacuous-schema-assertion"
+  ],
+  "artifacts": [
+    {
+      "hash": "bcb677255d6d930c6e028a8d4e72aa0b51a38d794344b7b7dffdde1daa2ef5d5",
+      "ref": ".agentmarshal/journal/tasks/CR-160/artifacts/01M40EEZGMVD681CM83A8BW2F2-review.md"
+    }
+  ],
+  "created_at": "2026-10-03T08:35:33.524552Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "e4b7316274ca6f0c08c5dd2440c793e4a20ccbb8",
+  "reviewed_contract": "9f9457afd09e4717395cddf28643c912e90f00861d9bfa8860e8ed7595693e2f",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-160",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "approved"
+}
