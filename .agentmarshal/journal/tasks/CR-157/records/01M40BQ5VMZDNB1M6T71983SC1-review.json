@@ -1,0 +1,32 @@
+{
+  "advisory_findings": [
+    "ps-etime-parse-is-not-total",
+    "outcome-refusal-bypasses-the-step-error-path",
+    "append-failure-message-lacks-the-command-prefix",
+    "archived-change-lacks-openspec-metadata"
+  ],
+  "artifacts": [
+    {
+      "hash": "96c5489ef16f2e8c6ba59bcc283e3eb4f0a531334daf102d1ee7241bb49a1507",
+      "ref": ".agentmarshal/journal/tasks/CR-157/artifacts/01M40BQ5VMZDNB1M6T71983SC1-review.md"
+    }
+  ],
+  "created_at": "2026-10-03T07:47:36.436446Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "ffca6170d04e71a8a6e9fafe3e6ef992f45f9f1c",
+  "reviewed_contract": "d27af29d379a529a4638fadf6a05ceba3661dc3c1f46e24e23d4fe4f93aa7e7e",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-157",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "approved"
+}
