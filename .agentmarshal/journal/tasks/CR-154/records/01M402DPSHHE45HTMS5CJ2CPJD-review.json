@@ -1,0 +1,30 @@
+{
+  "advisory_findings": [
+    "advisory-canonical-json-allows-nan-and-infinity",
+    "advisory-stale-rule-binding-scenario-title"
+  ],
+  "artifacts": [
+    {
+      "hash": "b4b7b08af0837733a08ecc2288817d2aa4edb245706129f5db3f9dd1f16df1d5",
+      "ref": ".agentmarshal/journal/tasks/CR-154/artifacts/01M402DPSHHE45HTMS5CJ2CPJD-review.md"
+    }
+  ],
+  "created_at": "2026-10-03T05:05:08.913116Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "1ee5272abc944e00f17e7524ea5552184d91a8af",
+  "reviewed_contract": "fad559b19a563f2791688c292c649e31858732f873404d5b97111599d54560de",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-154",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "approved"
+}
