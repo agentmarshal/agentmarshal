@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -249,3 +250,26 @@ def parse_contract(path: Path) -> ContractHeader:
     _ensure_contract_path_is_real(path)
     with path.open("r", encoding="utf-8-sig", newline=None) as contract_file:
         return parse_contract_text(contract_file.read(), str(path))
+
+
+def contract_sha256(content: bytes, source: str) -> str:
+    """The sha256 of a contract's text, in lowercase hex.
+
+    The one way every place that hashes a contract computes it (ADR-0018
+    decision 1): the bytes as stored or read — a file's raw contents, a
+    ``git show`` output — decode as UTF-8, and CRLF and lone CR translate
+    to LF the way ``open(newline=None)``'s universal-newline mode
+    translates them, so a contract checked out with CRLF line endings
+    hashes to the value the same contract with LF hashes to. A byte-order
+    mark stays in the hashed text, the way ``read_text(encoding="utf-8")``
+    keeps it. ``source`` names the origin for the refusal bytes that are
+    not UTF-8 get — a path or a git object reference, as
+    ``parse_contract_text`` takes.
+    """
+
+    try:
+        text = content.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise JournalContractError(f"contract is not valid UTF-8: {source}") from error
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()

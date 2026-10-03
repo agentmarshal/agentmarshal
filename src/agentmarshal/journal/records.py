@@ -159,6 +159,10 @@ _SCHEMA_5_FIELDS = frozenset({"reviewed_contract"})
 _SCHEMA_7_SESSION_FIELDS = frozenset(
     {"commit", "model", "trace", "cli_session", "report_ready", "fallback_reason"}
 )
+# The contract hash the records that establish a contract carry (ADR-0018
+# decision 1, ADR-0022 section 2): `opened` and `amendment` may carry the
+# sha256 of the contract text they establish.
+_SCHEMA_7_CONTRACT_FIELDS = frozenset({"contract"})
 _SHA256_HEX_PATTERN = re.compile(r"[0-9a-f]{64}$")
 _REVIEWED_COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}$")
 _REVIEW_VERDICTS = frozenset({"approved", "changes_required", "blocked", "rejected"})
@@ -267,14 +271,16 @@ def _rule(name: str) -> Callable[[_RuleCheck], _RuleCheck]:
 
 # The field families a record's own schema admits (ADR-0005, ADR-0011): the
 # schema-2 provenance fields on every record, ``usage`` on sessions,
-# ``reviewed_contract`` on reviews, and the schema-7 session fields of
-# ADR-0022 section 2. The fields rule computes the admitted set from the
-# record's schema; a later schema registers its family here.
+# ``reviewed_contract`` on reviews, and the schema-7 session and contract
+# fields of ADR-0022 section 2. The fields rule computes the admitted set
+# from the record's schema; a later schema registers its family here.
 _FIELD_FAMILIES: tuple[tuple[int, str | None, frozenset[str]], ...] = (
     (2, None, _SCHEMA_2_FIELDS),
     (2, "session", _SCHEMA_2_SESSION_FIELDS),
     (5, "review", _SCHEMA_5_FIELDS),
     (7, "session", _SCHEMA_7_SESSION_FIELDS),
+    (7, "opened", _SCHEMA_7_CONTRACT_FIELDS),
+    (7, "amendment", _SCHEMA_7_CONTRACT_FIELDS),
 )
 
 
@@ -305,7 +311,9 @@ def _allowed_fields(record_type: str, schema: int) -> frozenset[str]:
 # no length for them, so the three limit tables stay empty of the family.
 # `commit`'s entry never fires — the 40-lowercase-hex shape rule refuses
 # every character the forgeable-text rule would, and runs first — but the
-# family registers every string field, so the entry stands beside it.
+# family registers every string field, so the entry stands beside it. The
+# contract family's `contract` registers the same way on each of its two
+# record types, its 64-hex shape rule standing first the same way.
 _TEXT_CHAR_LIMITS: dict[tuple[str | None, str], int] = {}
 _TEXT_BYTE_LIMITS: dict[tuple[str | None, str], int] = {}
 _JSON_BYTE_LIMITS: dict[tuple[str | None, str], int] = {}
@@ -315,6 +323,8 @@ _FORGEABLE_TEXT_FIELDS: dict[tuple[str | None, str], None] = {
     ("session", "trace"): None,
     ("session", "cli_session"): None,
     ("session", "fallback_reason"): None,
+    ("opened", "contract"): None,
+    ("amendment", "contract"): None,
 }
 
 
@@ -563,6 +573,17 @@ def _check_session_fields_7(data: Mapping[str, object], _context: _RuleContext) 
         )
 
 
+@_rule("contract-hash-7")
+def _check_contract_hash_7(data: Mapping[str, object], _context: _RuleContext) -> None:
+    if "contract" not in data:
+        return
+    contract = data["contract"]
+    if not isinstance(contract, str) or _SHA256_HEX_PATTERN.fullmatch(contract) is None:
+        raise JournalRecordError(
+            "record field 'contract' must be exactly 64 lowercase hex characters"
+        )
+
+
 @_rule("provenance")
 def _check_provenance(data: Mapping[str, object], _context: _RuleContext) -> None:
     # Provenance was introduced at schema 2 (ADR-0005 Decision 4); the rule
@@ -700,7 +721,8 @@ def _check_forgeable_text(data: Mapping[str, object], _context: _RuleContext) ->
 # validators are bound to 7 — the schema whose fields they guard — and are
 # entries of their own, never folded into a schema-1 rule: a tightening
 # hidden inside one would apply to records older schemas wrote. The
-# session-fields-7 shape rule takes the same binding for the same reason.
+# session-fields-7 and contract-hash-7 shape rules take the same binding
+# for the same reason.
 _RULE_FROM_SCHEMA: dict[str, int] = {
     "record-type": 1,
     "record-type-predicate": 1,
@@ -721,6 +743,7 @@ _RULE_FROM_SCHEMA: dict[str, int] = {
     "session-tokens": 1,
     "session-usage": 1,
     "session-fields-7": 7,
+    "contract-hash-7": 7,
     "provenance": 2,
     "recorded-by": 1,
     "finding-binding": 4,
@@ -1243,11 +1266,17 @@ def _minimum_schema(record: Mapping[str, object]) -> int:
         schema = max(schema, _COORDINATION_SESSION_SCHEMA)
     if record.keys() & _SCHEMA_7_SESSION_FIELDS:
         schema = max(schema, 7)
+    if record.keys() & _SCHEMA_7_CONTRACT_FIELDS:
+        schema = max(schema, 7)
     return schema
 
 
 def create_opened_record(
-    task_id: str, tool_version: str, *, source: str = SOURCE_LIVE
+    task_id: str,
+    tool_version: str,
+    *,
+    contract: str | None = None,
+    source: str = SOURCE_LIVE,
 ) -> dict[str, object]:
     """Build the lifecycle record emitted when a task is opened."""
 
@@ -1258,6 +1287,8 @@ def create_opened_record(
         "tool_version": tool_version,
         "source": source,
     }
+    if contract is not None:
+        record["contract"] = contract
     record["schema"] = _minimum_schema(record)
     return record
 
@@ -1350,7 +1381,12 @@ def create_reopened_record(
 
 
 def create_amendment_record(
-    task_id: str, tool_version: str, reason: str, *, source: str = SOURCE_LIVE
+    task_id: str,
+    tool_version: str,
+    reason: str,
+    *,
+    contract: str | None = None,
+    source: str = SOURCE_LIVE,
 ) -> dict[str, object]:
     """Build the evidence record emitted when a contract is amended."""
 
@@ -1362,6 +1398,8 @@ def create_amendment_record(
         "reason": reason,
         "source": source,
     }
+    if contract is not None:
+        record["contract"] = contract
     record["schema"] = _minimum_schema(record)
     return record
 
