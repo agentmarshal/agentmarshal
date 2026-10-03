@@ -1,0 +1,32 @@
+{
+  "advisory_findings": [
+    "ADV-dry-run-resolves-project-from-cwd",
+    "ADV-payload-area-unspecified",
+    "ADV-payloads-escape-the-directory-bound",
+    "ADV-one-writer-file-per-event"
+  ],
+  "artifacts": [
+    {
+      "hash": "f37487fa6db24fac7bb1cd0117f67d552715791204c57bacfb5bec43d0c75099",
+      "ref": ".agentmarshal/journal/tasks/CR-169/artifacts/01M40SADCM9MXF9J791CN861TK-review.md"
+    }
+  ],
+  "created_at": "2026-10-03T11:45:18.228362Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "c06351644777ac302fd6313137efe0d910b35bb2",
+  "reviewed_contract": "7a8b6071dc981f6799453f7f20940c6a28f7ae5087e3b386858fc74bee52fd77",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 5,
+  "source": "live",
+  "task": "CR-169",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "approved"
+}
