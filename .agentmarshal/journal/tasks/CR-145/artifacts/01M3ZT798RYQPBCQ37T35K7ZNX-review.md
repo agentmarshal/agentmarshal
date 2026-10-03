@@ -1,0 +1,27 @@
+Разобрал контракт, диффы, финальное состояние `records.py`, ADR-0015, соседние specs и существующие тесты, которые могли бы сломаться от послабления read-пути.
+
+## Что проверено
+
+**Критерий 1 (артефакты изменения).** `openspec/changes/archive/2026-10-03-read-rules-by-schema/` содержит `proposal.md`, `design.md`, `tasks.md`, `specs/record-schema/spec.md`; capability выложена в `openspec/specs/record-schema/spec.md`. Структура совпадает с соседними архивами (`.openspec.yaml` присутствует и у `per-file-leak-scan`, `review-diff-per-file`). Все семь сценариев дельты имеют тест, чей docstring называет сценарий дословно — включая gate-сценарий в `tests/test_gate.py:1407`.
+
+**Критерий 2 (таблица).** `_RULES` (21 правило, порядок регистрации = исходный порядок проверок) и `_RULE_FROM_SCHEMA` — две структуры, так что пропуск записи физически возможен и ловится `test_every_read_rule_has_its_schema`. Привязки: всё 1, кроме `provenance` 2, `finding-binding` 4, `reviewed-contract` 5, `coordination` 6 — ровно как требует критерий. Проверка версии схемы вынесена в `_check_schema_version` до реестра, и `test_the_schema_check_runs_before_any_rule` действительно это пинит (правило ставится первым в подменённый `_RULES`, а ошибка приходит от проверки схемы).
+
+**Критерий 3 (разделение сторон).** Порядок правил в реестре я сверил построчно со старым `_validate_record`: record-type → predicate → reviewed_contract → fields → required-strings → created_at → tool_version → по типу записи → session-fields → coordination → tokens → usage → provenance → recorded_by → finding-binding. Совпадает, значит первое сообщение об ошибке у некорректной записи не изменилось. На write-стороне фильтр закорачивается, поэтому набор проверок идентичен сегодняшнему — регрессии приёма/отказа на записи нет. На read-стороне три «гейта» (4, 5, 6) структурно мертвы, что и есть цель ADR-0015.
+
+Отдельно проверил, что послабление read-пути не ломает существующие тесты: `test_read_records_rejects_inconsistent_review` держится на правиле `review` (1), `test_session_record_rejects_invalid_data_on_load` — на `session-tokens` (1), проверки control-символов живут внутри правил типов записи (1) и внутри `_validate_provenance` (2), так что `record-text-safety` не затронут — решение 5 ADR-0015 не реализовано досрочно. Тесты с понижением схемы (`test_session.py:55`, `test_journal.py:606`, `test_findings.py:374`, `test_brief.py:168`) все идут через `write_record`, то есть через write-сторону.
+
+**Критерий 4 (минимальная схема).** В `records.py` не осталось ни одного литерала `"schema": N`; все девять `create_*` и `session_record_schema` зовут `_minimum_schema`. Переход `create_review_record` с «5 / 4 / 3 по аргументам» на производную над записью эквивалентен, потому что `reviewed_contract` и `reviewed_finding` кладутся в dict только когда не `None`. Перенос ключа `schema` в конец dict безопасен: `write_record` сериализует с `sort_keys=True`, а в `attestation.py`, `report.py`, `brief.py`, `prune.py` сериализации записей нет. Существующий `test_every_record_factory_writes_the_current_schema` (`test_journal.py:2535`) остаётся зелёным: `_placeholder_for("activity")` отдаёт `"implementation"`.
+
+**Критерий 5.** Выполнить `uv run pytest` / `ruff` / `mypy` / `agentmarshal validate` в этой песочнице не получилось — `uv` отсутствует, а запуск pytest заблокирован правами. Так что это проверено только статически: ни один существующий тест в диффе не изменён и не удалён, длины строк и отступы в новых блоках совпадают с исходными, типизация под `strict` сходится.
+
+## Замечания (не блокирующие)
+
+`rule-granularity-stops-at-today-check-boundaries` — реестр разрезан по сегодняшним границам групп проверок, поэтому полнота таблицы гарантируется только для *зарегистрированных* правил: новая проверка, добавленная внутрь существующего предиката (например внутрь `_validate_review_record` в `src/agentmarshal/journal/records.py:575` или внутрь `_check_session_fields`), молча унаследует схему хозяина (1) и не будет поймана ни одним тестом — а это ровно тот риск, который принесёт схема 7 из ADR-0022. Решение зафиксировано в design.md («split at today's check boundaries, no finer»), поэтому формально контракт соблюдён, но это самый слабый шов конструкции.
+
+`read-time-checks-outside-the-registry` — часть read-time проверок над значениями полей живёт вне `_validate_record` и потому вне таблицы и вне теста полноты: сверка `task` с каталогом и `record_type` с именем файла в `read_records` (`src/agentmarshal/journal/records.py:1330`, `:1335`), а на write-стороне — «`reviewed_finding` must name a finding in the same task» (`:923`). Сегодня они безвредны (семантика схемы 1), но заявка «таблица покрывает каждую проверку» обрывается на границе `_validate_record`, и в spec это не оговорено.
+
+`fail-closed-wording-inverted` — комментарий к реестру в `src/agentmarshal/journal/records.py:216` называет пропуск незарегистрированного правила на чтении «fail-closed», тогда как в этом же файле (`:243`, комментарий к `_check_record_type_predicate`, ADR-0005 D5) «fail-closed» означает ровно обратное — отказ. Пропуск проверки — поведение разрешающее; термин инвертирован относительно принятого в файле смысла и будет путать следующего читателя.
+
+AGENTMARSHAL_VERDICT_BEGIN
+{"reviewed_commit": "078551b1c58250e2c60805668e10bbcf979f13cb", "verdict": "approved", "findings": [], "advisory_findings": ["rule-granularity-stops-at-today-check-boundaries", "read-time-checks-outside-the-registry", "fail-closed-wording-inverted"]}
+AGENTMARSHAL_VERDICT_END

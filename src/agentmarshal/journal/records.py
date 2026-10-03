@@ -8,10 +8,10 @@ import secrets
 import threading
 import time
 import unicodedata
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import cast
+from typing import TypedDict, cast
 
 from agentmarshal.journal.actors import resolve_recorded_by
 
@@ -204,41 +204,135 @@ def _is_ulid(value: str) -> bool:
     )
 
 
-def _validate_record(record: Mapping[str, object]) -> dict[str, object]:
-    data = dict(record)
+# Read-time rules and the schema each applies from (ADR-0015). A rule is a
+# named check on a record — over the record type, a field, a field's value,
+# or the record against where it lies — raising JournalRecordError.
+# `_RULES` registers them in check order; `_RULE_FROM_SCHEMA` binds each to
+# the schema it applies from at read time (decision 7): every rule that
+# exists today applies from schema 1 (decision 6), except the field gates
+# already bound to schemas 2, 4, 5 and 6, which keep their numbers. The two
+# structures are deliberate: a rule can be registered without a table entry,
+# and that gap is what the completeness test catches. A read path whose
+# lookup finds no entry applies no rule — skipping is permissive, never a
+# refusal, so it is the completeness test that refuses the missing entry.
+# A rule that compares the record with where it lies reads that placement
+# from the context the caller passes; a rule whose placement the caller
+# cannot supply is not applied there. The schema-version check is not a
+# rule: `_validate_record` runs it as an explicit first step, before the
+# registry, so no rule — wherever it is registered — can read the record's
+# schema before it is checked.
+class _RuleContext(TypedDict, total=False):
+    """What a rule may compare the record against, beyond the record itself.
+
+    ``task`` is the task the record is written to or read from, with
+    ``task_label`` the noun a mismatch message gives that place
+    ("destination", "directory"); ``filename_record_type`` is the record
+    type the file name declares and ``filename`` the file's display name
+    for that message; ``finding_ids`` lazily yields the ids of the task's
+    finding records.
+    """
+
+    task: str
+    task_label: str
+    filename: str
+    filename_record_type: str
+    finding_ids: Callable[[], frozenset[str]]
+
+
+_RuleCheck = Callable[[Mapping[str, object], _RuleContext], None]
+_RULES: dict[str, _RuleCheck] = {}
+
+
+def _rule(name: str) -> Callable[[_RuleCheck], _RuleCheck]:
+    """Register a read-time rule under *name*, in source order."""
+
+    def register(check: _RuleCheck) -> _RuleCheck:
+        _RULES[name] = check
+        return check
+
+    return register
+
+
+# The field families a record's own schema admits (ADR-0005, ADR-0011): the
+# schema-2 provenance fields on every record, ``usage`` on sessions, and
+# ``reviewed_contract`` on reviews. The fields rule computes the admitted
+# set from the record's schema; a later schema registers its family here.
+_FIELD_FAMILIES: tuple[tuple[int, str | None, frozenset[str]], ...] = (
+    (2, None, _SCHEMA_2_FIELDS),
+    (2, "session", _SCHEMA_2_SESSION_FIELDS),
+    (5, "review", _SCHEMA_5_FIELDS),
+)
+
+
+def _allowed_fields(record_type: str, schema: int) -> frozenset[str]:
+    fields = _RECORD_FIELDS[record_type]
+    for introduced, only_type, family in _FIELD_FAMILIES:
+        if schema >= introduced and (only_type is None or record_type == only_type):
+            fields = fields | family
+    return fields
+
+
+def _check_schema_version(data: Mapping[str, object]) -> None:
+    """The explicit first step of validation, ahead of every rule."""
+
     schema = data.get("schema")
     if type(schema) is not int or schema not in _SUPPORTED_SCHEMAS:
         raise JournalRecordError("record has an unknown or missing schema version")
+
+
+@_rule("record-type")
+def _check_record_type(data: Mapping[str, object], _context: _RuleContext) -> None:
     record_type = data.get("record_type")
     if not isinstance(record_type, str) or record_type not in _RECORD_FIELDS:
         raise JournalRecordError("record has an unknown or missing record type")
+
+
+@_rule("record-type-predicate")
+def _check_record_type_predicate(
+    data: Mapping[str, object], _context: _RuleContext
+) -> None:
     # Every accepted record type must be projectable to an in-toto
     # Statement; a type without a registered predicateType could not be,
     # so reject it fail-closed (ADR-0005 Decision 5).
+    record_type = cast(str, data["record_type"])
     if not is_registered_record_type(record_type):
         raise JournalRecordError(
             f"record type {record_type!r} has no registered predicateType"
         )
-    allowed_fields = _RECORD_FIELDS[record_type]
-    if schema >= 2:
-        allowed_fields = allowed_fields | _SCHEMA_2_FIELDS
-        if record_type == "session":
-            allowed_fields = allowed_fields | _SCHEMA_2_SESSION_FIELDS
-    if schema >= 5 and record_type == "review":
-        allowed_fields = allowed_fields | _SCHEMA_5_FIELDS
-    if "reviewed_contract" in data and schema < 5:
+
+
+@_rule("reviewed-contract")
+def _check_reviewed_contract(
+    data: Mapping[str, object], _context: _RuleContext
+) -> None:
+    if "reviewed_contract" in data and cast(int, data["schema"]) < 5:
         raise JournalRecordError("record field 'reviewed_contract' requires schema 5")
+
+
+@_rule("fields")
+def _check_fields(data: Mapping[str, object], _context: _RuleContext) -> None:
+    allowed_fields = _allowed_fields(
+        cast(str, data["record_type"]), cast(int, data["schema"])
+    )
     unexpected_fields = data.keys() - allowed_fields
     if unexpected_fields:
         raise JournalRecordError(
             f"record has unsupported fields: {', '.join(sorted(unexpected_fields))}"
         )
+
+
+@_rule("required-strings")
+def _check_required_strings(data: Mapping[str, object], _context: _RuleContext) -> None:
     for field in ("record_type", "task", "created_at"):
         value = data.get(field)
         if not isinstance(value, str) or not value:
             raise JournalRecordError(
                 f"record field {field!r} must be a non-empty string"
             )
+
+
+@_rule("created-at")
+def _check_created_at(data: Mapping[str, object], _context: _RuleContext) -> None:
     try:
         created_at = datetime.fromisoformat(
             cast(str, data["created_at"]).replace("Z", "+00:00")
@@ -249,49 +343,273 @@ def _validate_record(record: Mapping[str, object]) -> dict[str, object]:
         ) from error
     if created_at.tzinfo is None or created_at.utcoffset() != UTC.utcoffset(created_at):
         raise JournalRecordError("record field 'created_at' must be a UTC timestamp")
+
+
+@_rule("tool-version")
+def _check_tool_version(data: Mapping[str, object], _context: _RuleContext) -> None:
     tool_version = data.get("tool_version")
     if not isinstance(tool_version, str) or not tool_version:
         raise JournalRecordError(
             "record field 'tool_version' must be a non-empty string"
         )
-    if record_type == "review":
+
+
+@_rule("review")
+def _check_review_record(data: Mapping[str, object], _context: _RuleContext) -> None:
+    if cast(str, data["record_type"]) == "review":
         _validate_review_record(data)
-    elif record_type == "acceptance":
+
+
+@_rule("acceptance")
+def _check_acceptance_record(
+    data: Mapping[str, object], _context: _RuleContext
+) -> None:
+    if cast(str, data["record_type"]) == "acceptance":
         _validate_acceptance_record(data)
-    elif record_type == "completed":
+
+
+@_rule("completed")
+def _check_completed_record(data: Mapping[str, object], _context: _RuleContext) -> None:
+    if cast(str, data["record_type"]) == "completed":
         _validate_binding(data, "completed", "completed_commit", "completed_finding")
-    elif record_type == "finding":
+
+
+@_rule("finding")
+def _check_finding_record(data: Mapping[str, object], _context: _RuleContext) -> None:
+    if cast(str, data["record_type"]) == "finding":
         _validate_finding_record(data)
-    elif record_type == "abandoned":
+
+
+@_rule("abandoned")
+def _check_abandoned_record(data: Mapping[str, object], _context: _RuleContext) -> None:
+    if cast(str, data["record_type"]) == "abandoned":
         reason = data.get("reason")
         if not isinstance(reason, str) or not reason:
             raise JournalRecordError(
                 "abandoned record field 'reason' must be a non-empty string"
             )
-    elif record_type == "reopened":
+
+
+@_rule("reopened")
+def _check_reopened_record(data: Mapping[str, object], _context: _RuleContext) -> None:
+    if cast(str, data["record_type"]) == "reopened":
         reason = data.get("reason")
         if not isinstance(reason, str) or not reason.strip():
             raise JournalRecordError(
                 "reopened record field 'reason' must be a non-empty string"
             )
-    elif record_type == "amendment":
+
+
+@_rule("amendment")
+def _check_amendment_record(data: Mapping[str, object], _context: _RuleContext) -> None:
+    if cast(str, data["record_type"]) == "amendment":
         reason = data.get("reason")
         if not isinstance(reason, str) or not reason.strip():
             raise JournalRecordError(
                 "amendment record field 'reason' must be a non-empty string"
             )
-    elif record_type == "session":
-        _validate_session_record(data)
-    if schema >= 2:
+
+
+@_rule("session-fields")
+def _check_session_fields(data: Mapping[str, object], _context: _RuleContext) -> None:
+    if cast(str, data["record_type"]) != "session":
+        return
+    for field in ("role", "actor", "outcome"):
+        value = data.get(field)
+        if not isinstance(value, str) or not value:
+            raise JournalRecordError(
+                f"session record field {field!r} must be a non-empty string"
+            )
+    activity = data.get("activity")
+    if not isinstance(activity, str) or activity not in _SESSION_ACTIVITIES:
+        raise JournalRecordError(
+            "session record field 'activity' must be one of "
+            + ", ".join(sorted(_SESSION_ACTIVITIES))
+        )
+
+
+@_rule("coordination")
+def _check_coordination(data: Mapping[str, object], _context: _RuleContext) -> None:
+    if (
+        cast(str, data["record_type"]) == "session"
+        and data.get("activity") == "coordination"
+        and cast(int, data["schema"]) < _COORDINATION_SESSION_SCHEMA
+    ):
+        raise JournalRecordError(
+            f"session activity 'coordination' requires schema "
+            f"{_COORDINATION_SESSION_SCHEMA}"
+        )
+
+
+@_rule("session-tokens")
+def _check_session_tokens(data: Mapping[str, object], _context: _RuleContext) -> None:
+    if cast(str, data["record_type"]) != "session":
+        return
+    tokens = data.get("tokens")
+    if not isinstance(tokens, dict) or tokens.keys() != {"input", "output", "cache"}:
+        raise JournalRecordError(
+            "session record field 'tokens' must contain only input, output, and cache"
+        )
+    for field in ("input", "output", "cache"):
+        value = tokens[field]
+        if type(value) is not int or value < 0:
+            raise JournalRecordError(
+                f"session record token {field!r} must be an integer greater "
+                "than or equal to zero"
+            )
+
+
+@_rule("session-usage")
+def _check_session_usage(data: Mapping[str, object], _context: _RuleContext) -> None:
+    if cast(str, data["record_type"]) != "session" or "usage" not in data:
+        return
+    usage = data["usage"]
+    if not isinstance(usage, dict):
+        raise JournalRecordError("session record field 'usage' must be an object")
+    expected_fields = {"provider", "method"}
+    unexpected_fields = usage.keys() - expected_fields
+    if unexpected_fields:
+        raise JournalRecordError(
+            "session record field 'usage' has unsupported fields: "
+            + ", ".join(sorted(str(field) for field in unexpected_fields))
+        )
+    if usage.keys() != expected_fields:
+        raise JournalRecordError(
+            "session record field 'usage' must contain provider and method"
+        )
+    provider = usage["provider"]
+    if not isinstance(provider, str) or not provider:
+        raise JournalRecordError(
+            "session record usage field 'provider' must be a non-empty string"
+        )
+    method = usage["method"]
+    if not isinstance(method, str) or method not in _SESSION_USAGE_METHODS:
+        raise JournalRecordError(
+            "session record usage field 'method' must be one of measured or reported"
+        )
+
+
+@_rule("provenance")
+def _check_provenance(data: Mapping[str, object], _context: _RuleContext) -> None:
+    # Provenance was introduced at schema 2 (ADR-0005 Decision 4); the rule
+    # keeps its own guard so a schema-1 record stays writable, and the
+    # table's 2 keeps a reader from demanding it of older records either.
+    if cast(int, data["schema"]) >= 2:
         _validate_provenance(data)
+
+
+@_rule("recorded-by")
+def _check_recorded_by(data: Mapping[str, object], _context: _RuleContext) -> None:
     _validate_recorded_by(data)
 
-    needs_schema_4 = record_type == "finding" or bool(data.keys() & _SCHEMA_4_FIELDS)
-    if needs_schema_4 and schema < 4:
+
+@_rule("finding-binding")
+def _check_finding_binding(data: Mapping[str, object], _context: _RuleContext) -> None:
+    needs_schema_4 = cast(str, data["record_type"]) == "finding" or bool(
+        data.keys() & _SCHEMA_4_FIELDS
+    )
+    if needs_schema_4 and cast(int, data["schema"]) < 4:
         raise JournalRecordError(
             "finding records and finding bindings require schema 4"
         )
 
+
+@_rule("task-placement")
+def _check_task_placement(data: Mapping[str, object], context: _RuleContext) -> None:
+    # The record's task against where it lies — the destination on write,
+    # the directory on read. A content check has no destination, so it
+    # supplies neither and the gate compares task and path itself.
+    expected = context.get("task")
+    if expected is not None and data["task"] != expected:
+        raise JournalRecordError(
+            f"record task does not match its {context['task_label']}"
+        )
+
+
+@_rule("filename-record-type")
+def _check_filename_record_type(
+    data: Mapping[str, object], context: _RuleContext
+) -> None:
+    declared = context.get("filename_record_type")
+    if declared is not None and data["record_type"] != declared:
+        where = f": {context['filename']}" if "filename" in context else ""
+        raise JournalRecordError("record type does not match its filename" + where)
+
+
+@_rule("finding-binding-target")
+def _check_finding_binding_target(
+    data: Mapping[str, object], context: _RuleContext
+) -> None:
+    # The named finding against the task's findings — a set only the write
+    # side supplies, where the author can still fix the input; the read
+    # side does not, so what history accepts is unchanged.
+    bindings = data.keys() & _SCHEMA_4_FIELDS
+    finding_ids = context.get("finding_ids")
+    if bindings and finding_ids is not None:
+        binding = next(iter(bindings))
+        if data[binding] not in finding_ids():
+            raise JournalRecordError(
+                f"record field {binding!r} must name a finding in the same task"
+            )
+
+
+# The table ADR-0015 decision 7 asks for: rule → the schema it applies from
+# at read time. The write path applies every rule regardless; the read paths
+# apply a rule only to records of this schema and above.
+_RULE_FROM_SCHEMA: dict[str, int] = {
+    "record-type": 1,
+    "record-type-predicate": 1,
+    "reviewed-contract": 5,
+    "fields": 1,
+    "required-strings": 1,
+    "created-at": 1,
+    "tool-version": 1,
+    "review": 1,
+    "acceptance": 1,
+    "completed": 1,
+    "finding": 1,
+    "abandoned": 1,
+    "reopened": 1,
+    "amendment": 1,
+    "session-fields": 1,
+    "coordination": 6,
+    "session-tokens": 1,
+    "session-usage": 1,
+    "provenance": 2,
+    "recorded-by": 1,
+    "finding-binding": 4,
+    "task-placement": 1,
+    "filename-record-type": 1,
+    "finding-binding-target": 1,
+}
+
+
+def _validate_record(
+    record: Mapping[str, object], *, for_write: bool, context: _RuleContext
+) -> dict[str, object]:
+    """Check *record* and return it as a dict.
+
+    ADR-0015 decision 1: at write time every rule applies, whatever schema
+    the record carries (refusal is in place while the author can still fix
+    the input); at read time a record is checked by the rules of its own
+    schema and below, so a rule bound to a later schema cannot refuse
+    history. *context* carries what the placing rules compare the record
+    against — a rule whose placement the caller cannot supply is not
+    applied there.
+    """
+
+    data = dict(record)
+    # An explicit first step, outside the registry: once it has run, the
+    # record's number selects which rules a read applies — and a rule
+    # registered ahead of the others can never read the schema unchecked.
+    _check_schema_version(data)
+    schema = cast(int, data["schema"])
+    for name, check in _RULES.items():
+        if not for_write:
+            bound = _RULE_FROM_SCHEMA.get(name)
+            if bound is None or bound > schema:
+                continue
+        check(data, context)
     return data
 
 
@@ -544,71 +862,6 @@ def _reject_control_characters(value: str, what: str) -> None:
         raise JournalRecordError(f"{what} must not contain control characters")
 
 
-def _validate_session_record(data: Mapping[str, object]) -> None:
-    for field in ("role", "actor", "outcome"):
-        value = data.get(field)
-        if not isinstance(value, str) or not value:
-            raise JournalRecordError(
-                f"session record field {field!r} must be a non-empty string"
-            )
-    activity = data.get("activity")
-    if not isinstance(activity, str) or activity not in _SESSION_ACTIVITIES:
-        raise JournalRecordError(
-            "session record field 'activity' must be one of "
-            + ", ".join(sorted(_SESSION_ACTIVITIES))
-        )
-    schema = data["schema"]
-    # _validate_record has already refused a non-integer schema; narrow for
-    # the comparison rather than cast past the check.
-    if (
-        activity == "coordination"
-        and isinstance(schema, int)
-        and schema < _COORDINATION_SESSION_SCHEMA
-    ):
-        raise JournalRecordError(
-            f"session activity 'coordination' requires schema "
-            f"{_COORDINATION_SESSION_SCHEMA}"
-        )
-    tokens = data.get("tokens")
-    if not isinstance(tokens, dict) or tokens.keys() != {"input", "output", "cache"}:
-        raise JournalRecordError(
-            "session record field 'tokens' must contain only input, output, and cache"
-        )
-    for field in ("input", "output", "cache"):
-        value = tokens[field]
-        if type(value) is not int or value < 0:
-            raise JournalRecordError(
-                f"session record token {field!r} must be an integer greater "
-                "than or equal to zero"
-            )
-    if "usage" not in data:
-        return
-    usage = data["usage"]
-    if not isinstance(usage, dict):
-        raise JournalRecordError("session record field 'usage' must be an object")
-    expected_fields = {"provider", "method"}
-    unexpected_fields = usage.keys() - expected_fields
-    if unexpected_fields:
-        raise JournalRecordError(
-            "session record field 'usage' has unsupported fields: "
-            + ", ".join(sorted(str(field) for field in unexpected_fields))
-        )
-    if usage.keys() != expected_fields:
-        raise JournalRecordError(
-            "session record field 'usage' must contain provider and method"
-        )
-    provider = usage["provider"]
-    if not isinstance(provider, str) or not provider:
-        raise JournalRecordError(
-            "session record usage field 'provider' must be a non-empty string"
-        )
-    method = usage["method"]
-    if not isinstance(method, str) or method not in _SESSION_USAGE_METHODS:
-        raise JournalRecordError(
-            "session record usage field 'method' must be one of measured or reported"
-        )
-
-
 def _record_path(
     journal_root: Path, task_id: str, record_id: str, record_type: str
 ) -> Path:
@@ -736,20 +989,23 @@ def validate_record_for_write(
         resolved = resolve_recorded_by(_project_root_for(journal_root))
         if resolved is not None:
             data["recorded_by"], data["recorded_by_source"] = resolved
-    data = _validate_record(data)
-    if data["task"] != task_id:
-        raise JournalRecordError("record task does not match its destination")
-    finding_bindings = data.keys() & _SCHEMA_4_FIELDS
-    if finding_bindings:
-        records = read_records(journal_root, task_id)
-        finding_ids = {
-            item["id"] for item in records if item["record_type"] == "finding"
-        }
-        binding = next(iter(finding_bindings))
-        if data[binding] not in finding_ids:
-            raise JournalRecordError(
-                f"record field {binding!r} must name a finding in the same task"
-            )
+
+    def finding_ids() -> frozenset[str]:
+        return frozenset(
+            cast(str, item["id"])
+            for item in read_records(journal_root, task_id)
+            if item["record_type"] == "finding"
+        )
+
+    data = _validate_record(
+        data,
+        for_write=True,
+        context={
+            "task": task_id,
+            "task_label": "destination",
+            "finding_ids": finding_ids,
+        },
+    )
     if record_id is not None and not _is_ulid(record_id):
         raise JournalRecordError(
             "record id must be a 26-character Crockford base32 ULID"
@@ -789,19 +1045,40 @@ def write_record(
     return path
 
 
+# The schema a writer stamps (ADR-0004, ADR-0015 decision 2): the base
+# record model is schema 3, and whatever a later schema introduced — a
+# record type, a field, a value — raises the stamp to the schema that
+# introduced it. One derivation for every writer.
+_BASELINE_SCHEMA = 3
+
+
+def _minimum_schema(record: Mapping[str, object]) -> int:
+    """The least schema admitting every field and value *record* carries."""
+
+    schema = _BASELINE_SCHEMA
+    if record.get("record_type") == "finding" or record.keys() & _SCHEMA_4_FIELDS:
+        schema = max(schema, 4)
+    if "reviewed_contract" in record:
+        schema = max(schema, 5)
+    if record.get("activity") == "coordination":
+        schema = max(schema, _COORDINATION_SESSION_SCHEMA)
+    return schema
+
+
 def create_opened_record(
     task_id: str, tool_version: str, *, source: str = SOURCE_LIVE
 ) -> dict[str, object]:
     """Build the lifecycle record emitted when a task is opened."""
 
-    return {
-        "schema": 3,
+    record: dict[str, object] = {
         "record_type": "opened",
         "task": task_id,
         "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "tool_version": tool_version,
         "source": source,
     }
+    record["schema"] = _minimum_schema(record)
+    return record
 
 
 def create_completed_record(
@@ -820,7 +1097,6 @@ def create_completed_record(
             "'completed_finding'"
         )
     record: dict[str, object] = {
-        "schema": 4 if completed_finding is not None else 3,
         "record_type": "completed",
         "task": task_id,
         "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
@@ -831,6 +1107,7 @@ def create_completed_record(
         record["completed_finding"] = completed_finding
     else:
         record["completed_commit"] = completed_commit
+    record["schema"] = _minimum_schema(record)
     return record
 
 
@@ -844,8 +1121,7 @@ def create_finding_record(
 ) -> dict[str, object]:
     """Build a hash-pinned research finding record."""
 
-    return {
-        "schema": 4,
+    record: dict[str, object] = {
         "record_type": "finding",
         "task": task_id,
         "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
@@ -854,6 +1130,8 @@ def create_finding_record(
         "artifacts": artifacts,
         "source": source,
     }
+    record["schema"] = _minimum_schema(record)
+    return record
 
 
 def create_abandoned_record(
@@ -861,8 +1139,7 @@ def create_abandoned_record(
 ) -> dict[str, object]:
     """Build the terminal record emitted when a task is abandoned."""
 
-    return {
-        "schema": 3,
+    record: dict[str, object] = {
         "record_type": "abandoned",
         "task": task_id,
         "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
@@ -870,6 +1147,8 @@ def create_abandoned_record(
         "reason": reason,
         "source": source,
     }
+    record["schema"] = _minimum_schema(record)
+    return record
 
 
 def create_reopened_record(
@@ -877,8 +1156,7 @@ def create_reopened_record(
 ) -> dict[str, object]:
     """Build the lifecycle record emitted when a completed task is reopened."""
 
-    return {
-        "schema": 3,
+    record: dict[str, object] = {
         "record_type": "reopened",
         "task": task_id,
         "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
@@ -886,6 +1164,8 @@ def create_reopened_record(
         "reason": reason,
         "source": source,
     }
+    record["schema"] = _minimum_schema(record)
+    return record
 
 
 def create_amendment_record(
@@ -893,8 +1173,7 @@ def create_amendment_record(
 ) -> dict[str, object]:
     """Build the evidence record emitted when a contract is amended."""
 
-    return {
-        "schema": 3,
+    record: dict[str, object] = {
         "record_type": "amendment",
         "task": task_id,
         "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
@@ -902,17 +1181,19 @@ def create_amendment_record(
         "reason": reason,
         "source": source,
     }
+    record["schema"] = _minimum_schema(record)
+    return record
 
 
 def session_record_schema(activity: str) -> int:
     """Return the schema a session record with *activity* is written under.
 
-    One place decides it, for the live writer and for backfill alike: a value
-    introduced by a later schema carries that schema, and every other record
-    keeps the number it always had.
+    Backfill asks for the stamp before its record exists; it goes through
+    the same minimum-schema derivation the writers apply to the records
+    they build.
     """
 
-    return _COORDINATION_SESSION_SCHEMA if activity == "coordination" else 3
+    return _minimum_schema({"record_type": "session", "activity": activity})
 
 
 def create_session_record(
@@ -938,7 +1219,6 @@ def create_session_record(
             f"session record argument {missing!r} is required when its pair is supplied"
         )
     record: dict[str, object] = {
-        "schema": session_record_schema(activity),
         "record_type": "session",
         "task": task_id,
         "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
@@ -956,6 +1236,7 @@ def create_session_record(
     }
     if usage_provider is not None:
         record["usage"] = {"provider": usage_provider, "method": usage_method}
+    record["schema"] = _minimum_schema(record)
     return record
 
 
@@ -990,11 +1271,6 @@ def create_review_record(
             "'reviewed_finding'"
         )
     record: dict[str, object] = {
-        "schema": 5
-        if reviewed_contract is not None
-        else 4
-        if reviewed_finding is not None
-        else 3,
         "record_type": "review",
         "task": task_id,
         "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
@@ -1019,6 +1295,7 @@ def create_review_record(
         record["advisory_findings"] = advisory_findings
     if artifacts:
         record["artifacts"] = artifacts
+    record["schema"] = _minimum_schema(record)
     return record
 
 
@@ -1041,7 +1318,6 @@ def create_acceptance_record(
             "'accepted_finding'"
         )
     record: dict[str, object] = {
-        "schema": 4 if accepted_finding is not None else 3,
         "record_type": "acceptance",
         "task": task_id,
         "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
@@ -1055,11 +1331,19 @@ def create_acceptance_record(
         record["accepted_finding"] = accepted_finding
     else:
         record["accepted_commit"] = accepted_commit
+    record["schema"] = _minimum_schema(record)
     return record
 
 
 def validate_record_content(filename: str, content: str) -> dict[str, object]:
-    """Validate a record file's name and JSON content; return the record."""
+    """Validate a record file's name and JSON content; return the record.
+
+    A write-side check (ADR-0015 decision 1): the gate runs it on the
+    records a candidate adds, and backfill and migrate run it on a record
+    they built before writing — in each case the author can still fix the
+    input, so every current rule applies whatever schema the record
+    carries. History is read through ``read_records``.
+    """
 
     match = _RECORD_FILENAME_PATTERN.fullmatch(filename)
     if match is None:
@@ -1070,10 +1354,14 @@ def validate_record_content(filename: str, content: str) -> dict[str, object]:
         raise JournalRecordError(f"invalid JSON record: {filename}") from error
     if not isinstance(loaded, dict):
         raise JournalRecordError(f"record must contain a JSON object: {filename}")
-    record = _validate_record(cast(dict[str, object], loaded))
-    if record["record_type"] != match["record_type"]:
-        raise JournalRecordError(f"record type does not match its filename: {filename}")
-    return record
+    return _validate_record(
+        cast(dict[str, object], loaded),
+        for_write=True,
+        context={
+            "filename": filename,
+            "filename_record_type": match["record_type"],
+        },
+    )
 
 
 def read_records(journal_root: Path, task_id: str) -> list[dict[str, object]]:
@@ -1116,15 +1404,17 @@ def read_records(journal_root: Path, task_id: str) -> list[dict[str, object]]:
         if not isinstance(loaded, dict):
             raise JournalRecordError(f"record must contain a JSON object: {path}")
         try:
-            record = _validate_record(cast(dict[str, object], loaded))
+            record = _validate_record(
+                cast(dict[str, object], loaded),
+                for_write=False,
+                context={
+                    "task": task_id,
+                    "task_label": "directory",
+                    "filename_record_type": filename["record_type"],
+                },
+            )
         except JournalRecordError as error:
             raise JournalRecordError(f"{error}: {path}") from error
-        if record["task"] != task_id:
-            raise JournalRecordError(
-                f"record task does not match its directory: {path}"
-            )
-        if record["record_type"] != filename["record_type"]:
-            raise JournalRecordError(f"record type does not match its filename: {path}")
         record["id"] = filename["record_id"]
         records.append(record)
     return records

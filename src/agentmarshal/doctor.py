@@ -19,6 +19,15 @@ from agentmarshal.project import (
     project_file_path,
     read_project_file,
 )
+from agentmarshal.settings import (
+    CHANGES_REQUIRED_THRESHOLD_KEY,
+    FINDING_CLASSES_KEY,
+    REQUIRE_AGREEMENT_KEY,
+    ProjectSettingsError,
+    changes_required_threshold,
+    finding_classes,
+    require_agreement,
+)
 
 ExecutableResolver = Callable[[str], str | None]
 
@@ -117,6 +126,26 @@ def _check_project_schema(start: Path) -> tuple[bool, str]:
     if project.get("schema") != 1:
         return False, f"unsupported project schema in {path}; expected schema 1"
     return True, "project schema 1 is supported"
+
+
+def _check_project_setting(
+    start: Path, key: str, read: Callable[[Path], object]
+) -> tuple[bool, str]:
+    # One check per key: a malformed setting is reported as a failed check
+    # of its own, naming the key and what it expects, rather than folding
+    # every setting into one result.
+    project_root, discovery_error = _find_project_root(start)
+    if discovery_error is not None:
+        return False, discovery_error
+    assert project_root is not None
+    try:
+        value = read(project_root)
+    except ProjectSettingsError as error:
+        return False, str(error)
+    except (OSError, ValueError) as error:
+        path = project_file_path(project_root)
+        return False, f"cannot parse {path}; repair the project file ({error})"
+    return True, f"{key}: {value!r}"
 
 
 def _check_actor_variable(start: Path) -> tuple[bool, str]:
@@ -222,6 +251,26 @@ def doctor_checks(
             "project initialized", lambda: _check_project_initialized(search_start)
         ),
         DoctorCheck("project schema", lambda: _check_project_schema(search_start)),
+        DoctorCheck(
+            f"project setting {FINDING_CLASSES_KEY}",
+            lambda: _check_project_setting(
+                search_start, FINDING_CLASSES_KEY, finding_classes
+            ),
+        ),
+        DoctorCheck(
+            f"project setting {CHANGES_REQUIRED_THRESHOLD_KEY}",
+            lambda: _check_project_setting(
+                search_start,
+                CHANGES_REQUIRED_THRESHOLD_KEY,
+                changes_required_threshold,
+            ),
+        ),
+        DoctorCheck(
+            f"project setting {REQUIRE_AGREEMENT_KEY}",
+            lambda: _check_project_setting(
+                search_start, REQUIRE_AGREEMENT_KEY, require_agreement
+            ),
+        ),
         DoctorCheck(
             "recorded actor",
             lambda: _check_actor_variable(search_start),
