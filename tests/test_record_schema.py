@@ -384,16 +384,18 @@ _TEST_FIELD = "test_field"
 
 
 def _admit_test_field(
-    monkeypatch: pytest.MonkeyPatch, from_schema: int = _HIGHEST_SCHEMA
+    monkeypatch: pytest.MonkeyPatch,
+    from_schema: int = _HIGHEST_SCHEMA,
+    fields: tuple[str, ...] = (_TEST_FIELD,),
 ) -> None:
-    """Admit a test-only field from *from_schema*, as a field family would."""
+    """Admit test-only fields from *from_schema*, as a field family would."""
 
     monkeypatch.setattr(
         records_module,
         "_FIELD_FAMILIES",
         (
             *records_module._FIELD_FAMILIES,
-            (from_schema, None, frozenset({_TEST_FIELD})),
+            (from_schema, None, frozenset(fields)),
         ),
     )
 
@@ -421,7 +423,7 @@ def test_bounded_text_refuses_a_value_over_its_character_bound(
     """Scenario: a registered text field over its character bound is refused."""
 
     _admit_test_field(monkeypatch)
-    monkeypatch.setitem(records_module._TEXT_CHAR_LIMITS, _TEST_FIELD, 4)
+    monkeypatch.setitem(records_module._TEXT_CHAR_LIMITS, ("opened", _TEST_FIELD), 4)
     record = _opened(_HIGHEST_SCHEMA) | {_TEST_FIELD: "xxxxx"}
     with pytest.raises(JournalRecordError, match="at most 4 characters"):
         validate_record_for_write(tmp_path / "journal", "CR-001", record)
@@ -442,7 +444,7 @@ def test_bounded_json_refuses_a_value_over_its_canonical_byte_bound(
     """
 
     _admit_test_field(monkeypatch)
-    monkeypatch.setitem(records_module._JSON_BYTE_LIMITS, _TEST_FIELD, 13)
+    monkeypatch.setitem(records_module._JSON_BYTE_LIMITS, ("opened", _TEST_FIELD), 13)
     record = _opened(_HIGHEST_SCHEMA) | {_TEST_FIELD: {"key": "x" * 20}}
     with pytest.raises(JournalRecordError, match="at most 13 bytes"):
         validate_record_for_write(tmp_path / "journal", "CR-001", record)
@@ -463,8 +465,8 @@ def test_forgeable_text_refuses_a_displayed_string_that_could_forge_a_line(
     refused."""
 
     _admit_test_field(monkeypatch)
-    monkeypatch.setattr(
-        records_module, "_FORGEABLE_TEXT_FIELDS", frozenset({_TEST_FIELD})
+    monkeypatch.setitem(
+        records_module._FORGEABLE_TEXT_FIELDS, ("opened", _TEST_FIELD), None
     )
     record = _opened(_HIGHEST_SCHEMA) | {_TEST_FIELD: "line one\nline two"}
     with pytest.raises(JournalRecordError, match="control characters"):
@@ -480,10 +482,10 @@ def test_a_registered_field_within_its_bounds_is_admitted(
     """Scenario: a registered field within its bounds is admitted."""
 
     _admit_test_field(monkeypatch)
-    monkeypatch.setitem(records_module._TEXT_CHAR_LIMITS, _TEST_FIELD, 4)
-    monkeypatch.setitem(records_module._JSON_BYTE_LIMITS, _TEST_FIELD, 12)
-    monkeypatch.setattr(
-        records_module, "_FORGEABLE_TEXT_FIELDS", frozenset({_TEST_FIELD})
+    monkeypatch.setitem(records_module._TEXT_CHAR_LIMITS, ("opened", _TEST_FIELD), 4)
+    monkeypatch.setitem(records_module._JSON_BYTE_LIMITS, ("opened", _TEST_FIELD), 12)
+    monkeypatch.setitem(
+        records_module._FORGEABLE_TEXT_FIELDS, ("opened", _TEST_FIELD), None
     )
     record = _opened(_HIGHEST_SCHEMA) | {_TEST_FIELD: "xxxx"}
     data = validate_record_for_write(tmp_path / "journal", "CR-001", record)
@@ -504,9 +506,72 @@ def test_a_schema_7_validator_does_not_reach_an_earlier_record_on_read(
     """
 
     _admit_test_field(monkeypatch, from_schema=3)
-    monkeypatch.setitem(records_module._TEXT_CHAR_LIMITS, _TEST_FIELD, 4)
+    monkeypatch.setitem(records_module._TEXT_CHAR_LIMITS, ("opened", _TEST_FIELD), 4)
     record = _opened(3) | {_TEST_FIELD: "xxxxx"}
     with pytest.raises(JournalRecordError, match="at most 4 characters"):
         validate_record_for_write(tmp_path / "journal", "CR-001", record)
     journal_root = _journal_with(tmp_path, record)
     assert read_records(journal_root, "CR-001")[0][_TEST_FIELD] == "xxxxx"
+
+
+def test_a_bound_on_one_types_field_leaves_another_types_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A bound keys on the record type, not the field name alone.
+
+    ADR-0022's ``reason`` bound is for the new record types alone, and the
+    name is already taken: a registration keyed by field name only could
+    not keep it off the ``reason`` fields older record types carry. A
+    bound registered for one type's field must not reach another type's
+    field of the same name — at write, where every rule applies.
+    """
+
+    _admit_test_field(monkeypatch)
+    monkeypatch.setitem(records_module._TEXT_CHAR_LIMITS, ("session", _TEST_FIELD), 4)
+    record = _opened(_HIGHEST_SCHEMA) | {_TEST_FIELD: "xxxxx"}
+    data = validate_record_for_write(tmp_path / "journal", "CR-001", record)
+    assert data[_TEST_FIELD] == "xxxxx"
+    # The same field name on the type the registration names is guarded.
+    monkeypatch.setitem(records_module._TEXT_CHAR_LIMITS, ("opened", _TEST_FIELD), 4)
+    with pytest.raises(JournalRecordError, match="at most 4 characters"):
+        validate_record_for_write(tmp_path / "journal", "CR-001", record)
+
+
+def test_the_every_type_registration_guards_the_field_on_every_type(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``None`` in the record-type slot guards the field wherever it lies.
+
+    The explicit "every type" form exists for a field the rule guards on
+    every record type that carries it — never for a name an older record
+    type already has.
+    """
+
+    _admit_test_field(monkeypatch)
+    monkeypatch.setitem(records_module._JSON_BYTE_LIMITS, (None, _TEST_FIELD), 13)
+    record = _opened(_HIGHEST_SCHEMA) | {_TEST_FIELD: {"key": "x" * 20}}
+    with pytest.raises(JournalRecordError, match="at most 13 bytes"):
+        validate_record_for_write(tmp_path / "journal", "CR-001", record)
+
+
+def test_forgeable_text_reports_fields_in_registration_order(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The field a refusal names is stable run to run.
+
+    The table iterates in registration order; iterated as a set it would
+    name whichever field string-hash order happened to yield first.
+    """
+
+    _admit_test_field(monkeypatch, fields=("zzz_field", "aaa_field"))
+    monkeypatch.setattr(
+        records_module,
+        "_FORGEABLE_TEXT_FIELDS",
+        {("opened", "zzz_field"): None, ("opened", "aaa_field"): None},
+    )
+    record = _opened(_HIGHEST_SCHEMA) | {
+        "aaa_field": "forge\nable",
+        "zzz_field": "also forge\nable",
+    }
+    with pytest.raises(JournalRecordError, match="'zzz_field'"):
+        validate_record_for_write(tmp_path / "journal", "CR-001", record)

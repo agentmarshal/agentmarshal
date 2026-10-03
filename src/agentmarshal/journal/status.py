@@ -50,6 +50,12 @@ _RECORD_TYPES_ADMITTED_AFTER_TERMINAL = frozenset(
     for record_type, spec in RECORD_TYPES.items()
     if spec.admitted_after_terminal
 )
+# The types a writer may create through the record guard — the flag has a
+# reader here, so a type declared not writable cannot be written by naming
+# it, however it reached the call site.
+_WRITABLE_RECORD_TYPES = frozenset(
+    record_type for record_type, spec in RECORD_TYPES.items() if spec.writable
+)
 
 
 class TaskStatusError(ValueError):
@@ -156,10 +162,10 @@ def load_task_for_record(
 ) -> TaskStatus:
     """Load a task and refuse a record its terminal projection cannot admit."""
 
-    if record_type not in _RECORD_TYPE_STATES:
+    if record_type not in _WRITABLE_RECORD_TYPES:
         # An unknown type would silently fall on the refusing side, and a typo
         # towards "session" would start refusing the cost step of a completed
-        # task. The projection's own table decides what a record type is.
+        # task. The registry's writable flag decides what a writer may write.
         raise TaskStatusError(f"unknown record type: {record_type!r}")
     task = load_task_status(journal_root, task_id)
     if task.state == "open":

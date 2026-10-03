@@ -279,12 +279,20 @@ def _allowed_fields(record_type: str, schema: int) -> frozenset[str]:
 
 # The field registrations the shared validators read (ADR-0022 section 8):
 # which fields the bounded-text, bounded-JSON and forgeable-text rules
-# guard, and with what bound. All three are empty until a schema-7 field
-# family registers into them; a field family registers its fields into the
-# validators it needs and nothing more.
-_TEXT_CHAR_LIMITS: dict[str, int] = {}
-_JSON_BYTE_LIMITS: dict[str, int] = {}
-_FORGEABLE_TEXT_FIELDS: frozenset[str] = frozenset()
+# guard, and with what bound. A registration keys on the record type whose
+# field it guards — ADR-0022's ``reason`` bound is for the new record types
+# alone, and a bare field-name key could not keep it off the ``reason``
+# fields acceptance, abandoned, reopened and amendment already carry.
+# ``None`` in the record-type slot is the explicit "every type" form, for a
+# field the rule guards on every type that carries it; a name shared with
+# an older record type is never that case. All three tables are dicts, so
+# iteration is registration order and the field a refusal names is stable;
+# all three are empty until a schema-7 field family registers into them,
+# and a field family registers its fields into the validators it needs and
+# nothing more.
+_TEXT_CHAR_LIMITS: dict[tuple[str | None, str], int] = {}
+_JSON_BYTE_LIMITS: dict[tuple[str | None, str], int] = {}
+_FORGEABLE_TEXT_FIELDS: dict[tuple[str | None, str], None] = {}
 
 
 def _check_schema_version(data: Mapping[str, object]) -> None:
@@ -570,8 +578,9 @@ def _check_finding_binding_target(
 
 @_rule("bounded-text")
 def _check_bounded_text(data: Mapping[str, object], _context: _RuleContext) -> None:
-    for field, limit in _TEXT_CHAR_LIMITS.items():
-        if field not in data:
+    record_type = cast(str, data["record_type"])
+    for (only_type, field), limit in _TEXT_CHAR_LIMITS.items():
+        if (only_type is not None and record_type != only_type) or field not in data:
             continue
         value = data[field]
         if not isinstance(value, str) or len(value) > limit:
@@ -582,8 +591,9 @@ def _check_bounded_text(data: Mapping[str, object], _context: _RuleContext) -> N
 
 @_rule("bounded-json")
 def _check_bounded_json(data: Mapping[str, object], _context: _RuleContext) -> None:
-    for field, limit in _JSON_BYTE_LIMITS.items():
-        if field not in data:
+    record_type = cast(str, data["record_type"])
+    for (only_type, field), limit in _JSON_BYTE_LIMITS.items():
+        if (only_type is not None and record_type != only_type) or field not in data:
             continue
         try:
             encoded = _canonical_json(data[field])
@@ -599,7 +609,10 @@ def _check_bounded_json(data: Mapping[str, object], _context: _RuleContext) -> N
 
 @_rule("forgeable-text")
 def _check_forgeable_text(data: Mapping[str, object], _context: _RuleContext) -> None:
-    for field in _FORGEABLE_TEXT_FIELDS:
+    record_type = cast(str, data["record_type"])
+    for only_type, field in _FORGEABLE_TEXT_FIELDS:
+        if only_type is not None and record_type != only_type:
+            continue
         value = data.get(field)
         # A non-string is not displayed text; the field's own shape rule
         # owns the type refusal. What this rule refuses is a string that

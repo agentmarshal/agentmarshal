@@ -81,44 +81,64 @@ def test_every_accepted_record_type_is_registered() -> None:
 def test_the_three_modules_read_the_one_registry() -> None:
     """Scenario: the three modules read the one registry.
 
-    PREDICATE_TYPES, the state table, the terminal and after-terminal sets
-    and the writable types are derived from RECORD_TYPES — the writable
-    Literal is pinned equal, since a Literal cannot be derived at
-    type-check time — and the admission rule reads the registry's own
-    terminal-state sets.
+    The derived surfaces are pinned against literals, not recomputed from
+    the registry — a shared drift of registry and derivation cannot pass
+    this test. The writable Literal is pinned the same way, since a
+    Literal cannot be derived at type-check time.
     """
 
-    expected_predicates = {
-        record_type: spec.predicate_type for record_type, spec in RECORD_TYPES.items()
+    assert PREDICATE_TYPES == {
+        "opened": "https://agentmarshal.dev/attestations/opening/v1",
+        "review": "https://agentmarshal.dev/attestations/review/v1",
+        "acceptance": "https://agentmarshal.dev/attestations/acceptance/v1",
+        "completed": "https://agentmarshal.dev/attestations/completion/v1",
+        "abandoned": "https://agentmarshal.dev/attestations/abandonment/v1",
+        "reopened": "https://agentmarshal.dev/attestations/reopening/v1",
+        "amendment": "https://agentmarshal.dev/attestations/amendment/v1",
+        "session": "https://agentmarshal.dev/attestations/session/v1",
+        "finding": "https://agentmarshal.dev/attestations/finding/v1",
     }
-    expected_states = {
-        record_type: spec.projects_to for record_type, spec in RECORD_TYPES.items()
+    assert dict(status_module._RECORD_TYPE_STATES) == {
+        "opened": "open",
+        "review": None,
+        "acceptance": None,
+        "completed": "done",
+        "abandoned": "abandoned",
+        "reopened": "open",
+        "amendment": None,
+        "session": None,
+        "finding": None,
     }
-    expected_terminal = {
-        record_type
-        for record_type, spec in RECORD_TYPES.items()
-        if spec.projects_to in {"done", "abandoned"}
+    assert {"completed", "abandoned"} == status_module._TERMINAL_RECORD_TYPES
+    assert {
+        "reopened",
+        "session",
+    } == status_module._RECORD_TYPES_ADMITTED_AFTER_TERMINAL
+    writable = {
+        "opened",
+        "review",
+        "acceptance",
+        "session",
+        "amendment",
+        "finding",
+        "completed",
+        "abandoned",
+        "reopened",
     }
-    expected_after_terminal = {
-        record_type
-        for record_type, spec in RECORD_TYPES.items()
-        if spec.admitted_after_terminal
-    }
-    expected_writable = {
-        record_type for record_type, spec in RECORD_TYPES.items() if spec.writable
-    }
-    assert expected_predicates == PREDICATE_TYPES
-    assert expected_states == dict(status_module._RECORD_TYPE_STATES)
-    assert expected_terminal == status_module._TERMINAL_RECORD_TYPES
-    assert (
-        expected_after_terminal == status_module._RECORD_TYPES_ADMITTED_AFTER_TERMINAL
-    )
-    assert expected_writable == set(get_args(status_module.WritableRecordType))
-    for record_type, spec in RECORD_TYPES.items():
+    assert writable == status_module._WRITABLE_RECORD_TYPES
+    assert set(get_args(status_module.WritableRecordType)) == writable
+    # The admission rule reads the registry's own per-type state sets.
+    admitted = {("reopened", "done"), ("session", "done"), ("session", "abandoned")}
+    for record_type in PREDICATE_TYPES:
         for terminal_state in ("done", "abandoned"):
             assert status_module.record_type_is_admitted_after_terminal(
                 record_type, terminal_state
-            ) == (terminal_state in spec.admitted_after_terminal)
+            ) == ((record_type, terminal_state) in admitted)
+    assert {
+        record_type
+        for record_type, spec in RECORD_TYPES.items()
+        if spec.requires_recorded_by
+    } == {"finding"}
 
 
 def test_a_type_requiring_its_recorder_refuses_a_record_naming_none() -> None:
