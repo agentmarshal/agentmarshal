@@ -69,7 +69,15 @@ def next_task_id(root: Path) -> str:
     return f"CR-{highest + 1:03d}"
 
 
-_CONTRACT_ID_KEY = re.compile(r"^[ \t]*(?:id|\"id\"|'id')[ \t]*=")
+_CONTRACT_ID_VALUE = re.compile(
+    r"^[ \t]*(?:id|\"id\"|'id')[ \t]*=[ \t]*"
+    r"(?P<value>"
+    r"\"{3}(?:(?!\"{3})(?:[^\\]|\\.))*?\"{3}"
+    r"|\"(?:[^\"\\]|\\.)*\""
+    r"|'{3}(?:(?!'{3}).)*?'{3}"
+    r"|'[^']*'"
+    r")"
+)
 
 
 def _read_provided_contract(contract_file: Path) -> tuple[str, str, tuple[str, ...]]:
@@ -121,11 +129,18 @@ def _retarget_contract_id(text: str, task_id: str) -> str:
         line = lines[index]
         if line.lstrip().startswith("["):
             break
-        if _CONTRACT_ID_KEY.match(line):
-            ending = (
-                "\r\n" if line.endswith("\r\n") else "\n" if line.endswith("\n") else ""
+        match = _CONTRACT_ID_VALUE.match(line)
+        if match is not None:
+            # Only the id's value is replaced — the rest of the line is the
+            # author's: trailing whitespace, a comment, and the line ending,
+            # whatever it is. `parse_contract_text` splits on every boundary
+            # `splitlines` knows — a lone CR included — so the ending is never
+            # reconstructed; the bytes that were there stay.
+            lines[index] = (
+                line[: match.start("value")]
+                + json.dumps(task_id)
+                + line[match.end("value") :]
             )
-            lines[index] = f"id = {json.dumps(task_id)}{ending}"
             break
     rewritten = ("\ufeff" if bom else "") + "".join(lines)
     # The header parsed before the rewrite, so this confirms rather than

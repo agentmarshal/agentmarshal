@@ -17,6 +17,7 @@ from agentmarshal.cli import main
 from agentmarshal.journal.contracts import contract_sha256, parse_contract
 from agentmarshal.journal.open_task import journal_root
 from agentmarshal.journal.records import (
+    create_amendment_record,
     create_opened_record,
     read_records,
     write_record,
@@ -259,6 +260,84 @@ def test_a_missing_unreadable_or_invalid_file_is_refused_writing_nothing(
     assert not (journal_root(repo) / "tasks").exists()
 
 
+def test_a_refused_contract_file_writes_nothing_to_an_existing_journal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a missing, unreadable or invalid file is refused writing
+    nothing.
+
+    With a task already opened, a refused ``--contract-file`` leaves the
+    journal byte-for-byte as it was — no new task directory, no contract,
+    no record.
+    """
+
+    repo = _repo(tmp_path, monkeypatch)
+    assert main(["open", "--title", "Task"]) == 0
+    capsys.readouterr()
+    journal = journal_root(repo)
+    before = {
+        path.relative_to(journal): path.read_bytes()
+        for path in journal.rglob("*")
+        if path.is_file()
+    }
+    invalid = tmp_path / "invalid.md"
+    invalid.write_text("not a contract\n", encoding="utf-8")
+
+    assert main(["open", "--contract-file", str(invalid)]) == 1
+
+    assert capsys.readouterr().err
+    after = {
+        path.relative_to(journal): path.read_bytes()
+        for path in journal.rglob("*")
+        if path.is_file()
+    }
+    assert after == before
+
+
+@pytest.mark.parametrize("ending", ["\n", "\r\n", "\r"], ids=["LF", "CRLF", "lone-CR"])
+def test_open_contract_file_keeps_the_contracts_line_endings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    ending: str,
+) -> None:
+    """Scenario: a contract written first becomes the task's contract.
+
+    Whatever line ending the provided contract carries — LF, CRLF or a
+    lone CR, which ``parse_contract_text`` splits on just the same — the
+    written contract differs from the file only in the header's ``id``
+    value, and the ``opened`` record pins the written contract's hash.
+    """
+
+    repo = _repo(tmp_path, monkeypatch)
+    provided = tmp_path / "contract.md"
+    original = ending.join(
+        [
+            "+++",
+            "schema = 1",
+            'id = "CR-099"',
+            'title = "Add a greeting helper"',
+            'scope = ["src/"]',
+            'acceptance = ["the helper greets"]',
+            "+++",
+            "",
+            "# Add a greeting helper",
+            "",
+            "Greet.",
+            "",
+        ]
+    )
+    provided.write_bytes(original.encode("utf-8"))
+
+    assert main(["open", "--contract-file", str(provided)]) == 0
+
+    contract_bytes = _task_contract(repo).read_bytes()
+    expected = original.replace('id = "CR-099"', 'id = "CR-001"', 1)
+    assert contract_bytes == expected.encode("utf-8")
+    opened = read_records(journal_root(repo), "CR-001")[0]
+    assert opened["contract"] == contract_sha256(contract_bytes, "the written contract")
+
+
 # --- status shows when the contract drifted from its last pin ------------
 
 
@@ -334,6 +413,41 @@ def test_a_task_whose_records_carry_no_hash_prints_nothing(
 
     out = capsys.readouterr().out
     assert not any("drift" in line.lower() for line in out.splitlines())
+
+
+def test_a_later_record_without_a_hash_leaves_the_pin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: the latest hash-carrying record is the pin compared.
+
+    An amendment written without `contract` does not erase the pin: the
+    drift line still compares against the latest record that carries a
+    hash — the opened record's — printing when the contract drifted from
+    it and nothing while it matches.
+    """
+
+    repo = _repo(tmp_path, monkeypatch)
+    journal = journal_root(repo)
+    assert main(["open", "--title", "Task"]) == 0
+    capsys.readouterr()
+    write_record(journal, "CR-001", create_amendment_record("CR-001", "test", "a note"))
+    pinned = read_records(journal, "CR-001")[0]["contract"]
+
+    assert main(["status", "CR-001"]) == 0
+    out = capsys.readouterr().out
+    assert not any("drift" in line.lower() for line in out.splitlines())
+
+    contract_path = _task_contract(repo)
+    contract_path.write_text(
+        contract_path.read_text(encoding="utf-8") + "\nA late note.\n",
+        encoding="utf-8",
+    )
+
+    assert main(["status", "CR-001"]) == 0
+    out = capsys.readouterr().out
+    drift = [line for line in out.splitlines() if "drift" in line.lower()]
+    assert len(drift) == 1
+    assert str(pinned)[:7] in drift[0]
 
 
 def test_the_drift_never_fails_the_command(
