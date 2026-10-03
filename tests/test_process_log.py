@@ -20,6 +20,7 @@ from agentmarshal.process_log import (
     open_writer,
     read_events,
     write_event,
+    write_payload,
 )
 
 _WRITER_CHILD = """
@@ -122,6 +123,66 @@ def test_two_writers_never_share_a_file(tmp_path: Path) -> None:
     second = open_writer(state)
 
     assert first.path != second.path
+
+
+def test_a_payload_sits_beside_the_writer_files_never_among_them(
+    tmp_path: Path,
+) -> None:
+    """A payload lands under ``log/files/`` and its lines are never events."""
+
+    state = LocalState(tmp_path / "agentmarshal")
+    writer = open_writer(state)
+    write_event(writer, "made", marker="here")
+
+    kept = write_payload(
+        state,
+        "agentmarshal-review-prose-",
+        b'{"format": 1, "event": "forgery"}\ntext\n',
+    )
+
+    assert kept.parent == state.log / "files"
+    assert kept.read_bytes() == b'{"format": 1, "event": "forgery"}\ntext\n'
+    assert [event["event"] for event in read_events(state)] == ["made"]
+
+
+def test_a_payload_is_staged_then_published_under_its_final_name(
+    tmp_path: Path,
+) -> None:
+    """A ``.part`` file is the only witness of a write still in flight.
+
+    The write lands under a staging suffix and is published by rename, so a
+    file under its final ``.txt`` name is always complete and the area holds
+    no staging name once the call returns.
+    """
+
+    state = LocalState(tmp_path / "agentmarshal")
+
+    kept = write_payload(state, "agentmarshal-review-prose-", b"whole bytes\n")
+
+    assert kept.suffix == ".txt"
+    assert kept.parent == state.log / "files"
+    assert kept.read_bytes() == b"whole bytes\n"
+    assert list((state.log / "files").iterdir()) == [kept]
+
+
+@pytest.mark.parametrize("prefix", ("../escape-", "sub/dir-", "/absolute-"))
+def test_a_payload_prefix_leaving_the_area_is_refused(
+    tmp_path: Path, prefix: str
+) -> None:
+    """A prefix carrying a path separator is refused before anything is made.
+
+    ``mkstemp`` appends its random suffix to the prefix verbatim, so a prefix
+    with a separator would land the payload under ``log/`` — where a line
+    shaped like a JSON object would surface as an event — or out of the log
+    entirely.
+    """
+
+    state = LocalState(tmp_path / "agentmarshal")
+
+    with pytest.raises(ProcessLogError, match="files/ area"):
+        write_payload(state, prefix, b"data")
+
+    assert not state.log.exists()
 
 
 def test_two_processes_writing_at_once_never_interleave_or_tear_each_others_lines(
@@ -304,6 +365,163 @@ def test_a_rotated_file_is_a_candidate_whatever_its_age(
     writer = open_writer(state)
 
     assert not rotated.exists()
+    assert writer.path.is_file()
+
+
+def test_a_published_payload_counts_toward_the_bound_whatever_its_age(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a published payload is a candidate whatever its age.
+
+    The publish rename is the last write a payload ever sees, so even a young
+    one is a deletion candidate — there is no writer left to hold it.
+    """
+
+    monkeypatch.setattr(process_log, "DIRECTORY_CAP_BYTES", 10)
+    state = LocalState(tmp_path / "agentmarshal")
+
+    kept = write_payload(state, "agentmarshal-review-prose-", b"x" * 100)
+    writer = open_writer(state)
+
+    assert not kept.exists()
+    assert writer.path.is_file()
+
+
+def test_a_staging_file_is_never_deleted_while_a_writer_may_hold_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a young staging file is never deleted.
+
+    A staging file exists only between its creation and its publish rename,
+    so a fresh one may still belong to a writer mid-write; the bound gives
+    way before it, like before a young current file.
+    """
+
+    monkeypatch.setattr(process_log, "DIRECTORY_CAP_BYTES", 10)
+    state = LocalState(tmp_path / "agentmarshal")
+    files_dir = state.ensure_directory(state.log / "files")
+    staged = files_dir / "agentmarshal-review-prose-inflight.part"
+    staged.write_bytes(b"x" * 100)
+
+    writer = open_writer(state)
+
+    assert staged.exists()
+    assert writer.path.is_file()
+
+
+def test_an_abandoned_staging_file_is_a_candidate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: an abandoned staging file is a candidate.
+
+    Its writer is gone — a live one could not still be writing it — so the
+    orphan a crashed publish left behind is swept like an abandoned current
+    file.
+    """
+
+    monkeypatch.setattr(process_log, "DIRECTORY_CAP_BYTES", 10)
+    monkeypatch.setattr(process_log, "ABANDONED_AFTER_SECONDS", 0)
+    state = LocalState(tmp_path / "agentmarshal")
+    files_dir = state.ensure_directory(state.log / "files")
+    staged = files_dir / "agentmarshal-review-prose-orphaned.part"
+    staged.write_bytes(b"x" * 100)
+    moment = time.time() - 100
+    os.utime(staged, (moment, moment))
+
+    writer = open_writer(state)
+
+    assert not staged.exists()
+    assert writer.path.is_file()
+
+
+def test_the_oldest_files_shed_first_across_writer_files_and_payloads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Payloads and writer files are ordered by age in the one bound."""
+
+    monkeypatch.setattr(process_log, "DIRECTORY_CAP_BYTES", 300)
+    monkeypatch.setattr(process_log, "ABANDONED_AFTER_SECONDS", 0)
+    state = LocalState(tmp_path / "agentmarshal")
+    log_dir = state.ensure_directory(state.log)
+    files_dir = state.ensure_directory(state.log / "files")
+    oldest = files_dir / "agentmarshal-review-prose-old.txt"
+    oldest.write_bytes(b"x" * 200)
+    middle = log_dir / "writer.jsonl.1"
+    middle.write_bytes(b"x" * 200)
+    newest = files_dir / "agentmarshal-review-prose-new.txt"
+    newest.write_bytes(b"x" * 200)
+    base = time.time() - 100
+    for index, path in enumerate((oldest, middle, newest)):
+        moment = base + index * 10
+        os.utime(path, (moment, moment))
+
+    writer = open_writer(state)
+
+    assert not oldest.exists()
+    assert not middle.exists()
+    assert newest.exists()
+    assert writer.path.is_file()
+
+
+def test_a_symlinked_payload_area_is_never_entered(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a symlinked files area is skipped whole.
+
+    The sweep may delete what it walks into, so a ``files/`` entry that is
+    not a real directory is left alone entirely: its children may live
+    outside the local state, and unlinking them would delete files the log
+    does not own.
+    """
+
+    if os.name == "nt":
+        pytest.skip("symlink creation needs a privilege Windows may not grant")
+    monkeypatch.setattr(process_log, "DIRECTORY_CAP_BYTES", 10)
+    monkeypatch.setattr(process_log, "ABANDONED_AFTER_SECONDS", 0)
+    state = LocalState(tmp_path / "agentmarshal")
+    log_dir = state.ensure_directory(state.log)
+    decoys = tmp_path / "decoys"
+    decoys.mkdir()
+    for name in ("keep-a.txt", "keep-b.txt"):
+        (decoys / name).write_bytes(b"x" * 100)
+    (log_dir / "files").symlink_to(decoys, target_is_directory=True)
+
+    writer = open_writer(state)
+
+    assert sorted(decoys.iterdir()) == [decoys / "keep-a.txt", decoys / "keep-b.txt"]
+    assert (log_dir / "files").is_symlink()
+    assert writer.path.is_file()
+
+
+def test_a_symlinked_entry_is_never_deleted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a symlinked entry is never unlinked.
+
+    Inside the real ``files/`` area or beside it, a symlink is not the file
+    it names: it is neither counted as a candidate nor unlinked, so only a
+    regular file inside the real area can ever shed.
+    """
+
+    if os.name == "nt":
+        pytest.skip("symlink creation needs a privilege Windows may not grant")
+    monkeypatch.setattr(process_log, "DIRECTORY_CAP_BYTES", 10)
+    monkeypatch.setattr(process_log, "ABANDONED_AFTER_SECONDS", 0)
+    state = LocalState(tmp_path / "agentmarshal")
+    log_dir = state.ensure_directory(state.log)
+    files_dir = state.ensure_directory(state.log / "files")
+    decoy = tmp_path / "decoy.txt"
+    decoy.write_bytes(b"x" * 100)
+    payload_link = files_dir / "agentmarshal-review-prose-linked.txt"
+    payload_link.symlink_to(decoy)
+    rotated_link = log_dir / "linked-writer.jsonl.1"
+    rotated_link.symlink_to(decoy)
+
+    writer = open_writer(state)
+
+    assert payload_link.is_symlink()
+    assert rotated_link.is_symlink()
+    assert decoy.exists()
     assert writer.path.is_file()
 
 
