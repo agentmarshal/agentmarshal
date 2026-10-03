@@ -98,6 +98,7 @@ def test_the_three_modules_read_the_one_registry() -> None:
         "amendment": "https://agentmarshal.dev/attestations/amendment/v1",
         "session": "https://agentmarshal.dev/attestations/session/v1",
         "finding": "https://agentmarshal.dev/attestations/finding/v1",
+        "check": "https://agentmarshal.dev/attestations/check/v1",
     }
     assert dict(status_module._RECORD_TYPE_STATES) == {
         "opened": "open",
@@ -109,10 +110,11 @@ def test_the_three_modules_read_the_one_registry() -> None:
         "amendment": None,
         "session": None,
         "finding": None,
+        "check": None,
     }
     terminal = {"completed", "abandoned"}
     assert terminal == status_module._TERMINAL_RECORD_TYPES
-    admitted_after_terminal = {"reopened", "session"}
+    admitted_after_terminal = {"reopened", "session", "check"}
     assert (
         admitted_after_terminal == status_module._RECORD_TYPES_ADMITTED_AFTER_TERMINAL
     )
@@ -126,11 +128,18 @@ def test_the_three_modules_read_the_one_registry() -> None:
         "completed",
         "abandoned",
         "reopened",
+        "check",
     }
     assert writable == status_module._WRITABLE_RECORD_TYPES
     assert set(get_args(status_module.WritableRecordType)) == writable
     # The admission rule reads the registry's own per-type state sets.
-    admitted = {("reopened", "done"), ("session", "done"), ("session", "abandoned")}
+    admitted = {
+        ("reopened", "done"),
+        ("session", "done"),
+        ("session", "abandoned"),
+        ("check", "done"),
+        ("check", "abandoned"),
+    }
     for record_type in PREDICATE_TYPES:
         for terminal_state in ("done", "abandoned"):
             assert status_module.record_type_is_admitted_after_terminal(
@@ -140,7 +149,7 @@ def test_the_three_modules_read_the_one_registry() -> None:
         record_type
         for record_type, spec in RECORD_TYPES.items()
         if spec.requires_recorded_by
-    } == {"finding"}
+    } == {"finding", "check"}
 
 
 def test_the_writable_flag_is_what_the_write_path_consults(

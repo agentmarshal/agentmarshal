@@ -24,6 +24,7 @@ from agentmarshal.journal.gate import (
 from agentmarshal.journal.records import (
     create_abandoned_record,
     create_acceptance_record,
+    create_check_record,
     create_completed_record,
     create_reopened_record,
     create_review_record,
@@ -1896,6 +1897,71 @@ def test_gate_allows_session_only_append_to_closed_task(
     head = _commit_all(repo, "record session for CR-001")
 
     passed, output = _run(repo, head, closed_base, head)
+
+    assert passed, output
+    assert "measurements-only append to a task closed at base" in output
+    assert output.count("FAIL") == 0
+
+
+def test_gate_allows_check_only_append_to_completed_task(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: check records still accrue after completion."""
+
+    monkeypatch.setenv("AGENTMARSHAL_ACTOR", "ci-runner")
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    journal = repo / ".agentmarshal" / "journal"
+    write_record(journal, "CR-001", create_completed_record("CR-001", "test", base))
+    closed_base = _commit_all(repo, "complete CR-001 on master")
+
+    _git(repo, "switch", "--quiet", "-c", "checks", closed_base)
+    write_record(
+        journal,
+        "CR-001",
+        create_check_record(
+            "CR-001",
+            "test",
+            closed_base,
+            "unit-tests",
+            "failed",
+            failed_step="tests",
+            excerpt="test_x failed",
+        ),
+    )
+    head = _commit_all(repo, "record check for CR-001")
+
+    passed, output = _run(repo, head, closed_base, head)
+
+    assert passed, output
+    assert "measurements-only append to a task closed at base" in output
+    assert output.count("FAIL") == 0
+
+
+def test_gate_allows_check_only_append_to_abandoned_task(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: check records still accrue after abandonment.
+
+    A check is a measurement admitted after either terminal state — the
+    admission the registry declares — so the base-state check passes it
+    on an abandoned task exactly as it passes a session there.
+    """
+
+    monkeypatch.setenv("AGENTMARSHAL_ACTOR", "ci-runner")
+    repo, _base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    journal = repo / ".agentmarshal" / "journal"
+    write_record(journal, "CR-001", create_abandoned_record("CR-001", "test", "Stop"))
+    abandoned_base = _commit_all(repo, "abandon CR-001 on master")
+
+    _git(repo, "switch", "--quiet", "-c", "checks", abandoned_base)
+    write_record(
+        journal,
+        "CR-001",
+        create_check_record("CR-001", "test", abandoned_base, "unit-tests", "error"),
+    )
+    head = _commit_all(repo, "record check for CR-001")
+
+    passed, output = _run(repo, head, abandoned_base, head)
 
     assert passed, output
     assert "measurements-only append to a task closed at base" in output
