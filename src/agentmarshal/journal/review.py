@@ -30,6 +30,7 @@ from agentmarshal.journal.capture import (
     review_capture_level_from_journal,
 )
 from agentmarshal.journal.contracts import parse_contract_text
+from agentmarshal.journal.display import escape_for_display
 from agentmarshal.journal.extensions import (
     ExtensionManifestError,
     ExtensionManifestMissing,
@@ -164,16 +165,16 @@ def _named_contract_material(
     lines.append("Named contract material:")
     if decisions:
         lines.append("Decisions:")
-        lines.extend(f"- {decision}" for decision in decisions)
+        lines.extend(f"- {escape_for_display(decision)}" for decision in decisions)
         lines.append("A finding may cite a contradiction with a named decision.")
     if documents:
         lines.append("Documents:")
-        lines.extend(f"- {document}" for document in documents)
+        lines.extend(f"- {escape_for_display(document)}" for document in documents)
     if absent_extensions:
         # A removal candidate deletes its manifest (ADR-0010 D5); the review
         # still launches, and the reviewer is told what is absent.
         lines.append(absent_extensions_phrase)
-        lines.extend(f"- {name}" for name in absent_extensions)
+        lines.extend(f"- {escape_for_display(name)}" for name in absent_extensions)
     return "\n".join(lines) + "\n\n"
 
 
@@ -281,7 +282,7 @@ def _review_prompt(
             "Diff sections that did not decode as UTF-8 — what decoded is "
             "shown below, with U+FFFD marking each content byte that did not "
             "and \\xNN escapes in the header lines: "
-            + ", ".join(undecodable_files)
+            + ", ".join(escape_for_display(name) for name in undecodable_files)
             + "\n\n"
         )
     return _REVIEW_PROMPT.format(
@@ -320,10 +321,13 @@ def _finding_review_prompt(
 
     artifact_sections: list[str] = []
     for artifact in artifacts:
-        artifact_heading = f"Verified artifact: {artifact.reference}\n"
+        artifact_heading = (
+            f"Verified artifact: {escape_for_display(artifact.reference)}\n"
+        )
         if artifact.snapshot_reference.as_posix() != artifact.reference:
             artifact_heading += (
-                f"Snapshot path: {artifact.snapshot_reference.as_posix()}\n"
+                "Snapshot path: "
+                f"{escape_for_display(artifact.snapshot_reference.as_posix())}\n"
             )
         try:
             text = artifact.content.decode("utf-8")
@@ -353,13 +357,16 @@ def _finding_review_prompt(
     if unresolved_references:
         artifact_sections.append(
             "Unverified references (not fetched):\n"
-            + "\n".join(f"- {reference}" for reference in unresolved_references)
+            + "\n".join(
+                f"- {escape_for_display(reference)}"
+                for reference in unresolved_references
+            )
         )
 
     return _FINDING_REVIEW_PROMPT.format(
         content_prefix=_ARTIFACT_CONTENT_PREFIX,
-        finding=finding,
-        summary=summary,
+        finding=escape_for_display(finding),
+        summary=escape_for_display(summary),
         named_material=_named_contract_material(
             decisions,
             documents,
@@ -663,7 +670,8 @@ def _parse_verdict(
     unknown = keys - required - subject_fields - _VERDICT_OPTIONAL
     if unknown:
         raise reject(
-            "reviewer verdict has unsupported field(s): " + ", ".join(sorted(unknown)),
+            "reviewer verdict has unsupported field(s): "
+            + ", ".join(escape_for_display(key) for key in sorted(unknown)),
         )
     subject_field = bindings.pop()
     subject = verdict_data[subject_field]
@@ -793,7 +801,7 @@ def dry_run_review(
             raise _with_diagnostics(
                 ReviewLaunchError(
                     "reviewer verdict names a commit the dry run did not ask about: "
-                    f"{reviewed_commit}"
+                    f"{escape_for_display(reviewed_commit)}"
                 ),
                 diagnostics_note,
             )
@@ -818,7 +826,8 @@ def _verified_finding_artifacts(
             content = path.read_bytes()
         except OSError as error:
             raise ReviewLaunchError(
-                f"finding artifact {reference} could not be read: {error}"
+                f"finding artifact {escape_for_display(reference)} could not be "
+                f"read: {escape_for_display(str(error))}"
             ) from error
         digest = hashlib.sha256(content).hexdigest()
         if digest != artifact["hash"]:
@@ -836,12 +845,13 @@ def _verified_finding_artifacts(
     if drifted:
         raise ReviewLaunchError(
             "finding artifact(s) do not match their recorded sha256: "
-            + ", ".join(drifted)
+            + ", ".join(escape_for_display(reference) for reference in drifted)
         )
     if not verified:
         finding_id = cast(str, finding["id"])
         raise ReviewLaunchError(
-            f"finding {finding_id} has no artifacts that could be verified locally"
+            f"finding {escape_for_display(finding_id)} has no artifacts that "
+            "could be verified locally"
         )
     return tuple(verified), tuple(unresolved)
 
@@ -863,7 +873,8 @@ def _extract_finding_snapshot(
             destination.resolve().relative_to(resolved_snapshot)
         except (OSError, ValueError) as error:
             raise ReviewLaunchError(
-                f"finding artifact reference escapes the snapshot: {artifact.reference}"
+                "finding artifact reference escapes the snapshot: "
+                f"{escape_for_display(artifact.reference)}"
             ) from error
         try:
             destination.parent.mkdir(parents=True, exist_ok=True)
@@ -873,8 +884,9 @@ def _extract_finding_snapshot(
             # I/O error here left `launch_review` as a bare OSError, and the
             # CLI catches only ReviewLaunchError.
             raise ReviewLaunchError(
-                f"finding artifact {artifact.reference} could not be placed in "
-                f"the review snapshot: {error}"
+                f"finding artifact {escape_for_display(artifact.reference)} "
+                "could not be placed in the review snapshot: "
+                f"{escape_for_display(str(error))}"
             ) from error
 
 
@@ -1033,19 +1045,21 @@ def _launch_finding_review(
     )
     if finding is None:
         raise ReviewLaunchError(
-            f"reviewed finding {reviewed_finding} is not a finding of task {task_id}"
+            f"reviewed finding {escape_for_display(reviewed_finding)} is not a "
+            f"finding of task {escape_for_display(task_id)}"
         )
     latest_finding = task_findings[-1]
     latest_finding_id = cast(str, latest_finding["id"])
     if reviewed_finding != latest_finding_id:
         raise ReviewLaunchError(
-            f"reviewed finding {reviewed_finding} is not the latest finding of task "
-            f"{task_id}; latest finding is {latest_finding_id}"
+            f"reviewed finding {escape_for_display(reviewed_finding)} is not the "
+            f"latest finding of task {escape_for_display(task_id)}; latest "
+            f"finding is {escape_for_display(latest_finding_id)}"
         )
     if task.contract.scope:
         raise ReviewLaunchError(
             "findings lane requires an empty scope; declared scope: "
-            + ", ".join(task.contract.scope)
+            + ", ".join(escape_for_display(entry) for entry in task.contract.scope)
         )
     identity_refusal = finding_reviewer_identity_refusal(
         project_root, finding, reviewer_email, launching=True
@@ -1102,7 +1116,8 @@ def _launch_finding_review(
         expected_subject=reviewed_finding,
         subject_mismatch=lambda subject_field, subject: (
             "reviewer verdict subject does not match requested finding "
-            f"{reviewed_finding}: verdict named {subject_field} {subject}"
+            f"{escape_for_display(reviewed_finding)}: verdict named "
+            f"{escape_for_display(subject_field)} {escape_for_display(subject)}"
         ),
         reviewed_finding=reviewed_finding,
         prose_capture_level=prose_capture_level,
@@ -1195,8 +1210,9 @@ def launch_review(
         # the same trusted source (a sidecar's own config, else the
         # merge-base tree). Naming is required, so a marker read that fails
         # refuses rather than prints the names unmasked. The prompt's names
-        # stay raw: they must match the names inside the diff text the
-        # reviewer is shown, which masking cannot change anyway.
+        # are not masked — they must match the names inside the diff text the
+        # reviewer is shown — but they go through escape_for_display like
+        # every value the prompt places into a line.
         try:
             markers = (
                 markers_from_config(journal_root.parents[1])
