@@ -7,8 +7,9 @@ CONTRIBUTING's finding form, Version and Environment filled from the
 machine. ``outbox check`` names, per draft, the file and each missing or
 still-unfilled field, runs the merge boundary's leak scan over what would
 be sent, and refuses by exit status so a batch wrapper can refuse to send.
-``outbox send`` runs that check, stages only the outbox and makes one
-batch commit — delivery stays with the operator. ``outbox status`` hashes
+``outbox send`` runs that check, stages only the outbox, verifies the
+staged blobs are what the check vetted and makes one batch commit —
+delivery stays with the operator. ``outbox status`` hashes
 the outbox files and compares them with the ``Source:`` lines of an index
 file the operator passes. The group opens no network.
 
@@ -502,10 +503,12 @@ def _git(project_root: Path, arguments: list[str], feed: bytes = b"") -> bytes:
 
     Mirrors ``gate``'s ``_run_git_bytes``: a missing git is described by
     its errno text — never ``str(OSError)``, which carries a path — and a
-    non-zero exit by git's own stderr decoded lossily. A path git quotes
-    back can itself carry a marker, so the caller prints the message
-    masked. *feed* is piped to git's stdin — the plumbing ``send`` uses
-    to put index entries back takes its records there.
+    non-zero exit by git's own stderr decoded lossily. The error names
+    only the subcommand: the arguments stay out of it because one of them
+    can be the whole commit message. A path git quotes back can itself
+    carry a marker, so the caller prints the message masked. *feed* is
+    piped to git's stdin — the plumbing ``send`` uses to put index
+    entries back takes its records there.
     """
 
     try:
@@ -521,41 +524,39 @@ def _git(project_root: Path, arguments: list[str], feed: bytes = b"") -> bytes:
     if result.returncode != 0:
         detail = result.stderr.decode("utf-8", errors="backslashreplace").strip()
         raise _OutboxGitError(
-            f"git {' '.join(arguments)} failed" + (f": {detail}" if detail else "")
+            f"git {arguments[0]} failed" + (f": {detail}" if detail else "")
         )
     return result.stdout
 
 
-def _staged_paths(project_root: Path) -> list[tuple[str, str, str | None]]:
-    """The index's difference from HEAD as ``(status, path, source)``.
+def _staged_paths(project_root: Path) -> set[str]:
+    """Every path the index's difference from HEAD names.
 
     ``git diff --cached`` reads an unborn-HEAD repository against the
     empty tree, so a first send needs no special case. ``-z`` keeps names
     as bytes; each is decoded to the escaped printable form — a non-UTF-8
     path can be staged as easily as created. A rename or copy contributes
-    both its paths, destination first, because either can be the one
-    outside the outbox.
+    both its paths because either can be the one outside the outbox.
     """
 
     raw = _git(project_root, ["diff", "--cached", "--name-status", "-z"])
     tokens = [token for token in raw.split(b"\0") if token]
-    entries: list[tuple[str, str, str | None]] = []
+    paths: set[str] = set()
     index = 0
     while index < len(tokens):
         status = tokens[index].decode("ascii", errors="replace")[0]
         if status in "RC":
             if index + 2 >= len(tokens):
                 raise _OutboxGitError("unparseable rename in the staged list")
-            entries.append(
-                (status, _shown_name(tokens[index + 2]), _shown_name(tokens[index + 1]))
-            )
+            paths.add(_shown_name(tokens[index + 1]))
+            paths.add(_shown_name(tokens[index + 2]))
             index += 3
         else:
             if index + 1 >= len(tokens):
                 raise _OutboxGitError("unparseable entry in the staged list")
-            entries.append((status, _shown_name(tokens[index + 1]), None))
+            paths.add(_shown_name(tokens[index + 1]))
             index += 2
-    return entries
+    return paths
 
 
 def _restore_outbox_index(project_root: Path, records: bytes) -> str | None:
@@ -564,11 +565,14 @@ def _restore_outbox_index(project_root: Path, records: bytes) -> str | None:
     *records* is the ``git ls-files --stage -z`` output taken before the
     batch was staged. Replaying it through ``update-index --index-info``
     puts every recorded entry back — including one the add rewrote —
-    while a mode-0 line drops each path now staged under the outbox that
-    no record names: the additions the send made. Nothing outside the
-    outbox is ever in either list, and the plumbing form works where
-    ``restore --staged`` cannot — an unborn HEAD. A failure is returned
-    as text for the caller to warn about; the refusal stands either way.
+    while ``--force-remove`` drops each path now staged under the outbox
+    that no record names: the additions the send made. Neither step
+    writes an object id, so the repository's object format cannot break
+    it — a mode-0 index-info line would have to name the format's null
+    id — and the plumbing form works where ``restore --staged`` cannot,
+    an unborn HEAD. Nothing outside the outbox is ever in either list. A
+    failure is returned as text for the caller to warn about; the refusal
+    stands either way.
     """
 
     try:
@@ -576,15 +580,77 @@ def _restore_outbox_index(project_root: Path, records: bytes) -> str | None:
         recorded = {
             token.split(b"\t", 1)[1] for token in records.split(b"\0") if b"\t" in token
         }
-        removals = b"".join(
-            b"0 " + b"0" * 40 + b"\t" + path + b"\0"
+        additions = b"".join(
+            path + b"\0"
             for path in current.split(b"\0")
             if path and path not in recorded
         )
-        _git(project_root, ["update-index", "-z", "--index-info"], records + removals)
+        if additions:
+            _git(
+                project_root,
+                ["update-index", "--force-remove", "-z", "--stdin"],
+                additions,
+            )
+        if records:
+            _git(project_root, ["update-index", "-z", "--index-info"], records)
     except _OutboxGitError as error:
         return str(error)
     return None
+
+
+def _checked_blob_ids(project_root: Path, outbox: Path) -> dict[bytes, bytes]:
+    """The blob id each regular outbox file stages as, keyed by path bytes.
+
+    ``git hash-object`` applies the same clean filters ``git add`` does,
+    so the id it computes from the worktree file is the id the add
+    writes. A draft can change between the check and the commit; pinning
+    every checked file here is what lets the send compare the staged set
+    against what was vetted. Keys are the repository-relative path's real
+    bytes — the same form ``ls-files`` reports — so a non-UTF-8 name is
+    pinned without ever becoming text.
+    """
+
+    try:
+        entries = sorted(outbox.iterdir())
+    except OSError as error:
+        raise _OutboxGitError(
+            f"cannot read the outbox: {_os_error_text(error)}"
+        ) from error
+    expected: dict[bytes, bytes] = {}
+    for entry in entries:
+        if not _is_regular(entry):
+            continue
+        relative = f"{_OUTBOX_PREFIX}{entry.name}"
+        expected[os.fsencode(relative)] = _git(
+            project_root, ["hash-object", "--", relative]
+        ).strip()
+    return expected
+
+
+def _batch_mismatch(project_root: Path, expected: dict[bytes, bytes]) -> list[str]:
+    """The outbox names whose staged blob is not what the check saw.
+
+    Every pinned path must sit in the index at stage 0 with exactly the
+    pinned blob id, and nothing else may be staged under the outbox: a
+    file that arrived after the check was never vetted, and a changed or
+    removed one would commit content nobody checked.
+    """
+
+    raw = _git(project_root, ["ls-files", "--stage", "-z", "--", _OUTBOX_DIR_SPEC])
+    staged: dict[bytes, list[tuple[bytes, bytes]]] = {}
+    for token in raw.split(b"\0"):
+        if not token:
+            continue
+        meta, separator, path = token.partition(b"\t")
+        fields = meta.split(b" ")
+        if not separator or len(fields) != 3:
+            raise _OutboxGitError("unparseable index record")
+        staged.setdefault(path, []).append((fields[1], fields[2]))
+    bad = [
+        path for path, blob in expected.items() if staged.get(path) != [(blob, b"0")]
+    ]
+    bad.extend(path for path in staged if path not in expected)
+    return sorted(_shown_name(path) for path in bad)
 
 
 def _run_send(stderr: TextIO) -> int:
@@ -619,14 +685,7 @@ def _run_send(stderr: TextIO) -> int:
     except _OutboxGitError as error:
         print(f"outbox send: {safe_path(str(error), markers)}", file=stderr)
         return 1
-    outside = sorted(
-        {
-            staged_path
-            for _, path, source in staged
-            for staged_path in (path, source)
-            if staged_path is not None and not staged_path.startswith(_OUTBOX_PREFIX)
-        }
-    )
+    outside = sorted(path for path in staged if not path.startswith(_OUTBOX_PREFIX))
     if outside:
         # Findings must not ride along in another commit, nor another
         # commit's work in the batch — the staged set outside the outbox
@@ -638,36 +697,41 @@ def _run_send(stderr: TextIO) -> int:
         )
         return 1
     index_records: bytes | None = None
+    committed = False
     try:
         # Taken before the add so a refused send can put the index back
         # exactly as it found it under the outbox.
         index_records = _git(
             project_root, ["ls-files", "--stage", "-z", "--", _OUTBOX_DIR_SPEC]
         )
+        # What the check just vetted, pinned as the blob id each file
+        # stages as: what is committed must be what was checked.
+        expected = _checked_blob_ids(project_root, outbox)
         # --force: an ignore rule must not silently drop a draft the check
         # just passed — the whole outbox is what leaves.
         _git(project_root, ["add", "--force", "--", _OUTBOX_DIR_SPEC])
         batch = sorted(
-            {
-                staged_path
-                for _, path, source in _staged_paths(project_root)
-                for staged_path in (path, source)
-                if staged_path is not None and staged_path.startswith(_OUTBOX_PREFIX)
-            }
+            path
+            for path in _staged_paths(project_root)
+            if path.startswith(_OUTBOX_PREFIX)
         )
         if not batch:
             raise _OutboxGitError(
                 "nothing to send — the outbox has no uncommitted changes"
             )
+        changed = _batch_mismatch(project_root, expected)
+        if changed:
+            raise _OutboxGitError("changed since the check: " + ", ".join(changed))
         message = "outbox: findings batch\n\n" + "\n".join(
             f"- {path}" for path in batch
         )
         _git(project_root, ["commit", "--message", message])
-        commit = _git(project_root, ["rev-parse", "HEAD"]).decode("ascii").strip()
+        committed = True
     except _OutboxGitError as error:
-        # The refusal stands, but a failed commit must not leave behind
-        # the batch the add already staged.
-        if index_records is not None:
+        # The refusal stands, but whatever the add staged must not stay:
+        # the index goes back to what the send found. Only a refusal
+        # touches it — a made commit is never rolled back.
+        if index_records is not None and not committed:
             restore_error = _restore_outbox_index(project_root, index_records)
             if restore_error is not None:
                 print(
@@ -676,6 +740,15 @@ def _run_send(stderr: TextIO) -> int:
                     file=stderr,
                 )
         print(f"outbox send: {safe_path(str(error), markers)}", file=stderr)
+        return 1
+    try:
+        commit = _git(project_root, ["rev-parse", "HEAD"]).decode("ascii").strip()
+    except _OutboxGitError as error:
+        print(
+            f"outbox send: the batch is committed but its id could not be "
+            f"read: {safe_path(str(error), markers)}",
+            file=stderr,
+        )
         return 1
     print(commit)
     return 0

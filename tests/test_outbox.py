@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from agentmarshal import __version__
+from agentmarshal import outbox as outbox_module
 from agentmarshal.cli import main
 
 _TOKEN = f"ghp_{'A1' * 18}"
@@ -44,6 +45,31 @@ def _project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init", "--quiet", "-b", "master")
+    _git(repo, "config", "user.name", "Adopter")
+    _git(repo, "config", "user.email", "adopter@test.invalid")
+    monkeypatch.chdir(repo)
+    assert main(["init"]) == 0
+    return repo
+
+
+def _project_sha256(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A project in a sha256-format repository.
+
+    Skips when this git cannot ``init --object-format=sha256`` — the
+    object format is the fixture's whole point, so a git without it runs
+    no test rather than a weaker one.
+    """
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    initialized = subprocess.run(
+        ["git", "init", "--quiet", "-b", "master", "--object-format=sha256"],
+        cwd=repo,
+        check=False,
+        capture_output=True,
+    )
+    if initialized.returncode != 0:
+        pytest.skip("git init does not support --object-format=sha256")
     _git(repo, "config", "user.name", "Adopter")
     _git(repo, "config", "user.email", "adopter@test.invalid")
     monkeypatch.chdir(repo)
@@ -752,7 +778,11 @@ def test_a_failed_commit_leaves_the_index_as_send_found_it(
 
     assert main(["outbox", "send"]) == 1
 
-    assert "outbox send:" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "outbox send:" in err
+    # The git error names the subcommand, never the arguments — the
+    # commit's message must not be echoed back.
+    assert "findings batch" not in err
     assert _git_out(repo, "rev-list", "--count", "--all") == "0"
     # Exactly what the operator staged remains; what send staged is gone.
     assert (
@@ -813,6 +843,115 @@ def test_a_file_whose_name_is_not_utf8_is_sent_under_its_escaped_name(
     assert b".agentmarshal/upstream/\xffdraft.md" in staged
     message = _git_out(repo, "show", "-s", "--format=%B", "HEAD")
     assert "\\xffdraft.md" in message
+
+
+def test_a_failed_commit_leaves_the_index_as_send_found_it_in_sha256(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a failed commit leaves the index as send found it."""
+    repo = _project_sha256(tmp_path, monkeypatch)
+    assert _git_out(repo, "rev-parse", "--show-object-format") == "sha256"
+    _conforming_draft(_outbox(repo))
+    _conforming_draft(_outbox(repo), name="0002-also-filled.md")
+    _git(repo, "add", ".agentmarshal/upstream/0001-filled.md")
+    hook = repo / ".git" / "hooks" / "pre-commit"
+    hook.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    hook.chmod(0o755)
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    assert main(["outbox", "send"]) == 1
+
+    assert "outbox send:" in capsys.readouterr().err
+    assert _git_out(repo, "rev-list", "--count", "--all") == "0"
+    assert (
+        _git_out(repo, "diff", "--cached", "--name-only")
+        == ".agentmarshal/upstream/0001-filled.md"
+    )
+
+
+def test_send_refuses_when_a_draft_changed_since_the_check(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: send refuses when a draft changed since the check."""
+    repo = _project(tmp_path, monkeypatch)
+    draft = _conforming_draft(_outbox(repo))
+    run_git = outbox_module._git
+
+    def mutate_on_add(
+        project_root: Path, arguments: list[str], feed: bytes = b""
+    ) -> bytes:
+        if arguments[0] == "add":
+            draft.write_text(_CONFORMING + "\nedited late\n", encoding="utf-8")
+        return run_git(project_root, arguments, feed)
+
+    monkeypatch.setattr(outbox_module, "_git", mutate_on_add)
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    assert main(["outbox", "send"]) == 1
+
+    captured = capsys.readouterr()
+    assert "changed since the check" in captured.err
+    assert "0001-filled.md" in captured.err
+    assert _git_out(repo, "rev-list", "--count", "--all") == "0"
+    # What the send staged is put back — the changed draft is unstaged.
+    assert _git_out(repo, "diff", "--cached", "--name-only") == ""
+
+
+def test_a_made_commit_is_never_put_back(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a made commit is never put back."""
+    repo = _project(tmp_path, monkeypatch)
+    _conforming_draft(_outbox(repo))
+    run_git = outbox_module._git
+
+    def fail_rev_parse(
+        project_root: Path, arguments: list[str], feed: bytes = b""
+    ) -> bytes:
+        if arguments == ["rev-parse", "HEAD"]:
+            raise outbox_module._OutboxGitError("rev-parse refused")
+        return run_git(project_root, arguments, feed)
+
+    monkeypatch.setattr(outbox_module, "_git", fail_rev_parse)
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    assert main(["outbox", "send"]) == 1
+
+    captured = capsys.readouterr()
+    assert "committed" in captured.err
+    assert _git_out(repo, "rev-list", "--count", "HEAD") == "1"
+    # The index is what the commit left — the refused read put nothing
+    # back: the batch files are still index entries, nothing is staged.
+    staged = subprocess.run(
+        ["git", "ls-files", "-z"], cwd=repo, check=True, capture_output=True
+    ).stdout
+    assert b".agentmarshal/upstream/0001-filled.md" in staged
+    assert _git_out(repo, "diff", "--cached", "--name-only") == ""
+
+
+def test_a_gitignored_draft_is_checked_and_sent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a gitignored draft is checked and sent like every file."""
+    repo = _project(tmp_path, monkeypatch)
+    (repo / ".gitignore").write_text(
+        ".agentmarshal/upstream/ignored.md\n", encoding="utf-8"
+    )
+    _conforming_draft(_outbox(repo), name="ignored.md")
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    assert main(["outbox", "send"]) == 0
+
+    committed = _git_out(repo, "ls-tree", "-r", "--name-only", "HEAD")
+    assert ".agentmarshal/upstream/ignored.md" in committed.splitlines()
 
 
 def test_a_file_the_index_claims_is_named_with_the_entry_claiming_it(

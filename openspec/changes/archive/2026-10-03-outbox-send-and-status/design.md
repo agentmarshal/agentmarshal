@@ -62,30 +62,47 @@ such lines — a digest, a concatenation, `docs/proposals/README.md` itself
   --force -- .agentmarshal/upstream` — the README's
   `:(exclude).agentmarshal/upstream/**` applied the other way. `-f`
   because an ignore rule must not silently drop a draft the check just
-  passed: the whole outbox is what leaves. The staged set is read again
-  after the add; when nothing under the outbox is staged for commit —
-  the files are all committed and unchanged already — there is no batch
-  and the command refuses. Otherwise `git commit -m` makes exactly one
-  commit whose message is `outbox: findings batch` followed by one line
-  per staged outbox path, and `git rev-parse HEAD` is printed — the
-  commit, for whatever delivery the operator chooses. Delivery itself,
-  and any push, is not the command's.
-- **A refused send puts the index back.** Before the add, the command
-  records `git ls-files --stage -z` under the outbox; when the commit
-  fails — a hook, no identity — those records are replayed through
-  `git update-index --index-info` and every path now staged under the
-  outbox that no record names is dropped with a mode-0 line. That puts
-  back exactly what the send staged — additions removed, a pre-staged
-  entry the add rewrote restored — on an unborn HEAD too, where
-  `restore --staged` cannot run. Index entries outside the outbox are
-  never in either list, so nothing else is touched.
+  passed: the whole outbox is what leaves, so a file the adopter
+  gitignored inside the outbox is checked like every file and then sent
+  — never excluded. The staged set is read again after the add; when
+  nothing under the outbox is staged for commit — the files are all
+  committed and unchanged already — there is no batch and the command
+  refuses. Otherwise `git commit -m` makes exactly one commit whose
+  message is `outbox: findings batch` followed by one line per staged
+  outbox path, and `git rev-parse HEAD` is printed — the commit, for
+  whatever delivery the operator chooses. Delivery itself, and any
+  push, is not the command's.
+- **What is committed is what was checked.** A draft can change between
+  `check` and `add`, so before the add the command pins every regular
+  outbox file as the blob id `git hash-object` computes for it — the
+  same clean filters the add applies, so the id is the one staging
+  writes. After the add, `git ls-files --stage` under the outbox must
+  show exactly those paths at stage 0 with those ids: a changed,
+  removed or newly arrived file is a refusal naming the mismatched
+  names, and the index goes back.
+- **A refused send — and only a refused send — puts the index back.**
+  Before the add, the command records `git ls-files --stage -z` under
+  the outbox. On a refusal after the add — a mismatch, a hook refusing
+  the commit — those records are replayed through `git update-index
+  --index-info` and every path now staged under the outbox that no
+  record names is dropped with `git update-index --force-remove`. No
+  step writes an object id, so the repository's object format cannot
+  break it the way a hard-coded null id does — a mode-0 index-info line
+  has to name the format's null id — and the plumbing form works where
+  `restore --staged` cannot, an unborn HEAD. Index entries outside the
+  outbox are never in either list, so nothing else is touched. Once
+  `git commit` returns success the commit stands: a later step that
+  fails — `rev-parse` reading the commit's id — is reported as a
+  failure but puts nothing back.
 - **Git runs with `subprocess`, captured bytes in, domain error out.** A
   helper mirrors `gate`'s `_run_git_bytes`: `subprocess.run` with
   `capture_output`, `check=False`; a missing git is described by its
   errno text (never `str(OSError)`, which carries a path), a non-zero
-  exit by git's own stderr decoded with `backslashreplace`. The caller
-  prints that text masked — a path git quotes back can itself carry a
-  marker.
+  exit by git's own stderr decoded with `backslashreplace`. The error
+  names only the git subcommand — the arguments stay out because one of
+  them can be the whole commit message, and the report would echo it
+  back at the operator. The caller prints that text masked — a path git
+  quotes back can itself carry a marker.
 - **A name that is not UTF-8 is written in the escaped printable form.**
   `os.fsencode` reverses the surrogateescape decode the filesystem layer
   applied, giving the name's real bytes; decoding them with

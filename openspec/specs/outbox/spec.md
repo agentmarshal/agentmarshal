@@ -181,17 +181,22 @@ refuse — naming each staged path — when anything outside
 along in another commit and another commit's work never rides along in
 the batch. Otherwise the command SHALL stage only
 `.agentmarshal/upstream/` — the outbox README's exclude pathspec applied
-the other way — SHALL refuse when nothing under the outbox is staged for
-commit, and SHALL otherwise make exactly one commit of the batch with a
-message naming the files, in the repository the outbox belongs to — in a
-sidecar the journal repository, never the host — and SHALL print the
-commit it made. If the commit fails after the batch was staged, the
-command SHALL put back the index entries it staged under the outbox — a
-refused send leaves the index as it found it. Every name the command
-prints SHALL be masked and a name that is not UTF-8 SHALL be written in
-escaped printable form, exactly as `outbox check` names files. The
-command SHALL transmit nothing and SHALL open no network: delivery stays
-with the operator.
+the other way, every file under it, a file an ignore rule names
+included, since the check already vetted it — SHALL refuse when nothing
+under the outbox is staged for commit, and SHALL otherwise make exactly
+one commit of the batch with a message naming the files, in the
+repository the outbox belongs to — in a sidecar the journal repository,
+never the host — and SHALL print the commit it made. What is committed
+SHALL be what was checked: before committing, the command SHALL verify
+the staged blobs are the files the check vetted and SHALL refuse —
+putting back what it staged — when they are not. If the commit fails
+after the batch was staged, the command SHALL put back the index
+entries it staged under the outbox — a refused send leaves the index as
+it found it, and a made commit is never put back. Every name the
+command prints SHALL be masked and a name that is not UTF-8 SHALL be
+written in escaped printable form, exactly as `outbox check` names
+files. The command SHALL transmit nothing and SHALL open no network:
+delivery stays with the operator.
 
 #### Scenario: send refuses when the check fails
 - **WHEN** a draft does not conform or the scan reports a hit
@@ -230,6 +235,22 @@ with the operator.
 - **WHEN** `outbox send` runs in a project whose journal is a sidecar
 - **THEN** the commit lands in the journal repository's git history and
   the host repository gains no commit
+
+#### Scenario: a gitignored draft is checked and sent like every file
+- **WHEN** an ignore rule names a draft in the outbox and the check
+  passes
+- **THEN** the command stages it and it leaves with the batch
+
+#### Scenario: send refuses when a draft changed since the check
+- **WHEN** a draft's content changed after the check but before the
+  commit
+- **THEN** the command refuses, puts back what it staged, and commits
+  nothing
+
+#### Scenario: a made commit is never put back
+- **WHEN** `git commit` succeeded and only naming the commit fails
+- **THEN** the command reports the failure and leaves the commit and the
+  index as the commit left them
 
 #### Scenario: a file whose name is not UTF-8 is sent under its escaped name
 - **WHEN** the outbox holds a conforming draft whose name is not UTF-8

@@ -17,19 +17,29 @@
   `.agentmarshal/upstream/` — both halves of a staged rename counted,
   paths masked and escaped — verify: the test named after the scenario.
 - [x] 2.3 Otherwise `send` stages only `.agentmarshal/upstream` (`git add
-  --force`), refuses an empty batch, makes exactly one commit whose
-  message names the staged outbox paths, and prints `git rev-parse HEAD`
-  — verify: the tests named after the scenarios.
+  --force` — a file an ignore rule names is checked and sent like every
+  file), refuses an empty batch, makes exactly one commit whose message
+  names the staged outbox paths, and prints `git rev-parse HEAD` —
+  verify: the tests named after the scenarios.
 - [x] 2.4 Git runs with `subprocess` and `capture_output` like gate's
-  `_run_git_bytes`; failures are masked messages, never tracebacks; in a
-  sidecar the commit lands in the journal repository — verify: the
-  tests.
+  `_run_git_bytes`; failures name only the subcommand — never the
+  arguments, one of which is the commit message — masked, never
+  tracebacks; in a sidecar the commit lands in the journal repository —
+  verify: the tests.
 - [x] 2.5 `send` refuses "no drafts to send" when the outbox holds only
   the README — verify: the test named after the scenario.
-- [x] 2.6 A failed `git commit` unstages exactly what `send` staged —
+- [x] 2.6 Before the add, `send` pins every regular outbox file's blob
+  id (`git hash-object`); after the add, `ls-files --stage` must show
+  exactly those paths at stage 0 with those ids — a changed, removed or
+  newly arrived file refuses and the index goes back — verify: the test
+  named after the scenario.
+- [x] 2.7 A failed `git commit` unstages exactly what `send` staged —
   the pre-add `ls-files --stage -z` records replayed through
-  `update-index --index-info`, so a refused send leaves the index as it
-  found it — verify: the test named after the scenario.
+  `update-index --index-info` plus `update-index --force-remove` for the
+  additions, so no object id is written and the repository's object
+  format cannot break the restore — and the restore runs only on a
+  refusal, never after a made commit — verify: the tests named after
+  the scenarios, in sha1 and in sha256 repositories.
 
 ## 3. `outbox status`
 

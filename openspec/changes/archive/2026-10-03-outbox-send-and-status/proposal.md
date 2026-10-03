@@ -15,9 +15,10 @@ proposals directory for a sha256 by hand.
   failure; refuses an outbox that holds no draft; refuses when anything
   outside `.agentmarshal/upstream/` is already staged; otherwise stages
   only the outbox — the README's exclude pathspec applied the other way —
-  and makes exactly one commit of the batch with a message naming the
-  files, then prints the commit. A commit that fails leaves the index as
-  the send found it. In a sidecar the commit lands in the journal
+  verifies the staged blobs are what the check vetted, and makes exactly
+  one commit of the batch with a message naming the files, then prints
+  the commit. A refusal leaves the index as the send found it; a made
+  commit is never put back. In a sidecar the commit lands in the journal
   repository, never the host. The command transmits nothing and opens no
   network: delivery stays with the operator.
 - `agentmarshal outbox status --index <file>` hashes each file in the
