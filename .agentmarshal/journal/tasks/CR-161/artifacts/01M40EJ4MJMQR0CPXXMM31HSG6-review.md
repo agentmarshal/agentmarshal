@@ -1,0 +1,11 @@
+I reviewed the commit against the contract and the `record-text-safety` spec: the gate's two lanes now escape every finished transcript line (`gate.py:104`, `gate.py:619`), matching the precedent `status_view.print_task_detail` set, and `gate.py` contains no literal `\n`/`\t` anywhere, so the tool's own fixed text passes through unchanged; the brief and both reviewer prompts escape each record/contract value where it joins a line, with the contract body, diff and artifact content left as blocks per the design; the delta spec's MODIFIED requirement matches the live spec byte for byte and each new scenario has a test whose docstring names it. The premise checks out too: `scope`, `acceptance`, `id`, `title` and `recorded_by` are never run through `reject_control_characters` at write (`contracts.py:231-240`, `records.py:299`), so these are live holes, not just legacy ones.
+
+Two advisory points, neither blocking:
+
+`amendment-reason-trailing-newline-adds-an-empty-quote-line` — in `src/agentmarshal/journal/brief.py:58`, the switch from `reason.splitlines()` to `reason.split("\n")` is right for U+2028 and `\r`, but it also changes an unrelated case the change documents nowhere: an amendment reason ending in a real newline (permitted — `records.py:433` only requires `reason.strip()`, and the forgeable-text rule deliberately does not reach `reason`) now renders a final `"> "` line with trailing whitespace in both the brief and the reviewer prompt, where `splitlines()` dropped the empty trailing segment. Nothing pins it, so no test fails.
+
+`review-undecodable-names-comment-now-stale` — `src/agentmarshal/journal/review.py:285` now escapes the undecodable-file names in the prompt's diff note, while the comment at `review.py:1212-1214` still states "The prompt's names stay raw: they must match the names inside the diff text the reviewer is shown". The practical effect is nil (git C-quotes a path containing a control character, so the name arrives as literal `\n` text and the escape is a no-op), but the comment now asserts the opposite of what the code does.
+
+AGENTMARSHAL_VERDICT_BEGIN
+{"reviewed_commit": "cee271992204a47447acfa4886cb39f8782a6a18", "verdict": "approved", "findings": [], "advisory_findings": ["amendment-reason-trailing-newline-adds-an-empty-quote-line", "review-undecodable-names-comment-now-stale"]}
+AGENTMARSHAL_VERDICT_END
