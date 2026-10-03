@@ -60,6 +60,7 @@ from agentmarshal.project import (
     project_file_path,
     read_project_file,
 )
+from agentmarshal.settings import changes_required_threshold
 
 _JOURNAL_PREFIX = ".agentmarshal/journal/"
 _EXTENSIONS_PREFIX = ".agentmarshal/extensions/"
@@ -1243,6 +1244,42 @@ def run_gate(
                     undecodable, markers, limit=_LEAK_HIT_RENDER_LIMIT
                 )
             )
+
+    if not journal_only:
+        # ADR-0016 decision 4: the count of changes_required verdicts over
+        # the whole task — every review record, whatever commit it names —
+        # is the signal to stop and revisit the contract. It closes the
+        # transcript and reports; it is never a check, so it cannot add a
+        # violation, change the exit status or refuse a merge. The
+        # journal-only lane carries no work to review and prints nothing.
+        count = sum(
+            1
+            for record in task.records
+            if record.get("record_type") == "review"
+            and record.get("verdict") == "changes_required"
+        )
+        try:
+            threshold = changes_required_threshold(journal_root.parents[1])
+        except (OSError, ValueError) as error:
+            # A malformed setting is reported on the line, not refused:
+            # ProjectSettingsError is a ValueError, and the same catch
+            # covers an unreadable or unparseable project.json.
+            say(
+                f"WARN: changes_required verdicts for {task_id}: {count} "
+                f"(threshold unreadable: {error})"
+            )
+        else:
+            if count >= threshold:
+                say(
+                    f"WARN: changes_required verdicts for {task_id}: {count} "
+                    f"(threshold {threshold} reached — stop and revisit the "
+                    "contract)"
+                )
+            else:
+                say(
+                    f"INFO: changes_required verdicts for {task_id}: {count} "
+                    f"(threshold {threshold})"
+                )
 
     return GateReport(
         passed=violations == 0,
