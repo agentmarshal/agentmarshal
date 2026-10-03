@@ -317,7 +317,9 @@ def _compare_transcript(
     set to a non-empty value other than ``0`` the normalized transcript is
     written to the fixture files first — the explicit act by which a task
     that changes the output on purpose names its change in the reviewed diff.
-    Unset, this function never writes: a fixture cannot drift in silence.
+    Unset, this function never writes: a fixture cannot drift in silence,
+    and every file of the triple must exist — a missing fixture fails
+    naming it rather than comparing against an empty stream.
     """
 
     streams = {
@@ -329,12 +331,15 @@ def _compare_transcript(
         fixture_root.mkdir(parents=True, exist_ok=True)
         for name, content in streams.items():
             (fixture_root / name).write_text(content, encoding="utf-8")
+    missing = [name for name in streams if not (fixture_root / name).is_file()]
+    assert not missing, (
+        f"fixture files missing for {case}: {', '.join(missing)} — "
+        f"regenerate with {UPDATE_FIXTURES_ENV}=1"
+    )
     differences = "".join(
         _transcript_diff(
             name,
-            (fixture_root / name).read_text(encoding="utf-8")
-            if (fixture_root / name).exists()
-            else "",
+            (fixture_root / name).read_text(encoding="utf-8"),
             content,
         )
         for name, content in streams.items()
@@ -359,11 +364,13 @@ def _gate_arguments(base: str, head: str) -> list[str]:
 
 
 def _run_values(base: str, head: str, roots: dict[Path, str]) -> dict[str, str]:
+    # The full sha and its abbreviation map to different placeholders so a
+    # transcript that switches between the two forms fails the pin.
     return {
         head: "<head-sha>",
-        head[:12]: "<head-sha>",
+        head[:12]: "<head-sha-12>",
         base: "<base-sha>",
-        base[:12]: "<base-sha>",
+        base[:12]: "<base-sha-12>",
         **{str(root): placeholder for root, placeholder in roots.items()},
     }
 
@@ -439,6 +446,21 @@ _PINNED_TRANSCRIPT_CASES = {
 }
 
 
+def _transcript_for_case(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    case: str,
+) -> tuple[int, str, str, dict[str, str]]:
+    """Run a default gate on one case and return its transcript."""
+
+    arguments, run_values = _PINNED_TRANSCRIPT_CASES[case](tmp_path, monkeypatch)
+    capsys.readouterr()
+    code = main(arguments)
+    transcript = capsys.readouterr()
+    return code, transcript.out, transcript.err, run_values
+
+
 @pytest.mark.parametrize("case", sorted(_PINNED_TRANSCRIPT_CASES))
 def test_default_run_transcript_matches_the_committed_fixture(
     tmp_path: Path,
@@ -448,22 +470,43 @@ def test_default_run_transcript_matches_the_committed_fixture(
 ) -> None:
     """Scenario: the pinned transcript still matches.
 
-    One fixture triple per lane and placement pins a default gate run's
-    stdout, stderr and exit status — the implementation lane and the
-    journal-only lane, in the embedded and the sidecar placement. Setting
-    AGENTMARSHAL_UPDATE_GATE_FIXTURES rewrites the fixtures from a run: the
-    way a task that changes the output on purpose names its change.
+    One fixture triple per case pins a default gate run's stdout, stderr
+    and exit status — the implementation lane and the journal-only lane in
+    the embedded placement; in the sidecar placement the implementation
+    lane and the host candidate whose diff touches only the journal, where
+    no deterministic lane exists and the fixture pins the refusal.
     """
 
-    arguments, run_values = _PINNED_TRANSCRIPT_CASES[case](tmp_path, monkeypatch)
-    capsys.readouterr()
-
-    code = main(arguments)
-    transcript = capsys.readouterr()
-
-    _compare_transcript(
-        GATE_FIXTURES, case, code, transcript.out, transcript.err, run_values
+    # A stray update flag in the caller's environment must not let this
+    # test rewrite the fixtures it is pinning.
+    monkeypatch.delenv(UPDATE_FIXTURES_ENV, raising=False)
+    code, out, err, run_values = _transcript_for_case(
+        tmp_path, monkeypatch, capsys, case
     )
+    _compare_transcript(GATE_FIXTURES, case, code, out, err, run_values)
+
+
+@pytest.mark.parametrize("case", sorted(_PINNED_TRANSCRIPT_CASES))
+def test_regenerate_the_committed_fixtures(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    case: str,
+) -> None:
+    """Rewrite the pinned fixtures from a run — the deliberate act a task
+    that changes the output on purpose performs so the fixture's diff names
+    its change in review.
+
+    Runs only when AGENTMARSHAL_UPDATE_GATE_FIXTURES is set to a non-empty
+    value other than ``0``; skipped otherwise, so no run rewrites a fixture
+    unless it was explicitly asked to."""
+
+    if os.environ.get(UPDATE_FIXTURES_ENV) in (None, "", "0"):
+        pytest.skip(f"set {UPDATE_FIXTURES_ENV}=1 to regenerate the fixtures")
+    code, out, err, run_values = _transcript_for_case(
+        tmp_path, monkeypatch, capsys, case
+    )
+    _compare_transcript(GATE_FIXTURES, case, code, out, err, run_values)
 
 
 def test_a_transcript_difference_is_shown_as_a_readable_diff(
@@ -505,10 +548,13 @@ def test_a_fixture_changes_only_when_the_output_changes_on_purpose(
     run_values = {"a" * 12: "<head-sha>"}
     stdout = f"PASS: pipeline attested for {'a' * 12}\ngate: passed\n"
 
-    # Without the flag an absent fixture is a mismatch, never a file.
+    # Without the flag an absent fixture fails naming the missing files,
+    # never a write and never a comparison against an empty stream.
     monkeypatch.delenv(UPDATE_FIXTURES_ENV, raising=False)
-    with pytest.raises(AssertionError):
+    with pytest.raises(AssertionError) as raised:
         _compare_transcript(fixture_root, "case", 0, stdout, "", run_values)
+    for name in ("case.stdout", "case.stderr", "case.exit"):
+        assert name in str(raised.value)
     assert not list(fixture_root.iterdir())
 
     # With the flag the run rewrites the fixture — the explicit act a task
@@ -822,18 +868,7 @@ def _empty_scope_candidate(
     repo, base = _gate_repo(tmp_path, monkeypatch, [])
     head = _implement(repo, "host-change.py")
     _approve(repo, head)
-    arguments = [
-        "gate",
-        "--task",
-        "CR-001",
-        "--commit",
-        head,
-        "--base",
-        base,
-        "--pipeline-sha",
-        head,
-    ]
-    return repo, arguments
+    return repo, _gate_arguments(base, head)
 
 
 def test_empty_scope_candidate_takes_the_diff_lane_and_is_refused(
@@ -1374,13 +1409,19 @@ def test_old_journal_reads_as_before(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Scenario: an old journal reads as before."""
+    """Scenario: an old journal reads as before.
+
+    The candidate here is the one the embedded-implementation fixture
+    pins, and its review record carries no ``artifacts`` — so the gate's
+    transcript for it is demonstrated byte for byte against the committed
+    fixture, beside the ``status``/``report`` checks."""
 
     repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
     head = _implement(repo, "src/module.py")
     _approve(repo, head)
     review = read_records(repo / ".agentmarshal" / "journal", "CR-001")[-1]
     assert "artifacts" not in review
+    monkeypatch.delenv(UPDATE_FIXTURES_ENV, raising=False)
     capsys.readouterr()
 
     assert main(["status", "CR-001"]) == 0
@@ -1388,9 +1429,16 @@ def test_old_journal_reads_as_before(
     assert main(["report", "--task", "CR-001"]) == 0
     assert "artifacts=" not in capsys.readouterr().out
 
-    passed, output = _run(repo, head, base, head)
-    assert passed
-    assert "PASS: evidence records are append-only" in output
+    code = main(_gate_arguments(base, head))
+    transcript = capsys.readouterr()
+    _compare_transcript(
+        GATE_FIXTURES,
+        "embedded-implementation",
+        code,
+        transcript.out,
+        transcript.err,
+        _run_values(base, head, {repo: "<repo>", tmp_path: "<tmp-root>"}),
+    )
 
 
 def test_gate_detects_record_path_collision(

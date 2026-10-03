@@ -12,9 +12,11 @@ run can do neither.
 ## What Changes
 
 - The default run's transcript — stdout, stderr and exit status — is pinned
-  by fixtures committed under `tests/fixtures/gate/`, one per lane and
-  placement the pin covers: the implementation lane and the journal-only
-  lane, each in the embedded and the sidecar placement.
+  by fixtures committed under `tests/fixtures/gate/`, one per case the pin
+  covers: the implementation lane and the journal-only lane in the embedded
+  placement, and in the sidecar placement the implementation lane plus the
+  refusal of a host candidate whose diff touches only the journal — the
+  deterministic lane does not exist there (ADR-0008 decision 2).
 - One substitution maps the values that differ from run to run — commit
   hashes, temporary paths, record ids, times — onto named placeholders, so
   the comparison is exact everywhere else. A mismatch fails showing a
@@ -27,14 +29,27 @@ run can do neither.
   and `test_journal.py` use it for what the released version accepts, not
   for a transcript.
 
+- The two other published scenarios that promise the transcript a released
+  0.3.0 printed — scope-enforcement's "a candidate without renames prints
+  the transcript it printed before" and review-evidence's "an old journal
+  reads as before" — are restated against the same committed fixtures, and
+  the tests that name them demonstrate them through the fixture pin.
+
 ## Capabilities
 
 - modified: `gate-lanes`
+- modified: `scope-enforcement`
+- modified: `review-evidence`
 
 ## Impact
 
 - `tests/test_gate.py`, `tests/fixtures/gate/`.
-- `openspec/specs/gate-lanes/spec.md` on archive.
+- `openspec/specs/gate-lanes/spec.md`,
+  `openspec/specs/scope-enforcement/spec.md` and
+  `openspec/specs/review-evidence/spec.md` on archive.
 - The scope-enforcement scenario "a candidate without renames prints the
   transcript it printed before" keeps its test, which now demonstrates the
   scenario through the committed fixture rather than the released binary.
+  The review-evidence scenario "an old journal reads as before" likewise:
+  its test holds the gate transcript of a candidate whose review carries no
+  `artifacts` to the committed fixture.

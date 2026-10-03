@@ -4,7 +4,7 @@
 A gate run that does not request the mode SHALL produce the transcript it
 produces today, byte for byte, in every placement and on every lane — the
 transcript pinned by fixtures committed in the repository, one for each
-lane and placement the pin covers. A run's stdout, stderr and exit status
+case the pin covers. A run's stdout, stderr and exit status
 SHALL each equal the fixture for its lane and placement, compared after one
 substitution replaces the values that differ from run to run — commit
 hashes, temporary paths, record ids, times — with named placeholders, so
@@ -16,7 +16,10 @@ diff is part of that task's reviewed change.
 #### Scenario: the pinned transcript still matches
 - **WHEN** the gate runs without the mode on a candidate the pinned
   transcript fixtures cover — the implementation lane and the journal-only
-  lane, in the embedded and the sidecar placement
+  lane in the embedded placement; in the sidecar placement the
+  implementation lane and the host candidate whose diff touches only the
+  journal, whose fixture pins the refusal because the deterministic lane
+  does not exist there (ADR-0008 decision 2)
 - **THEN** its stdout, its stderr and its exit status equal the committed
   fixture once run-dependent values are replaced by named placeholders
 

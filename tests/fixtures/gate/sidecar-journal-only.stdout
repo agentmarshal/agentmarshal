@@ -1,8 +1,8 @@
 Sidecar checks are advisory and decide no merge.
 PASS: task CR-001 is not closed at base
 FAIL: paths outside contract scope: .agentmarshal/journal/tasks/CR-001/records/y.json
-FAIL: no review record for <head-sha>
-PASS: pipeline attested for <head-sha>
+FAIL: no review record for <head-sha-12>
+PASS: pipeline attested for <head-sha-12>
 PASS: evidence records are append-only
 PASS: added records are valid (none examined: a host journal is not this journal's evidence)
 PASS: no record-path collisions (none examined: the candidate adds no record to this journal)

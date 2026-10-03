@@ -65,8 +65,11 @@ quote.
   `_normalize_transcript` maps each run-dependent value to a named
   placeholder. Concrete values — the candidate and base commits in full
   and abbreviated form, the temporary repository roots — are replaced
-  longest-first so an abbreviation is never claimed inside a longer value;
-  record ids (26-character ULIDs) and ISO-8601 times are replaced by
+  longest-first so an abbreviation is never claimed inside a longer value,
+  and the full hash and its twelve-character abbreviation map to different
+  placeholders (`<head-sha>` and `<head-sha-12>`), so a transcript that
+  switches between the two forms is a difference the pin shows. Record ids
+  (26-character ULIDs) and ISO-8601 times are replaced by
   pattern, because a transcript line that ever prints one prints a fresh
   value each run. Everything else compares byte for byte: a changed word,
   a moved line, a new warning is a failed pin, not a substituted one.
@@ -77,15 +80,23 @@ quote.
   the review of a deliberate change and the debugging of an accidental
   one read the same output.
 
-- **Regeneration is an explicit environment flag.**
-  `AGENTMARSHAL_UPDATE_GATE_FIXTURES`, set to a non-empty value other than
-  `0`, makes the pinned test write the normalized transcript to the
-  fixture files instead of only comparing. A task that changes the gate's
-  output on purpose runs the test once with the flag set and commits the
-  fixture diff with its change — that diff, in review, is the naming the
-  requirement asks for. Without the flag the test never writes, so a
-  fixture cannot drift in silence. The flag is honoured only in the
-  pinned-transcript test; no other test can rewrite a fixture by accident.
+- **A missing fixture fails, it does not compare as empty.** Outside the
+  update path all three files of a case must exist; an absent one fails
+  the test naming it, so a fixture deleted by accident is a loud pin
+  failure, never a diff that reads as if the stream were empty.
+
+- **Regeneration is a dedicated test gated on an explicit environment
+  flag.** `test_regenerate_the_committed_fixtures` reruns each case and,
+  when `AGENTMARSHAL_UPDATE_GATE_FIXTURES` is set to a non-empty value
+  other than `0`, writes the normalized transcript to the fixture files;
+  without the flag it skips, so no run rewrites a fixture it was not
+  asked to. A task that changes the gate's output on purpose runs that
+  test once with the flag set and commits the fixture diff with its
+  change — that diff, in review, is the naming the requirement asks for.
+  The pinned-transcript test removes the variable from its own
+  environment before comparing: a stray setting in a caller's
+  environment can neither rewrite fixtures nor change what the pin
+  compares.
 
 - **The 0.3.0 transcript comparisons are removed, not kept.** Criterion 4
   permits keeping the released-binary comparison as an optional
@@ -99,6 +110,17 @@ quote.
   scenario-naming delegates keep naming their scenarios and now delegate
   to the fixture test.
 
+- **The other scenarios that promised a 0.3.0 transcript are restated
+  against the same fixtures.** scope-enforcement's "a candidate without
+  renames prints the transcript it printed before" and review-evidence's
+  "an old journal reads as before" get MODIFIED deltas that name the
+  committed fixtures in place of the released binary. The first keeps its
+  scenario-naming test, which delegates to the fixture pin. The second's
+  test builds the same candidate the `embedded-implementation` case builds
+  — approved, its review record carrying no `artifacts` — and now holds
+  that candidate's gate transcript to the committed fixture beside its
+  existing `status`/`report` checks.
+
 ## Risks
 
 - [A run-dependent value the substitution does not enumerate makes the pin
@@ -106,9 +128,10 @@ quote.
   names the value; the substitution's docstring lists what it covers so a
   new value class is added deliberately.
 - [An env var named `AGENTMARSHAL_UPDATE_GATE_FIXTURES` leaks into a
-  caller's environment and silently rewrites fixtures] → the flag is read
-  only in the pinned test, and its write lands in `tests/fixtures/` where
-  `git status` shows it immediately.
+  caller's environment and silently rewrites fixtures] → the pinned test
+  deletes the variable from its environment before comparing, only the
+  regeneration test honours it, and its write lands in `tests/fixtures/`
+  where `git status` shows it immediately.
 - [The sidecar journal-only fixture reads as pinning a lane that does not
   exist] → the case is named for the candidate that would take the lane in
   an embedded journal, and the pinned refusal is what proves the lane is

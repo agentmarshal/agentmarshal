@@ -1,9 +1,9 @@
 Sidecar checks are advisory and decide no merge.
 PASS: task CR-001 is not closed at base
 PASS: diff within contract scope (contract read from the sidecar working tree, not pinned to a commit)
-PASS: latest review of <head-sha> is approved
+PASS: latest review of <head-sha-12> is approved
 PASS: declared reviewer identity differs from the candidate's declared writers
-PASS: pipeline attested for <head-sha>
+PASS: pipeline attested for <head-sha-12>
 PASS: evidence records are append-only
 PASS: added records are valid (none examined: a host journal is not this journal's evidence)
 PASS: no record-path collisions (none examined: the candidate adds no record to this journal)
