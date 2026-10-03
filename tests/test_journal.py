@@ -163,7 +163,7 @@ def test_generate_ulids_are_unique_and_lexicographically_ordered() -> None:
     ("content", "error"),
     [
         (
-            "+++\nschema = 3\nid = 'CR-001'\ntitle = 'Task'\nscope = []\n"
+            "+++\nschema = 4\nid = 'CR-001'\ntitle = 'Task'\nscope = []\n"
             "acceptance = []\n+++\n",
             "schema",
         ),
@@ -241,9 +241,201 @@ def test_schema_1_contract_names_the_field_that_requires_schema_2(
         parse_contract(contract)
 
 
+def test_schema_3_contract_reads_the_assignment_and_the_rules(
+    tmp_path: Path,
+) -> None:
+    """Scenario: the assignment lists keep their declared order."""
+    contract = tmp_path / "contract.md"
+    contract.write_text(
+        _contract_text(
+            3,
+            "implementers = ['devin', 'codex', 'devin-ci']\n"
+            "reviewers = ['claude', 'devin']\n"
+            "independence = [\n"
+            "    'reviewer-not-writer',\n"
+            "    'distinct-actor',\n"
+            "    'distinct-vendor',\n"
+            "    'distinct-model',\n"
+            "]\n",
+        ),
+        encoding="utf-8",
+    )
+
+    header = parse_contract(contract)
+
+    assert header.schema == 3
+    assert header.implementers == ("devin", "codex", "devin-ci")
+    assert header.reviewers == ("claude", "devin")
+    assert header.independence == (
+        "reviewer-not-writer",
+        "distinct-actor",
+        "distinct-vendor",
+        "distinct-model",
+    )
+
+
+def test_schema_3_contract_without_the_new_fields_has_empty_values(
+    tmp_path: Path,
+) -> None:
+    """Scenario: each field is optional."""
+    contract = tmp_path / "contract.md"
+    contract.write_text(_contract_text(3), encoding="utf-8")
+
+    header = parse_contract(contract)
+
+    assert header.implementers == ()
+    assert header.reviewers == ()
+    assert header.independence == ()
+
+
+def test_schema_3_contract_may_carry_the_schema_2_fields(
+    tmp_path: Path,
+) -> None:
+    """Scenario: a schema-3 header may carry the schema-2 fields."""
+    contract = tmp_path / "contract.md"
+    contract.write_text(
+        _contract_text(
+            3,
+            "decisions = ['ADR-0018']\n"
+            "documents = ['docs/adr/']\n"
+            "extensions = ['openspec']\n"
+            "implementers = ['devin']\n",
+        ),
+        encoding="utf-8",
+    )
+
+    header = parse_contract(contract)
+
+    assert header.decisions == ("ADR-0018",)
+    assert header.documents == ("docs/adr/",)
+    assert header.extensions == ("openspec",)
+    assert header.implementers == ("devin",)
+
+
+@pytest.mark.parametrize("schema", [1, 2])
+@pytest.mark.parametrize("field", ["implementers", "reviewers", "independence"])
+def test_older_schema_names_the_field_that_requires_schema_3(
+    tmp_path: Path, schema: int, field: str
+) -> None:
+    """Scenario: a schema-3 field in an older header is refused."""
+    contract = tmp_path / "contract.md"
+    contract.write_text(
+        _contract_text(schema, f"{field} = ['devin']\n"), encoding="utf-8"
+    )
+
+    with pytest.raises(
+        JournalContractError, match=rf"field '{field}' requires schema 3"
+    ):
+        parse_contract(contract)
+
+
+def test_schema_4_is_an_unknown_header_schema(tmp_path: Path) -> None:
+    """Scenario: an unknown schema version is refused."""
+    contract = tmp_path / "contract.md"
+    contract.write_text(_contract_text(4), encoding="utf-8")
+
+    with pytest.raises(JournalContractError, match="unknown or missing schema version"):
+        parse_contract(contract)
+
+
+@pytest.mark.parametrize("field", ["implementers", "reviewers", "independence"])
+def test_schema_3_refuses_an_empty_list(tmp_path: Path, field: str) -> None:
+    """Scenario: an empty list is refused naming the field."""
+    contract = tmp_path / "contract.md"
+    contract.write_text(_contract_text(3, f"{field} = []\n"), encoding="utf-8")
+
+    with pytest.raises(
+        JournalContractError,
+        match=rf"field '{field}' must name at least one entry",
+    ):
+        parse_contract(contract)
+
+
+@pytest.mark.parametrize("field", ["implementers", "reviewers", "independence"])
+def test_schema_3_refuses_a_repeated_entry(tmp_path: Path, field: str) -> None:
+    """Scenario: a repeated entry is refused naming the field."""
+    contract = tmp_path / "contract.md"
+    contract.write_text(
+        _contract_text(3, f"{field} = ['devin', 'other', 'devin']\n"),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        JournalContractError,
+        match=rf"field '{field}' repeats entry 'devin'",
+    ):
+        parse_contract(contract)
+
+
+@pytest.mark.parametrize("field", ["implementers", "reviewers"])
+def test_schema_3_refuses_an_empty_actor_id(tmp_path: Path, field: str) -> None:
+    """Scenario: an empty actor id is refused naming the field."""
+    contract = tmp_path / "contract.md"
+    contract.write_text(
+        _contract_text(3, f"{field} = ['devin', '']\n"), encoding="utf-8"
+    )
+
+    with pytest.raises(
+        JournalContractError, match=rf"field '{field}' entry '' is empty"
+    ):
+        parse_contract(contract)
+
+
+def test_schema_3_refuses_an_entry_that_is_not_a_string(
+    tmp_path: Path,
+) -> None:
+    """Scenario: an entry that is not a string is refused naming the field."""
+    contract = tmp_path / "contract.md"
+    contract.write_text(
+        _contract_text(3, "implementers = ['devin', 42]\n"), encoding="utf-8"
+    )
+
+    with pytest.raises(
+        JournalContractError,
+        match=r"field 'implementers' must be an array of strings",
+    ):
+        parse_contract(contract)
+
+
+@pytest.mark.parametrize(
+    ("field", "entry"),
+    [
+        ("implementers", "dev\\nin"),
+        ("reviewers", "claude\\u2028"),
+        ("independence", "distinct-actor\\u200f"),
+    ],
+)
+def test_schema_3_refuses_an_entry_that_could_forge_a_line(
+    tmp_path: Path, field: str, entry: str
+) -> None:
+    """Scenario: an entry that could forge a line is refused."""
+    contract = tmp_path / "contract.md"
+    contract.write_text(_contract_text(3, f'{field} = ["{entry}"]\n'), encoding="utf-8")
+
+    with pytest.raises(
+        JournalContractError, match="must not contain control characters"
+    ):
+        parse_contract(contract)
+
+
+def test_schema_3_refuses_an_unknown_independence_rule(
+    tmp_path: Path,
+) -> None:
+    """Scenario: an unknown independence rule is refused naming the rule."""
+    contract = tmp_path / "contract.md"
+    contract.write_text(
+        _contract_text(3, "independence = ['distinct-actor', 'self-reviewed']\n"),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(JournalContractError, match="'self-reviewed' is not a known"):
+        parse_contract(contract)
+
+
 def test_contract_without_new_fields_has_empty_values_in_both_schemas(
     tmp_path: Path,
 ) -> None:
+    """Scenario: headers of schema 1 and 2 parse exactly as before."""
     headers = []
     for schema in (1, 2):
         contract = tmp_path / f"contract-{schema}.md"
@@ -257,6 +449,9 @@ def test_contract_without_new_fields_has_empty_values_in_both_schemas(
     assert headers[0].decisions == headers[1].decisions == ()
     assert headers[0].documents == headers[1].documents == ()
     assert headers[0].extensions == headers[1].extensions == ()
+    assert headers[0].implementers == headers[1].implementers == ()
+    assert headers[0].reviewers == headers[1].reviewers == ()
+    assert headers[0].independence == headers[1].independence == ()
 
 
 def test_released_030_refuses_a_schema_2_contract(
