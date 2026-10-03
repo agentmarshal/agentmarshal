@@ -12,6 +12,7 @@ import pytest
 
 from agentmarshal.cli import main
 from agentmarshal.journal import review
+from agentmarshal.journal.placement import resolve_placement
 from agentmarshal.journal.records import (
     create_amendment_record,
     create_completed_record,
@@ -19,6 +20,9 @@ from agentmarshal.journal.records import (
     read_records,
     write_record,
 )
+from agentmarshal.localstate import local_state
+from agentmarshal.process_log import read_events
+from test_placement import _host_and_sidecar
 
 
 @pytest.fixture(autouse=True)
@@ -544,6 +548,108 @@ def test_dry_run_requires_no_task_or_commit(
     assert "parseable verdict" in capsys.readouterr().out
     tasks = repo / ".agentmarshal" / "journal" / "tasks"
     assert not tasks.exists() or list(tasks.iterdir()) == []
+
+
+def test_a_dry_run_keeps_the_command_diagnostics_in_the_local_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A dry run's stderr lands where a recorded run's does, with no task."""
+
+    repo, _commit = _review_repo(tmp_path, monkeypatch)
+    stub = _reviewer_stub(
+        tmp_path,
+        _verdict(review._DRY_RUN_COMMIT, "approved", []),
+        error_output="wrapper used a fallback\n",
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+    capsys.readouterr()
+
+    assert main(["review", "--dry-run"]) == 0
+
+    captured = capsys.readouterr()
+    kept = _kept_diagnostics(repo)
+    events = _diagnostics_events(repo)
+    assert len(kept) == 1
+    assert kept[0].read_bytes() == b"wrapper used a fallback\n"
+    assert str(kept[0]) in captured.err
+    assert len(events) == 1
+    assert "task" not in events[0]
+
+
+def test_a_dry_run_resolves_the_journal_root_like_a_recorded_run(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A dry run resolves the journal root like a recorded run.
+
+    A caller holding a resolved placement names the journal directory
+    itself — the same ``journal_root`` ``launch_review`` takes — so in a
+    sidecar the diagnostics land in the sidecar repository's process log
+    and the host's local state is never consulted, whatever the working
+    directory is.
+    """
+
+    host, sidecar, _base, _head = _host_and_sidecar(tmp_path, monkeypatch)
+    stub = _reviewer_stub(
+        tmp_path,
+        _verdict(review._DRY_RUN_COMMIT, "approved", []),
+        error_output="wrapper used a fallback\n",
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+    capsys.readouterr()
+
+    tree, note = review.dry_run_review(
+        host, "test-model", journal_root=sidecar / ".agentmarshal" / "journal"
+    )
+
+    assert tree == "a snapshot of HEAD"
+    kept = _kept_diagnostics(sidecar)
+    events = _diagnostics_events(sidecar)
+    assert len(kept) == 1
+    assert kept[0].read_bytes() == b"wrapper used a fallback\n"
+    assert note is not None
+    assert str(kept[0]) in note
+    assert len(events) == 1
+    assert "task" not in events[0]
+    assert not (host / ".git" / "agentmarshal").exists()
+
+
+def test_a_dry_run_through_the_cli_keeps_diagnostics_in_the_sidecar(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The CLI hands the dry run the placement's journal root.
+
+    ``review --dry-run`` resolves a placement like a recorded run, so in a
+    sidecar the kept diagnostics and the ``review-diagnostics`` event land
+    in the sidecar repository's local state and the host's is never
+    consulted.
+    """
+
+    host, sidecar, _base, _head = _host_and_sidecar(tmp_path, monkeypatch)
+    stub = _reviewer_stub(
+        tmp_path,
+        _verdict(review._DRY_RUN_COMMIT, "approved", []),
+        error_output="wrapper used a fallback\n",
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+    capsys.readouterr()
+
+    assert main(["review", "--dry-run"]) == 0
+
+    captured = capsys.readouterr()
+    kept = _kept_diagnostics(sidecar)
+    events = _diagnostics_events(sidecar)
+    assert len(kept) == 1
+    assert kept[0].read_bytes() == b"wrapper used a fallback\n"
+    assert str(kept[0]) in captured.err
+    assert len(events) == 1
+    assert "task" not in events[0]
+    assert not (host / ".git" / "agentmarshal").exists()
 
 
 def test_review_uses_contract_from_reviewed_commit(
@@ -1463,6 +1569,27 @@ def test_finding_review_needs_no_reachable_sidecar_host(
     assert record["reviewed_finding"] == finding
 
 
+def _diagnostics_events(repo: Path) -> list[dict[str, object]]:
+    """The ``review-diagnostics`` events in the repo's process log."""
+
+    return [
+        event
+        for event in read_events(local_state(resolve_placement(repo)))
+        if event.get("event") == "review-diagnostics"
+    ]
+
+
+def _kept_diagnostics(repo: Path) -> list[Path]:
+    """The diagnostics files under the repo's local state, if any."""
+
+    files_dir = local_state(resolve_placement(repo)).log / "files"
+    return (
+        sorted(files_dir.glob("agentmarshal-reviewer-stderr-*.txt"))
+        if files_dir.is_dir()
+        else []
+    )
+
+
 def test_a_warning_from_a_wrapper_reaches_the_operator(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1483,13 +1610,98 @@ def test_a_warning_from_a_wrapper_reaches_the_operator(
     assert main(_review_args(commit)) == 0
 
     captured = capsys.readouterr()
+    kept = _kept_diagnostics(repo)
+    events = _diagnostics_events(repo)
+    assert len(read_records(repo / ".agentmarshal" / "journal", "CR-001")) == 2
+    assert len(kept) == 1
+    assert kept[0].read_bytes() == diagnostic.encode("utf-8")
+    assert not kept[0].is_relative_to(repo / ".agentmarshal" / "journal")
+    assert str(kept[0]) in captured.err
+    assert len(events) == 1
+    assert events[0]["task"] == "CR-001"
+    assert events[0]["path"] == str(kept[0])
+    assert events[0]["sha256"] == hashlib.sha256(diagnostic.encode("utf-8")).hexdigest()
+    assert list(tmp_path.glob("agentmarshal-reviewer-stderr-*.txt")) == []
+
+
+@pytest.mark.parametrize(
+    "capture",
+    [
+        {"overrides": {"reviews": "commit"}},
+        {"overrides": {"reviews": "hash"}},
+        {"preset": "minimal"},
+    ],
+    ids=["commit", "hash", "off"],
+)
+def test_diagnostics_are_kept_at_every_capture_level(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    capture: dict[str, object],
+) -> None:
+    """Scenario: diagnostics are kept at every capture level."""
+
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    project_path = repo / ".agentmarshal" / "project.json"
+    project = json.loads(project_path.read_text(encoding="utf-8"))
+    project["capture"] = capture
+    project_path.write_text(json.dumps(project), encoding="utf-8")
+    diagnostic = "wrapper used a fallback\n"
+    stub = _reviewer_stub(
+        tmp_path,
+        _verdict(commit, "approved", []),
+        error_output=diagnostic,
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+    capsys.readouterr()
+
+    assert main(_review_args(commit)) == 0
+
+    captured = capsys.readouterr()
+    kept = _kept_diagnostics(repo)
+    events = _diagnostics_events(repo)
+    assert len(kept) == 1, captured.err
+    assert kept[0].read_bytes() == diagnostic.encode("utf-8")
+    assert str(kept[0]) in captured.err
+    assert len(events) == 1
+    assert events[0]["task"] == "CR-001"
+    assert events[0]["path"] == str(kept[0])
+    assert events[0]["sha256"] == hashlib.sha256(diagnostic.encode("utf-8")).hexdigest()
+
+
+def test_diagnostics_fall_back_to_a_temporary_file_when_the_local_state_cannot_be_used(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: diagnostics fall back to a temporary file when the local state
+    cannot be used."""
+
+    _repo, commit = _review_repo(tmp_path, monkeypatch)
+    diagnostic = "wrapper used a fallback\n"
+    stub = _reviewer_stub(
+        tmp_path,
+        _verdict(commit, "approved", []),
+        error_output=diagnostic,
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    def _unusable(*_args: object, **_kwargs: object) -> Path:
+        raise review._LocalStateUnavailable("git cannot name a common directory")
+
+    monkeypatch.setattr(review, "_local_state_output", _unusable)
+    capsys.readouterr()
+
+    assert main(_review_args(commit)) == 0
+
+    captured = capsys.readouterr()
     kept = list(tmp_path.glob("agentmarshal-reviewer-stderr-*.txt"))
     try:
-        assert len(read_records(repo / ".agentmarshal" / "journal", "CR-001")) == 2
         assert len(kept) == 1
-        assert kept[0].read_text(encoding="utf-8") == diagnostic
-        assert not kept[0].is_relative_to(repo / ".agentmarshal" / "journal")
+        assert kept[0].read_bytes() == diagnostic.encode("utf-8")
         assert str(kept[0]) in captured.err
+        assert "the clone's local state could not be used" in captured.err
+        assert "git cannot name a common directory" in captured.err
     finally:
         for path in kept:
             path.unlink(missing_ok=True)
@@ -1502,9 +1714,10 @@ def test_a_verdict_survives_a_failure_to_keep_the_warning(
 ) -> None:
     """Preservation is best effort: the review is recorded, the loss is said.
 
-    A wrapper's warning is a convenience beside the record. A temporary file
-    that cannot be written must not throw away a verdict the reviewer already
-    produced and the journal can hold."""
+    A wrapper's warning is a convenience beside the record. Neither place
+    being able to hold it — the local state nor a temporary file — must not
+    throw away a verdict the reviewer already produced and the journal can
+    hold."""
 
     repo, commit = _review_repo(tmp_path, monkeypatch)
     stub = _reviewer_stub(
@@ -1514,9 +1727,13 @@ def test_a_verdict_survives_a_failure_to_keep_the_warning(
     )
     monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
 
+    def _unusable(*_args: object, **_kwargs: object) -> Path:
+        raise review._LocalStateUnavailable("no common directory")
+
     def _refuse(output: bytes) -> Path:
         raise OSError("no space left on device")
 
+    monkeypatch.setattr(review, "_local_state_output", _unusable)
     monkeypatch.setattr(review, "_preserve_reviewer_diagnostics", _refuse)
     capsys.readouterr()
 
@@ -1526,6 +1743,7 @@ def test_a_verdict_survives_a_failure_to_keep_the_warning(
     assert len(read_records(repo / ".agentmarshal" / "journal", "CR-001")) == 2
     assert "reviewer diagnostics could not be kept" in captured.err
     assert "no space left on device" in captured.err
+    assert "no common directory" in captured.err
     # The file was the way to keep a long warning out of parseable output;
     # without it the note carries the warning rather than losing it.
     assert "wrapper used a fallback" in captured.err
@@ -1539,7 +1757,7 @@ def test_a_silent_command_says_nothing_about_its_silence(
 ) -> None:
     """Scenario: a silent command says nothing about its silence."""
 
-    _repo, commit = _review_repo(tmp_path, monkeypatch)
+    repo, commit = _review_repo(tmp_path, monkeypatch)
     stub = _reviewer_stub(tmp_path, _verdict(commit, "approved", []))
     monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
     capsys.readouterr()
@@ -1549,6 +1767,8 @@ def test_a_silent_command_says_nothing_about_its_silence(
     captured = capsys.readouterr()
     assert "reviewer diagnostics kept at" not in captured.out
     assert "reviewer diagnostics kept at" not in captured.err
+    assert _kept_diagnostics(repo) == []
+    assert _diagnostics_events(repo) == []
     assert list(tmp_path.glob("agentmarshal-reviewer-stderr-*.txt")) == []
 
 

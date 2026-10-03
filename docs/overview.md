@@ -159,13 +159,17 @@ boundary is stated in the ADRs and
   ADR-0005 designs the Statement projection; it names signing as a later slice
   without specifying it.
 - **Capture policy** — the `reviews` class is read in 0.4.1: its default
-  `hash` level keeps a reviewer's standard output out of the journal in a named
-  local temporary file until the private store exists, while
-  `capture.overrides.reviews = "commit"` pins it as a journal artifact. The
-  economics and sessions classes are not read yet; `record-session` keeps its
-  existing behaviour whatever their levels say. Prompt text and raw session
-  transcripts still have no policy-driven writer or private store. Designed in
-  ADR-0005.
+  `hash` level keeps a reviewer's standard output out of the journal in a file
+  under the clone's local state — `log/files/` beside the process log in
+  `.git/agentmarshal/` — announced by a `review-prose` event carrying the
+  file's path and its SHA-256, while `capture.overrides.reviews = "commit"`
+  pins it as a journal artifact. A successful reviewer command's error output
+  is kept the same way at every level, announced by a `review-diagnostics`
+  event; a named local temporary file is only the fallback when the local
+  state cannot be used. The economics and sessions classes are not read yet;
+  `record-session` keeps its existing behaviour whatever their levels say.
+  Prompt text and raw session transcripts still have no policy-driven writer
+  or private store. Designed in ADR-0005.
 - **Mandatory leak-scan enforcement** — 0.4.1 ships a standalone `leak-scan`
   command and an advisory merge-time scan that warns on possible leaks in a
   candidate's additions. Making a match block is roadmap. The scan is

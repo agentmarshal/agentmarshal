@@ -102,11 +102,17 @@ output is kept** and its path is named in the error — a rejected verdict shoul
 not cost you the analysis.
 
 An *accepted* verdict keeps the reviewer's standard output out of the journal
-by default. The default reviews level, `hash`, is a stopgap until the private
-store exists: the command writes a named local temporary file and the review
-record carries no artifact. Set `capture.overrides.reviews = "commit"` in the
-project file to pin the standard output beside the record under the task's
-`artifacts/` directory. At that level `agentmarshal review` names the artifact
+by default. At the default reviews level, `hash`, the command writes it byte
+for byte to a file under the clone's local state — `log/files/` beside the
+process log in `.git/agentmarshal/` — appends a `review-prose` event carrying
+the file's path and its SHA-256 to the process log, and the review record
+carries no artifact; a named local temporary file is only the fallback when
+the local state cannot be used, and stderr says why. Whatever a successful
+reviewer command wrote to its error stream is kept the same way at every
+level and announced by a `review-diagnostics` event. Set
+`capture.overrides.reviews = "commit"` in the project file to pin the
+standard output beside the record under the task's `artifacts/` directory.
+At that level `agentmarshal review` names the artifact
 **on stderr**; stdout stays the record path alone for callers that read it.
 
 ### Gate attestation modes (`--attestation`)
@@ -352,13 +358,15 @@ The review record is written into the journal working tree. It stays
 uncommitted until you record completion, so a review never has to be part of
 the very diff it attests.
 By default, `agentmarshal review` keeps the reviewer's standard output in a
-named local temporary file and records no artifact; the default `hash` level is
-a stopgap until the private store exists. Set
+file under the clone's local state — `log/files/` beside the process log in
+`.git/agentmarshal/` — announces it with a `review-prose` event in the process
+log, and records no artifact; a named local temporary file is only the
+fallback when the local state cannot be used. Set
 `capture.overrides.reviews = "commit"` to pin that output under the task's
 `artifacts/` directory with its SHA-256 on the review record. At `commit`, the
-successful model review prints `reviewer prose pinned: <ref>` and creates no
-temporary copy. `submit-review --prose FILE` attaches human prose only at
-`commit`; it is refused at the default and at `off`.
+successful model review prints `reviewer prose pinned: <ref>` and keeps no
+prose copy outside the journal. `submit-review --prose FILE` attaches human
+prose only at `commit`; it is refused at the default and at `off`.
 
 If the latest review of the candidate is non-approving, an operator may instead
 accept that exact commit over all of its blocking findings:

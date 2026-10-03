@@ -535,12 +535,68 @@ def _preserve_output(output: str) -> Path:
     return Path(name)
 
 
-def _preserve_accepted_output(output: bytes) -> Path:
-    """Keep an accepted verdict's output outside the journal, byte for byte.
+class _LocalStateUnavailable(Exception):
+    """The clone's local state cannot take a kept file this run."""
 
-    The capture policy's ``hash`` level names a private store that does not
-    exist yet; until it does, the output stays in a local temporary file the
-    command names, and nothing in the journal refers to it.
+
+def _local_state_output(
+    journal_project_root: Path,
+    *,
+    prefix: str,
+    event: str,
+    task: str | None,
+    output: bytes,
+) -> Path:
+    """Keep bytes under the journal repository's local state and say where.
+
+    The file lands in ``log/files/`` under the clone's local state — the
+    process-log area — and an event names the file and its sha256.
+    ``journal_project_root`` is the repository that holds the journal, so in
+    a sidecar the file and the event land in the sidecar's own state and the
+    host never enters the call (ADR-0014 decision 5). Every failure on this
+    path — git cannot name the common directory, a directory cannot be
+    created, an event cannot be appended — reaches the caller as a
+    ``_LocalStateUnavailable`` carrying the reason, so the temporary-file
+    fallback is one catch.
+
+    The imports are deferred: ``agentmarshal.journal``'s package init
+    imports this module, and the pin that forbids the gate importing
+    ``agentmarshal.process_log`` would break if they sat at the top.
+    """
+
+    from agentmarshal.journal.placement import PlacementError, resolve_placement
+    from agentmarshal.localstate import LocalStateError, local_state
+    from agentmarshal.process_log import (
+        ProcessLogError,
+        open_writer,
+        write_event,
+        write_payload,
+    )
+
+    try:
+        state = local_state(resolve_placement(journal_project_root))
+        kept = write_payload(state, prefix, output)
+        write_event(
+            open_writer(state),
+            event,
+            task=task,
+            path=str(kept),
+            sha256=hashlib.sha256(output).hexdigest(),
+        )
+    except (LocalStateError, PlacementError, ProcessLogError, OSError) as error:
+        reason = (
+            error.strerror or str(error) if isinstance(error, OSError) else str(error)
+        )
+        raise _LocalStateUnavailable(reason) from error
+    return kept
+
+
+def _preserve_accepted_output(output: bytes) -> Path:
+    """Write kept output to a local temporary file — the fallback path.
+
+    Kept output goes under the clone's local state now; a temporary file is
+    where it lands when the local state cannot be used. The file is
+    deliberately not cleaned up; removing it is the caller's decision.
     """
 
     descriptor, name = tempfile.mkstemp(
@@ -552,12 +608,13 @@ def _preserve_accepted_output(output: bytes) -> Path:
 
 
 def _preserve_reviewer_diagnostics(output: bytes) -> Path:
-    """Keep successful reviewer stderr beside rejected-verdict copies.
+    """Write successful reviewer stderr to a temporary file — the fallback.
 
-    Diagnostics are deliberately a local temporary artifact, not journal
-    evidence.  A wrapper may use stderr for a warning despite returning zero;
-    naming the path tells the operator without mixing that output into the
-    command's parseable stdout.
+    Diagnostics go under the clone's local state now, never journal
+    evidence; a temporary file is where they land when the local state
+    cannot be used.  A wrapper may use stderr for a warning despite
+    returning zero; naming the path tells the operator without mixing that
+    output into the command's parseable stdout.
     """
 
     descriptor, name = tempfile.mkstemp(
@@ -568,18 +625,78 @@ def _preserve_reviewer_diagnostics(output: bytes) -> Path:
     return Path(name)
 
 
-def _keep_diagnostics(output: bytes) -> str | None:
+def _keep_accepted_output(
+    journal_project_root: Path, task_id: str, output: bytes
+) -> str:
+    """Keep an accepted verdict's output outside the journal and say where.
+
+    At ``hash`` the journal holds nothing about the prose: the bytes live in
+    a file under the local state's process-log area and a ``review-prose``
+    event names the file and its sha256 (ADR-0014 decisions 1 and 11,
+    ADR-0022 section 7). When the local state cannot be used the output
+    falls back to a temporary file and the note says why; a verdict the
+    reviewer already produced is never discarded because preservation
+    failed.
+    """
+
+    try:
+        kept = _local_state_output(
+            journal_project_root,
+            prefix="agentmarshal-reviewer-output-",
+            event="review-prose",
+            task=task_id,
+            output=output,
+        )
+    except _LocalStateUnavailable as error:
+        try:
+            kept = _preserve_accepted_output(output)
+        except OSError as inner:
+            return (
+                f"reviewer prose could not be kept locally ({inner}); the "
+                f"clone's local state could not be used either ({error})"
+            )
+        return (
+            f"reviewer output kept at {kept} (capture level: hash); the "
+            f"clone's local state could not be used ({error})"
+        )
+    return f"reviewer output kept at {kept} (capture level: hash)"
+
+
+def _keep_diagnostics(
+    output: bytes,
+    *,
+    journal_project_root: Path | None = None,
+    task_id: str | None = None,
+) -> str | None:
     """Say where nonempty successful-command stderr went, or leave silence silent.
 
-    Preservation is best effort and this is where that is decided: the note
-    says where the bytes were kept, or that they could not be kept and why.
-    A verdict the reviewer already produced is never discarded because a
-    temporary file could not be written — the operator is told instead, the
-    way :func:`_reject` degrades when it cannot keep raw output.
+    The bytes are kept under the journal repository's local state — the
+    process-log area — and a ``review-diagnostics`` event names the file and
+    its sha256, whatever the capture level (ADR-0014 decisions 1 and 11).
+    ``journal_project_root`` is the repository holding the journal; ``None``
+    keeps the temporary-file path for a caller that has no journal. When the
+    local state cannot be used the output falls back to a temporary file and
+    the note says why. Preservation is best effort, exactly as before: a
+    failure to keep the bytes lands in the note rather than costing the
+    verdict.
     """
 
     if not output:
         return None
+    reason: str | None = None
+    if journal_project_root is not None:
+        try:
+            kept = _local_state_output(
+                journal_project_root,
+                prefix="agentmarshal-reviewer-stderr-",
+                event="review-diagnostics",
+                task=task_id,
+                output=output,
+            )
+        except _LocalStateUnavailable as error:
+            reason = str(error)
+        else:
+            return f"reviewer diagnostics kept at {kept}"
     try:
         kept = _preserve_reviewer_diagnostics(output)
     except OSError as error:
@@ -587,8 +704,19 @@ def _keep_diagnostics(output: bytes) -> str | None:
         # parseable output. Without it the note itself carries the bytes:
         # losing the warning is the defect proposal 021 reported.
         detail = output.decode("utf-8", errors="replace")
+        if reason is not None:
+            return (
+                "reviewer diagnostics could not be kept under the clone's "
+                f"local state ({reason}) or in a temporary file ({error}); "
+                f"they follow:\n{detail}"
+            )
         return (
             f"reviewer diagnostics could not be kept ({error}); they follow:\n{detail}"
+        )
+    if reason is not None:
+        return (
+            f"reviewer diagnostics kept at {kept}; the clone's local state "
+            f"could not be used ({reason})"
         )
     return f"reviewer diagnostics kept at {kept}"
 
@@ -730,7 +858,10 @@ def _extract_snapshot(project_root: Path, commit: str, snapshot: Path) -> None:
 
 
 def dry_run_review(
-    project_root: Path, reviewer_model: str | None
+    project_root: Path,
+    reviewer_model: str | None,
+    *,
+    journal_root: Path | None = None,
 ) -> tuple[str, str | None]:
     """Exercise the configured reviewer without writing to any journal.
 
@@ -738,6 +869,10 @@ def dry_run_review(
     relative path in the template resolves as it will in earnest. The tree is
     the current ``HEAD`` rather than a commit the operator names, which is a
     departure from this change's design note and is recorded there.
+    ``journal_root`` is the journal directory a recorded review would write
+    against — the diagnostics land in that repository's process log; left
+    ``None`` it resolves under ``project_root``, the same default
+    ``launch_review`` applies when its own caller names no journal.
     """
 
     template = os.environ.get("AGENTMARSHAL_REVIEWER_CMD")
@@ -771,7 +906,17 @@ def dry_run_review(
         raw_output, raw_diagnostics = _run_reviewer(
             _reviewer_command(reviewer_model or "", prompt_file), snapshot, prompt
         )
-        diagnostics_note = _keep_diagnostics(raw_diagnostics)
+        # The diagnostics belong to the journal repository's log like a
+        # recorded run's, and the journal resolves the way a recorded run
+        # resolves one its caller does not name — under the project the
+        # command runs against, never the working directory. A caller
+        # holding a resolved placement passes the journal root itself, so a
+        # sidecar's diagnostics land in the sidecar's log and the host is
+        # never consulted.
+        journal_root = journal_root or project_root / ".agentmarshal" / "journal"
+        diagnostics_note = _keep_diagnostics(
+            raw_diagnostics, journal_project_root=journal_root.parents[1]
+        )
         output = raw_output.decode("utf-8", errors="replace")
         try:
             (
@@ -939,7 +1084,11 @@ def _launch_review_tail(
             if operator_note is None:
                 raise
             raise _with_diagnostics(error, operator_note) from error
-        diagnostics_note = _keep_diagnostics(raw_diagnostics)
+        diagnostics_note = _keep_diagnostics(
+            raw_diagnostics,
+            journal_project_root=journal_root.parents[1],
+            task_id=task_id,
+        )
         if operator_note is not None:
             diagnostics_note = (
                 f"{operator_note}\n{diagnostics_note}"
@@ -1005,12 +1154,7 @@ def _launch_review_tail(
         ) from error
     prose_note: str | None = None
     if prose_capture_level is CaptureLevel.HASH:
-        try:
-            kept = _preserve_accepted_output(raw_output)
-        except OSError as error:
-            prose_note = f"reviewer prose could not be kept locally: {error}"
-        else:
-            prose_note = f"reviewer output kept at {kept} (capture level: hash)"
+        prose_note = _keep_accepted_output(journal_root.parents[1], task_id, raw_output)
     elif prose_capture_level is CaptureLevel.OFF:
         prose_note = "reviewer prose was not kept (capture level: off)"
     return LaunchedReview(
