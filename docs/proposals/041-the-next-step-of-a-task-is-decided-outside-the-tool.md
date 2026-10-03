@@ -87,7 +87,8 @@ Measurements, as reported — two days, one project, one coordinating agent:
    retry, not a round); the run hit the wrapper's time limit **with a
    finished report** (next: `review`, not `fix`). The reporter notes this
    extends proposals 024 (quota stops), 034 (limits as outcome values) and
-   036 (an unfinished run must not be reviewed) to the decision they should
+   [proposal 036](../proposals/036-review-accepts-a-candidate-the-implementer-did-not-finish.md)
+   (an unfinished run must not be reviewed) to the decision they should
    drive.
 3. **A plan as data** — the order of tasks, the implementer per task, pauses
    ("not before a time") and holds, living in the journal or a plan file the
@@ -117,10 +118,11 @@ the accounting rework's ground — `provider-limit` is already a documented
 outcome since 0.4.1, and the output-limit value is accepted with proposal
 034 — plus a flag on the session that its report was finished, which is what
 tells a run killed after completing its work from one killed before. The
-flag is a different fact from the one proposal 036's refusal rests on: that
-refusal reads the session's `commit` against the reviewed commit and an
-outcome other than `implemented`, while the flag marks that the run wrote
-its report. `next` reads these classes.
+flag is a different fact from the one
+[proposal 036](../proposals/036-review-accepts-a-candidate-the-implementer-did-not-finish.md)'s
+refusal rests on: that refusal reads the session's `commit` against the
+reviewed commit and an outcome other than `implemented`, while the flag
+marks that the run wrote its report. `next` reads these classes.
 Accepted; not shipped yet.
 
 **The plan as data** is accepted, met by what the project supplies rather
@@ -146,6 +148,9 @@ reference driver goes into the adopter kit.
 ## Corrections
 
 - 2026-10-03: the failure-classes paragraph called the "report finished"
-  flag the same fact proposal 036's refusal rests on; 036 rests on the
-  session's `commit` and an outcome other than `implemented`, and the
-  paragraph now says so.
+  flag the same fact
+  [proposal 036](../proposals/036-review-accepts-a-candidate-the-implementer-did-not-finish.md)'s
+  refusal rests on;
+  [proposal 036](../proposals/036-review-accepts-a-candidate-the-implementer-did-not-finish.md)
+  rests on the session's `commit` and an outcome other than
+  `implemented`, and the paragraph now says so.

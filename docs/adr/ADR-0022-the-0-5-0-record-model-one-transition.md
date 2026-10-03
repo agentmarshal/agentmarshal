@@ -156,7 +156,7 @@ the type. Each type joins the predicate-type registry
 
 | Type | Fields | Admitted after a terminal record |
 |---|---|---|
-| `check` | `commit`, `name`, `result` (`passed` \| `failed` \| `error` \| `skipped`), `failed_step`, `excerpt` (up to 4 KiB, leak-scanned at write), `run_url` | **yes** — a measurement, admitted after any terminal record, completed or abandoned ([record-lifecycle](../../openspec/specs/record-lifecycle/spec.md), [gate-lanes](../../openspec/specs/gate-lanes/spec.md) — the revision ADR-0017 announced and this ADR names) |
+| `check` | `commit`, `name`, `result` (`passed` \| `failed` \| `error` \| `skipped`), `failed_step`, `excerpt` (up to 4 KiB, leak-scanned at write), `run_url` | **yes** — a measurement, admitted after any terminal record, completed or abandoned ([record-lifecycle](../../openspec/specs/record-lifecycle/spec.md), [gate-lanes](../../openspec/specs/gate-lanes/spec.md) — the revision [ADR-0017](ADR-0017-evidence-of-reviews-and-checks.md) announced and this ADR names) |
 | `agreement` | `contract` — the hash agreed with | no |
 | `acknowledgement` | `commit`, `file`, `signature` **or** `marker` (the marker's number), `reason` | no |
 | `ext` | `kind` (`<name>/<kind>@<version>`), `commit` (required — ADR-0013 lists it in the envelope), `payload` (JSON, up to 64 KiB, leak-scanned at write), `payload_sha256` | no — post-gate results go to the process log |
@@ -222,7 +222,8 @@ all three.
     and `run_dir`;
   - `step-ended` — `step`, `outcome` (the vocabulary of section 4);
   - `check-output` — the check's full output (ADR-0017);
-  - `provider-export` — the raw provider exports (ADR-0019);
+  - `provider-export` — the raw provider exports
+    ([ADR-0019](ADR-0019-accounting-time-quota-resets-money.md));
   - `review-prose` — the path to the prose file and its sha256 — and
     `review-diagnostics`;
   - `extension-event` — `extension`, `scope` (shared or personal),

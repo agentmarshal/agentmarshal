@@ -176,9 +176,9 @@ as the proposal's disposition says.
   currency — two currencies are two sums, not a blended figure with an
   unstated rate.
 - The outcome vocabulary stays words journals share — `provider-limit`,
-  now `output-limit` — documented and unenforced, so a refusal, a crash
-  and a truncation read differently from one another and the same way in
-  every project.
+  now `output-limit` — documented and unenforced: it is the sharing that
+  lets a refusal, a crash and a truncation read differently from one
+  another and the same way in every project.
 - Recording cost after the task closes is safe to repeat: `--if-missing`
   turns the second run of a wrapper into a message, not a doubled
   figure.
@@ -232,3 +232,7 @@ reporter: it lost the roles that were missing. The deduplication key is
   and
   [proposal 035](../proposals/035-journal-transactions-sweep-records-of-other-tasks.md),
   as the proposal's disposition says.
+- 2026-10-03: the fourth Consequences bullet had "documented and
+  unenforced" as the reason the outcomes read the same way in every
+  project; the shared vocabulary is the reason, and the bullet now says
+  so.

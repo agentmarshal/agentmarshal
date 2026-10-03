@@ -1,6 +1,6 @@
 # 042 — The liveness of an unattended loop is watched by hand: a step watchdog and a loop monitor the reporter offers to contribute
 
-- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.4.0 · **Source:** `sha256:6bf1b733ad6a4f83bbddf67f935a47dd61008ce745d5c7aa9f4a72e3d7d48ca6` · **Disposition:** accepted *(in part; actions through the tool declined for the core and met elsewhere; the offered code accepted in principle; it arrives through the reporter's outbox under an explicit Apache-2.0 license line, decided 2026-10-03; the `step` stage declined 2026-10-03 — the step events recorded in the process log instead)*
+- **Reporter:** Adopter D (greenfield project on Linux, Git hosting provider, agent-driven loop with three paid roles) · **Observed on:** 0.4.0 · **Source:** `sha256:6bf1b733ad6a4f83bbddf67f935a47dd61008ce745d5c7aa9f4a72e3d7d48ca6` · **Disposition:** accepted *(in part; actions through the tool declined for the core and met elsewhere; the offered code accepted in principle; it arrives through the reporter's outbox under an explicit Apache-2.0 license line, decided 2026-10-03; the `step` stage declined 2026-10-03 — the step events recorded in the process log instead and the activity probes declared to the supplied watchdog)*
 
 ## Finding
 
@@ -109,8 +109,9 @@ its fallback), and the loop monitor.
 
 > Amended 2026-10-03: **the `step` stage is declined** — the operator
 > decided against a stage the core feeds. The step events themselves are
-> still recorded, in the process log; the dated section at the end says
-> what is kept and what runs where. The rest of this disposition stands.
+> still recorded, in the process log; the dated section that follows
+> says what is kept and what runs where. The rest of this disposition
+> stands.
 
 **Step lifecycle events** are accepted: they are a `step` stage under
 [ADR-0013](../adr/ADR-0013-extensions-stages-scopes-isolation-trust.md)'s
@@ -169,6 +170,25 @@ an explicit Apache-2.0 license line — a new use of that channel the ADR
 names — and is adapted into a supplied extension by an ordinary task that
 names its source.
 
+## Disposition — the step events kept, the stage declined (2026-10-03)
+
+The operator decided against a `step` stage the core feeds: feeding it
+would have had the core start processes and leave them running, and a
+personal extension at that stage the power to stop an implementer. What
+is recorded instead is the events themselves — a step started, with its
+kind of work, its process, the process's start time and its deadline,
+and a step ended, with its outcome — in the process log of
+[ADR-0014](../adr/ADR-0014-where-things-live.md), and `status` and
+`doctor` show a step past its deadline. The watchdog and the loop
+monitor this file offers are a supplied component the harness runs —
+they reach the project by the route the disposition above gives — and
+the core starts no background process. The activity probes go with that
+component: what an extension at the `step` stage would have declared —
+the paths a run owns, the session id, the process tree — is declared to
+the supplied watchdog the harness runs, and the core still knows no CLI.
+The step commands and the fields the events carry are defined by the
+later decision on the record model; nothing else decided here changes.
+
 ## Where
 
 Nothing here is shipped yet. The `step` stage with its lifecycle events, the
@@ -182,20 +202,5 @@ offered watchdog and monitor are accepted in principle as a supplied
 extension; the code arrives through the reporter's outbox under an
 explicit Apache-2.0 license line and is adapted by a project task naming
 its source (decided 2026-10-03). Amended the same day: the `step` stage
-is declined — the events land in the process log without it.
-
-## Disposition — the step events kept, the stage declined (2026-10-03)
-
-The operator decided against a `step` stage the core feeds: feeding it
-would have had the core start processes and leave them running, and a
-personal extension at that stage the power to stop an implementer. What
-is recorded instead is the events themselves — a step started, with its
-kind of work, its process, the process's start time and its deadline,
-and a step ended, with its outcome — in the process log of
-[ADR-0014](../adr/ADR-0014-where-things-live.md), and `status` and
-`doctor` show a step past its deadline. The watchdog and the loop
-monitor this file offers are a supplied component the harness runs —
-they reach the project by the route the disposition above gives — and
-the core starts no background process. The step commands and the fields
-the events carry are defined by the later decision on the record model;
-nothing else decided here changes.
+is declined — the events land in the process log without it, and the
+activity probes are declared to the supplied watchdog the harness runs.
