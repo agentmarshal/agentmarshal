@@ -220,7 +220,7 @@ def test_a_refused_character_prints_escaped_in_report() -> None:
                 "usage": {"method": "measured\u202e forged"},
             },
         ),
-        state="open\u202estate",
+        state="open",
     )
     report = JournalReport(
         tasks=(_task_report(status),),
@@ -230,8 +230,6 @@ def test_a_refused_character_prints_escaped_in_report() -> None:
     )
 
     assert format_report(report) == (
-        "CR-009\\nforged\topen\\u202estate\treviews=0\ttokens=4"
-        "\tusage=measured\\u202e forged",
-        "Summary\topen\\u202estate=1\treviews=0\ttokens=4"
-        "\tusage=rep\\u202eorted\\nforged",
+        "CR-009\\nforged\topen\treviews=0\ttokens=4\tusage=measured\\u202e forged",
+        "Summary\topen=1\treviews=0\ttokens=4\tusage=rep\\u202eorted\\nforged",
     )

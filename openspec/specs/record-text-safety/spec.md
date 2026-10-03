@@ -1,12 +1,15 @@
 # record-text-safety Specification
 
 ## Purpose
-What text a record or a contract header may carry. Its fields are rendered into
-transcripts, briefs and prompts, so a value that can add a line to that output —
-or make it read in an order its bytes do not have — is refused at the boundary
-rather than escaped at the edge. The rule names the characters it refuses; a
-printability test stood in for that and was stricter than the purpose, which
-cost an adopter a journal an earlier release had accepted.
+What text a record or a contract header may carry, and how the tool shows a
+value that carries it anyway. Its fields are rendered into transcripts, briefs
+and prompts, so a value that can add a line to that output — or make it read
+in an order its bytes do not have — is refused at write; a record that
+carries such a character all the same — one a later read rule does not reach —
+is escaped where the tool displays it rather than refused. The rule names the
+characters it refuses; a printability test stood in for that and was stricter
+than the purpose, which cost an adopter a journal an earlier release had
+accepted.
 
 ## Requirements
 

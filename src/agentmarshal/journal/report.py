@@ -141,11 +141,12 @@ def format_report(
 
     # Each value taken from a record or a contract is escaped where it is
     # interpolated — the tabs are structure and must survive (ADR-0015
-    # decision 5).
+    # decision 5). ``state`` and ``decision`` are labels the tool derives
+    # from closed sets — its own text — and print as they are.
     lines = []
     for task in report.tasks:
         line = (
-            f"{escape_for_display(task.task_id)}\t{escape_for_display(task.state)}"
+            f"{escape_for_display(task.task_id)}\t{task.state}"
             f"\treviews={task.review_cycles}\ttokens={task.tokens}"
         )
         if task.artifacts:
@@ -153,7 +154,7 @@ def format_report(
         if task.usage_provenance is not None:
             line += f"\tusage={escape_for_display(task.usage_provenance)}"
         if task.decision is not None:
-            line += f"\tdecision={escape_for_display(task.decision)}"
+            line += f"\tdecision={task.decision}"
         lines.append(line)
     if not include_summary:
         return tuple(lines)
@@ -161,8 +162,7 @@ def format_report(
     for task in report.tasks:
         state_counts[task.state] = state_counts.get(task.state, 0) + 1
     state_summary = " ".join(
-        f"{escape_for_display(state)}={count}"
-        for state, count in sorted(state_counts.items())
+        f"{state}={count}" for state, count in sorted(state_counts.items())
     )
     summary = (
         f"Summary\t{state_summary}\treviews={report.review_cycles}"

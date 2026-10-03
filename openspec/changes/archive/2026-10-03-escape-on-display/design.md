@@ -33,9 +33,26 @@ approval), and an override would reorder what is seen.
 - **Escape where a line is built from a record value.** In the per-task view
   the dispatch escapes the line a renderer returns, so a renderer added
   later cannot forget it; in the task list and in `format_report` each
-  interpolated value is escaped, because their tab separators are structure
-  and must survive.
+  interpolated record or contract value is escaped, because their tab
+  separators are structure and must survive.
 - **`\n`, `\r`, `\t` by name, `\uXXXX`/`\UXXXXXXXX` for the rest.** The named
   forms are what a reader expects for the common line-breakers; the generic
   form keeps every other refused character visible and unambiguous — the
   bidirectional controls included, which would otherwise stay invisible.
+- **The escape is not injective, deliberately.** A record carrying the two
+  literal characters `\` and `n` prints exactly like an escaped newline, so
+  the two cannot be told apart in the output. That cannot forge a line or
+  reorder text, which is what the rule guards; escaping every backslash to
+  make the mapping injective would change the output of ordinary records,
+  which the byte-identical requirement forbids.
+- **Derived labels are the tool's own text.** `state` comes from the closed
+  `_RECORD_TYPE_STATES` projection and `decision` from fixed literals, so
+  `report` prints them unescaped — as the status views already did.
+  Escaping applies to the values a record or a contract supplies: `task_id`,
+  the contract's `title` and `scope`, record fields, and `usage` methods.
+- **The baseline spec's `## Purpose` is edited by hand.** The delta format
+  carries no Purpose section and the archive command does not rewrite the
+  Purpose of an existing capability, so the paragraph that still described
+  the capability as refusal only was updated in
+  `openspec/specs/record-text-safety/spec.md` directly — the one permitted
+  hand edit to the applied spec.
