@@ -436,20 +436,30 @@ already in the journal, adds a review, acceptance or completion record
 the task's lifecycle does not allow, or makes a verdict count for a
 commit it does not name; leak-scan output that prints what it exists to
 withhold, such as a matched secret or a private marker's value; or a
-command that leaves a journal invalid or unreadable. A statement marked
-*decided, not yet implemented* is a promise about the design, so a
-finding that shipped code lacks the mechanism reports the roadmap, not a
-defect — the defect would be the mechanism, once present, failing its
-own rule. (SECURITY.md.)
+command that leaves a journal invalid or unreadable. (SECURITY.md.) A
+statement marked *decided, not yet implemented* is a promise about the
+design rather than about what the tool does today, so a finding that
+shipped code lacks the mechanism reports the roadmap, not a defect —
+the defect would be the mechanism, once present, failing its own rule:
+the line is whether the gate's own checks hold. (This document,
+preamble; SECURITY.md — "The line is whether the gate's own checks
+hold".)
 
 **A weakness the second or third part covers is a hardening suggestion,
 not a vulnerability.** The documented trust boundary is out of scope: a
 person with write access authoring a record under any identity they
 choose, a mismatched checkout, a pipeline attestation the invoker
 asserts falsely, a forged process log, a leak the best-effort scan
-misses — each is stated, and each is reportable as a hardening
-suggestion rather than a vulnerability. Where the boundary truly is not
-drawn, the third part says so and names the sources.
+misses — each is stated in the second part, and each is reportable as a
+hardening suggestion rather than a vulnerability. Where the boundary
+truly is not drawn, the third part says so and names the sources.
+(SECURITY.md — the paragraph after its list, "The documented trust
+boundary is out of scope"; and, for each example as the second part
+cites it: README.md, "Trust boundary" and ADR-0006 — the record under
+any identity; ADR-0004, "Consequences" — the mismatched checkout;
+ADR-0017, decision 2 — the invoker's attestation; ADR-0014,
+decision 8 — the process log; ADR-0005, implementation-boundary note
+and decision 2 — the leak scan.)
 
 **Report a vulnerability** only through GitHub private vulnerability
 reporting — the **Report a vulnerability** button on the repository's
