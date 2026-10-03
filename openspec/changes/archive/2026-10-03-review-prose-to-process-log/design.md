@@ -96,11 +96,9 @@ launcher's two preservation paths at that place.
   the command runs against, never the working directory — and a caller
   holding a resolved placement passes `journal_root`, the same keyword
   `launch_review` takes, so a sidecar's dry run lands its diagnostics in
-  the sidecar's log with no task on the event. Today's CLI passes only the
-  host root, so through the CLI a sidecar dry run resolves under the host —
-  the temporary-file fallback with the reason said covers a host that is no
-  project — and wiring `placement.journal_root` through is left to a
-  contract that has `cli.py` in scope.
+  the sidecar's log with no task on the event. The CLI is such a caller:
+  it passes `placement.journal_root` to the dry run, so through the CLI a
+  sidecar dry run resolves under the journal repository, never the host.
 - **Levels `commit` and `off`, and the rejected-verdict copy, are
   untouched.** `commit` still pins the prose as a journal artifact; `off`
   keeps nothing; a rejected verdict's output still goes to a temporary
