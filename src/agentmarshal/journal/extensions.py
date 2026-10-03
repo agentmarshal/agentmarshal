@@ -100,11 +100,17 @@ class ExtensionManifest:
     isolation: ExtensionIsolation | None = None
 
 
-def _require_string(data: dict[str, object], field: str, source: str | Path) -> str:
+def _require_string(
+    data: dict[str, object],
+    field: str,
+    source: str | Path,
+    label: str | None = None,
+) -> str:
+    shown = field if label is None else label
     value = data.get(field)
     if not isinstance(value, str) or not value:
         raise ExtensionManifestError(
-            f"extension manifest field {field!r} must be a non-empty string: {source}"
+            f"extension manifest field {shown!r} must be a non-empty string: {source}"
         )
     return value
 
@@ -127,11 +133,17 @@ def _reject_forgeable_text(value: str, what: str, source: str | Path) -> None:
         raise ExtensionManifestError(f"{error}: {source}") from error
 
 
-def _require_text(data: dict[str, object], field: str, source: str | Path) -> str:
+def _require_text(
+    data: dict[str, object],
+    field: str,
+    source: str | Path,
+    label: str | None = None,
+) -> str:
     """A non-empty string field that also passes the control-character rule."""
 
-    value = _require_string(data, field, source)
-    _reject_forgeable_text(value, f"extension manifest field {field!r}", source)
+    shown = field if label is None else label
+    value = _require_string(data, field, source, label)
+    _reject_forgeable_text(value, f"extension manifest field {shown!r}", source)
     return value
 
 
@@ -157,7 +169,11 @@ def _optional_table(
 
 
 def _require_directory_file(
-    data: dict[str, object], field: str, directory: str, source: str | Path
+    data: dict[str, object],
+    field: str,
+    directory: str,
+    source: str | Path,
+    label: str | None = None,
 ) -> str:
     """A relative path naming a file under one directory of the extension's own.
 
@@ -168,21 +184,22 @@ def _require_directory_file(
     no whitespace or shell metacharacters either.
     """
 
-    value = _require_string(data, field, source)
+    shown = field if label is None else label
+    value = _require_string(data, field, source, label)
     try:
-        validate_scope_entry(value, f"extension manifest field {field!r}")
+        validate_scope_entry(value, f"extension manifest field {shown!r}")
     except JournalContractError as error:
         raise ExtensionManifestError(f"{error}: {source}") from error
     if _PLAIN_PATH.fullmatch(value) is None:
         raise ExtensionManifestError(
-            f"extension manifest field {field!r} must be a plain relative path: "
+            f"extension manifest field {shown!r} must be a plain relative path: "
             "only ASCII letters, digits, '_', '.', '-' and '/' are allowed: "
             f"{source}"
         )
     parts = value.split("/")
     if len(parts) < 2 or parts[0] != directory or any(not part for part in parts):
         raise ExtensionManifestError(
-            f"extension manifest field {field!r} must be a relative path under "
+            f"extension manifest field {shown!r} must be a relative path under "
             f"'{directory}/' in the extension's own directory: {source}"
         )
     return value
@@ -232,7 +249,9 @@ def _parse_dependencies(
     if section is None:
         return None
     return ExtensionDependencies(
-        lock=_require_directory_file(section, "lock", "lock", source)
+        lock=_require_directory_file(
+            section, "lock", "lock", source, label="[dependencies].lock"
+        )
     )
 
 
@@ -241,9 +260,11 @@ def _parse_wraps(data: dict[str, object], source: str | Path) -> ExtensionWraps 
     if section is None:
         return None
     product = _require_text(section, "product", source)
-    version = _require_text(section, "version", source)
+    version = _require_text(section, "version", source, label="[wraps].version")
     ecosystem = _require_text(section, "ecosystem", source)
-    lock = _require_directory_file(section, "lock", "lock", source)
+    lock = _require_directory_file(
+        section, "lock", "lock", source, label="[wraps].lock"
+    )
     runtime = _require_text(section, "runtime", source)
     tokens = runtime.split()
     if len(tokens) != 3 or tokens[1] != ">=":
@@ -392,8 +413,8 @@ def parse_extension_manifest_text(
                     f"footprint: {source}"
                 )
 
-    version = _require_string(data, "version", source)
     if schema == 1:
+        version = _require_string(data, "version", source)
         install: str | None = _require_string(data, "install", source)
         remove: str | None = _require_string(data, "remove", source)
         stages: tuple[ExtensionStage, ...] = ()
@@ -402,6 +423,7 @@ def parse_extension_manifest_text(
         record_kinds: tuple[str, ...] = ()
         isolation: ExtensionIsolation | None = None
     else:
+        version = _require_text(data, "version", source)
         install = _optional_text(data, "install", source)
         remove = _optional_text(data, "remove", source)
         stages = _parse_stages(data, source)

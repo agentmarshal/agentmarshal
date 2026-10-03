@@ -186,12 +186,16 @@ def test_dangling_symlink_at_the_manifest_path_is_refused_as_a_symlink(
 
 
 def _manifest_text(
-    body: str = "", *, schema: int = 2, artifacts: str | None = "[]"
+    body: str = "",
+    *,
+    schema: int = 2,
+    artifacts: str | None = "[]",
+    version: str = '"1.0.0"',
 ) -> str:
     return (
         f"schema = {schema}\n"
         'name = "openspec"\n'
-        'version = "1.0.0"\n'
+        f"version = {version}\n"
         'footprint = ["openspec/"]\n'
         'documents = ["openspec/specs/"]\n'
         + (f"artifacts = {artifacts}\n" if artifacts is not None else "")
@@ -200,10 +204,14 @@ def _manifest_text(
 
 
 def _parse(
-    body: str = "", *, schema: int = 2, artifacts: str | None = "[]"
+    body: str = "",
+    *,
+    schema: int = 2,
+    artifacts: str | None = "[]",
+    version: str = '"1.0.0"',
 ) -> ExtensionManifest:
     return parse_extension_manifest_text(
-        _manifest_text(body, schema=schema, artifacts=artifacts),
+        _manifest_text(body, schema=schema, artifacts=artifacts, version=version),
         "openspec",
         "the test manifest",
     )
@@ -294,13 +302,16 @@ def test_schema_1_requires_install_remove_and_artifacts(field: str) -> None:
     assert "the test manifest" in str(raised.value)
 
 
-@pytest.mark.parametrize("field", ["install", "remove"])
+@pytest.mark.parametrize("field", ["install", "remove", "version"])
 def test_schema_2_free_text_carrying_control_characters_is_refused(
     field: str,
 ) -> None:
     """Scenario: a schema-2 free-text field carrying control characters is refused."""
     with pytest.raises(ExtensionManifestError, match="control characters") as raised:
-        _parse(f'{field} = "do\\u001bevil"\n')
+        if field == "version":
+            _parse(version='"1.0\\u202e0"')
+        else:
+            _parse(f'{field} = "do\\u001bevil"\n')
     assert f"'{field}'" in str(raised.value)
     assert "the test manifest" in str(raised.value)
 
@@ -461,7 +472,9 @@ def test_dependencies_lock_under_lock_parses() -> None:
 )
 def test_dependencies_lock_outside_lock_is_refused(lock: str) -> None:
     """Scenario: a dependencies lock outside lock/ is refused."""
-    with pytest.raises(ExtensionManifestError, match="'lock'") as raised:
+    with pytest.raises(
+        ExtensionManifestError, match=r"'\[dependencies\]\.lock'"
+    ) as raised:
         _parse(f'[dependencies]\nlock = "{lock}"\n')
     assert "the test manifest" in str(raised.value)
 
@@ -480,32 +493,42 @@ def test_wraps_section_parses_every_field() -> None:
     assert wraps.license == "MIT"
 
 
-@pytest.mark.parametrize("missing", list(_WRAPS_FIELDS))
-def test_missing_wraps_field_is_refused(missing: str) -> None:
+@pytest.mark.parametrize(
+    ("missing", "shown"),
+    [
+        ("product", "product"),
+        ("version", r"\[wraps\]\.version"),
+        ("ecosystem", "ecosystem"),
+        ("lock", r"\[wraps\]\.lock"),
+        ("runtime", "runtime"),
+        ("license", "license"),
+    ],
+)
+def test_missing_wraps_field_is_refused(missing: str, shown: str) -> None:
     """Scenario: a missing wraps field is refused."""
-    with pytest.raises(ExtensionManifestError, match=rf"'{missing}'") as raised:
+    with pytest.raises(ExtensionManifestError, match=rf"'{shown}'") as raised:
         _parse(_wraps_body(missing=missing))
     assert "the test manifest" in str(raised.value)
 
 
 @pytest.mark.parametrize(
-    ("field", "line"),
+    ("field", "shown", "line"),
     [
-        ("product", 'product = "open\\u202espec"'),
-        ("version", 'version = "1.13\\u000b2"'),
-        ("ecosystem", 'ecosystem = "n\\u001bpm"'),
-        ("license", 'license = "MIT\\u2028"'),
-        ("runtime", 'runtime = "no\\u200ede >= 20"'),
-        ("runtime", 'runtime = "node >= 2\\u202e0"'),
+        ("product", "'product'", 'product = "open\\u202espec"'),
+        ("version", "'[wraps].version'", 'version = "1.13\\u000b2"'),
+        ("ecosystem", "'ecosystem'", 'ecosystem = "n\\u001bpm"'),
+        ("license", "'license'", 'license = "MIT\\u2028"'),
+        ("runtime", "'runtime'", 'runtime = "no\\u200ede >= 20"'),
+        ("runtime", "'runtime'", 'runtime = "node >= 2\\u202e0"'),
     ],
 )
 def test_wraps_field_carrying_control_characters_is_refused(
-    field: str, line: str
+    field: str, shown: str, line: str
 ) -> None:
     """Scenario: a wraps field carrying control characters is refused."""
     with pytest.raises(ExtensionManifestError, match="control characters") as raised:
         _parse(_wraps_body(**{field: line}))
-    assert f"'{field}'" in str(raised.value)
+    assert shown in str(raised.value)
     assert "the test manifest" in str(raised.value)
 
 
@@ -526,7 +549,7 @@ def test_runtime_not_of_the_declared_form_is_refused(runtime: str) -> None:
 )
 def test_product_lock_outside_lock_is_refused(lock: str) -> None:
     """Scenario: a product lock outside lock/ is refused."""
-    with pytest.raises(ExtensionManifestError, match="'lock'") as raised:
+    with pytest.raises(ExtensionManifestError, match=r"'\[wraps\]\.lock'") as raised:
         _parse(_wraps_body(lock=f'lock = "{lock}"'))
     assert "the test manifest" in str(raised.value)
 

@@ -59,11 +59,26 @@ they describe is a later task.
   command as an argv path, never through a shell; the locks share the rule
   because the spec validates them exactly as a `command`.
 - **Every schema-2 free-text string passes the control-character rule.**
-  The `[wraps]` strings (`product`, `version`, `ecosystem`, `runtime`,
-  `license`), the `[records].kinds` entries and a present `install` or
-  `remove` all go through `reject_control_characters` — the record side's
-  rule — with the refusal naming the field and the source, so no text the
-  manifest declares can forge a line when a later task renders it.
+  Field by field, a schema-2 manifest's strings are checked as follows:
+  `name` — a non-empty string equal to the manifest's file name, which
+  `extension_manifest_path` has already put through the rule; `version` —
+  `_require_text` under schema 2, `_require_string` under schema 1 exactly
+  as before; `footprint`, `documents` and `artifacts` entries —
+  `validate_scope_entry`, which ends in the rule; a present `install` or
+  `remove` — `_require_text`; a `stage` entry's `phase` — membership of the
+  three-literal set, which no control character passes — and its `command` —
+  `validate_scope_entry` plus the `_PLAIN_PATH` alphabet with `bin/` as the
+  first component; `[dependencies].lock` and `[wraps].lock` — the same check
+  with `lock/` as the first component; `[wraps]`'s `product`, `version`,
+  `ecosystem`, `runtime` and `license` — `_require_text`; `[records].kinds`
+  entries — `reject_control_characters` plus the `<name>/<kind>@<version>`
+  form; `[isolation]`'s `env` entries — the `_ENV_NAME` alphabet — and its
+  `writes` — membership of a two-literal set, while `network` and
+  `timeout_seconds` are a boolean and a positive integer, not strings. So no
+  text the manifest declares can forge a line when a later task renders it,
+  and the refusal names the field and the source — for the fields two
+  sections carry, the section too: `[dependencies].lock`, `[wraps].lock` and
+  `[wraps].version`.
 - **`runtime` keeps the ADR's exact shape.** `<name> >= <version>` — three
   whitespace-separated tokens with `>=` in the middle — because the manifest
   declares a minimum, never a pin; the wrapped product itself comes only
