@@ -97,6 +97,11 @@ RECORD_TYPES: dict[str, RecordTypeSpec] = {
         admitted_after_terminal=frozenset({"done", "abandoned"}),
         requires_recorded_by=True,
     ),
+    "agreement": RecordTypeSpec(
+        "https://agentmarshal.dev/attestations/agreement/v1",
+        None,
+        requires_recorded_by=True,
+    ),
     "acknowledgement": RecordTypeSpec(
         "https://agentmarshal.dev/attestations/acknowledgement/v1",
         None,

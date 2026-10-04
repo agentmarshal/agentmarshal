@@ -32,6 +32,7 @@ WritableRecordType = Literal[
     "abandoned",
     "reopened",
     "check",
+    "agreement",
     "acknowledgement",
 ]
 
