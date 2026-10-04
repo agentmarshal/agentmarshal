@@ -88,7 +88,6 @@ def _render_review_line(_project_root: Path, record: dict[str, object]) -> str:
 
 
 def _render_acceptance_line(project_root: Path, record: dict[str, object]) -> str:
-    findings = cast(list[object], record["findings"])
     checked = _is_self_accepted(project_root, record)
     marker = (
         ""
@@ -103,11 +102,22 @@ def _render_acceptance_line(project_root: Path, record: dict[str, object]) -> st
         if "accepted_finding" in record
         else f"accepted_commit={str(record['accepted_commit'])[:7]}"
     )
+    # The pause and operational forms carry no `findings` (ADR-0013
+    # decisions 5 and 17); each names what it accepts where an acceptance
+    # over findings names its findings.
+    if "accepted_pause" in record:
+        pause = cast(dict[str, object], record["accepted_pause"])
+        subject = f"accepted_pause={pause['extension']}"
+    elif "operational" in record:
+        subject = "operational"
+    else:
+        findings = cast(list[object], record["findings"])
+        subject = f"findings={','.join(str(finding) for finding in findings)}"
     return (
         f"- {record['id']} acceptance {record['created_at']} "
         f"{binding} "
         f"accepted_by={record['accepted_by']} "
-        f"findings={','.join(str(finding) for finding in findings)} "
+        f"{subject} "
         f"reason={record['reason']}{marker}"
     )
 
@@ -199,10 +209,18 @@ def print_task_detail(project_root: Path, task: TaskStatus, journal_root: Path) 
     for acceptance in (
         record for record in task.records if record["record_type"] == "acceptance"
     ):
-        summary = (
-            "Acceptance: accepted over findings by "
-            f"{escape_for_display(str(acceptance['accepted_by']))}"
-        )
+        accepted_by = escape_for_display(str(acceptance["accepted_by"]))
+        if "accepted_pause" in acceptance:
+            pause = cast(dict[str, object], acceptance["accepted_pause"])
+            summary = (
+                "Acceptance: accepted pause of extension "
+                f"{escape_for_display(str(pause['extension']))} "
+                f"by {accepted_by}"
+            )
+        elif "operational" in acceptance:
+            summary = f"Acceptance: accepted operational CR by {accepted_by}"
+        else:
+            summary = f"Acceptance: accepted over findings by {accepted_by}"
         self_accepted = _is_self_accepted(project_root, acceptance)
         if "accepted_finding" in acceptance:
             summary += (

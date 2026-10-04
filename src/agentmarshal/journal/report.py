@@ -74,7 +74,10 @@ def _task_report(status: TaskStatus) -> TaskReport:
         if record["record_type"] == "session"
     )
     decision = None
-    if any(record["record_type"] == "acceptance" for record in records):
+    if any(
+        record["record_type"] == "acceptance" and "findings" in record
+        for record in records
+    ):
         decision = "accepted-over-findings"
     else:
         completed = next(
