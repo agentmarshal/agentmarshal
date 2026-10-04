@@ -148,6 +148,7 @@ def test_todays_rules_apply_from_schema_1_except_the_gates() -> None:
         "acknowledgement-fields-7": 7,
         "acceptance-fields-7": 7,
         "review-fields-7": 7,
+        "completed-fields-7": 7,
     }
     for name, schema in records_module._RULE_FROM_SCHEMA.items():
         assert schema == gates.get(name, 1), name
@@ -215,6 +216,15 @@ _FINDING_ID = "01J00000000000000000000000"
     [
         (create_opened_record("CR-001", "t"), 3),
         (create_completed_record("CR-001", "t", _COMMIT), 3),
+        (
+            create_completed_record(
+                "CR-001",
+                "t",
+                _COMMIT,
+                advisory_dispositions={"F-1": {"disposition": "fixed"}},
+            ),
+            7,
+        ),
         (
             create_completed_record("CR-001", "t", None, completed_finding=_FINDING_ID),
             4,

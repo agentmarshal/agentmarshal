@@ -223,6 +223,17 @@ _ACCEPTANCE_FORMS = frozenset({"findings", "accepted_pause", "operational"})
 # top-level fields and `reviewer.actor` is admitted where the object's
 # closed keys are checked.
 _SCHEMA_7_REVIEW_FIELDS = frozenset({"previous_review", "classes"})
+# The recorded choice a completion makes for each advisory finding of the
+# review the gate passed on (ADR-0016 decision 1, ADR-0022 section 2):
+# `advisory_dispositions` maps each of that review's advisory finding ids
+# to its disposition — `fixed`; `deferred`, with a reason and optionally
+# a follow-up task; `rejected`, with a reason. The field binds by
+# `completed_commit` alone — the findings lane's `complete --findings`
+# takes no dispositions.
+_SCHEMA_7_COMPLETED_FIELDS = frozenset({"advisory_dispositions"})
+_DISPOSITIONS = frozenset({"fixed", "deferred", "rejected"})
+_DISPOSITION_KEYS = frozenset({"disposition", "reason", "follow_up"})
+_REASON_REQUIRED_DISPOSITIONS = frozenset({"deferred", "rejected"})
 _SHA256_HEX_PATTERN = re.compile(r"[0-9a-f]{64}$")
 _REVIEWED_COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}$")
 _REVIEW_VERDICTS = frozenset({"approved", "changes_required", "blocked", "rejected"})
@@ -332,9 +343,9 @@ def _rule(name: str) -> Callable[[_RuleCheck], _RuleCheck]:
 # The field families a record's own schema admits (ADR-0005, ADR-0011): the
 # schema-2 provenance fields on every record, ``usage`` on sessions,
 # ``reviewed_contract`` on reviews, and the schema-7 session, contract,
-# check, acknowledgement and acceptance fields of ADR-0022 sections 2 and
-# 3. The fields rule computes the admitted set from the record's schema; a
-# later schema registers its family here.
+# check, acknowledgement, acceptance, review and completed fields of
+# ADR-0022 sections 2 and 3. The fields rule computes the admitted set
+# from the record's schema; a later schema registers its family here.
 _FIELD_FAMILIES: tuple[tuple[int, str | None, frozenset[str]], ...] = (
     (2, None, _SCHEMA_2_FIELDS),
     (2, "session", _SCHEMA_2_SESSION_FIELDS),
@@ -346,6 +357,7 @@ _FIELD_FAMILIES: tuple[tuple[int, str | None, frozenset[str]], ...] = (
     (7, "acknowledgement", _SCHEMA_7_ACKNOWLEDGEMENT_FIELDS),
     (7, "acceptance", _SCHEMA_7_ACCEPTANCE_FIELDS),
     (7, "review", _SCHEMA_7_REVIEW_FIELDS),
+    (7, "completed", _SCHEMA_7_COMPLETED_FIELDS),
 )
 
 
@@ -397,7 +409,11 @@ def _allowed_fields(record_type: str, schema: int) -> frozenset[str]:
 # reviewer object — a table entry would fail-closed on the dict, and a
 # top-level key could never reach the nested string — so each takes the
 # same `_reject_control_characters` check inside the family's own rule,
-# as `accepted_pause`'s `extension` does.
+# as `accepted_pause`'s `extension` does. The completed family is the
+# same case twice over: `advisory_dispositions` is an object whose values
+# are objects, so the `reason` and `follow_up` strings it nests get the
+# same `_reject_control_characters` check inside the family's own rule
+# for exactly this record type and field.
 _TEXT_CHAR_LIMITS: dict[tuple[str | None, str], int] = {
     ("acknowledgement", "reason"): _ACKNOWLEDGEMENT_REASON_CHAR_LIMIT,
 }
@@ -893,6 +909,93 @@ def _check_review_fields_7(data: Mapping[str, object], _context: _RuleContext) -
         _reject_control_characters(actor, "review record reviewer field 'actor'")
 
 
+@_rule("completed-fields-7")
+def _check_completed_fields_7(
+    data: Mapping[str, object], _context: _RuleContext
+) -> None:
+    if cast(str, data["record_type"]) != "completed":
+        return
+    if "advisory_dispositions" not in data:
+        return
+    # The findings lane takes no dispositions (ADR-0016 decision 1): the
+    # field binds by `completed_commit` alone. The `completed` rule has
+    # already refused a record naming both bindings or neither.
+    if "completed_finding" in data:
+        raise JournalRecordError(
+            "completed record field 'advisory_dispositions' binds by "
+            "'completed_commit', never 'completed_finding'"
+        )
+    dispositions = data["advisory_dispositions"]
+    if not isinstance(dispositions, dict) or not dispositions:
+        raise JournalRecordError(
+            "completed record field 'advisory_dispositions' must be a "
+            "non-empty object keyed by finding id"
+        )
+    for finding_id, entry in dispositions.items():
+        _validate_disposition_entry(finding_id, entry)
+
+
+def _validate_disposition_entry(finding_id: object, entry: object) -> None:
+    """Check one `advisory_dispositions` key and the disposition it maps to.
+
+    Every refusal names the finding id and the key at fault — the
+    coordinator that supplies the dispositions answers finding by finding.
+    """
+
+    if not isinstance(finding_id, str) or not finding_id:
+        raise JournalRecordError(
+            "completed record 'advisory_dispositions' key "
+            f"{finding_id!r} must be a non-empty finding id"
+        )
+    _reject_control_characters(
+        finding_id,
+        f"completed record 'advisory_dispositions' key {finding_id!r}",
+    )
+    entry_label = f"completed record 'advisory_dispositions' entry {finding_id!r}"
+    if not isinstance(entry, dict):
+        raise JournalRecordError(f"{entry_label} must be an object")
+    unexpected = sorted(str(key) for key in entry.keys() - _DISPOSITION_KEYS)
+    if unexpected:
+        raise JournalRecordError(
+            f"{entry_label} has unsupported fields: {', '.join(unexpected)}"
+        )
+    disposition = entry.get("disposition")
+    if not isinstance(disposition, str) or disposition not in _DISPOSITIONS:
+        raise JournalRecordError(
+            f"{entry_label} field 'disposition' must be one of "
+            + ", ".join(sorted(_DISPOSITIONS))
+        )
+    if "reason" in entry:
+        reason = entry["reason"]
+        if not isinstance(reason, str) or not reason.strip():
+            raise JournalRecordError(
+                f"{entry_label} field 'reason' must be a non-empty string"
+            )
+        _reject_control_characters(reason, f"{entry_label} field 'reason'")
+    elif disposition in _REASON_REQUIRED_DISPOSITIONS:
+        raise JournalRecordError(
+            f"{entry_label} field 'reason' is required on 'deferred' and 'rejected'"
+        )
+    if "follow_up" not in entry:
+        return
+    if disposition != "deferred":
+        raise JournalRecordError(
+            f"{entry_label} field 'follow_up' is admitted on 'deferred' alone"
+        )
+    follow_up = entry["follow_up"]
+    if not isinstance(follow_up, str):
+        raise JournalRecordError(
+            f"{entry_label} field 'follow_up' must be a task id matching CR-<number>"
+        )
+    _reject_control_characters(follow_up, f"{entry_label} field 'follow_up'")
+    # The task id in the form task ids take — the rule `open` assigns and
+    # `validate_task_id` applies.
+    if _TASK_ID_PATTERN.fullmatch(follow_up) is None:
+        raise JournalRecordError(
+            f"{entry_label} field 'follow_up' must be a task id matching CR-<number>"
+        )
+
+
 @_rule("provenance")
 def _check_provenance(data: Mapping[str, object], _context: _RuleContext) -> None:
     # Provenance was introduced at schema 2 (ADR-0005 Decision 4); the rule
@@ -1059,6 +1162,7 @@ _RULE_FROM_SCHEMA: dict[str, int] = {
     "acknowledgement-fields-7": 7,
     "acceptance-fields-7": 7,
     "review-fields-7": 7,
+    "completed-fields-7": 7,
     "provenance": 2,
     "recorded-by": 1,
     "finding-binding": 4,
@@ -1609,6 +1713,8 @@ def _minimum_schema(record: Mapping[str, object]) -> int:
         schema = max(schema, 7)
     if record.keys() & _SCHEMA_7_REVIEW_FIELDS:
         schema = max(schema, 7)
+    if record.keys() & _SCHEMA_7_COMPLETED_FIELDS:
+        schema = max(schema, 7)
     # `reviewer.actor` is a key of the reviewer object — `record.keys()`
     # never sees it — and needs 7 all the same.
     reviewer = record.get("reviewer")
@@ -1649,14 +1755,27 @@ def create_completed_record(
     completed_commit: str | None,
     *,
     completed_finding: str | None = None,
+    advisory_dispositions: dict[str, dict[str, str]] | None = None,
     source: str = SOURCE_LIVE,
 ) -> dict[str, object]:
-    """Build the terminal record emitted when a task is completed."""
+    """Build the terminal record emitted when a task is completed.
+
+    ``advisory_dispositions`` is the schema-7 field of ADR-0016 decision 1
+    and ADR-0022 section 2 — the recorded choice made for each advisory
+    finding of the review the gate passed on; supplied, it lands on the
+    record and raises its stamp to 7. The findings lane takes no
+    dispositions, so the field binds `completed_commit` alone.
+    """
 
     if (completed_commit is None) == (completed_finding is None):
         raise JournalRecordError(
             "completed record must name exactly one of 'completed_commit' or "
             "'completed_finding'"
+        )
+    if completed_finding is not None and advisory_dispositions is not None:
+        raise JournalRecordError(
+            "completed record field 'advisory_dispositions' binds by "
+            "'completed_commit', never 'completed_finding'"
         )
     record: dict[str, object] = {
         "record_type": "completed",
@@ -1669,6 +1788,8 @@ def create_completed_record(
         record["completed_finding"] = completed_finding
     else:
         record["completed_commit"] = completed_commit
+    if advisory_dispositions is not None:
+        record["advisory_dispositions"] = advisory_dispositions
     record["schema"] = _minimum_schema(record)
     return record
 
