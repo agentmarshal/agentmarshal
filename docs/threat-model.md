@@ -88,23 +88,39 @@ is never displayed as approved, and an acceptance by a writer of the
 candidate is permitted and always marked as self-acceptance. (ADR-0007,
 decisions 1, 2, 3, 4 and 5.)
 
-**Forgeable text cannot forge output.** Values a record or a contract
-header carries — finding ids, acceptance fields, artifact references,
-header entries — are refused at write time when they contain a character
-that could add a line to rendered output or reorder it: the control,
-surrogate, line- and paragraph-separator categories and the bidirectional
-marks, embeddings, overrides and isolates. A record that carries such a
-character anyway — one a later read rule does not reach — is escaped on
-display in `status`, `report`, the gate's transcript, the brief and the
-reviewer prompt, which covers a record that reached the journal without
-the gate's check of the candidate that added it — one written around
-the writer with a lowered schema. The gate escapes every value it did
-not write itself — candidate paths, refs, git's error output — so
-nothing a candidate controls can add a line to what the gate prints.
+**Forgeable text cannot forge output.** The write-time refusal applies
+to the fields the specification names: a review record's finding and
+advisory finding ids, an acceptance record's fields and finding ids, a
+finding record's summary and artifact references, a review artifact's
+pinned reference, an artifact's or an extension's name, a contract
+header's `documents`, `decisions` and `extensions` entries, and an
+extension manifest's footprint entries — plus the schema-3 contract
+header's `implementers`, `reviewers` and `independence` entries, and
+the schema-7 fields the shared validators register: a session's
+`commit`, `model`, `trace`, `cli_session` and `fallback_reason`, an
+`opened` or `amendment` record's `contract`, a `check` record's
+`name`, `failed_step`, `excerpt` and `run_url`, an acknowledgement's
+`file` and `reason`. Such a value is refused at write time when it
+contains a character that could add a line to rendered output or
+reorder it: the control, surrogate, line- and paragraph-separator
+categories and the bidirectional marks, embeddings, overrides and
+isolates. Other fields are not refused at write — a contract's `scope`
+and `acceptance` entries, an amendment's `reason` — but a value taken
+from a record or a contract that carries a refused character anyway,
+one a later read rule does not reach, is escaped where the tool
+displays it: in `status`, `report`, the gate's transcript, the brief
+and the reviewer prompt — which also covers a record that reached the
+journal without the gate's check of the candidate that added it, one
+written around the writer with a lowered schema. The gate escapes every value it did not write itself —
+candidate paths, refs, git's error output — so nothing a candidate
+controls can add a line to what the gate prints.
 (record-text-safety specification, "A record's text may not forge a
 line or reorder what is read", "A refused character a record still
 carries is escaped on display" and "The gate escapes every value it did
-not write itself"; ADR-0015, decision 5.)
+not write itself"; record-schema specification, "Shared field
+validators apply from schema 7"; contract-governance specification,
+"A malformed schema-3 field is refused naming the field"; ADR-0015,
+decision 5; ADR-0022, decision 8.)
 
 **Leak-scan output does not print what it exists to withhold.** A hit
 names the file and the identification of what matched — a built-in
@@ -190,8 +206,9 @@ Asked to judge what does not depend on a review, the
 gate reports the review-bound checks as not examined, with the reason —
 and the mode never weakens a candidate that has been reviewed. The
 findings lane prints each check it cannot run as not examined with the
-reason, and every extension gets a result line — checked, failed, did
-not finish, switched off, not run — with its output in its own frame
+reason, and every extension gets a result line — checked, failed,
+addressee not found, did not finish, switched off, not run — with its
+output in its own frame
 (decided, not yet implemented). (ADR-0006, decision 2; ADR-0008,
 decisions 5 and 6; gate-lanes specification, "The gate can be asked to
 judge what does not depend on a review" and "The mode never weakens a
@@ -212,8 +229,9 @@ a record's author is who it says. Signing is on the roadmap, and roles
 arrive with it — a permission over unauthenticated identity would be the
 appearance of a control. A recorder that is not a declared actor is still
 accepted and shown for what it is, and a rule whose field is absent
-reads "not checked" rather than refusing or silently skipping — the
-record types that require a recorder exist; the showing and the
+reads "not checked" rather than refusing or silently skipping — a
+record of a type that requires a recorder is refused when it names
+none; the showing and the
 "not checked" lines are decided, not yet implemented. Self-acceptance
 and self-acknowledgement are permitted and marked — visible rather than
 impossible; an acknowledgement establishes that someone claiming to be
@@ -223,7 +241,8 @@ not yet implemented). The tool cannot detect a determined false
 attribution. (README.md, "Trust boundary"; SECURITY.md; ADR-0006,
 decisions 1, 2 and 5 and "Consequences"; ADR-0007, decisions 4 and 6;
 ADR-0018, decision 2; ADR-0021, decision 5 — the marking surfaces are
-decided, not yet implemented; ADR-0022, decisions 3 and 5.)
+decided, not yet implemented; ADR-0022, decisions 3 and 5;
+record-schema specification, "The record types are declared once".)
 
 **The checkout, the reviewed tree and the pipeline are trusted.** The
 gate reads the journal's records from the calling checkout's working tree
@@ -432,14 +451,7 @@ already in the journal, adds a review, acceptance or completion record
 the task's lifecycle does not allow, or makes a verdict count for a
 commit it does not name; leak-scan output that prints what it exists to
 withhold, such as a matched secret or a private marker's value; or a
-command that leaves a journal invalid or unreadable. (SECURITY.md.) A
-statement marked *decided, not yet implemented* is a promise about the
-design rather than about what the tool does today, so a finding that
-shipped code lacks the mechanism reports the roadmap, not a defect —
-the defect would be the mechanism, once present, failing its own rule:
-the line is whether the gate's own checks hold. (This document,
-preamble; SECURITY.md — "The line is whether the gate's own checks
-hold".)
+command that leaves a journal invalid or unreadable. (SECURITY.md.)
 
 **A weakness the second or third part covers is a hardening suggestion,
 not a vulnerability.** The documented trust boundary is out of scope: a
