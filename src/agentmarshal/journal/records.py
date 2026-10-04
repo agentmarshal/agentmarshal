@@ -143,6 +143,15 @@ _RECORD_FIELDS = {
             "tool_version",
         }
     ),
+    "agreement": frozenset(
+        {
+            "schema",
+            "record_type",
+            "task",
+            "created_at",
+            "tool_version",
+        }
+    ),
     "acknowledgement": frozenset(
         {
             "schema",
@@ -183,7 +192,10 @@ _SCHEMA_7_SESSION_FIELDS = frozenset(
 )
 # The contract hash the records that establish a contract carry (ADR-0018
 # decision 1, ADR-0022 section 2): `opened` and `amendment` may carry the
-# sha256 of the contract text they establish.
+# sha256 of the contract text they establish. The same field is the one own
+# field of `agreement` (ADR-0018 decision 2, ADR-0022 section 3) — required
+# there, the hash the actor states agreement with — so the family admits it
+# on that type too.
 _SCHEMA_7_CONTRACT_FIELDS = frozenset({"contract"})
 # What a pipeline check found on a commit (ADR-0017 decision 1, ADR-0022
 # section 3): the commit it ran on, the check's name and result, and
@@ -204,6 +216,11 @@ _ACKNOWLEDGEMENT_RECORD_SCHEMA = 7
 _SCHEMA_7_ACKNOWLEDGEMENT_FIELDS = frozenset(
     {"commit", "file", "signature", "marker", "reason"}
 )
+# An actor's agreement with the contract at a hash (ADR-0018 decision 2,
+# ADR-0022 section 3): `contract` is the type's one own field and it is the
+# contract family's field, so the type reuses the family's frozenset and the
+# family's 64-hex shape rule rather than carrying a second one.
+_AGREEMENT_RECORD_SCHEMA = 7
 _ACKNOWLEDGEMENT_REASON_CHAR_LIMIT = 1000
 _LEAK_SIGNATURE_IDS = frozenset(name for name, _pattern in _LEAK_PATTERNS)
 # The two forms an acceptance takes from schema 7 beside ADR-0007's
@@ -343,8 +360,8 @@ def _rule(name: str) -> Callable[[_RuleCheck], _RuleCheck]:
 # The field families a record's own schema admits (ADR-0005, ADR-0011): the
 # schema-2 provenance fields on every record, ``usage`` on sessions,
 # ``reviewed_contract`` on reviews, and the schema-7 session, contract,
-# check, acknowledgement, acceptance, review and completed fields of
-# ADR-0022 sections 2 and 3. The fields rule computes the admitted set
+# agreement, check, acknowledgement, acceptance, review and completed fields
+# of ADR-0022 sections 2 and 3. The fields rule computes the admitted set
 # from the record's schema; a later schema registers its family here.
 _FIELD_FAMILIES: tuple[tuple[int, str | None, frozenset[str]], ...] = (
     (2, None, _SCHEMA_2_FIELDS),
@@ -353,6 +370,7 @@ _FIELD_FAMILIES: tuple[tuple[int, str | None, frozenset[str]], ...] = (
     (7, "session", _SCHEMA_7_SESSION_FIELDS),
     (7, "opened", _SCHEMA_7_CONTRACT_FIELDS),
     (7, "amendment", _SCHEMA_7_CONTRACT_FIELDS),
+    (7, "agreement", _SCHEMA_7_CONTRACT_FIELDS),
     (7, "check", _SCHEMA_7_CHECK_FIELDS),
     (7, "acknowledgement", _SCHEMA_7_ACKNOWLEDGEMENT_FIELDS),
     (7, "acceptance", _SCHEMA_7_ACCEPTANCE_FIELDS),
@@ -389,8 +407,8 @@ def _allowed_fields(record_type: str, schema: int) -> frozenset[str]:
 # `commit`'s entry never fires — the 40-lowercase-hex shape rule refuses
 # every character the forgeable-text rule would, and runs first — but the
 # family registers every string field, so the entry stands beside it. The
-# contract family's `contract` registers the same way on each of its two
-# record types, its 64-hex shape rule standing first the same way. The
+# contract family's `contract` registers the same way on each of the record
+# types carrying it, its 64-hex shape rule standing first the same way. The
 # check family registers its `excerpt` at the ADR's 4 KiB byte bound and
 # its four displayed strings under the forgeable-text rule; its `commit`
 # hex shape and `result` vocabulary admit no character that rule refuses,
@@ -429,6 +447,7 @@ _FORGEABLE_TEXT_FIELDS: dict[tuple[str | None, str], None] = {
     ("session", "fallback_reason"): None,
     ("opened", "contract"): None,
     ("amendment", "contract"): None,
+    ("agreement", "contract"): None,
     ("check", "name"): None,
     ("check", "failed_step"): None,
     ("check", "excerpt"): None,
@@ -591,6 +610,22 @@ def _check_check_schema(data: Mapping[str, object], _context: _RuleContext) -> N
         and cast(int, data["schema"]) < _CHECK_RECORD_SCHEMA
     ):
         raise JournalRecordError(f"check records require schema {_CHECK_RECORD_SCHEMA}")
+
+
+@_rule("agreement")
+def _check_agreement_schema(data: Mapping[str, object], _context: _RuleContext) -> None:
+    # The record-type gate, bound to 1 like `check`: an agreement record
+    # below the schema the type arrived under is refused at write and on
+    # read, whatever it carries — the family's field already meets the
+    # unsupported-fields refusal, this covers the record that carries
+    # none of it, and no legitimate history can carry the type.
+    if (
+        cast(str, data["record_type"]) == "agreement"
+        and cast(int, data["schema"]) < _AGREEMENT_RECORD_SCHEMA
+    ):
+        raise JournalRecordError(
+            f"agreement records require schema {_AGREEMENT_RECORD_SCHEMA}"
+        )
 
 
 @_rule("acknowledgement")
@@ -758,6 +793,22 @@ def _check_check_fields_7(data: Mapping[str, object], _context: _RuleContext) ->
             raise JournalRecordError(
                 f"check record field {field!r} must be a non-empty string"
             )
+
+
+@_rule("agreement-fields-7")
+def _check_agreement_fields_7(
+    data: Mapping[str, object], _context: _RuleContext
+) -> None:
+    if cast(str, data["record_type"]) != "agreement":
+        return
+    # `contract` is optional on the types that pin it and required here —
+    # an agreement states agreement with a contract *at a hash*, so a
+    # record carrying none states nothing. The shared `contract-hash-7`
+    # rule, registered ahead of this one, owns the field's 64-hex shape.
+    if "contract" not in data:
+        raise JournalRecordError(
+            "agreement record must carry 'contract' — the hash agreed with"
+        )
 
 
 @_rule("acknowledgement-fields-7")
@@ -1151,6 +1202,7 @@ _RULE_FROM_SCHEMA: dict[str, int] = {
     "reopened": 1,
     "amendment": 1,
     "check": 1,
+    "agreement": 1,
     "acknowledgement": 1,
     "session-fields": 1,
     "coordination": 6,
@@ -1159,6 +1211,7 @@ _RULE_FROM_SCHEMA: dict[str, int] = {
     "session-fields-7": 7,
     "contract-hash-7": 7,
     "check-fields-7": 7,
+    "agreement-fields-7": 7,
     "acknowledgement-fields-7": 7,
     "acceptance-fields-7": 7,
     "review-fields-7": 7,
@@ -1722,6 +1775,8 @@ def _minimum_schema(record: Mapping[str, object]) -> int:
         schema = max(schema, 7)
     if record.get("record_type") == "check":
         schema = max(schema, _CHECK_RECORD_SCHEMA)
+    if record.get("record_type") == "agreement":
+        schema = max(schema, _AGREEMENT_RECORD_SCHEMA)
     if record.get("record_type") == "acknowledgement":
         schema = max(schema, _ACKNOWLEDGEMENT_RECORD_SCHEMA)
     return schema
@@ -2156,6 +2211,33 @@ def create_acknowledgement_record(
         record["signature"] = signature
     else:
         record["marker"] = marker
+    record["schema"] = _minimum_schema(record)
+    return record
+
+
+def create_agreement_record(
+    task_id: str,
+    tool_version: str,
+    contract: str,
+    *,
+    source: str = SOURCE_LIVE,
+) -> dict[str, object]:
+    """Build the record of an actor's agreement with a contract at a hash.
+
+    ``contract`` is the sha256 of the contract text agreed with (ADR-0018
+    decision 2, ADR-0022 section 3) — the lowercase hex `contract_sha256`
+    produces and `opened`/`amendment` pin. Any declared actor may record
+    it; there are no roles.
+    """
+
+    record: dict[str, object] = {
+        "record_type": "agreement",
+        "task": task_id,
+        "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "tool_version": tool_version,
+        "contract": contract,
+        "source": source,
+    }
     record["schema"] = _minimum_schema(record)
     return record
 

@@ -13,6 +13,7 @@ from agentmarshal.journal.records import (
     create_abandoned_record,
     create_acceptance_record,
     create_acknowledgement_record,
+    create_agreement_record,
     create_amendment_record,
     create_check_record,
     create_completed_record,
@@ -146,6 +147,7 @@ def test_todays_rules_apply_from_schema_1_except_the_gates() -> None:
         "contract-hash-7": 7,
         "check-fields-7": 7,
         "acknowledgement-fields-7": 7,
+        "agreement-fields-7": 7,
         "acceptance-fields-7": 7,
         "review-fields-7": 7,
         "completed-fields-7": 7,
@@ -469,6 +471,10 @@ _FINDING_ID = "01J00000000000000000000000"
             create_acknowledgement_record(
                 "CR-001", "t", _COMMIT, "src/app.py", "r", None, marker=2
             ),
+            7,
+        ),
+        (
+            create_agreement_record("CR-001", "t", _HASH),
             7,
         ),
     ],
