@@ -184,11 +184,25 @@ _SCHEMA_4_FIELDS = frozenset(
     {"reviewed_finding", "accepted_finding", "completed_finding"}
 )
 _SCHEMA_5_FIELDS = frozenset({"reviewed_contract"})
-# What a session produced and with what (ADR-0022 section 2): the commit
-# the run produced, the model it ran, an external trace link, the CLI
-# session a resume needs, the report-ready flag and the fallback reason.
+# What a session produced, with what, when it ran and what it cost
+# (ADR-0019 decisions 1, 3 and 4, ADR-0022 section 2): the commit the run
+# produced, the model it ran, an external trace link, the CLI session a
+# resume needs, the report-ready flag and the fallback reason; the
+# session's start and end, the provider's stated reset time on a
+# provider-limit session, and the cost.
 _SCHEMA_7_SESSION_FIELDS = frozenset(
-    {"commit", "model", "trace", "cli_session", "report_ready", "fallback_reason"}
+    {
+        "commit",
+        "model",
+        "trace",
+        "cli_session",
+        "report_ready",
+        "fallback_reason",
+        "started_at",
+        "ended_at",
+        "resets_at",
+        "cost",
+    }
 )
 # The contract hash the records that establish a contract carry (ADR-0018
 # decision 1, ADR-0022 section 2): `opened` and `amendment` may carry the
@@ -257,6 +271,19 @@ _REVIEW_VERDICTS = frozenset({"approved", "changes_required", "blocked", "reject
 _SESSION_ACTIVITIES = frozenset({"implementation", "review", "other", "coordination"})
 _COORDINATION_SESSION_SCHEMA = 6
 _SESSION_USAGE_METHODS = frozenset({"measured", "reported"})
+# The outcome word a session carrying `resets_at` must have (ADR-0019
+# decision 3, ADR-0022 section 4): `outcome` stays free text and the gate
+# keys on the documented word.
+_PROVIDER_LIMIT_OUTCOME = "provider-limit"
+# What a session's `cost` object carries (ADR-0019 decision 4, ADR-0022
+# section 2): `amount`, a non-negative decimal written as a string of
+# digits with an optional fractional part — never a JSON number, so a sum
+# is exact; `currency`, three uppercase ASCII letters; and `source`,
+# `reported` or `estimated`.
+_SESSION_COST_KEYS = frozenset({"amount", "currency", "source"})
+_SESSION_COST_SOURCES = frozenset({"reported", "estimated"})
+_COST_AMOUNT_PATTERN = re.compile(r"[0-9]+(\.[0-9]+)?")
+_COST_CURRENCY_PATTERN = re.compile(r"[A-Z]{3}")
 _ulid_lock = threading.Lock()
 _last_timestamp = -1
 _last_randomness = 0
@@ -517,18 +544,24 @@ def _check_required_strings(data: Mapping[str, object], _context: _RuleContext) 
             )
 
 
+def _utc_timestamp(value: str, what: str) -> datetime:
+    """Parse *value* as a UTC ISO-8601 timestamp — the one rule
+    `created_at` follows, reused for the session's `started_at`,
+    `ended_at` and `resets_at`. *what* names the field a refusal gives.
+    """
+
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise JournalRecordError(f"{what} must be an ISO-8601 timestamp") from error
+    if parsed.tzinfo is None or parsed.utcoffset() != UTC.utcoffset(parsed):
+        raise JournalRecordError(f"{what} must be a UTC timestamp")
+    return parsed
+
+
 @_rule("created-at")
 def _check_created_at(data: Mapping[str, object], _context: _RuleContext) -> None:
-    try:
-        created_at = datetime.fromisoformat(
-            cast(str, data["created_at"]).replace("Z", "+00:00")
-        )
-    except ValueError as error:
-        raise JournalRecordError(
-            "record field 'created_at' must be an ISO-8601 timestamp"
-        ) from error
-    if created_at.tzinfo is None or created_at.utcoffset() != UTC.utcoffset(created_at):
-        raise JournalRecordError("record field 'created_at' must be a UTC timestamp")
+    _utc_timestamp(cast(str, data["created_at"]), "record field 'created_at'")
 
 
 @_rule("tool-version")
@@ -750,6 +783,87 @@ def _check_session_fields_7(data: Mapping[str, object], _context: _RuleContext) 
     if "report_ready" in data and type(data["report_ready"]) is not bool:
         raise JournalRecordError(
             "session record field 'report_ready' must be a boolean"
+        )
+    # The time, reset and cost fields of the same family (ADR-0019
+    # decisions 1, 3 and 4, ADR-0022 section 2). The three timestamps
+    # follow `created_at`'s UTC ISO-8601 rule — the one parser, reused —
+    # and `created_at` itself stays the write time, derived from none of
+    # them. None of the four registers in the shared validator tables:
+    # each shape below admits no character the forgeable-text rule
+    # refuses, and this rule runs ahead of it, so an entry would never
+    # fire — and the family's five displayed strings already name every
+    # field that rule guards.
+    timestamps: dict[str, datetime] = {}
+    for field in ("started_at", "ended_at", "resets_at"):
+        if field not in data:
+            continue
+        value = data[field]
+        if not isinstance(value, str):
+            raise JournalRecordError(
+                f"session record field {field!r} must be an ISO-8601 timestamp"
+            )
+        timestamps[field] = _utc_timestamp(value, f"session record field {field!r}")
+    if ("started_at" in data) != ("ended_at" in data):
+        raise JournalRecordError(
+            "session record fields 'started_at' and 'ended_at' must appear "
+            "together or not at all"
+        )
+    if "started_at" in timestamps and (
+        timestamps["ended_at"] < timestamps["started_at"]
+    ):
+        raise JournalRecordError(
+            "session record field 'ended_at' must not be earlier than 'started_at'"
+        )
+    if "resets_at" in data and data.get("outcome") != _PROVIDER_LIMIT_OUTCOME:
+        raise JournalRecordError(
+            "session record field 'resets_at' is admitted on a "
+            f"'{_PROVIDER_LIMIT_OUTCOME}' outcome alone"
+        )
+    if "cost" in data:
+        _validate_session_cost(data["cost"])
+
+
+def _validate_session_cost(cost: object) -> None:
+    """Check a session record's `cost` object (ADR-0019 decision 4).
+
+    Every refusal names the field and the key at fault — the coordinator
+    supplying the cost answers key by key. The key checks mirror the
+    `usage` object's: closed keys first, then each value's shape.
+    """
+
+    if not isinstance(cost, dict):
+        raise JournalRecordError("session record field 'cost' must be an object")
+    unexpected_fields = cost.keys() - _SESSION_COST_KEYS
+    if unexpected_fields:
+        raise JournalRecordError(
+            "session record field 'cost' has unsupported fields: "
+            + ", ".join(sorted(str(field) for field in unexpected_fields))
+        )
+    if cost.keys() != _SESSION_COST_KEYS:
+        raise JournalRecordError(
+            "session record field 'cost' must contain amount, currency and source"
+        )
+    amount = cost["amount"]
+    if not isinstance(amount, str) or _COST_AMOUNT_PATTERN.fullmatch(amount) is None:
+        raise JournalRecordError(
+            "session record 'cost' field 'amount' must be a non-negative "
+            "decimal written as a string of digits with an optional "
+            "fractional part"
+        )
+    currency = cost["currency"]
+    if (
+        not isinstance(currency, str)
+        or _COST_CURRENCY_PATTERN.fullmatch(currency) is None
+    ):
+        raise JournalRecordError(
+            "session record 'cost' field 'currency' must be exactly three "
+            "uppercase ASCII letters"
+        )
+    source = cost["source"]
+    if not isinstance(source, str) or source not in _SESSION_COST_SOURCES:
+        raise JournalRecordError(
+            "session record 'cost' field 'source' must be one of "
+            + ", ".join(sorted(_SESSION_COST_SOURCES))
         )
 
 
@@ -1960,9 +2074,22 @@ def create_session_record(
     cli_session: str | None = None,
     report_ready: bool | None = None,
     fallback_reason: str | None = None,
+    started_at: str | None = None,
+    ended_at: str | None = None,
+    resets_at: str | None = None,
+    cost: dict[str, str] | None = None,
     source: str = SOURCE_LIVE,
 ) -> dict[str, object]:
-    """Build an attributed work session record."""
+    """Build an attributed work session record.
+
+    ``started_at`` with ``ended_at``, ``resets_at`` and ``cost`` are the
+    time, reset and cost fields of ADR-0019 decisions 1, 3 and 4 —
+    supplied, each lands on the record and raises its stamp to 7 like the
+    rest of the schema-7 session family. The builder passes them through
+    unchecked, as it does ``commit``: the record rules own every refusal —
+    a lone start or end, a reset time off a `provider-limit` outcome, a
+    malformed cost.
+    """
 
     if (usage_provider is None) != (usage_method is None):
         missing = "usage_method" if usage_method is None else "usage_provider"
@@ -1994,6 +2121,10 @@ def create_session_record(
         ("cli_session", cli_session),
         ("report_ready", report_ready),
         ("fallback_reason", fallback_reason),
+        ("started_at", started_at),
+        ("ended_at", ended_at),
+        ("resets_at", resets_at),
+        ("cost", cost),
     ):
         if value is not None:
             record[field] = value
