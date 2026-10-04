@@ -148,7 +148,7 @@ def test_a_refused_character_prints_escaped_in_status(
         state="open",
     )
 
-    print_task_detail(tmp_path, task)
+    print_task_detail(tmp_path, task, tmp_path)
 
     assert capsys.readouterr().out == (
         "ID: CR-001\n"

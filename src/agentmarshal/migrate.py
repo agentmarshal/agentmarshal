@@ -10,6 +10,7 @@ from pathlib import Path
 
 from agentmarshal import __version__
 from agentmarshal.journal.attestation import SOURCE_IMPORTED
+from agentmarshal.journal.contracts import contract_sha256
 from agentmarshal.journal.open_task import _contract_content
 from agentmarshal.journal.records import (
     JournalRecordError,
@@ -356,11 +357,12 @@ def _load_source(
     return tasks, kept_reviews
 
 
-def _write_contract(target: Path, task: V1Task) -> None:
+def _write_contract(target: Path, task: V1Task) -> str:
     task_directory = target / "tasks" / task.task_id
+    contract_path = task_directory / "contract.md"
     try:
         task_directory.mkdir(parents=True)
-        (task_directory / "contract.md").write_text(
+        contract_path.write_text(
             _contract_content(task.task_id, task.title, task.scope),
             encoding="utf-8",
             newline="\n",
@@ -369,15 +371,21 @@ def _write_contract(target: Path, task: V1Task) -> None:
         raise _error(
             task.path, f"could not write migrated contract: {error}"
         ) from error
+    return contract_sha256(contract_path.read_bytes(), str(contract_path))
 
 
 def _migrate_task(target: Path, task: V1Task, reviews: list[V1Review]) -> None:
-    _write_contract(target, task)
+    contract_hash = _write_contract(target, task)
     try:
         write_record(
             target,
             task.task_id,
-            create_opened_record(task.task_id, __version__, source=SOURCE_IMPORTED),
+            create_opened_record(
+                task.task_id,
+                __version__,
+                contract=contract_hash,
+                source=SOURCE_IMPORTED,
+            ),
         )
         for review in reviews:
             headers = review.headers
