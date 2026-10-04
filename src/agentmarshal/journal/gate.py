@@ -173,11 +173,16 @@ def run_findings_gate(journal_root: Path, task_id: str) -> GateReport:
     elif latest_review.get("verdict") == "approved":
         check(True, f"latest review of finding {finding_id} is approved")
     else:
+        # Only an acceptance over findings counts — the pause and
+        # operational forms bind `accepted_commit` and carry no `findings`,
+        # so the field's presence is what the latest-acceptance judgment is
+        # taken over.
         acceptances = [
             record
             for record in task.records
             if record["record_type"] == "acceptance"
             and record.get("accepted_finding") == finding_id
+            and "findings" in record
         ]
         acceptance = acceptances[-1] if acceptances else None
         reviewed = cast(list[str], latest_review["findings"])
@@ -1002,12 +1007,17 @@ def run_gate(
             for record in records
             if record.get("record_type") == "acceptance"
             and record.get("accepted_commit") == resolved_commit
+            and "findings" in record
         ]
-        # The latest acceptance, judged as it stands — never the best-fitting one.
-        # Searching a record set for whichever entry justifies a merge is the
-        # opposite of what a merge authority does, and it would let a stale or
-        # hand-written record be rescued by an older one. This mirrors the review
-        # rule above: the last record wins and is then held to the requirement.
+        # The latest acceptance over findings, judged as it stands — never the
+        # best-fitting one. A pause or operational acceptance carries no
+        # `findings` and is not judged here: one written after an acceptance
+        # over findings does not shadow it, and one standing alone satisfies
+        # nothing. Searching a record set for whichever entry justifies a
+        # merge is the opposite of what a merge authority does, and it would
+        # let a stale or hand-written record be rescued by an older one. This
+        # mirrors the review rule above: the last record wins and is then held
+        # to the requirement.
         acceptance = acceptances[-1] if acceptances else None
         valid_acceptance: tuple[str, list[str]] | None = None
         if latest is not None and not approved and acceptance is not None:

@@ -146,6 +146,7 @@ def test_todays_rules_apply_from_schema_1_except_the_gates() -> None:
         "contract-hash-7": 7,
         "check-fields-7": 7,
         "acknowledgement-fields-7": 7,
+        "acceptance-fields-7": 7,
     }
     for name, schema in records_module._RULE_FROM_SCHEMA.items():
         assert schema == gates.get(name, 1), name
@@ -304,6 +305,18 @@ _FINDING_ID = "01J00000000000000000000000"
                 accepted_finding=_FINDING_ID,
             ),
             4,
+        ),
+        (
+            create_acceptance_record(
+                "CR-001", "t", _COMMIT, "op", None, "r", accepted_pause="ext"
+            ),
+            7,
+        ),
+        (
+            create_acceptance_record(
+                "CR-001", "t", _COMMIT, "op", None, "r", operational=True
+            ),
+            7,
         ),
         (
             create_session_record(
