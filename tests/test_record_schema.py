@@ -17,6 +17,7 @@ from agentmarshal.journal.records import (
     create_amendment_record,
     create_check_record,
     create_completed_record,
+    create_ext_record,
     create_finding_record,
     create_opened_record,
     create_reopened_record,
@@ -151,6 +152,7 @@ def test_todays_rules_apply_from_schema_1_except_the_gates() -> None:
         "acceptance-fields-7": 7,
         "review-fields-7": 7,
         "completed-fields-7": 7,
+        "ext-fields-7": 7,
     }
     for name, schema in records_module._RULE_FROM_SCHEMA.items():
         assert schema == gates.get(name, 1), name
@@ -545,6 +547,10 @@ _FINDING_ID = "01J00000000000000000000000"
         ),
         (
             create_agreement_record("CR-001", "t", _HASH),
+            7,
+        ),
+        (
+            create_ext_record("CR-001", "t", "openspec/change-archived@1", _COMMIT, {}),
             7,
         ),
     ],

@@ -2565,6 +2565,7 @@ def test_every_record_factory_writes_the_current_schema() -> None:
             "create_check_record": 7,
             "create_acknowledgement_record": 7,
             "create_agreement_record": 7,
+            "create_ext_record": 7,
         }.get(factory.__name__, 3)
         assert factory(*arguments)["schema"] == expected, factory.__name__
 

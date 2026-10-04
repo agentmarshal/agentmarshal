@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import secrets
@@ -161,6 +162,15 @@ _RECORD_FIELDS = {
             "tool_version",
         }
     ),
+    "ext": frozenset(
+        {
+            "schema",
+            "record_type",
+            "task",
+            "created_at",
+            "tool_version",
+        }
+    ),
 }
 # Schema 2 adds provenance (ADR-0005): a required ``source`` and optional
 # ``artifacts`` references. They are permitted on schema 2 and above — a
@@ -280,6 +290,16 @@ _SCHEMA_7_COMPLETED_FIELDS = frozenset({"advisory_dispositions"})
 _DISPOSITIONS = frozenset({"fixed", "deferred", "rejected"})
 _DISPOSITION_KEYS = frozenset({"disposition", "reason", "follow_up"})
 _REASON_REQUIRED_DISPOSITIONS = frozenset({"deferred", "rejected"})
+# An extension's result (ADR-0013 decision 18, ADR-0022 section 3): the
+# kind the extension's manifest declares — the one compiled rule the
+# manifest itself applies, never a copy of it — the commit the record
+# binds, the payload opaque to the core and the hash that pins it. The
+# bound is on the canonical form `_canonical_json` produces, the one
+# byte sequence the bounded-JSON rule measures and `payload_sha256`
+# hashes.
+_EXT_RECORD_SCHEMA = 7
+_SCHEMA_7_EXT_FIELDS = frozenset({"kind", "commit", "payload", "payload_sha256"})
+_EXT_PAYLOAD_BYTE_LIMIT = 64 * 1024
 _SHA256_HEX_PATTERN = re.compile(r"[0-9a-f]{64}$")
 _REVIEWED_COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}$")
 _REVIEW_VERDICTS = frozenset({"approved", "changes_required", "blocked", "rejected"})
@@ -402,9 +422,9 @@ def _rule(name: str) -> Callable[[_RuleCheck], _RuleCheck]:
 # The field families a record's own schema admits (ADR-0005, ADR-0011): the
 # schema-2 provenance fields on every record, ``usage`` on sessions,
 # ``reviewed_contract`` on reviews, and the schema-7 session, contract,
-# agreement, check, acknowledgement, acceptance, review and completed fields
-# of ADR-0022 sections 2 and 3. The fields rule computes the admitted set
-# from the record's schema; a later schema registers its family here.
+# agreement, check, acknowledgement, acceptance, review, completed and ext
+# fields of ADR-0022 sections 2 and 3. The fields rule computes the admitted
+# set from the record's schema; a later schema registers its family here.
 _FIELD_FAMILIES: tuple[tuple[int, str | None, frozenset[str]], ...] = (
     (2, None, _SCHEMA_2_FIELDS),
     (2, "session", _SCHEMA_2_SESSION_FIELDS),
@@ -418,6 +438,7 @@ _FIELD_FAMILIES: tuple[tuple[int, str | None, frozenset[str]], ...] = (
     (7, "acceptance", _SCHEMA_7_ACCEPTANCE_FIELDS),
     (7, "review", _SCHEMA_7_REVIEW_FIELDS),
     (7, "completed", _SCHEMA_7_COMPLETED_FIELDS),
+    (7, "ext", _SCHEMA_7_EXT_FIELDS),
 )
 
 
@@ -474,14 +495,25 @@ def _allowed_fields(record_type: str, schema: int) -> frozenset[str]:
 # same case twice over: `advisory_dispositions` is an object whose values
 # are objects, so the `reason` and `follow_up` strings it nests get the
 # same `_reject_control_characters` check inside the family's own rule
-# for exactly this record type and field.
+# for exactly this record type and field. The ext family registers its
+# `payload` at the ADR's 64 KiB byte bound — the bounded-JSON field the
+# table has held empty waiting for — and its three displayed strings
+# under the forgeable-text rule, the same guard the manifest's own kind
+# check applies to `kinds` entries: `kind`'s form rule refuses `@`, `/`
+# and whitespace but no control or bidirectional character, so `kind`'s
+# entry is what stands behind the form, while `commit`'s and
+# `payload_sha256`'s hex shapes stand first and their entries never
+# fire, as `commit`'s on session does not. `payload` itself is a JSON
+# value, not a displayed string, and registers nowhere else.
 _TEXT_CHAR_LIMITS: dict[tuple[str | None, str], int] = {
     ("acknowledgement", "reason"): _ACKNOWLEDGEMENT_REASON_CHAR_LIMIT,
 }
 _TEXT_BYTE_LIMITS: dict[tuple[str | None, str], int] = {
     ("check", "excerpt"): _CHECK_EXCERPT_BYTE_LIMIT,
 }
-_JSON_BYTE_LIMITS: dict[tuple[str | None, str], int] = {}
+_JSON_BYTE_LIMITS: dict[tuple[str | None, str], int] = {
+    ("ext", "payload"): _EXT_PAYLOAD_BYTE_LIMIT,
+}
 _FORGEABLE_TEXT_FIELDS: dict[tuple[str | None, str], None] = {
     ("session", "commit"): None,
     ("session", "model"): None,
@@ -498,6 +530,9 @@ _FORGEABLE_TEXT_FIELDS: dict[tuple[str | None, str], None] = {
     ("acknowledgement", "file"): None,
     ("acknowledgement", "reason"): None,
     ("review", "previous_review"): None,
+    ("ext", "kind"): None,
+    ("ext", "commit"): None,
+    ("ext", "payload_sha256"): None,
 }
 
 
@@ -693,6 +728,20 @@ def _check_acknowledgement_schema(
         raise JournalRecordError(
             f"acknowledgement records require schema {_ACKNOWLEDGEMENT_RECORD_SCHEMA}"
         )
+
+
+@_rule("ext")
+def _check_ext_schema(data: Mapping[str, object], _context: _RuleContext) -> None:
+    # The record-type gate, bound to 1 like `check`: an ext record below
+    # the schema the type arrived under is refused at write and on read,
+    # whatever it carries — the family's fields already meet the
+    # unsupported-fields refusal, this covers the record that carries
+    # none of them, and no legitimate history can carry the type.
+    if (
+        cast(str, data["record_type"]) == "ext"
+        and cast(int, data["schema"]) < _EXT_RECORD_SCHEMA
+    ):
+        raise JournalRecordError(f"ext records require schema {_EXT_RECORD_SCHEMA}")
 
 
 @_rule("session-fields")
@@ -1271,6 +1320,57 @@ def _validate_disposition_entry(finding_id: object, entry: object) -> None:
         )
 
 
+@_rule("ext-fields-7")
+def _check_ext_fields_7(data: Mapping[str, object], _context: _RuleContext) -> None:
+    if cast(str, data["record_type"]) != "ext":
+        return
+    # The kind rule is the manifest's own — the one compiled pattern
+    # `_parse_record_kinds` fullmatches every `kinds` entry against —
+    # imported where it runs rather than copied: extensions.py stands on
+    # this module through contracts.py, so a module-level import back
+    # would cycle (the `accepted_pause` rule names the same cycle).
+    from agentmarshal.journal.extensions import _RECORD_KIND
+
+    kind = data.get("kind")
+    if not isinstance(kind, str) or _RECORD_KIND.fullmatch(kind) is None:
+        raise JournalRecordError(
+            "ext record field 'kind' must be of the form '<name>/<kind>@<version>'"
+        )
+    commit = data.get("commit")
+    if (
+        not isinstance(commit, str)
+        or _REVIEWED_COMMIT_PATTERN.fullmatch(commit) is None
+    ):
+        raise JournalRecordError(
+            "ext record field 'commit' must be exactly 40 lowercase hex characters"
+        )
+    # `payload` is required and may be any JSON value — `null` among
+    # them, so presence, not truthiness, is what the record owes.
+    if "payload" not in data:
+        raise JournalRecordError("ext record must carry 'payload'")
+    declared = data.get("payload_sha256")
+    if not isinstance(declared, str) or _SHA256_HEX_PATTERN.fullmatch(declared) is None:
+        raise JournalRecordError(
+            "ext record field 'payload_sha256' must be exactly 64 "
+            "lowercase hex characters"
+        )
+    # The pin is over the canonical form — the one byte sequence the
+    # bounded-JSON rule measures — so the same payload hashes the same
+    # however its keys happened to be ordered; a value with no JSON form
+    # is refused naming `payload`.
+    try:
+        canonical = _canonical_json(data["payload"])
+    except (TypeError, ValueError) as error:
+        raise JournalRecordError(
+            "ext record field 'payload' must be a JSON value"
+        ) from error
+    if hashlib.sha256(canonical).hexdigest() != declared:
+        raise JournalRecordError(
+            "ext record field 'payload_sha256' must be the sha256 of the "
+            "payload's canonical form"
+        )
+
+
 @_rule("provenance")
 def _check_provenance(data: Mapping[str, object], _context: _RuleContext) -> None:
     # Provenance was introduced at schema 2 (ADR-0005 Decision 4); the rule
@@ -1428,6 +1528,7 @@ _RULE_FROM_SCHEMA: dict[str, int] = {
     "check": 1,
     "agreement": 1,
     "acknowledgement": 1,
+    "ext": 1,
     "session-fields": 1,
     "coordination": 6,
     "session-tokens": 1,
@@ -1440,6 +1541,7 @@ _RULE_FROM_SCHEMA: dict[str, int] = {
     "acceptance-fields-7": 7,
     "review-fields-7": 7,
     "completed-fields-7": 7,
+    "ext-fields-7": 7,
     "provenance": 2,
     "recorded-by": 1,
     "finding-binding": 4,
@@ -2003,6 +2105,8 @@ def _minimum_schema(record: Mapping[str, object]) -> int:
         schema = max(schema, _AGREEMENT_RECORD_SCHEMA)
     if record.get("record_type") == "acknowledgement":
         schema = max(schema, _ACKNOWLEDGEMENT_RECORD_SCHEMA)
+    if record.get("record_type") == "ext":
+        schema = max(schema, _EXT_RECORD_SCHEMA)
     return schema
 
 
@@ -2484,6 +2588,47 @@ def create_agreement_record(
         "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "tool_version": tool_version,
         "contract": contract,
+        "source": source,
+    }
+    record["schema"] = _minimum_schema(record)
+    return record
+
+
+def create_ext_record(
+    task_id: str,
+    tool_version: str,
+    kind: str,
+    commit: str,
+    payload: object,
+    *,
+    source: str = SOURCE_LIVE,
+) -> dict[str, object]:
+    """Build the shared record an extension's result lands in.
+
+    ``kind`` names the namespaced, versioned kind the extension's manifest
+    declares and ``commit`` the commit the record binds (ADR-0013 decision
+    18, ADR-0022 section 3). ``payload`` is opaque to the core; the builder
+    computes ``payload_sha256`` itself over the canonical form — the one
+    byte sequence the byte bound measures — so a caller can never supply a
+    mismatched pin, and a payload with no JSON form is refused here naming
+    ``payload``, as the record rule refuses it.
+    """
+
+    try:
+        canonical = _canonical_json(payload)
+    except (TypeError, ValueError) as error:
+        raise JournalRecordError(
+            "ext record field 'payload' must be a JSON value"
+        ) from error
+    record: dict[str, object] = {
+        "record_type": "ext",
+        "task": task_id,
+        "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "tool_version": tool_version,
+        "kind": kind,
+        "commit": commit,
+        "payload": payload,
+        "payload_sha256": hashlib.sha256(canonical).hexdigest(),
         "source": source,
     }
     record["schema"] = _minimum_schema(record)

@@ -34,6 +34,7 @@ WritableRecordType = Literal[
     "check",
     "agreement",
     "acknowledgement",
+    "ext",
 ]
 
 # The projection's tables are views over the one record-type registry in

@@ -107,6 +107,11 @@ RECORD_TYPES: dict[str, RecordTypeSpec] = {
         None,
         requires_recorded_by=True,
     ),
+    "ext": RecordTypeSpec(
+        "https://agentmarshal.dev/attestations/ext/v1",
+        None,
+        requires_recorded_by=True,
+    ),
 }
 
 # The predicate view of the registry: stable URIs naming AgentMarshal's own
