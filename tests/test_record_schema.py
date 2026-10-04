@@ -342,6 +342,30 @@ _FINDING_ID = "01J00000000000000000000000"
             ),
             7,
         ),
+        (
+            create_review_record(
+                "CR-001",
+                "t",
+                _COMMIT,
+                "changes_required",
+                *_REVIEWER,
+                [_FINDING_ID],
+                verification={"read": ["src/x.py"]},
+            ),
+            7,
+        ),
+        (
+            create_review_record(
+                "CR-001",
+                "t",
+                _COMMIT,
+                "changes_required",
+                *_REVIEWER,
+                [_FINDING_ID],
+                evidence={_FINDING_ID: "src/x.py:1"},
+            ),
+            7,
+        ),
         (create_acceptance_record("CR-001", "t", _COMMIT, "op", ["F-1"], "r"), 3),
         (
             create_acceptance_record(

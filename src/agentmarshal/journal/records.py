@@ -245,15 +245,30 @@ _LEAK_SIGNATURE_IDS = frozenset(name for name, _pattern in _LEAK_PATTERNS)
 # neither carries `findings`.
 _SCHEMA_7_ACCEPTANCE_FIELDS = frozenset({"accepted_pause", "operational"})
 _ACCEPTANCE_FORMS = frozenset({"findings", "accepted_pause", "operational"})
-# What a review links and classifies (ADR-0016 decisions 2 and 3,
-# ADR-0022 section 2): `previous_review` — the id of the task's previous
-# review, so the task's reviews form a chain — and `classes` — a class
-# for each finding the record names. `actor` inside `reviewer`
-# (ADR-0018 decision 3) is the family's third field but a key of the
-# reviewer object rather than of the record, so the family names the two
-# top-level fields and `reviewer.actor` is admitted where the object's
-# closed keys are checked.
-_SCHEMA_7_REVIEW_FIELDS = frozenset({"previous_review", "classes"})
+# What a review links, classifies and answers for (ADR-0016 decisions 2
+# and 3, ADR-0017 decisions 4 and 5, ADR-0022 section 2):
+# `previous_review` — the id of the task's previous review, so the
+# task's reviews form a chain — `classes` — a class for each finding
+# the record names — `verification` — what the reviewer executed, read
+# and could not run — and `evidence` — a reference behind the findings
+# it names. `actor` inside `reviewer` (ADR-0018 decision 3) is the
+# family's fifth field but a key of the reviewer object rather than of
+# the record, so the family names the four top-level fields and
+# `reviewer.actor` is admitted where the object's closed keys are
+# checked.
+_SCHEMA_7_REVIEW_FIELDS = frozenset(
+    {"previous_review", "classes", "verification", "evidence"}
+)
+# The sections `verification` may carry and the entry keys each object
+# section takes (ADR-0017 decision 4): `executed` entries say what ran
+# and with what result, `not_run` entries what could not run and why;
+# `read` is strings alone. The tuples hold the keys in the order a
+# refusal lists them.
+_VERIFICATION_SECTIONS = frozenset({"executed", "read", "not_run"})
+_VERIFICATION_ENTRY_KEYS = {
+    "executed": ("what", "result"),
+    "not_run": ("what", "why"),
+}
 # The recorded choice a completion makes for each advisory finding of the
 # review the gate passed on (ADR-0016 decision 1, ADR-0022 section 2):
 # `advisory_dispositions` maps each of that review's advisory finding ids
@@ -450,11 +465,12 @@ def _allowed_fields(record_type: str, schema: int) -> frozenset[str]:
 # the family's shape rule. The review family registers its
 # `previous_review` the same completeness way `commit` registers: the
 # ULID shape admits no character the forgeable-text rule refuses, so the
-# entry never fires. `classes` is an object and `actor` a key of the
-# reviewer object — a table entry would fail-closed on the dict, and a
-# top-level key could never reach the nested string — so each takes the
-# same `_reject_control_characters` check inside the family's own rule,
-# as `accepted_pause`'s `extension` does. The completed family is the
+# entry never fires. `classes`, `verification` and `evidence` are
+# objects and `actor` a key of the reviewer object — a table entry
+# would fail-closed on the dict, and a top-level key could never reach
+# the nested string — so each takes the same
+# `_reject_control_characters` check inside the family's own rule, as
+# `accepted_pause`'s `extension` does. The completed family is the
 # same case twice over: `advisory_dispositions` is an object whose values
 # are objects, so the `reason` and `follow_up` strings it nests get the
 # same `_reject_control_characters` check inside the family's own rule
@@ -1041,26 +1057,54 @@ def _check_review_fields_7(data: Mapping[str, object], _context: _RuleContext) -
                 "review record field 'classes' must be a non-empty object "
                 "keyed by finding id"
             )
-        # A class's key may name only a finding the record itself names;
-        # `findings` and `advisory_findings` are inside the record — at
-        # hand at write and on read alike — and the `review` rule has
-        # already refused a malformed one when this rule runs.
-        named: set[object] = set()
-        for field in ("findings", "advisory_findings"):
-            ids = data.get(field)
-            if isinstance(ids, list):
-                named.update(ids)
-        for finding_id, finding_class in classes.items():
-            if finding_id not in named:
-                raise JournalRecordError(
-                    "review record 'classes' key must name a finding id the "
-                    "record carries in 'findings' or 'advisory_findings'"
-                )
+        _check_review_keyed_field(data, "classes", classes)
+        for finding_class in classes.values():
             if not isinstance(finding_class, str) or not finding_class.strip():
                 raise JournalRecordError(
                     "review record 'classes' value must be a non-empty string"
                 )
             _reject_control_characters(finding_class, "review record 'classes' value")
+    # `evidence` keys bind to the record's own finding ids exactly as
+    # `classes` keys do — the one key check, not a second (ADR-0017
+    # decision 5).
+    if "evidence" in data:
+        evidence = data["evidence"]
+        if not isinstance(evidence, dict) or not evidence:
+            raise JournalRecordError(
+                "review record field 'evidence' must be a non-empty object "
+                "keyed by finding id"
+            )
+        _check_review_keyed_field(data, "evidence", evidence)
+        for finding_id, reference in evidence.items():
+            evidence_label = f"review record 'evidence' key {finding_id!r}"
+            if not isinstance(reference, str) or not reference.strip():
+                raise JournalRecordError(
+                    f"{evidence_label} must map to a non-empty string"
+                )
+            _reject_control_characters(reference, evidence_label)
+    # `verification` — what the reviewer ran, read and could not run
+    # (ADR-0017 decision 4) — is an object with one or more of three
+    # sections and no other key; every string inside it is non-empty and
+    # passes the forgeable-text rule, each refusal naming the key and the
+    # position at fault.
+    if "verification" in data:
+        verification = data["verification"]
+        if not isinstance(verification, dict) or not verification:
+            raise JournalRecordError(
+                "review record field 'verification' must be a non-empty "
+                "object carrying one or more of 'executed', 'read' and "
+                "'not_run'"
+            )
+        unexpected_sections = sorted(
+            str(key) for key in verification.keys() - _VERIFICATION_SECTIONS
+        )
+        if unexpected_sections:
+            raise JournalRecordError(
+                "review record 'verification' has unsupported fields: "
+                + ", ".join(unexpected_sections)
+            )
+        for section, entries in verification.items():
+            _validate_verification_section(section, entries)
     # `reviewer.actor` is a key of the reviewer object: the `review`
     # rule's closed-key check has admitted it here, and this rule checks
     # its shape with the family's.
@@ -1072,6 +1116,72 @@ def _check_review_fields_7(data: Mapping[str, object], _context: _RuleContext) -
                 "review record reviewer field 'actor' must be a non-empty string"
             )
         _reject_control_characters(actor, "review record reviewer field 'actor'")
+
+
+def _check_review_keyed_field(
+    data: Mapping[str, object], field: str, keyed: Mapping[object, object]
+) -> None:
+    """Refuse a `classes`/`evidence` key naming no finding the record carries.
+
+    A keyed field's key may name only a finding the record itself names;
+    `findings` and `advisory_findings` are inside the record — at hand at
+    write and on read alike — and the `review` rule has already refused a
+    malformed one when this rule runs.
+    """
+
+    named: set[object] = set()
+    for ids_field in ("findings", "advisory_findings"):
+        ids = data.get(ids_field)
+        if isinstance(ids, list):
+            named.update(ids)
+    for finding_id in keyed:
+        if finding_id not in named:
+            raise JournalRecordError(
+                f"review record {field!r} key {finding_id!r} must name a "
+                "finding id the record carries in 'findings' or "
+                "'advisory_findings'"
+            )
+
+
+def _validate_verification_section(section: str, entries: object) -> None:
+    """Check one `verification` section's array and every string in it.
+
+    Every refusal names the section, the position and the key at fault —
+    the coordinator supplying the section answers entry by entry.
+    """
+
+    label = f"review record 'verification' field {section!r}"
+    if not isinstance(entries, list) or not entries:
+        raise JournalRecordError(f"{label} must be a non-empty array")
+    if section == "read":
+        for index, item in enumerate(entries):
+            _check_verification_string(item, f"{label} item {index}")
+        return
+    expected = _VERIFICATION_ENTRY_KEYS[section]
+    for index, entry in enumerate(entries):
+        entry_label = f"{label} entry {index}"
+        if not isinstance(entry, dict):
+            raise JournalRecordError(f"{entry_label} must be an object")
+        unexpected = sorted(str(key) for key in entry.keys() - set(expected))
+        if unexpected:
+            raise JournalRecordError(
+                f"{entry_label} has unsupported fields: {', '.join(unexpected)}"
+            )
+        if entry.keys() != set(expected):
+            raise JournalRecordError(
+                f"{entry_label} must contain "
+                + " and ".join(f"'{key}'" for key in expected)
+            )
+        for key in expected:
+            _check_verification_string(entry[key], f"{entry_label} field {key!r}")
+
+
+def _check_verification_string(value: object, label: str) -> None:
+    """The shape every string inside `verification` follows."""
+
+    if not isinstance(value, str) or not value.strip():
+        raise JournalRecordError(f"{label} must be a non-empty string")
+    _reject_control_characters(value, label)
 
 
 @_rule("completed-fields-7")
@@ -2150,6 +2260,8 @@ def create_review_record(
     previous_review: str | None = None,
     classes: dict[str, str] | None = None,
     reviewer_actor: str | None = None,
+    verification: dict[str, object] | None = None,
+    evidence: dict[str, str] | None = None,
     source: str = SOURCE_LIVE,
 ) -> dict[str, object]:
     """Build the review evidence record submitted by a reviewer.
@@ -2157,9 +2269,10 @@ def create_review_record(
     ``advisory_findings`` are non-blocking findings that may accompany any
     verdict, including ``approved``; they never affect the merge decision.
     The field is omitted when empty so records without advisory findings
-    stay identical to before. ``previous_review``, ``classes`` and
-    ``reviewer_actor`` are the schema-7 fields of ADR-0022 section 2:
-    supplied, each lands on the record and raises its stamp to 7.
+    stay identical to before. ``previous_review``, ``classes``,
+    ``reviewer_actor``, ``verification`` and ``evidence`` are the schema-7
+    fields of ADR-0022 section 2: supplied, each lands on the record and
+    raises its stamp to 7.
     """
 
     if (reviewed_commit is None) == (reviewed_finding is None):
@@ -2199,6 +2312,10 @@ def create_review_record(
         record["previous_review"] = previous_review
     if classes is not None:
         record["classes"] = classes
+    if verification is not None:
+        record["verification"] = verification
+    if evidence is not None:
+        record["evidence"] = evidence
     record["schema"] = _minimum_schema(record)
     return record
 

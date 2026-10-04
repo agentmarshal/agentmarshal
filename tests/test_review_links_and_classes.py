@@ -431,7 +431,7 @@ def test_the_family_is_declared_through_the_schema_7_registrations() -> None:
     derivation — never a second mechanism."""
 
     family = records_module._SCHEMA_7_REVIEW_FIELDS
-    assert family == {"previous_review", "classes"}
+    assert family == {"previous_review", "classes", "verification", "evidence"}
     assert (7, "review", family) in records_module._FIELD_FAMILIES
     assert ("review", "previous_review") in records_module._FORGEABLE_TEXT_FIELDS
     assert records_module._RULE_FROM_SCHEMA["review-fields-7"] == 7
