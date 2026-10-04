@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 
 from agentmarshal.cli import main
+from agentmarshal.journal.gate import run_gate
 from agentmarshal.journal.records import (
     JournalRecordError,
     create_abandoned_record,
@@ -20,6 +21,7 @@ from agentmarshal.journal.records import (
     write_record,
 )
 from agentmarshal.journal.status import TaskStatusError, load_task_for_record
+from test_gate import _candidate_head, _commit_all, _gate_repo
 from test_journal import initialize_status_repo
 
 _COMMIT = "a" * 40
@@ -164,23 +166,71 @@ def test_a_candidate_adding_an_agreement_record_is_admitted(
 ) -> None:
     """Scenario: a candidate adding an agreement record is admitted.
 
-    The gate runs `validate_record_content` over the records a candidate
-    adds and asks the projection what a closed task still admits — an
-    agreement passes the content check and answers the projection like
-    every record type that is not a measurement or a reopening.
+    A real repository, the way test_gate's candidate tests build one: the
+    task opens and merges, and a candidate branch appends an agreement
+    record — a journal-only transaction, the lane an appended record
+    takes. The gate's record checks pass for it the way they pass for the
+    other schema-7 record types the projection admits before a terminal
+    record.
     """
 
-    record = _agreement_record(recorded_by="an-operator", recorded_by_source="override")
-    filename = f"{generate_ulid()}-agreement.json"
-    assert validate_record_content(filename, json.dumps(record))["contract"] == _HASH
+    monkeypatch.setenv("AGENTMARSHAL_ACTOR", "an-operator")
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    journal = repo / ".agentmarshal" / "journal"
+
+    def add_agreement() -> None:
+        write_record(journal, "CR-001", _agreement_record())
+
+    head = _candidate_head(repo, "agreement", base, add_agreement)
+
+    report = run_gate(repo, "CR-001", head, base, head)
+
+    output = "\n".join(report.lines)
+    assert report.passed, output
+    assert "PASS: added records are valid" in output
+    assert "PASS: task lifecycle records are consistent" in output
+
+
+@pytest.mark.parametrize(
+    "terminal,state", [("completed", "done"), ("abandoned", "abandoned")]
+)
+def test_a_candidate_adding_an_agreement_after_a_terminal_record_is_refused(
+    terminal: str, state: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: an agreement on a closed task is refused — at the gate.
+
+    The projection's answer the writer-side guard refuses on is the gate's
+    own: a candidate that appends an agreement to a task already terminal
+    at base is refused, the report naming the projected state — an
+    agreement is admitted after a terminal record never, where a
+    measurement or a reopening still may be.
+    """
 
     monkeypatch.setenv("AGENTMARSHAL_ACTOR", "an-operator")
-    repo = tmp_path / "repo"
-    root = initialize_status_repo(repo)
-    monkeypatch.chdir(repo)
-    assert main(["open", "--title", "Task"]) == 0
-    task = load_task_for_record(root, "CR-001", "agreement")
-    assert task.state == "open"
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    journal = repo / ".agentmarshal" / "journal"
+    write_record(
+        journal,
+        "CR-001",
+        create_completed_record("CR-001", "test", base)
+        if terminal == "completed"
+        else create_abandoned_record("CR-001", "test", "Superseded"),
+    )
+    base = _commit_all(repo, f"close CR-001 ({terminal})")
+
+    def add_agreement() -> None:
+        write_record(journal, "CR-001", _agreement_record())
+
+    head = _candidate_head(repo, "agreement-after-terminal", base, add_agreement)
+
+    report = run_gate(repo, "CR-001", head, base, head)
+
+    output = "\n".join(report.lines)
+    assert not report.passed
+    assert (
+        f"FAIL: task CR-001 is already closed at base (candidate state: {state})"
+        in output
+    )
 
 
 def test_status_and_validate_handle_a_task_carrying_an_agreement(
