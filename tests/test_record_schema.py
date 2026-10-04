@@ -456,6 +456,52 @@ _FINDING_ID = "01J00000000000000000000000"
             7,
         ),
         (
+            create_session_record(
+                "CR-001",
+                "t",
+                "r",
+                "a",
+                "implementation",
+                "d",
+                1,
+                2,
+                3,
+                started_at="2026-10-01T10:00:00Z",
+                ended_at="2026-10-01T11:30:00Z",
+            ),
+            7,
+        ),
+        (
+            create_session_record(
+                "CR-001",
+                "t",
+                "r",
+                "a",
+                "implementation",
+                "provider-limit",
+                1,
+                2,
+                3,
+                resets_at="2026-10-02T00:00:00Z",
+            ),
+            7,
+        ),
+        (
+            create_session_record(
+                "CR-001",
+                "t",
+                "r",
+                "a",
+                "implementation",
+                "d",
+                1,
+                2,
+                3,
+                cost={"amount": "0.42", "currency": "USD", "source": "reported"},
+            ),
+            7,
+        ),
+        (
             create_check_record("CR-001", "t", _COMMIT, "pytest", "passed"),
             7,
         ),
@@ -557,6 +603,49 @@ def test_a_writer_stamps_schema_7_when_its_record_needs_it() -> None:
             **{field: value},
         )
         assert record["schema"] == 7, field
+    # The time, reset and cost fields raise the stamp the same way —
+    # `started_at` and `ended_at` admitted only together, `resets_at` on
+    # its `provider-limit` outcome.
+    for record in (
+        create_session_record(
+            "CR-001",
+            "t",
+            "r",
+            "a",
+            "implementation",
+            "d",
+            1,
+            2,
+            3,
+            started_at="2026-10-01T10:00:00Z",
+            ended_at="2026-10-01T11:30:00Z",
+        ),
+        create_session_record(
+            "CR-001",
+            "t",
+            "r",
+            "a",
+            "implementation",
+            "provider-limit",
+            1,
+            2,
+            3,
+            resets_at="2026-10-02T00:00:00Z",
+        ),
+        create_session_record(
+            "CR-001",
+            "t",
+            "r",
+            "a",
+            "implementation",
+            "d",
+            1,
+            2,
+            3,
+            cost={"amount": "0.42", "currency": "USD", "source": "reported"},
+        ),
+    ):
+        assert record["schema"] == 7, record
 
 
 def test_a_record_is_checked_against_where_it_lies_on_read(tmp_path: Path) -> None:
