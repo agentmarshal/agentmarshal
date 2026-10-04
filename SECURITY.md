@@ -26,4 +26,7 @@ review, an acceptance, a completion — under any identity they choose is
 therefore not a vulnerability: the gate compares identity strings and does not
 authenticate who recorded anything, as the README states. The line is whether
 the gate's own checks hold, not whether a record's author is who it says.
-Signing is on the roadmap rather than in this release.
+Signing is on the roadmap rather than in this release. The boundary this
+list draws — what the published decisions protect, what they knowingly
+leave unprotected, and what they leave open — is collected, with
+citations, in [docs/threat-model.md](docs/threat-model.md).
