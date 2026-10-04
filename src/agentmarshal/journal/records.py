@@ -214,6 +214,15 @@ _LEAK_SIGNATURE_IDS = frozenset(name for name, _pattern in _LEAK_PATTERNS)
 # neither carries `findings`.
 _SCHEMA_7_ACCEPTANCE_FIELDS = frozenset({"accepted_pause", "operational"})
 _ACCEPTANCE_FORMS = frozenset({"findings", "accepted_pause", "operational"})
+# What a review links and classifies (ADR-0016 decisions 2 and 3,
+# ADR-0022 section 2): `previous_review` — the id of the task's previous
+# review, so the task's reviews form a chain — and `classes` — a class
+# for each finding the record names. `actor` inside `reviewer`
+# (ADR-0018 decision 3) is the family's third field but a key of the
+# reviewer object rather than of the record, so the family names the two
+# top-level fields and `reviewer.actor` is admitted where the object's
+# closed keys are checked.
+_SCHEMA_7_REVIEW_FIELDS = frozenset({"previous_review", "classes"})
 _SHA256_HEX_PATTERN = re.compile(r"[0-9a-f]{64}$")
 _REVIEWED_COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}$")
 _REVIEW_VERDICTS = frozenset({"approved", "changes_required", "blocked", "rejected"})
@@ -336,6 +345,7 @@ _FIELD_FAMILIES: tuple[tuple[int, str | None, frozenset[str]], ...] = (
     (7, "check", _SCHEMA_7_CHECK_FIELDS),
     (7, "acknowledgement", _SCHEMA_7_ACKNOWLEDGEMENT_FIELDS),
     (7, "acceptance", _SCHEMA_7_ACCEPTANCE_FIELDS),
+    (7, "review", _SCHEMA_7_REVIEW_FIELDS),
 )
 
 
@@ -380,7 +390,14 @@ def _allowed_fields(record_type: str, schema: int) -> frozenset[str]:
 # acceptance family registers nothing: `accepted_pause` is an object, not
 # a displayed string, so the extension name it carries gets the same
 # `_reject_control_characters` check the finding ids get inline, inside
-# the family's shape rule.
+# the family's shape rule. The review family registers its
+# `previous_review` the same completeness way `commit` registers: the
+# ULID shape admits no character the forgeable-text rule refuses, so the
+# entry never fires. `classes` is an object and `actor` a key of the
+# reviewer object — a table entry would fail-closed on the dict, and a
+# top-level key could never reach the nested string — so each takes the
+# same `_reject_control_characters` check inside the family's own rule,
+# as `accepted_pause`'s `extension` does.
 _TEXT_CHAR_LIMITS: dict[tuple[str | None, str], int] = {
     ("acknowledgement", "reason"): _ACKNOWLEDGEMENT_REASON_CHAR_LIMIT,
 }
@@ -402,6 +419,7 @@ _FORGEABLE_TEXT_FIELDS: dict[tuple[str | None, str], None] = {
     ("check", "run_url"): None,
     ("acknowledgement", "file"): None,
     ("acknowledgement", "reason"): None,
+    ("review", "previous_review"): None,
 }
 
 
@@ -824,6 +842,57 @@ def _check_acceptance_fields_7(
         raise JournalRecordError("acceptance record field 'operational' must be true")
 
 
+@_rule("review-fields-7")
+def _check_review_fields_7(data: Mapping[str, object], _context: _RuleContext) -> None:
+    if cast(str, data["record_type"]) != "review":
+        return
+    if "previous_review" in data:
+        previous = data["previous_review"]
+        if not isinstance(previous, str) or not _is_ulid(previous):
+            raise JournalRecordError(
+                "review record field 'previous_review' must be a "
+                "26-character Crockford base32 ULID"
+            )
+    if "classes" in data:
+        classes = data["classes"]
+        if not isinstance(classes, dict) or not classes:
+            raise JournalRecordError(
+                "review record field 'classes' must be a non-empty object "
+                "keyed by finding id"
+            )
+        # A class's key may name only a finding the record itself names;
+        # `findings` and `advisory_findings` are inside the record — at
+        # hand at write and on read alike — and the `review` rule has
+        # already refused a malformed one when this rule runs.
+        named: set[object] = set()
+        for field in ("findings", "advisory_findings"):
+            ids = data.get(field)
+            if isinstance(ids, list):
+                named.update(ids)
+        for finding_id, finding_class in classes.items():
+            if finding_id not in named:
+                raise JournalRecordError(
+                    "review record 'classes' key must name a finding id the "
+                    "record carries in 'findings' or 'advisory_findings'"
+                )
+            if not isinstance(finding_class, str) or not finding_class.strip():
+                raise JournalRecordError(
+                    "review record 'classes' value must be a non-empty string"
+                )
+            _reject_control_characters(finding_class, "review record 'classes' value")
+    # `reviewer.actor` is a key of the reviewer object: the `review`
+    # rule's closed-key check has admitted it here, and this rule checks
+    # its shape with the family's.
+    reviewer = data.get("reviewer")
+    if isinstance(reviewer, dict) and "actor" in reviewer:
+        actor = reviewer["actor"]
+        if not isinstance(actor, str) or not actor.strip():
+            raise JournalRecordError(
+                "review record reviewer field 'actor' must be a non-empty string"
+            )
+        _reject_control_characters(actor, "review record reviewer field 'actor'")
+
+
 @_rule("provenance")
 def _check_provenance(data: Mapping[str, object], _context: _RuleContext) -> None:
     # Provenance was introduced at schema 2 (ADR-0005 Decision 4); the rule
@@ -989,6 +1058,7 @@ _RULE_FROM_SCHEMA: dict[str, int] = {
     "check-fields-7": 7,
     "acknowledgement-fields-7": 7,
     "acceptance-fields-7": 7,
+    "review-fields-7": 7,
     "provenance": 2,
     "recorded-by": 1,
     "finding-binding": 4,
@@ -1110,10 +1180,19 @@ def _validate_review_record(data: Mapping[str, object]) -> None:
         raise JournalRecordError(
             "review record reviewer field 'email' must contain '@'"
         )
-    if reviewer.keys() != {"role", "vendor", "model", "email"}:
+    # `actor` — the declared reviewer actor the distinct-actor rule
+    # compares (ADR-0018 decision 3) — joins the closed object from
+    # schema 7 alone (ADR-0022 section 2): the record's own schema
+    # decides, so a review stamped below 7 carrying it is refused on
+    # read the way it is at write.
+    reviewer_keys = {"role", "vendor", "model", "email"}
+    admitted = "role, vendor, model, and email"
+    if cast(int, data["schema"]) >= 7:
+        reviewer_keys = reviewer_keys | {"actor"}
+        admitted = "role, vendor, model, email, and actor"
+    if reviewer.keys() - reviewer_keys:
         raise JournalRecordError(
-            "review record field 'reviewer' must contain only role, vendor, "
-            "model, and email"
+            f"review record field 'reviewer' must contain only {admitted}"
         )
     findings = data.get("findings")
     if not isinstance(findings, list) or not all(
@@ -1528,6 +1607,13 @@ def _minimum_schema(record: Mapping[str, object]) -> int:
         schema = max(schema, 7)
     if record.keys() & _SCHEMA_7_ACCEPTANCE_FIELDS:
         schema = max(schema, 7)
+    if record.keys() & _SCHEMA_7_REVIEW_FIELDS:
+        schema = max(schema, 7)
+    # `reviewer.actor` is a key of the reviewer object — `record.keys()`
+    # never sees it — and needs 7 all the same.
+    reviewer = record.get("reviewer")
+    if isinstance(reviewer, dict) and "actor" in reviewer:
+        schema = max(schema, 7)
     if record.get("record_type") == "check":
         schema = max(schema, _CHECK_RECORD_SCHEMA)
     if record.get("record_type") == "acknowledgement":
@@ -1754,6 +1840,9 @@ def create_review_record(
     reviewed_contract: str | None = None,
     advisory_findings: list[str] | None = None,
     artifacts: list[dict[str, str]] | None = None,
+    previous_review: str | None = None,
+    classes: dict[str, str] | None = None,
+    reviewer_actor: str | None = None,
     source: str = SOURCE_LIVE,
 ) -> dict[str, object]:
     """Build the review evidence record submitted by a reviewer.
@@ -1761,7 +1850,9 @@ def create_review_record(
     ``advisory_findings`` are non-blocking findings that may accompany any
     verdict, including ``approved``; they never affect the merge decision.
     The field is omitted when empty so records without advisory findings
-    stay identical to before.
+    stay identical to before. ``previous_review``, ``classes`` and
+    ``reviewer_actor`` are the schema-7 fields of ADR-0022 section 2:
+    supplied, each lands on the record and raises its stamp to 7.
     """
 
     if (reviewed_commit is None) == (reviewed_finding is None):
@@ -1769,18 +1860,21 @@ def create_review_record(
             "review record must name exactly one of 'reviewed_commit' or "
             "'reviewed_finding'"
         )
+    reviewer: dict[str, str] = {
+        "role": reviewer_role,
+        "vendor": reviewer_vendor,
+        "model": reviewer_model,
+        "email": reviewer_email,
+    }
+    if reviewer_actor is not None:
+        reviewer["actor"] = reviewer_actor
     record: dict[str, object] = {
         "record_type": "review",
         "task": task_id,
         "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "tool_version": tool_version,
         "verdict": verdict,
-        "reviewer": {
-            "role": reviewer_role,
-            "vendor": reviewer_vendor,
-            "model": reviewer_model,
-            "email": reviewer_email,
-        },
+        "reviewer": reviewer,
         "findings": findings,
         "source": source,
     }
@@ -1794,6 +1888,10 @@ def create_review_record(
         record["advisory_findings"] = advisory_findings
     if artifacts:
         record["artifacts"] = artifacts
+    if previous_review is not None:
+        record["previous_review"] = previous_review
+    if classes is not None:
+        record["classes"] = classes
     record["schema"] = _minimum_schema(record)
     return record
 
