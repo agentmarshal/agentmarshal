@@ -297,9 +297,14 @@ projection is a derived output the current code does not emit, and the
 unsigned Statement it describes is schema-valid, not a verifiable
 attestation; SLSA Source alignment is adjacency and roadmap, never
 asserted as a derived level, and the completeness invariant is normative
-intent, not a property a validator enforces. Imported evidence is marked
-and is provenance-weaker than live capture. (README.md, "Trust boundary";
-ADR-0005, decisions 1, 4 and 5; ADR-0006, decision 5.)
+intent, not a property a validator enforces. The marking of imported
+evidence as provenance-weaker than live capture is decided, not yet
+implemented: the record schema carries the `source` field and the
+`imported-from-host` value, and a mapping module turns retained v1 stat
+records into `session` records so marked, but no command runs the
+backfill — the public backfill command is unshipped. (README.md, "Trust
+boundary"; ADR-0005, decisions 1, 4 and 5 and its "Status in 0.4.1"
+note; ADR-0006, decision 5.)
 
 **Records written around the tool get checked, not trusted.** The gate
 still checks records another tool wrote, and a record a candidate adds is
