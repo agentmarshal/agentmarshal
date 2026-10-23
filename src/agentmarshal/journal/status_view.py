@@ -444,8 +444,12 @@ def _assignment_lines(task: TaskStatus) -> list[str]:
     order — the order is the fallback order — and the `independence` rules
     in force, then one line per implementer session (a session record whose
     `role` is `implementer`) and one per review, in the order the records
-    stand. A contract declaring none of the three fields gets no section —
-    its detail view stays byte for byte what it was.
+    stand. An empty ran side says so — `(none)` where its lines would
+    stand, the mark the scope block prints for an empty scope — but only
+    against a declared list: a side whose list the header does not declare
+    already reads `(not declared)` on the declaration line. A contract
+    declaring none of the three fields gets no section — its detail view
+    stays byte for byte what it was.
     """
 
     contract = task.contract
@@ -457,15 +461,25 @@ def _assignment_lines(task: TaskStatus) -> list[str]:
         f"- reviewers: {_declared_list(contract.reviewers)}",
         f"- independence: {_independence_list(contract.independence)}",
     ]
-    for record in task.records:
-        if (
-            record.get("record_type") == "session"
-            and record.get("role") == "implementer"
-        ):
-            lines.append(_implementer_session_line(record, contract.implementers))
-    for record in task.records:
-        if record.get("record_type") == "review":
-            lines.append(_review_ran_line(record, contract.reviewers))
+    sessions = [
+        _implementer_session_line(record, contract.implementers)
+        for record in task.records
+        if record.get("record_type") == "session"
+        and record.get("role") == "implementer"
+    ]
+    reviews = [
+        _review_ran_line(record, contract.reviewers)
+        for record in task.records
+        if record.get("record_type") == "review"
+    ]
+    if sessions:
+        lines.extend(sessions)
+    elif contract.implementers:
+        lines.append("- implementer sessions: (none)")
+    if reviews:
+        lines.extend(reviews)
+    elif contract.reviewers:
+        lines.append("- reviews: (none)")
     return lines
 
 
