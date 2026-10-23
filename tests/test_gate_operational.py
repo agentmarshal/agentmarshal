@@ -335,6 +335,47 @@ def test_a_removed_entry_is_refused_naming_the_file_and_the_entry(
     assert f"FAIL: {head}:{_SWITCHES}: switch entries removed: 'openspec'" in output
 
 
+def test_a_base_file_that_cannot_be_read_keeps_the_candidate_off_the_lane(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a base file that cannot be read keeps the candidate off the lane.
+
+    Two base shapes — bytes that are not TOML at all, and a well-formed
+    file whose entry is outside the parser's shape — each keep an
+    otherwise-operational candidate on the regular lane, which needs a
+    review: a removal or an unchanged entry cannot be judged against a
+    base that cannot be read. ``stage run --phase pre-gate`` on the same
+    candidate does not print the operational line; the stage it would
+    have skipped is blocked by the unreadable base file and pauses the
+    transaction, as it does on any other candidate today.
+    """
+
+    repo = _project(tmp_path, monkeypatch)
+    _extension(repo)
+    assert main(["open", "--title", "Switch off openspec", "--scope", _SWITCHES]) == 0
+    base = _commit_all(repo, "extension and task")
+    for bad_text in (
+        "not toml [[[\n",
+        'format = 1\n\n[switches.openspec]\nstate = "off"\n',
+    ):
+        _write_switches(repo, bad_text)
+        base = _commit_all(repo, "unreadable switches at base")
+        _write_switches(repo, _OFF_CR_001)
+        head = _commit_all(repo, "switch off openspec")
+        capsys.readouterr()
+
+        passed, output = _run(repo, head, base, head)
+
+        assert not passed
+        assert "operational" not in output
+        assert "no review record" in output
+
+        assert _stage_run(commit=head, base=base) == 3
+        captured = capsys.readouterr()
+        assert "pre-gate stages do not run on an operational change" not in captured.out
+        assert f"{base}:{_SWITCHES}" in captured.err
+
+
 def test_switching_an_extension_back_on_names_this_task(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -946,14 +946,30 @@ def _operational_contract(
         return None
 
 
+@dataclass(frozen=True)
+class OperationalCandidate:
+    """What the operational lane is judged under, once a candidate qualifies.
+
+    ``contract`` is the contract the lane's checks are read from;
+    ``extension_names`` the shared extension names the merge base
+    declares, which both files' entries are parsed against;
+    ``base_switches`` the entries the base's own switches file declares —
+    the base a removed or an unchanged entry is judged by.
+    """
+
+    contract: ContractHeader
+    extension_names: frozenset[str]
+    base_switches: dict[str, Switch]
+
+
 def operational_candidate(
     project_root: Path,
     task_id: str,
     merge_base: str,
     resolved_commit: str,
     changes_with_status: list[tuple[str, str]],
-) -> ContractHeader | None:
-    """The contract an operational candidate's lane is judged under, or ``None``.
+) -> OperationalCandidate | None:
+    """The lane's judgement bundle for an operational candidate, or ``None``.
 
     ADR-0013 decision 17 — the lane a change takes when it only switches
     shared extensions: the diff carries ``.agentmarshal/switches.toml``
@@ -961,11 +977,17 @@ def operational_candidate(
     — the task's own subtree, contract included — and the task's
     contract declares ``scope`` exactly that file. Anything else — a
     manifest, any configuration, code — is not operational and takes the
-    lane it takes today. ``run_gate`` asks this only in the embedded
-    placement; in a sidecar the lane is not offered. The switches
-    file's entries are not inspected here: qualification is a property
-    of the diff's shape and the contract, so a malformed file fails on
-    the lane itself with the file and entry named.
+    lane it takes today. Nor is a candidate whose merge base the lane
+    cannot judge: the base's own switches file must parse under the
+    shared parser against the base's shared extension names — an absent
+    file parses as no entries — because a removed or an unchanged entry
+    is judged against it, so a base the read or the parse refuses keeps
+    the candidate on the lane it takes today, where it needs a review.
+    ``run_gate`` asks this only in the embedded placement; in a sidecar
+    the lane is not offered. The candidate file's entries are not
+    inspected here: that judgement is the lane's own, so a malformed
+    candidate file fails on the lane itself with the file and entry
+    named.
     """
 
     task_prefix = f"{_JOURNAL_PREFIX}tasks/{task_id}/"
@@ -980,7 +1002,15 @@ def operational_candidate(
     contract = _operational_contract(project_root, task_id, merge_base, resolved_commit)
     if contract is None or contract.scope != (SWITCHES_RELPATH,):
         return None
-    return contract
+    try:
+        extension_names = _extension_names_at_tree(project_root, merge_base)[0]
+        base_switches = _switches_at_tree(project_root, merge_base, extension_names)
+    except (ExtensionManifestError, SwitchesError, GateError):
+        # The base cannot be judged: its extension names cannot be
+        # enumerated, its file is not a file, its text the parser
+        # refuses, or git cannot show it — each keeps the lane closed.
+        return None
+    return OperationalCandidate(contract, extension_names, base_switches)
 
 
 def _switches_at_tree(
@@ -988,10 +1018,10 @@ def _switches_at_tree(
 ) -> dict[str, Switch]:
     """The switches a tree declares; a missing file is all-on.
 
-    The candidate read of the operational lane, kept beside
-    ``parse_switches``' caller so the file's own ref names every
-    refusal: a link or a non-blob at the file's path is not a file —
-    the same refusal ``stages.py``'s base read makes.
+    The tree read the operational lane makes of both the merge base and
+    the candidate, kept beside ``parse_switches``' caller so the file's
+    own ref names every refusal: a link or a non-blob at the file's path
+    is not a file — the same refusal ``stages.py``'s base read makes.
     """
 
     source = f"{tree_ref}:{SWITCHES_RELPATH}"
@@ -1193,7 +1223,7 @@ def run_gate(
     # a sidecar a host diff spelling the same paths is work like any other.
     # A journal-only candidate cannot carry the switches file, so asking the
     # predicate then would only spend git reads.
-    operational_contract = (
+    operational = (
         operational_candidate(
             project_root, task_id, merge_base, resolved_commit, changes_with_status
         )
@@ -1282,8 +1312,8 @@ def run_gate(
 
     if journal_only:
         say("PASS: journal-only transaction (deterministic lane; review not required)")
-    elif operational_contract is not None:
-        contract = operational_contract
+    elif operational is not None:
+        contract = operational.contract
         say("PASS: operational transaction (operational lane; review not required)")
         # ADR-0013 decision 17's lane check: the candidate's file parses
         # against the shared extension names the base declares; every
@@ -1291,30 +1321,29 @@ def run_gate(
         # switching one back on is an `on` entry naming it — and an entry
         # the base held that the candidate drops refuses: removing is a
         # change like any other, so it carries the task that made it or
-        # it does not happen. A base file that cannot be parsed is simply
-        # no entries to remove or compare.
-        extension_names = _extension_names_at_tree(project_root, merge_base)[0]
-        try:
-            base_switches = _switches_at_tree(project_root, merge_base, extension_names)
-        except SwitchesError:
-            base_switches = {}
+        # it does not happen. The base's own file reached the lane already
+        # parsed — the predicate keeps the lane closed when the base
+        # cannot be read — so `base_switches` is never a guessed base.
         candidate_source = f"{resolved_commit}:{SWITCHES_RELPATH}"
         candidate_switches: dict[str, Switch] | None
         try:
             candidate_switches = _switches_at_tree(
-                project_root, resolved_commit, extension_names
+                project_root, resolved_commit, operational.extension_names
             )
         except SwitchesError as error:
             check(False, str(error))
             candidate_switches = None
         if candidate_switches is not None:
             removed = sorted(
-                name for name in base_switches if name not in candidate_switches
+                name
+                for name in operational.base_switches
+                if name not in candidate_switches
             )
             misnamed = sorted(
                 name
                 for name, switch in candidate_switches.items()
-                if switch.task != task_id and base_switches.get(name) != switch
+                if switch.task != task_id
+                and operational.base_switches.get(name) != switch
             )
             refusals: list[str] = []
             if removed:
@@ -2070,7 +2099,7 @@ def run_gate(
                 )
             )
 
-    if not journal_only and operational_contract is None:
+    if not journal_only and operational is None:
         # ADR-0016 decision 4: the count of changes_required verdicts over
         # the whole task — every review of the task's candidates, whatever
         # commit it names; a review bound to a research finding (ADR-0009)

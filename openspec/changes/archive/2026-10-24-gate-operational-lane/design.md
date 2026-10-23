@@ -24,7 +24,9 @@ the rule that configuration is reviewed.
 - Fail-closed refusal where it matters: a file the parser refuses, an
   entry naming another task, an entry naming no shared extension the
   base declares, an entry the base held and the candidate drops — each
-  refuses naming the file and the entry.
+  refuses naming the file and the entry. A base file the read or the
+  parse refuses keeps the lane itself closed: the change needs a
+  review rather than being judged against a guessed base.
 - Every other lane's transcript byte for byte.
 
 ## Non-Goals
@@ -48,9 +50,10 @@ the rule that configuration is reviewed.
 
 The gate and the stage runner ask the same question — is this candidate
 operational — so one function in `gate.py` answers it and `stages.py`
-imports it. It returns the contract the lane is judged under, or `None`
-when the candidate does not take the lane; returning the contract keeps
-the lane block from re-deriving the base-or-candidate read the
+imports it. It returns the bundle the lane is judged under — the
+contract, the base's shared extension names and the base's parsed
+switches — or `None` when the candidate does not take the lane;
+returning them keeps the lane block from re-deriving the reads the
 qualification already made.
 
 Qualification, in order:
@@ -66,6 +69,14 @@ Qualification, in order:
 3. The task's contract parses and declares `scope` exactly
    `[".agentmarshal/switches.toml"]`. Any other scope — empty, wider,
    naming the journal — is not an operational contract.
+4. The base's switches file parses under the shared parser against the
+   base's own shared extension names — an absent file parses as no
+   entries. A file the read or the parse refuses keeps the lane
+   closed: the candidate takes the lane it takes today and needs a
+   review, because a removal or an unchanged entry cannot be judged
+   against a base that cannot be read. The same is true when the
+   base's extension enumeration itself is refused — the names the
+   parser checks entries against cannot be enumerated.
 
 The caller guards placement: `run_gate` asks only when `not sidecar`,
 so the lane can never be offered in a sidecar even though a host diff
@@ -157,12 +168,12 @@ gate names extensions without loading manifests:
   one, the entry.
 - A parsed file is compared entry by entry against the base's file —
   parsed the same way when the base has one, treated as no entries when
-  the base file is absent or unparsable (its entries cannot be
-  enumerated, so nothing can be shown dropped; the candidate's own
-  entries still face the parser and the task rule). Every entry the
-  candidate adds or changes relative to the base must carry `task`
-  equal to this task; one naming another task refuses naming the file
-  and the entry.
+  the base file is absent. A base file the read or the parse refuses
+  never reaches this comparison: the predicate has already kept the
+  lane closed, so the comparison judges entries against entries, never
+  a guessed base. Every entry the candidate adds or changes relative to
+  the base must carry `task` equal to this task; one naming another
+  task refuses naming the file and the entry.
 
 **A removal refuses.** An entry the base held and the candidate drops
 refuses the candidate naming the file and the entry — and a candidate
@@ -199,7 +210,9 @@ stage run: pre-gate stages do not run on an operational change
 then returns 0 having run nothing. Placing the check before the
 extension enumeration is decision 17's point: a broken extension cannot
 block the candidate that switches it off — no manifest is read, no
-switches parse, no stage builds, no pause can stand. Other phases fall
+stage builds, no pause can stand. The predicate's own reads — the
+base's contract, extension names and switches file — are gate inputs,
+not extension code. Other phases fall
 through to today's behaviour; a non-operational candidate is unchanged.
 
 ## Risks / Trade-offs

@@ -241,7 +241,13 @@ parse refuses — malformed TOML, a `format` other than `1`, an entry
 outside its shape, an entry naming no shared extension the base
 declares — SHALL refuse the candidate naming the file and, where the
 parse reached one, the entry; a link or a non-blob at the file's path
-refuses as not a file. Every entry the candidate adds or changes
+refuses as not a file. The merge base's own file SHALL parse under the
+same parser against the same names before the lane is taken at all —
+an absent file parses as no entries — and a base file the read or the
+parse refuses keeps the candidate off the operational lane: the
+candidate takes the lane it takes today and needs a review, because a
+removal or an unchanged entry cannot be judged against a base that
+cannot be read. Every entry the candidate adds or changes
 relative to the base SHALL name the transaction's task in `task`; one
 naming another task SHALL refuse the candidate naming the file and the
 entry. An entry the base holds and the candidate drops SHALL refuse
@@ -278,6 +284,16 @@ on display.
 - **WHEN** the base's file holds an entry the candidate's file drops —
   or the candidate deletes the file, dropping every entry it held
 - **THEN** the gate refuses naming the file and each dropped entry
+
+#### Scenario: a base file that cannot be read keeps the candidate off the lane
+
+- **WHEN** the merge base's `.agentmarshal/switches.toml` is one the
+  read or the parse refuses — malformed TOML, a well-formed file
+  holding an entry outside its shape, or not a file at all — and the
+  candidate's diff otherwise has the operational lane's shape
+- **THEN** the candidate does not take the operational lane and takes
+  the lane it takes today, needing a review: a removal or an
+  unchanged entry cannot be judged against a base that cannot be read
 
 #### Scenario: switching an extension back on names this task
 

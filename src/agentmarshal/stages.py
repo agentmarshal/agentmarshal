@@ -584,8 +584,10 @@ def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
         ):
             # ADR-0013 decision 17: a broken extension must not block the
             # operational change that switches it off, so the gate's own
-            # predicate decides before any manifest or switch is read —
-            # and nothing extension-side has run at all.
+            # predicate decides before any manifest is read — and nothing
+            # extension-side has run at all. The predicate's own reads —
+            # the base's contract, extension names and switches file —
+            # are gate inputs, not extension code.
             print("stage run: pre-gate stages do not run on an operational change")
             return 0
         extension_names, manifests = _base_extensions(project_root, merge_base)
