@@ -576,6 +576,51 @@ def test_local_state_that_cannot_be_used_falls_back_to_a_temporary_file(
             path.unlink(missing_ok=True)
 
 
+def test_a_large_outputs_kept_file_exists_after_the_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A fresh payload is written after the sweep, before its event.
+
+    ``open_writer`` bounds the log directory as it claims the writer
+    file; running it before the payload is written means the sweep can
+    never take a fresh payload whose event does not exist yet — even an
+    output larger than the directory's whole bound is still there when
+    the command finishes.
+    """
+
+    import agentmarshal.process_log as process_log
+
+    repo = _repo(tmp_path, monkeypatch)
+    monkeypatch.setenv("AGENTMARSHAL_ACTOR", "ci-runner")
+    _open()
+    monkeypatch.setattr(process_log, "DIRECTORY_CAP_BYTES", 1024)
+    content = b"x" * 4096 + b"FAILED at the very end\n"
+    output = tmp_path / "out.log"
+    output.write_bytes(content)
+    capsys.readouterr()
+
+    assert (
+        _record_check(
+            "--commit",
+            "HEAD",
+            "--name",
+            "unit-tests",
+            "--result",
+            "failed",
+            "--output-file",
+            str(output),
+        )
+        == 0
+    )
+
+    kept = _kept_files(repo)
+    assert len(kept) == 1
+    assert kept[0].read_bytes() == content
+    events = _events(repo)
+    assert len(events) == 1
+    assert Path(events[0]["path"]).exists()
+
+
 # -- the excerpt is the tail ------------------------------------------------------
 
 
@@ -690,6 +735,47 @@ def test_undecodable_bytes_are_replaced(
     record = _checks(repo)[0]
     assert "\ufffd\ufffd" in record["excerpt"]
     assert record["excerpt"].endswith("tail end\\n")
+
+    # No cut occurred, so a leading continuation byte is an undecodable
+    # byte like any other — replaced, never silently dropped.
+    leading = tmp_path / "leading.log"
+    leading.write_bytes(b"\x80failed\n")
+    assert (
+        _record_check(
+            "--commit",
+            "HEAD",
+            "--name",
+            "unit-tests",
+            "--result",
+            "failed",
+            "--output-file",
+            str(leading),
+        )
+        == 0
+    )
+    assert _checks(repo)[1]["excerpt"] == "\ufffdfailed\\n"
+
+    # A cut drops only the one character it split: the lead byte 0xE2
+    # sits just before the cut, its two continuations open the tail and
+    # are dropped whole — but the third continuation byte is an orphan,
+    # not part of any character, and decodes to the replacement
+    # character rather than being dropped with them.
+    spanning = tmp_path / "spanning.log"
+    spanning.write_bytes(b"a" * 900 + b"\xe2" + b"\x82\x80\x80" + b"b" * 4093)
+    assert (
+        _record_check(
+            "--commit",
+            "HEAD",
+            "--name",
+            "unit-tests",
+            "--result",
+            "failed",
+            "--output-file",
+            str(spanning),
+        )
+        == 0
+    )
+    assert _checks(repo)[2]["excerpt"] == "\ufffd" + "b" * 4093
     from agentmarshal.cli import main
 
     assert main(["validate"]) == 0
@@ -893,6 +979,54 @@ def test_a_hit_does_not_refuse_the_record(
     assert "[masked: gitlab-token]" in checks[0]["excerpt"]
 
 
+def test_an_excerpt_the_scan_still_trips_is_withheld(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A marker occurring in the mask label itself is withheld, not written.
+
+    `masked` is configured as a private marker, so the masked excerpt —
+    which literally says `[masked: private-marker]` — still trips the
+    scan after masking. The record is written with no excerpt rather
+    than carrying the marker's value, stderr says the excerpt was
+    withheld because masking could not make it clean, and the command
+    still exits zero: the record and the result land.
+    """
+
+    marker = "masked"
+    repo = _repo(tmp_path, monkeypatch, markers=(marker,))
+    monkeypatch.setenv("AGENTMARSHAL_ACTOR", "ci-runner")
+    _open()
+    output = tmp_path / "out.log"
+    output.write_bytes(b"the token was masked here\n")
+    capsys.readouterr()
+
+    assert (
+        _record_check(
+            "--commit",
+            "HEAD",
+            "--name",
+            "build",
+            "--result",
+            "failed",
+            "--output-file",
+            str(output),
+        )
+        == 0
+    )
+
+    record = _checks(repo)[0]
+    assert "excerpt" not in record
+    captured = capsys.readouterr()
+    assert "withheld" in captured.err
+    assert "masking could not make it clean" in captured.err
+    assert marker not in captured.out + captured.err
+    assert marker not in json.dumps(_records(repo))
+    # The full output is still kept and announced — only the record's
+    # excerpt is withheld.
+    assert len(_kept_files(repo)) == 1
+    assert len(_events(repo)) == 1
+
+
 def test_the_standalone_scan_is_untouched(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -1020,14 +1154,35 @@ def test_a_declared_actor_records_with_no_undeclared_note(
 # -- a refusal leaves nothing behind ----------------------------------------------
 
 
-def test_a_value_the_record_rules_refuse_is_refused_writing_nothing(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+@pytest.mark.parametrize(
+    ("refusal", "expected"),
+    [
+        ("unknown task", "unknown task"),
+        ("missing commit", "--commit"),
+        ("bad result", None),
+        ("refused field value", "control characters"),
+        ("unreadable output file", "--output-file"),
+        ("unreadable project file", "project configuration"),
+    ],
+)
+def test_a_refused_run_leaves_the_journal_the_log_and_the_files_area_untouched(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    refusal: str,
+    expected: str | None,
 ) -> None:
-    """A name that could forge a rendered line is refused with no record,
-    no event and no kept file.
+    """Scenario: a refused run leaves the journal, the log and the files
+    area untouched.
 
-    `--name` lands verbatim in the record, so the record family's own
-    rule is what refuses — decided before any write.
+    Every foreseeable refusal — an unknown task, a commit that does not
+    resolve, a result outside the vocabulary, a value the record rules
+    refuse (a name that could forge a rendered line), an unreadable
+    output file, a project file the command cannot read — is decided
+    before any write, and every run is asked to keep a real output
+    file, so a refusal also proves it keeps no file: the journal is
+    byte-identical, no `check-output` event lands, no payload appears
+    under `log/files/`, and the journal still validates.
     """
 
     repo = _repo(tmp_path, monkeypatch)
@@ -1035,24 +1190,52 @@ def test_a_value_the_record_rules_refuse_is_refused_writing_nothing(
     _open()
     output = tmp_path / "out.log"
     output.write_bytes(b"FAILED test_x\n")
+
+    task = "CR-001"
+    arguments = [
+        "--commit",
+        "HEAD",
+        "--name",
+        "build",
+        "--result",
+        "failed",
+        "--output-file",
+        str(output),
+    ]
+    if refusal == "unknown task":
+        task = "CR-099"
+    elif refusal == "missing commit":
+        arguments[arguments.index("--commit") + 1] = "deadbeef" * 5
+    elif refusal == "bad result":
+        arguments[arguments.index("--result") + 1] = "success"
+    elif refusal == "refused field value":
+        arguments[arguments.index("--name") + 1] = "check\nforged-approval"
+    elif refusal == "unreadable output file":
+        arguments[arguments.index("--output-file") + 1] = str(tmp_path / "no-such.log")
+    elif refusal == "unreadable project file":
+        # A section the command's own configuration read cannot parse:
+        # the file reads as JSON but `leak_scan` is malformed, so the
+        # refusal lands on the project-configuration read — and the
+        # placement the validator resolves still parses.
+        (repo / ".agentmarshal" / "project.json").write_text(
+            json.dumps({"leak_scan": "broken"}) + "\n",
+            encoding="utf-8",
+        )
     before = _tree(repo)
     capsys.readouterr()
 
-    assert (
-        _record_check(
-            "--commit",
-            "HEAD",
-            "--name",
-            "check\nforged-approval",
-            "--result",
-            "failed",
-            "--output-file",
-            str(output),
-        )
-        == 1
-    )
-    assert "control characters" in capsys.readouterr().err
+    if refusal == "bad result":
+        # argparse refuses the vocabulary before the command runs.
+        with pytest.raises(SystemExit) as exited:
+            _record_check(*arguments, task=task)
+        assert exited.value.code != 0
+    else:
+        assert _record_check(*arguments, task=task) == 1
+    if expected is not None:
+        assert expected in capsys.readouterr().err
     assert _tree(repo) == before
+    assert _events(repo) == []
+    assert _kept_files(repo) == []
     from agentmarshal.cli import main
 
     assert main(["validate"]) == 0

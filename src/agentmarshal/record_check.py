@@ -19,7 +19,10 @@ span with ``[masked: <category>]``, escaped for the forgeable-text rule,
 and bounded once more to 4 KiB after masking, since a mask can be longer
 than what it replaces. A hit is masked, never refused: the check's
 result is the fact being recorded, and refusing it over a token printed
-in a log would lose the fact with no path to record it.
+in a log would lose the fact with no path to record it. The masked
+excerpt is scanned once more: a marker occurring in the mask label
+itself still trips the scan, and then the excerpt is withheld — the
+record and the result land without it.
 
 Every refusal — an unknown task, a commit that does not resolve, a
 result outside the vocabulary, a value the record rules refuse, an
@@ -40,7 +43,7 @@ from typing import TextIO
 from agentmarshal import __version__
 from agentmarshal.agree import _declared_actor
 from agentmarshal.journal.actors import resolve_recorded_by
-from agentmarshal.journal.capture import CaptureError, mask_leaks
+from agentmarshal.journal.capture import CaptureError, mask_leaks, scan_for_leaks
 from agentmarshal.journal.contracts import JournalContractError
 from agentmarshal.journal.display import escape_for_display
 from agentmarshal.journal.gate import GateError, markers_from_config
@@ -166,17 +169,29 @@ def _resolve_commit(journal_project_root: Path, reference: str) -> str:
 def _bounded_tail(data: bytes) -> str:
     """Decode the last at-most-4-KiB of *data* on a character boundary.
 
-    The byte cut can land inside a multi-byte character; it is moved
-    forward past the continuation bytes so no valid character is halved.
-    What then fails to decode is replaced — the same ``errors="replace"``
-    the diff decoder applies to content that cannot be read.
+    Every undecodable byte decodes to the replacement character — the
+    same ``errors="replace"`` the diff decoder applies to content that
+    cannot be read — whether a cut happened or not. The only bytes
+    dropped are those of the one character a 4 KiB cut can split: the
+    partial character goes whole, so no character is halved.
     """
 
+    if len(data) <= _CHECK_EXCERPT_BYTE_LIMIT:
+        return data.decode("utf-8", errors="replace")
     tail = data[-_CHECK_EXCERPT_BYTE_LIMIT:]
-    start = 0
-    while start < len(tail) and tail[start] & 0xC0 == 0x80:
-        start += 1
-    return tail[start:].decode("utf-8", errors="replace")
+    cut = len(data) - len(tail)
+    # The cut may have split one multi-byte character. Its lead byte is
+    # within three bytes before the cut — a character is at most four
+    # bytes — and the tail bytes completing it are dropped whole.
+    lead = cut - 1
+    while lead >= 0 and cut - lead <= 3 and data[lead] & 0xC0 == 0x80:
+        lead -= 1
+    if lead >= 0 and cut - lead <= 3 and 0xC2 <= data[lead] <= 0xF4:
+        width = 2 if data[lead] < 0xE0 else 3 if data[lead] < 0xF0 else 4
+        drop = lead + width - cut
+        if drop > 0 and all(byte & 0xC0 == 0x80 for byte in tail[:drop]):
+            tail = tail[drop:]
+    return tail.decode("utf-8", errors="replace")
 
 
 def _excerpt(content: bytes, markers: tuple[str, ...]) -> tuple[str, list[str]]:
@@ -231,9 +246,13 @@ def _keep_output(
 
     try:
         state = local_state(placement)
+        # ``open_writer`` bounds the log directory as it claims this
+        # writer's file; it runs before the payload exists, so a fresh
+        # payload cannot be swept before its event is written.
+        writer = open_writer(state)
         kept = write_payload(state, _PAYLOAD_PREFIX, content)
         write_event(
-            open_writer(state),
+            writer,
             "check-output",
             task=task_id,
             name=name,
@@ -307,6 +326,7 @@ def run(args: argparse.Namespace, stderr: TextIO) -> int:
         recorder, source = actor
         excerpt: str | None = None
         categories: list[str] = []
+        withheld = False
         if content is not None:
             candidate, categories = _excerpt(content, markers)
             # The record admits `excerpt` only as a non-empty string, so
@@ -314,6 +334,13 @@ def run(args: argparse.Namespace, stderr: TextIO) -> int:
             # empty file, whitespace — carries none.
             if candidate.strip():
                 excerpt = candidate
+            if excerpt is not None and scan_for_leaks(excerpt, markers):
+                # A marker that occurs in the mask label itself still
+                # trips the scan after masking; the excerpt is withheld
+                # rather than written carrying the marker's value — the
+                # record and the result still land.
+                excerpt = None
+                withheld = True
         record = create_check_record(
             args.task,
             __version__,
@@ -353,7 +380,12 @@ def run(args: argparse.Namespace, stderr: TextIO) -> int:
     print(f"check {args.name}")
     print(f"result {args.result}")
     print(f"recorded by {escape_for_display(recorder)}")
-    if categories:
+    if withheld:
+        print(
+            "record-check: excerpt withheld: masking could not make it clean",
+            file=stderr,
+        )
+    elif categories:
         print(
             f"record-check: excerpt masked: {', '.join(categories)}",
             file=stderr,
