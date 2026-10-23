@@ -21,6 +21,11 @@ from agentmarshal.journal.records import (
 )
 from agentmarshal.journal.report import build_report
 
+_DECLARATION = (
+    "A check record is the observer's declaration of what the pipeline found "
+    "on the commit, not proof of it."
+)
+
 
 def _initialize_repo(repo: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     repo.mkdir()
@@ -193,6 +198,9 @@ def test_report_includes_mixed_actor_sessions_and_terminal_states(
         "CR-002\tabandoned\treviews=1\ttokens=15\tusage=unrecorded",
         "Summary\tabandoned=1 done=1\treviews=3\ttokens=30\tusage=unrecorded",
         "Lead\tknown=0\tunknown=1",
+        "Cost\tsessions_without_cost=3",
+        "Checks\trejected_commits=0",
+        _DECLARATION,
     ]
 
 
@@ -248,6 +256,9 @@ def test_report_distinguishes_session_usage_provenance(
         "CR-004\topen\treviews=0\ttokens=2\tusage=unrecorded",
         "Summary\topen=4\treviews=0\ttokens=10\tusage=mixed",
         "Lead\tknown=0\tunknown=0",
+        "Cost\tsessions_without_cost=5",
+        "Checks\trejected_commits=0",
+        _DECLARATION,
     ]
 
 
@@ -261,6 +272,7 @@ def test_report_for_one_task_and_empty_journal(
     assert main(["report"]) == 0
     assert capsys.readouterr().out == (
         "Summary\t\treviews=0\ttokens=0\nLead\tknown=0\tunknown=0\n"
+        "Checks\trejected_commits=0\n" + _DECLARATION + "\n"
     )
 
     assert main(["open", "--title", "Task"]) == 0
@@ -276,6 +288,7 @@ def test_report_for_one_task_and_empty_journal(
         "Durations\topened->implementer=not yet\timplementer->review=not yet"
         "\treview->approval=not yet\tapproval->completed=not yet"
     )
+    assert lines[3:] == ["Checks\trejected_commits=0", _DECLARATION]
 
 
 def test_status_names_the_prose(
@@ -344,7 +357,7 @@ def test_task_scoped_report_ignores_unrelated_malformed_task(
     assert main(["report", "--task", "CR-001"]) == 0
     lines = capsys.readouterr().out.splitlines()
     assert lines[0] == "CR-001\topen\treviews=0\ttokens=0"
-    assert len(lines) == 3
+    assert len(lines) == 5
 
     # The unfiltered report still surfaces the corruption fail-closed.
     assert main(["report"]) == 1

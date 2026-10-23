@@ -64,7 +64,13 @@ from agentmarshal.journal.records import (
     create_reopened_record,
     write_record,
 )
-from agentmarshal.journal.report import ReportError, build_report, format_report
+from agentmarshal.journal.report import (
+    ReportError,
+    build_findings_report,
+    build_report,
+    format_findings_report,
+    format_report,
+)
 from agentmarshal.journal.review import ReviewLaunchError, dry_run_review, launch_review
 from agentmarshal.journal.session import SessionRecordError, record_session
 from agentmarshal.journal.status import (
@@ -408,6 +414,12 @@ def _build_parser() -> argparse.ArgumentParser:
         "report", help="summarize task delegation economics"
     )
     report_parser.add_argument("--task", help="task identifier")
+    report_parser.add_argument(
+        "--findings",
+        action="store_true",
+        help="list the recorded finding classes and still-open deferrals "
+        "instead of the economics report",
+    )
     prune_parser = subparsers.add_parser(
         "prune", help="report local branches and worktrees for finished tasks"
     )
@@ -1125,17 +1137,25 @@ def _run_record_session(args: argparse.Namespace, stderr: TextIO) -> int:
     return 0
 
 
-def _run_report(task_id: str | None, stderr: TextIO) -> int:
+def _run_report(task_id: str | None, stderr: TextIO, findings: bool) -> int:
     placement = _placement("report", stderr)
     if placement is None:
         return 1
     print(placement.evidence_line, file=stderr)
     try:
-        report = build_report(placement.journal_root, task_id)
+        if findings:
+            lines = format_findings_report(
+                build_findings_report(placement.journal_root, task_id)
+            )
+        else:
+            lines = format_report(
+                build_report(placement.journal_root, task_id),
+                include_summary=task_id is None,
+            )
     except ReportError as error:
         print(error, file=stderr)
         return 1
-    for line in format_report(report, include_summary=task_id is None):
+    for line in lines:
         print(line)
     return 0
 
@@ -1524,7 +1544,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "finding":
         return _run_finding(args, sys.stderr)
     if args.command == "report":
-        return _run_report(args.task, sys.stderr)
+        return _run_report(args.task, sys.stderr, findings=args.findings)
     if args.command == "prune":
         return _run_prune(args, sys.stderr)
     if args.command == "migrate-journal":

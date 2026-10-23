@@ -32,6 +32,10 @@ from agentmarshal.journal.report import (
 )
 
 _COMMIT = "a" * 40
+_DECLARATION = (
+    "A check record is the observer's declaration of what the pipeline found "
+    "on the commit, not proof of it."
+)
 
 
 def _initialize_repo(repo: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
@@ -171,6 +175,9 @@ def test_every_boundary_time_prints_with_the_durations_between_them(
         "\treview->approval=1h\tapproval->completed=1h",
         "Round\t1\tverdict=changes_required\tsince=30m",
         "Round\t2\tverdict=approved\tsince=1h",
+        "Cost\tsessions_without_cost=1",
+        "Checks\trejected_commits=0",
+        _DECLARATION,
     ]
 
 
@@ -198,6 +205,9 @@ def test_an_implementer_session_without_started_at_is_an_unknown_boundary(
         "Durations\topened->implementer=unknown\timplementer->review=unknown"
         "\treview->approval=0s\tapproval->completed=2h",
         "Round\t1\tverdict=approved\tsince=unknown",
+        "Cost\tsessions_without_cost=1",
+        "Checks\trejected_commits=0",
+        _DECLARATION,
     ]
     # The session's write time appears nowhere as a boundary: it is the
     # record's `created_at`, never the run's start (ADR-0019 decision 2).
@@ -221,6 +231,8 @@ def test_a_boundary_without_a_record_is_not_yet(
         "\treview=not yet\tapproval=not yet\tcompleted=not yet",
         "Durations\topened->implementer=not yet\timplementer->review=not yet"
         "\treview->approval=not yet\tapproval->completed=not yet",
+        "Checks\trejected_commits=0",
+        _DECLARATION,
     ]
 
 
@@ -256,7 +268,8 @@ def test_rounds_list_in_order_with_verdicts_and_elapsed_times(
 
     assert main(["report", "--task", "CR-001"]) == 0
     output = capsys.readouterr().out
-    assert output.splitlines()[-3:] == [
+    rounds = [line for line in output.splitlines() if line.startswith("Round\t")]
+    assert rounds == [
         "Round\t1\tverdict=changes_required\tsince=45m",
         "Round\t2\tverdict=changes_required\tsince=1h30m",
         "Round\t3\tverdict=approved\tsince=1h30m",
@@ -280,11 +293,19 @@ def test_a_first_round_after_an_unknown_start_is_unknown(
     # A session that cannot say its start, and no session at all, read
     # the same: the first round's elapsed time is unknown.
     assert main(["report", "--task", "CR-001"]) == 0
-    assert "\tsince=unknown" in capsys.readouterr().out.splitlines()[-1]
+    rounds = [
+        line
+        for line in capsys.readouterr().out.splitlines()
+        if line.startswith("Round\t")
+    ]
+    assert "\tsince=unknown" in rounds[-1]
     assert main(["report", "--task", "CR-002"]) == 0
-    assert capsys.readouterr().out.splitlines()[-1] == (
-        "Round\t1\tverdict=approved\tsince=unknown"
-    )
+    rounds = [
+        line
+        for line in capsys.readouterr().out.splitlines()
+        if line.startswith("Round\t")
+    ]
+    assert rounds == ["Round\t1\tverdict=approved\tsince=unknown"]
 
 
 def test_the_aggregate_prints_after_todays_output(
@@ -315,6 +336,9 @@ def test_the_aggregate_prints_after_todays_output(
         "CR-002\tdone\treviews=1\ttokens=15\tusage=unrecorded\tdecision=approved",
         "Summary\tdone=2\treviews=2\ttokens=30\tusage=unrecorded",
         "Lead\tknown=1\tmedian=2h30m\tmax=2h30m\tunknown=1",
+        "Cost\tsessions_without_cost=2",
+        "Checks\trejected_commits=0",
+        _DECLARATION,
     ]
 
 
@@ -343,9 +367,12 @@ def test_an_unknown_lead_time_is_counted_never_averaged_in(
     capsys.readouterr()
 
     assert main(["report"]) == 0
-    assert capsys.readouterr().out.splitlines()[-1] == (
-        "Lead\tknown=1\tmedian=2h\tmax=2h\tunknown=1"
-    )
+    lead = [
+        line
+        for line in capsys.readouterr().out.splitlines()
+        if line.startswith("Lead\t")
+    ]
+    assert lead == ["Lead\tknown=1\tmedian=2h\tmax=2h\tunknown=1"]
 
 
 def test_with_no_fully_known_lead_time_the_median_and_maximum_are_absent(
@@ -364,7 +391,12 @@ def test_with_no_fully_known_lead_time_the_median_and_maximum_are_absent(
     capsys.readouterr()
 
     assert main(["report"]) == 0
-    assert capsys.readouterr().out.splitlines()[-1] == "Lead\tknown=0\tunknown=1"
+    lead = [
+        line
+        for line in capsys.readouterr().out.splitlines()
+        if line.startswith("Lead\t")
+    ]
+    assert lead == ["Lead\tknown=0\tunknown=1"]
 
 
 def test_todays_output_is_the_new_outputs_prefix(
@@ -392,9 +424,15 @@ def test_todays_output_is_the_new_outputs_prefix(
     )
     assert main(["report"]) == 0
     report_lines = capsys.readouterr().out.splitlines()
-    assert report_lines[:-1] == [
+    assert report_lines[:-4] == [
         "CR-001\tdone\treviews=1\ttokens=15\tusage=unrecorded\tdecision=approved",
         "Summary\tdone=1\treviews=1\ttokens=15\tusage=unrecorded",
+    ]
+    assert report_lines[-4:] == [
+        "Lead\tknown=1\tmedian=2h\tmax=2h\tunknown=0",
+        "Cost\tsessions_without_cost=1",
+        "Checks\trejected_commits=0",
+        _DECLARATION,
     ]
 
 
@@ -412,5 +450,5 @@ def test_a_record_value_in_the_new_lines_is_escaped_on_display() -> None:
 
     lines = format_report(report, include_summary=False)
 
-    assert lines[-1] == "Round\t1\tverdict=approved\\nforged\tsince=5m"
+    assert lines[-3] == "Round\t1\tverdict=approved\\nforged\tsince=5m"
     assert all("\n" not in line for line in lines)

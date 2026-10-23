@@ -259,4 +259,7 @@ def test_a_refused_character_prints_escaped_in_report() -> None:
         "CR-009\\nforged\topen\treviews=0\ttokens=4\tusage=measured\\u202e forged",
         "Summary\topen=1\treviews=0\ttokens=4\tusage=rep\\u202eorted\\nforged",
         "Lead\tknown=0\tunknown=0",
+        "Checks\trejected_commits=0",
+        "A check record is the observer's declaration of what the pipeline "
+        "found on the commit, not proof of it.",
     )
