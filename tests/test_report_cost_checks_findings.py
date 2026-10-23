@@ -448,12 +448,13 @@ def test_failed_and_error_count_passed_and_skipped_do_not(
         ("a" * 40, "failed"),
         ("b" * 40, "passed"),
         ("c" * 40, "skipped"),
+        ("d" * 40, "error"),
     ):
         _write(journal, "CR-001", _check("CR-001", commit, result))
     capsys.readouterr()
 
     assert main(["report", "--task", "CR-001"]) == 0
-    assert "Checks\trejected_commits=1" in capsys.readouterr().out.splitlines()
+    assert "Checks\trejected_commits=2" in capsys.readouterr().out.splitlines()
 
 
 def test_the_aggregate_counts_every_tasks_rejected_commits(
