@@ -403,6 +403,35 @@ def assert_no_leaks(text: str, private_markers: tuple[str, ...] = ()) -> None:
         )
 
 
+def mask_leaks(
+    text: str, private_markers: tuple[str, ...] = ()
+) -> tuple[str, list[str]]:
+    """Return *text* with each scanned span masked, and the categories found.
+
+    The writing counterpart of :func:`scan_for_leaks` for text that is
+    kept anyway: each matched span is replaced by ``[masked: <category>]``
+    with the scan's own category names — a configured marker masks as
+    ``private-marker``, the same name the scan reports — so the masked
+    text can never carry the matched secret and the categories alone say
+    what matched. A configured marker is masked before the signatures
+    run: the marker is itself the sensitive string, and masking it whole
+    can never leave a signature-shaped fragment of it behind. Best-effort
+    like the scan: a clean result is not proof the text is safe.
+    """
+
+    masked = text
+    categories: set[str] = set()
+    for marker in private_markers:
+        if marker and marker in masked:
+            masked = masked.replace(marker, "[masked: private-marker]")
+            categories.add("private-marker")
+    for category, pattern in _LEAK_PATTERNS:
+        masked, count = pattern.subn(f"[masked: {category}]", masked)
+        if count:
+            categories.add(category)
+    return masked, sorted(categories)
+
+
 _HUNK_HEADER = re.compile(r"^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@")
 
 # Split points only: a zero-width match, so the header stays in its section.
