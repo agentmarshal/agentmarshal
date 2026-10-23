@@ -329,6 +329,9 @@ agentmarshal report --task CR-001
 ```
 Placement: sidecar
 CR-001	done	reviews=1	tokens=1500	usage=reported	decision=approved
+Phases	opened=2026-09-01T11:21:00.426680Z	implementer=unknown	review=2026-09-01T11:21:00.574048Z	approval=2026-09-01T11:21:00.574048Z	completed=2026-09-01T11:21:00.831134Z
+Durations	opened->implementer=unknown	implementer->review=unknown	review->approval=0s	approval->completed=0s
+Round	1	verdict=approved	since=unknown
 ```
 
 ```sh

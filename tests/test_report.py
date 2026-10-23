@@ -192,6 +192,7 @@ def test_report_includes_mixed_actor_sessions_and_terminal_states(
         "CR-001\tdone\treviews=2\ttokens=15\tusage=unrecorded\tdecision=approved",
         "CR-002\tabandoned\treviews=1\ttokens=15\tusage=unrecorded",
         "Summary\tabandoned=1 done=1\treviews=3\ttokens=30\tusage=unrecorded",
+        "Lead\tknown=0\tunknown=1",
     ]
 
 
@@ -246,6 +247,7 @@ def test_report_distinguishes_session_usage_provenance(
         "CR-003\topen\treviews=0\ttokens=4\tusage=mixed",
         "CR-004\topen\treviews=0\ttokens=2\tusage=unrecorded",
         "Summary\topen=4\treviews=0\ttokens=10\tusage=mixed",
+        "Lead\tknown=0\tunknown=0",
     ]
 
 
@@ -257,12 +259,23 @@ def test_report_for_one_task_and_empty_journal(
     capsys.readouterr()
 
     assert main(["report"]) == 0
-    assert capsys.readouterr().out == "Summary\t\treviews=0\ttokens=0\n"
+    assert capsys.readouterr().out == (
+        "Summary\t\treviews=0\ttokens=0\nLead\tknown=0\tunknown=0\n"
+    )
 
     assert main(["open", "--title", "Task"]) == 0
     capsys.readouterr()
     assert main(["report", "--task", "CR-001"]) == 0
-    assert capsys.readouterr().out == "CR-001\topen\treviews=0\ttokens=0\n"
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0] == "CR-001\topen\treviews=0\ttokens=0"
+    assert lines[1].startswith("Phases\topened=")
+    assert lines[1].endswith(
+        "\timplementer=not yet\treview=not yet\tapproval=not yet\tcompleted=not yet"
+    )
+    assert lines[2] == (
+        "Durations\topened->implementer=not yet\timplementer->review=not yet"
+        "\treview->approval=not yet\tapproval->completed=not yet"
+    )
 
 
 def test_status_names_the_prose(
@@ -329,7 +342,9 @@ def test_task_scoped_report_ignores_unrelated_malformed_task(
     capsys.readouterr()
 
     assert main(["report", "--task", "CR-001"]) == 0
-    assert capsys.readouterr().out == "CR-001\topen\treviews=0\ttokens=0\n"
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0] == "CR-001\topen\treviews=0\ttokens=0"
+    assert len(lines) == 3
 
     # The unfiltered report still surfaces the corruption fail-closed.
     assert main(["report"]) == 1
