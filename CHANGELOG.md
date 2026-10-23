@@ -50,8 +50,9 @@ against the implementer sessions whose `commit` falls in the candidate's
 range, checks the latest review's `reviewer.actor` against the declared
 `reviewers` and the in-range implementer sessions against `implementers`,
 and says `not checked` where a rule's field is absent. An `agreement`
-record records that a declared actor agrees with the contract at a stated
-hash: `agentmarshal agree` writes it for the contract's current text,
+record records an actor's agreement with the contract at a stated hash —
+any recorder is accepted, and `status` shows one that is not a declared
+actor. `agentmarshal agree` writes it for the contract's current text,
 `status` shows it — including that a task holds none, or one for an earlier
 contract text — and when
 `contract.require_agreement` is set the gate refuses a candidate whose task
