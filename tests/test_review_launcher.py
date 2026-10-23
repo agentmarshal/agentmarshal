@@ -1386,6 +1386,26 @@ def test_an_operator_learns_the_contract_without_reading_the_launcher() -> None:
     assert "reviewer adapter's responsibility" in documentation
 
 
+def test_quickstart_states_verification_evidence_and_unconfirmed() -> None:
+    """The quickstart's protocol section documents the two optional keys.
+
+    The launcher asks reviewers for `verification`/`evidence` and states the
+    "unconfirmed" advisory rule — the documentation must say the same, or an
+    operator writing a reviewer adapter learns a protocol that drops what it
+    does not document.
+    """
+
+    documentation = (Path(__file__).parents[1] / "docs" / "quickstart.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "`verification`" in documentation
+    assert "`executed`" in documentation
+    assert "`not_run`" in documentation
+    assert "`evidence`" in documentation
+    assert '"unconfirmed"' in documentation
+
+
 def test_artifact_content_carrying_the_verdict_sentinels_yields_no_verdict_of_its_own(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2321,6 +2341,8 @@ Do not modify files. Your reviewed commit is {commit}.
 For each blocking or advisory finding id you report, print one line of prose
 before the verdict block, naming what is wrong and where. The ids are labels
 for the machine; the prose is what a human will read.
+In the same prose, name for each acceptance criterion where the diff meets it
+and which test demonstrates it.
 
 At the end, print exactly one JSON object between lines containing exactly
 {_VERDICT_BEGIN} and {_VERDICT_END}. The object must contain:
@@ -2335,6 +2357,15 @@ and may additionally contain:
   one class per id, blocking or advisory — from this vocabulary:
   correctness, contract-mismatch, claim-accuracy, scope, test-gap, security, style;
   a class outside the vocabulary is recorded as "other"
+- verification: an object saying what you ran and read — one or more
+  of the keys "executed" (a list of {{"what", "result"}} objects),
+  "read" (a list of strings) and "not_run" (a list of {{"what", "why"}}
+  objects), and no other key
+- evidence: an object naming, for each finding id you report, the
+  evidence behind it — a link, a file:line, or the command that
+  checked the claim with the essential part of its output
+A finding about an external fact you could not check is advisory —
+report its id under advisory_findings and mark its prose line "unconfirmed".
 
 No other key is accepted.
 
@@ -2402,6 +2433,15 @@ and may additionally contain:
   one class per id, blocking or advisory — from this vocabulary:
   correctness, contract-mismatch, claim-accuracy, scope, test-gap, security, style;
   a class outside the vocabulary is recorded as "other"
+- verification: an object saying what you ran and read — one or more
+  of the keys "executed" (a list of {{"what", "result"}} objects),
+  "read" (a list of strings) and "not_run" (a list of {{"what", "why"}}
+  objects), and no other key
+- evidence: an object naming, for each finding id you report, the
+  evidence behind it — a link, a file:line, or the command that
+  checked the claim with the essential part of its output
+A finding about an external fact you could not check is advisory —
+report its id under advisory_findings and mark its prose line "unconfirmed".
 
 No other key is accepted.
 
