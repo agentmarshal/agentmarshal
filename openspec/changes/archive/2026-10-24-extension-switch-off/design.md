@@ -73,8 +73,10 @@ command resolves its journal placement with.
   refuses. The existing `.agentmarshal/switches.toml` — a link at its
   path refused outright — is parsed against the declared names: a file
   the parse refuses is refused naming it, and an entry already `off`
-  is refused naming the task that switched it off. Only then is the
-  task opened — every earlier refusal writes nothing.
+  is refused naming the task that switched it off. The rewrite itself
+  is verified at the same point — the check the next decision gives —
+  and only then is the task opened: every earlier refusal writes
+  nothing.
 - **The rewrite is textual, not a serialization.** There is no TOML
   writer in the dependencies and none is added, so the existing text is
   kept and only what the switch needs changes. An `on` entry's
@@ -86,18 +88,25 @@ command resolves its journal placement with.
   file's existing content; a missing file is created as `format = 1`, a
   `[switches]` table and the entry. `reason` is quoted by
   `_toml_string` — every character a TOML basic string must escape is
-  escaped — and `task` carries the opened task's id. An `on` entry the
-  parse found but the text holds in a form with no table header — an
-  inline table or dotted keys under `[switches]` — is refused naming
-  the file before the task is opened: it parses, but there is no table
-  to replace and appending a same-named one would produce a file the
-  parse-back refuses.
-- **The new text is parsed back before it replaces the file.** The
-  whole candidate text goes through `parse_switches` against the
-  declared names; a text that fails writes nothing. The writer's own
-  output is expected to pass — the check is the guard against the
-  corner a surgical edit cannot foresee, and its failure is reported
-  like any other post-open failure.
+  escaped — and `task` carries the opened task's id.
+- **The new text is verified before the task is opened and again
+  before the file is replaced.** A line scanner cannot tell a table
+  header from a `[`-led line inside a multi-line value, so the
+  rewritten text is trusted only as far as TOML itself proves it. It
+  is built first under a placeholder task id — `CR-0`, a `CR-<n>` of
+  the valid form the allocator never assigns — and accepted only where
+  `tomllib.loads(new)` equals `tomllib.loads(old)` — the empty
+  document where the file is missing — everywhere except the one
+  `switches` entry, which must be exactly the off entry, and where
+  `parse_switches` reads the entry back as `off` with the placeholder
+  task and the reason. Any mismatch — a mis-detected span, an `on`
+  entry carried in a form with no table header to replace, anything —
+  refuses before the task is opened, on one line naming the file and
+  saying the entry must be switched off by editing the file in an
+  operational task, writing nothing. After the open, only the `task`
+  value's string changes to the real id and the same check runs again
+  before the replace; a failure there is reported like any other
+  post-open failure.
 - **The replace is atomic and lands beside the file.** A temporary
   file is created in `.agentmarshal/` — the switches file's own
   directory, the same-directory rule `_write_grants` follows — written,
@@ -128,4 +137,6 @@ command resolves its journal placement with.
 - **Every value shown is escaped on display.** The file's own values —
   a quoted entry name in a parse refusal, the task an already-off entry
   names — and every path and error the command prints pass
-  `escape_for_display`, the way the other extension surfaces do.
+  `escape_for_display`, the way the other extension surfaces do — the
+  success lines included: the contract's, the record's and the
+  switches file's paths.

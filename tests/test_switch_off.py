@@ -21,7 +21,8 @@ import agentmarshal.switch_off as switch_off
 import test_stages as stage_helpers
 from agentmarshal.cli import main
 from agentmarshal.journal.contracts import parse_contract
-from agentmarshal.switches import SwitchesError
+from agentmarshal.journal.display import escape_for_display
+from agentmarshal.switches import SwitchesError, parse_switches
 from test_placement import _host_and_sidecar
 
 _REASON = "hangs on empty repositories"
@@ -318,11 +319,20 @@ def test_the_new_text_is_parsed_back_before_it_replaces_the_file(
     """Scenario: the new text is parsed back before it replaces the file."""
     repo = stage_helpers._project(tmp_path, monkeypatch)
     _extension(repo)
+    real_parse = parse_switches
+    calls = 0
 
-    def refuse(*arguments: object) -> None:
-        raise SwitchesError("rewritten text does not parse")
+    def refuse_after_open(*arguments: Any) -> Any:
+        # The pre-open verification parses the rewritten text too — a
+        # refusal that can only land after the task is opened is the one
+        # whose line names it, so the parser fails on its second call.
+        nonlocal calls
+        calls += 1
+        if calls > 1:
+            raise SwitchesError("rewritten text does not parse")
+        return real_parse(*arguments)
 
-    monkeypatch.setattr(switch_off, "parse_switches", refuse)
+    monkeypatch.setattr(switch_off, "parse_switches", refuse_after_open)
     capsys.readouterr()
 
     assert _switch_off() == 1
@@ -453,6 +463,88 @@ def test_a_value_that_could_forge_a_line_is_escaped_on_display(
 
 
 # -- beyond the spec ------------------------------------------------------------
+
+
+def test_an_on_entry_carrying_a_multi_line_nested_array_is_not_corrupted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An `on` entry with a multi-line nested array is rewritten or refused.
+
+    Keys beyond state/task/reason pass unread, so the parser accepts the
+    entry — but a `[`-led continuation line inside the array is where a
+    line scanner can mistake the table's end. The command either replaces
+    the table correctly or refuses before any task is opened; in both
+    cases there is no orphan task and no corrupted file.
+    """
+    repo = stage_helpers._project(tmp_path, monkeypatch)
+    _extension(repo)
+    original = (
+        "format = 1\n\n[switches]\n\n"
+        "[switches.openspec]\n"
+        'state = "on"\n'
+        'task = "CR-1"\n'
+        "extra = [\n"
+        '  ["nested", "array"],\n'
+        '  ["lines"],\n'
+        "]\n"
+    )
+    _switches_file(repo).write_text(original, encoding="utf-8")
+
+    result = _switch_off()
+
+    if result == 0:
+        # The table was replaced correctly — the off entry reads back.
+        (task,) = _task_dirs(repo)
+        assert _switches(repo)["openspec"] == {
+            "state": "off",
+            "task": task.name,
+            "reason": _REASON,
+        }
+    else:
+        # Refused before any task was opened: the file stands as it was.
+        assert result == 1
+        assert "switches.toml" in capsys.readouterr().err
+        assert _task_dirs(repo) == []
+        assert _switches_file(repo).read_text(encoding="utf-8") == original
+
+
+def test_every_path_the_command_prints_is_escaped_on_display(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Every path the command prints is escaped — the success lines included.
+
+    The project can sit on a path carrying a character the forgeable-text
+    rule refuses: the contract, record and switches paths print escaped,
+    and so does the file a refusal names.
+    """
+    repo = tmp_path / "rep\u2028o"
+    repo.mkdir()
+    stage_helpers._git(repo, "init", "--quiet", "-b", "master")
+    monkeypatch.chdir(repo)
+    assert main(["init"]) == 0
+    _extension(repo)
+    capsys.readouterr()
+
+    assert _switch_off() == 0
+
+    captured = capsys.readouterr()
+    assert "\u2028" not in captured.out
+    assert "\u2028" not in captured.err
+    (task,) = _task_dirs(repo)
+    assert captured.out.splitlines() == [
+        escape_for_display(str(task / "contract.md")),
+        escape_for_display(str(next((task / "records").iterdir()))),
+        escape_for_display(str(_switches_file(repo))),
+    ]
+
+    # A refusal naming the file escapes it the same way.
+    _switches_file(repo).write_text("not = toml [", encoding="utf-8")
+
+    assert _switch_off() == 1
+
+    captured = capsys.readouterr()
+    assert "rep\\u2028o" in captured.err
+    assert "\u2028" not in captured.err
 
 
 def test_an_on_entry_with_no_table_header_is_refused_naming_the_file(

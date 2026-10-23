@@ -14,11 +14,13 @@ The name must be a shared extension the working tree declares — a
 pass the parser's own rule, each checked with the existing file before
 the task is opened, so an early refusal writes nothing. The rewrite is
 textual — there is no TOML writer to add — an ``on`` entry's table
-replaced or a new one appended, the whole new text parsed back by
-``parse_switches`` and swapped in atomically; a failure once the task
-is opened is reported on one line naming it. In a sidecar the command
-refuses: an operational CR's force is the gate lane that admits its
-diff, and a sidecar gate decides no merge.
+replaced or a new one appended; the new text is verified before the
+task exists — it must parse to the old text everywhere but the one
+switch, under a placeholder task id — and verified again under the
+opened task's real id before the file is swapped in atomically; a
+failure once the task is opened is reported on one line naming it. In
+a sidecar the command refuses: an operational CR's force is the gate
+lane that admits its diff, and a sidecar gate decides no merge.
 """
 
 from __future__ import annotations
@@ -28,8 +30,9 @@ import json
 import os
 import re
 import tempfile
+import tomllib
 from pathlib import Path
-from typing import TextIO
+from typing import Any, TextIO
 
 from agentmarshal.extension_trust import (
     ExtensionTrustError,
@@ -72,13 +75,20 @@ _BARE_KEY = re.compile(r"[A-Za-z0-9_-]+$")
 #: A line that opens any table — where one table's text ends.
 _ANY_TABLE_HEADER = re.compile(r"[ \t]*\[")
 
+#: The task id the new text is verified under before the task exists —
+#: a ``CR-<n>`` of the valid form the journal's allocator never assigns.
+_PLACEHOLDER_TASK = "CR-0"
+
 
 def run(args: argparse.Namespace, stderr: TextIO) -> int:
     """Dispatch the parsed ``extension switch`` subcommand."""
 
     if args.switch_command == "off":
         return _run_off(args, stderr)
-    print(f"extension switch: unknown command {args.switch_command}", file=stderr)
+    print(
+        f"extension switch: unknown command {escape_for_display(args.switch_command)}",
+        file=stderr,
+    )
     return 1
 
 
@@ -201,7 +211,9 @@ def _entry_span(lines: list[str], header: re.Pattern[str]) -> tuple[int, int] | 
     inline table or dotted keys under ``[switches]`` — and a duplicate
     match can only be a line that is not a header at all, like one
     inside a multi-line string. Either way there is no one table to
-    replace.
+    replace; and where the span is mis-detected — a ``[``-led line
+    inside a multi-line value is no header — ``_verify_rewrite`` is the
+    check that catches what the scanner cannot.
     """
 
     matches = [
@@ -270,6 +282,60 @@ def _switches_text(
     if not text.endswith("\n\n"):
         text += "\n"
     return text + addition
+
+
+def _verify_rewrite(
+    new_text: str,
+    text: str | None,
+    name: str,
+    task_id: str,
+    reason: str,
+    switches_file: Path,
+    names: frozenset[str],
+) -> str | None:
+    """Why *new_text* is not *text* with only the switch changed — or ``None``.
+
+    The line scanner the rewrite stands on cannot tell a table header
+    from a ``[``-led line inside a multi-line value, so the new text is
+    trusted only as far as TOML itself proves it: the parsed new text
+    must equal the parsed old text everywhere except the one ``switches``
+    entry — which must carry exactly the off entry — and the shared
+    parser must accept the file and read that entry back as ``off`` with
+    *task_id* and *reason*. A missing file's old text is the empty
+    document, checked against the skeleton the command creates. A
+    mis-detected span, an ``on`` entry with no header to find, anything
+    that makes the new text differ where the switch does not reach is
+    named here.
+    """
+
+    try:
+        new_data = tomllib.loads(new_text)
+    except tomllib.TOMLDecodeError as error:
+        return f"the rewritten text is not TOML: {error}"
+    expected: dict[str, Any] = (
+        tomllib.loads(text) if text is not None else {"format": 1}
+    )
+    expected.setdefault("switches", {})[name] = {
+        "state": "off",
+        "task": task_id,
+        "reason": reason,
+    }
+    if new_data != expected:
+        return "the rewritten text changed more than the switch"
+    try:
+        written = parse_switches(new_text.encode("utf-8"), switches_file, names).get(
+            name
+        )
+    except SwitchesError as error:
+        return str(error)
+    if (
+        written is None
+        or written.state != "off"
+        or written.task != task_id
+        or written.reason != reason
+    ):
+        return f"the off entry for {name!r} is missing"
+    return None
 
 
 def _contract_text(name: str, reason: str) -> str:
@@ -388,7 +454,7 @@ def _run_off(args: argparse.Namespace, stderr: TextIO) -> int:
     try:
         _validate_name(args.name)
     except ExtensionManifestError as error:
-        print(f"{_COMMAND}: {error}", file=stderr)
+        print(f"{_COMMAND}: {escape_for_display(str(error))}", file=stderr)
         return 1
     placement = _placement(stderr)
     if placement is None:
@@ -401,8 +467,9 @@ def _run_off(args: argparse.Namespace, stderr: TextIO) -> int:
         return 1
     project_root = placement.project_root
     # Everything that can be refused before the task exists is refused
-    # here — the name, the reason and the existing file — so an early
-    # refusal leaves nothing behind: no task, no file.
+    # here — the name, the reason, the existing file and the rewrite
+    # that is to land in it — so an early refusal leaves nothing
+    # behind: no task, no file.
     try:
         names = _shared_extension_names(_managed_directory(project_root))
     except (ExtensionTrustError, OSError) as error:
@@ -417,12 +484,13 @@ def _run_off(args: argparse.Namespace, stderr: TextIO) -> int:
         return 1
     reason_error = _reason_error(args.reason)
     if reason_error is not None:
-        print(f"{_COMMAND}: {reason_error}", file=stderr)
+        print(f"{_COMMAND}: {escape_for_display(reason_error)}", file=stderr)
         return 1
     switches_file = project_root / SWITCHES_RELPATH
     if switches_file.is_symlink():
         print(
-            f"{_COMMAND}: refusing a symbolic link: {switches_file}",
+            f"{_COMMAND}: refusing a symbolic link: "
+            f"{escape_for_display(str(switches_file))}",
             file=stderr,
         )
         return 1
@@ -443,14 +511,32 @@ def _run_off(args: argparse.Namespace, stderr: TextIO) -> int:
     if current is not None:
         assert text is not None
         span = _entry_span(text.split("\n"), _entry_header(args.name))
-        if span is None:
-            print(
-                f"{_COMMAND}: {switches_file}: the 'on' entry for "
-                f"'{escape_for_display(args.name)}' is not a "
-                "[switches.<name>] table this command can rewrite",
-                file=stderr,
-            )
-            return 1
+    # The rewrite is produced and verified before the task exists, under
+    # a placeholder task id of the valid form: a file whose text the
+    # command cannot carry the switch through — a mis-detected span, an
+    # `on` entry with no table to replace — is refused here, so nothing
+    # is written and no task is opened; switching it off is then an edit
+    # of the file in an operational task, by hand.
+    new_text = _switches_text(text, args.name, span, _PLACEHOLDER_TASK, args.reason)
+    refusal = _verify_rewrite(
+        new_text,
+        text,
+        args.name,
+        _PLACEHOLDER_TASK,
+        args.reason,
+        switches_file,
+        names,
+    )
+    if refusal is not None:
+        print(
+            f"{_COMMAND}: {escape_for_display(str(switches_file))}: the "
+            f"entry for '{escape_for_display(args.name)}' must be "
+            "switched off by editing the file in an operational task — "
+            f"the rewrite could not be verified: "
+            f"{escape_for_display(refusal)}",
+            file=stderr,
+        )
+        return 1
     try:
         opened = _open_operational_task(project_root, args.name, args.reason)
     except TaskOpenError as error:
@@ -458,31 +544,30 @@ def _run_off(args: argparse.Namespace, stderr: TextIO) -> int:
         return 1
     if opened.replaced_id is not None:
         print(
-            f"contract id {opened.replaced_id!r} replaced with the "
-            f"assigned task id {opened.task_id!r}",
+            f"contract id {escape_for_display(opened.replaced_id)!r} "
+            "replaced with the assigned task id "
+            f"{escape_for_display(opened.task_id)!r}",
             file=stderr,
         )
+    # The same text again, with only the `task` value's string changed
+    # to the opened task's id — and the same verification run over it
+    # before the file is replaced.
     new_text = _switches_text(text, args.name, span, opened.task_id, args.reason)
-    refusal: str | None = None
-    try:
-        written = parse_switches(new_text.encode("utf-8"), switches_file, names).get(
-            args.name
-        )
-    except SwitchesError as error:
-        refusal = str(error)
-    else:
-        if (
-            written is None
-            or written.state != "off"
-            or written.task != opened.task_id
-            or written.reason != args.reason
-        ):
-            refusal = f"the off entry for {args.name!r} is missing"
+    refusal = _verify_rewrite(
+        new_text,
+        text,
+        args.name,
+        opened.task_id,
+        args.reason,
+        switches_file,
+        names,
+    )
     if refusal is not None:
         print(
-            f"{_COMMAND}: opened {opened.task_id} but the rewritten "
-            f"{switches_file} failed its own parse — nothing was "
-            f"written: {escape_for_display(refusal)}",
+            f"{_COMMAND}: opened {escape_for_display(opened.task_id)} but "
+            f"the rewritten {escape_for_display(str(switches_file))} "
+            "failed its own checks — nothing was written: "
+            f"{escape_for_display(refusal)}",
             file=stderr,
         )
         return 1
@@ -490,13 +575,13 @@ def _run_off(args: argparse.Namespace, stderr: TextIO) -> int:
         _write_switches(project_root, switches_file, new_text)
     except OSError as error:
         print(
-            f"{_COMMAND}: opened {opened.task_id} but could not write "
-            f"{switches_file}: "
+            f"{_COMMAND}: opened {escape_for_display(opened.task_id)} but "
+            f"could not write {escape_for_display(str(switches_file))}: "
             f"{escape_for_display(error.strerror or str(error))}",
             file=stderr,
         )
         return 1
-    print(opened.contract_path)
-    print(opened.record_path)
-    print(switches_file)
+    print(escape_for_display(str(opened.contract_path)))
+    print(escape_for_display(str(opened.record_path)))
+    print(escape_for_display(str(switches_file)))
     return 0
