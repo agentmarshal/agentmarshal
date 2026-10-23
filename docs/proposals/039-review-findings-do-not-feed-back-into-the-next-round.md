@@ -167,3 +167,7 @@ interface is declined by us, for the trust boundary ADR-0010 draws — the
 decline superseded on 2026-10-03, when
 [ADR-0013](../adr/ADR-0013-extensions-stages-scopes-isolation-trust.md)
 answered it.
+
+Written 2026-10-23: the contract principles — the principle criterion and
+the whole-set check — now stand in the quickstart's contract guidance,
+[docs/quickstart.md](../quickstart.md), "The contract (`contract.md`)".

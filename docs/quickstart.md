@@ -153,6 +153,19 @@ opens the task, because a scope may legitimately declare a path the work is abou
 to create, or an operator may amend the scope later. The warning is a check on
 the common mistakes, not a path validator.
 
+Two ways of writing an acceptance criterion are worth knowing before the loop
+starts — an adopter's measurements stand behind both. A criterion may state a
+**class of defect as a principle** — the class itself and how the class is
+closed; an edge-case principle is the worked example — so that a reviewer who
+finds a new instance of an already-covered class reports it as advisory rather
+than returning the candidate for it, unless the instance shows the principle
+itself violated. And a criterion over a large set of items names a
+**mechanical check of the whole set**, shipped with the candidate, so the
+reviewer verifies the check instead of sampling the set — a review that
+samples keeps finding one new instance of the same class per round. Both are
+guidance for the contract's author: the tool reads neither as a requirement,
+and nothing enforces them but the reviewer reading the contract.
+
 ### Who recorded a record (`actors`)
 
 Every record carries `recorded_by` — the actor that created it — alongside
