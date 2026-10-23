@@ -744,9 +744,18 @@ def _judge_independence_rule(
                     f"{session_label}'s actor {session_value!r} is not a declared actor"
                 )
             continue
-        # The identity check's normalisation: a reviewer controls its own
-        # string and must not evade the comparison through casing.
-        if session_value.strip().casefold() == reviewer_value.strip().casefold():
+        # Vendor and model keep the identity check's normalisation — a
+        # reviewer controls its own string and must not evade the
+        # comparison through casing. An actor id is an exact label — the
+        # actors table keys it exactly, and `status` compares it against a
+        # declared list exactly — so `distinct-actor` compares without it:
+        # two actor ids differing only in case are two declared actors.
+        equal = (
+            session_value == reviewer_value
+            if rule == "distinct-actor"
+            else session_value.strip().casefold() == reviewer_value.strip().casefold()
+        )
+        if equal:
             return (
                 False,
                 f"declared reviewer {label} {reviewer_value!r} equals "
@@ -1321,6 +1330,13 @@ def run_gate(
                         "review record to compare against the implementer "
                         "sessions)"
                     )
+            # So is the declared reviewers membership: with no review to
+            # judge it reports not examined beside them.
+            if contract.reviewers:
+                say(
+                    "NOT EXAMINED: declared reviewers (no review record to "
+                    "judge the reviewer's actor against the list)"
+                )
         else:
             check(
                 approved,
@@ -1328,6 +1344,29 @@ def run_gate(
                 if latest is not None
                 else f"no review record for {resolved_commit[:12]}",
             )
+
+        # The declared implementers check and the declared independence
+        # rules judge the same sessions — the session records whose
+        # `commit` names a commit of the candidate's range — but only the
+        # rules are review-bound: implementer membership is judged with no
+        # review at all, so the set is computed ahead of the review-bound
+        # block whenever a contract declaration needs it.
+        declared_rules = [
+            rule for rule in contract.independence if rule != "reviewer-not-writer"
+        ]
+        range_commits: set[str] = set()
+        implementer_sessions: list[dict[str, object]] = []
+        if contract.implementers or (latest is not None and declared_rules):
+            range_commits = _range_commits(project_root, merge_base, resolved_commit)
+            # An implementer session is a session record whose `commit`
+            # names a commit of the candidate's range — the field records
+            # the commit the implementer run produced.
+            implementer_sessions = [
+                record
+                for record in records
+                if record.get("record_type") == "session"
+                and record.get("commit") in range_commits
+            ]
 
         if latest is not None:
             reviewer = latest.get("reviewer")
@@ -1358,22 +1397,7 @@ def run_gate(
             # the header naming it adds no second line. A rule the run
             # cannot judge reports NOT CHECKED rather than passing or
             # failing on nothing.
-            declared_rules = [
-                rule for rule in contract.independence if rule != "reviewer-not-writer"
-            ]
             if declared_rules:
-                range_commits = _range_commits(
-                    project_root, merge_base, resolved_commit
-                )
-                # An implementer session is a session record whose `commit`
-                # names a commit of the candidate's range — the field
-                # records the commit the implementer run produced.
-                implementer_sessions = [
-                    record
-                    for record in records
-                    if record.get("record_type") == "session"
-                    and record.get("commit") in range_commits
-                ]
                 actors = (
                     _declared_actor_ids(project_root, journal_root, merge_base, sidecar)
                     if "distinct-actor" in declared_rules
@@ -1387,6 +1411,74 @@ def run_gate(
                         say(f"NOT CHECKED: independence rule {rule!r} ({detail})")
                     else:
                         check(judged, f"independence rule {rule!r} ({detail})")
+
+            # ADR-0018 decision 3 and the operator decision of 2026-10-23:
+            # a contract naming its reviewers gets the latest review's
+            # `reviewer.actor` held against the list — by exact equality,
+            # the way `status` compares an actor — and a review carrying
+            # none is refused rather than unchecked: membership is what
+            # the contract claims and without an actor it cannot be shown.
+            if contract.reviewers:
+                reviewer_actor = (
+                    reviewer.get("actor") if isinstance(reviewer, dict) else None
+                )
+                if not isinstance(reviewer_actor, str) or not reviewer_actor.strip():
+                    check(
+                        False,
+                        "the latest review carries no 'reviewer.actor'; "
+                        "membership in the declared reviewers cannot be "
+                        "shown — the review is recorded with --actor",
+                    )
+                elif reviewer_actor in contract.reviewers:
+                    check(
+                        True,
+                        f"reviewer actor {reviewer_actor!r} is in the "
+                        "contract's declared reviewers",
+                    )
+                else:
+                    check(
+                        False,
+                        f"reviewer actor {reviewer_actor!r} is not in the "
+                        f"contract's declared reviewers: "
+                        f"{', '.join(contract.reviewers)}",
+                    )
+
+        # ADR-0018 decision 3: a contract naming its implementers gets the
+        # actor of every in-range implementer session held against the
+        # list by the same exact equality. The check is not review-bound —
+        # the sessions are the candidate's, not the review's — so a
+        # provider's CI run is judged too, and one holding no session in
+        # the range reports NOT CHECKED rather than a pass over nothing.
+        if contract.implementers:
+            if not implementer_sessions:
+                say(
+                    "NOT CHECKED: declared implementers (no implementer "
+                    "session carries a commit in the candidate's range)"
+                )
+            else:
+                nonmembers = [
+                    session
+                    for session in implementer_sessions
+                    if session.get("actor") not in contract.implementers
+                ]
+                if nonmembers:
+                    check(
+                        False,
+                        "in-range implementer session actors outside the "
+                        f"contract's declared implementers "
+                        f"({', '.join(contract.implementers)}): "
+                        + ", ".join(
+                            f"{session.get('actor')!r} (implementer session "
+                            f"{session.get('id')})"
+                            for session in nonmembers
+                        ),
+                    )
+                else:
+                    check(
+                        True,
+                        "every in-range implementer session's actor is in "
+                        "the contract's declared implementers",
+                    )
 
     if attestation == "ci-required":
         say(
