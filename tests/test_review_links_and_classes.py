@@ -814,16 +814,75 @@ def test_an_entry_for_an_id_the_verdict_does_not_carry_is_dropped_with_a_warning
     assert "style" in captured.err
 
 
-def test_a_classes_naming_only_unnamed_ids_lands_no_field(
+def test_a_classes_omitting_a_reported_id_records_other_with_a_warning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A usable ``classes`` object covers every id the verdict reports: an
+    id the object names no class for records ``other`` and is named in a
+    warning — the record never keeps a partial mapping in silence."""
+
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    stub = _reviewer_stub(
+        tmp_path,
+        _verdict_with_classes(
+            commit,
+            "changes_required",
+            ["F-1", "F-2"],
+            {"F-1": "correctness"},
+            advisory_findings=["A-1"],
+        ),
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert _run_review(commit) == 0
+
+    (record,) = _reviews(repo)
+    assert record["classes"] == {
+        "F-1": "correctness",
+        "F-2": "other",
+        "A-1": "other",
+    }
+    captured = capsys.readouterr()
+    assert "F-2" in captured.err
+    assert "A-1" in captured.err
+    assert "other" in captured.err
+
+
+def test_a_classes_naming_only_unnamed_ids_still_classes_the_verdicts_ids(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Scenario: an entry for an id the verdict does not carry is dropped
-    with a warning — none kept means no ``classes`` field at all."""
+    with a warning — and each reported id the object leaves unclassed
+    still records ``other`` with a warning."""
 
     repo, commit = _review_repo(tmp_path, monkeypatch)
     stub = _reviewer_stub(
         tmp_path,
         _verdict_with_classes(commit, "changes_required", ["F-1"], {"G-9": "style"}),
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert _run_review(commit) == 0
+
+    (record,) = _reviews(repo)
+    assert record["classes"] == {"F-1": "other"}
+    captured = capsys.readouterr()
+    assert "G-9" in captured.err
+    assert "style" in captured.err
+    assert "F-1" in captured.err
+    assert "other" in captured.err
+
+
+def test_a_classes_on_an_approving_verdict_with_no_findings_lands_no_field(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An approving verdict reports no ids, so a ``classes`` it carries has
+    only entries to drop — each warns, and no ``classes`` field lands."""
+
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    stub = _reviewer_stub(
+        tmp_path,
+        _verdict_with_classes(commit, "approved", [], {"G-9": "style"}),
     )
     monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
 

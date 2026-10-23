@@ -869,20 +869,24 @@ def _parse_verdict(
 
 
 def _verdict_classes(
-    classes: object, named_ids: frozenset[str], vocabulary: tuple[str, ...]
+    classes: object, named_ids: tuple[str, ...], vocabulary: tuple[str, ...]
 ) -> tuple[dict[str, str] | None, list[str]]:
     """Reduce a verdict's ``classes`` to the entries the record carries.
 
     A verdict is a paid run's output and the class is reference markup a
     decision could cite but never rests on, so no shape of ``classes``
-    refuses it (ADR-0016 decision 3): a value that is not an object, or an
-    object holding a value that is no usable class string, drops the whole
-    ``classes`` with a warning before the record layer could refuse it; an
-    entry naming an id the verdict itself does not carry drops alone; a
-    class outside the vocabulary records as ``other`` with a warning naming
-    the id and the class given. Every reduction returns a note — the markup
-    can be wrong, never silent. ``_NO_CLASSES`` — an absent key — is no
-    note and no field, and an empty mapping is the same with a note.
+    refuses it (ADR-0016 decision 3): a value that is not an object, an
+    empty object, or an object holding a value that is no usable class
+    string drops the whole ``classes`` with a warning before the record
+    layer could refuse it. A usable object classifies every id the verdict
+    reports: the class given lands when the vocabulary holds it, a class
+    outside it records as ``other`` with a warning naming the id and the
+    class given, and an id the object names no class for records as
+    ``other`` with a warning naming the id — a usable ``classes`` never
+    leaves a reported finding unclassed. An entry naming an id the verdict
+    itself does not carry drops alone with a warning. Every reduction
+    returns a note — the markup can be wrong, never silent. ``_NO_CLASSES``
+    — an absent key — is no note and no field.
     """
 
     if classes is _NO_CLASSES:
@@ -910,13 +914,14 @@ def _verdict_classes(
             + ", ".join(escape_for_display(str(key)) for key in unusable)
             + "); the object is dropped and the verdict stands"
         ]
+    named = frozenset(named_ids)
     recorded: dict[str, str] = {}
     notes: list[str] = []
     for finding_id, finding_class in cast(dict[str, str], classes).items():
-        if finding_id not in named_ids:
+        if finding_id not in named:
             notes.append(
                 "note: the verdict's 'classes' entry for "
-                f"{escape_for_display(finding_id)} names no finding the "
+                f"{escape_for_display(str(finding_id))} names no finding the "
                 "verdict carries; the entry "
                 f"({escape_for_display(finding_class)}) is dropped"
             )
@@ -930,6 +935,13 @@ def _verdict_classes(
             recorded[finding_id] = "other"
             continue
         recorded[finding_id] = finding_class
+    for finding_id in dict.fromkeys(named_ids):
+        if finding_id not in recorded:
+            notes.append(
+                "note: the verdict's 'classes' names no class for finding "
+                f"{escape_for_display(finding_id)}; recorded as 'other'"
+            )
+            recorded[finding_id] = "other"
     return (recorded or None), notes
 
 
@@ -1338,7 +1350,7 @@ def _launch_review_tail(
                 diagnostics_note,
             )
         classes, classes_notes = _verdict_classes(
-            classes_data, frozenset([*findings, *advisory]), vocabulary
+            classes_data, (*findings, *advisory), vocabulary
         )
         for note in classes_notes:
             diagnostics_note = (

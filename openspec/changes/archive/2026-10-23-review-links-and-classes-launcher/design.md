@@ -42,12 +42,17 @@ verdict against the project's vocabulary.
   `_parse_verdict` keeps rejecting what the verdict contract rejects —
   unknown keys included — while `classes` becomes an optional key whose
   value passes through unvalidated. After the reviewed-subject check the
-  launcher maps each entry: an id among `findings`/`advisory_findings`
-  records its class — `other` with a warning when the vocabulary does not
-  hold it — and an id the verdict does not carry drops with a warning. A
-  `classes` that is not an object, or that holds a value which is no
-  usable class string, drops whole with a warning: the class is reference
-  markup that decides nothing, so the verdict stands.
+  launcher maps each entry — an id among `findings`/`advisory_findings`
+  records its class, `other` with a warning when the vocabulary does not
+  hold it — and then completes the mapping: an id the verdict reports
+  but `classes` names no class for records `other` with a warning naming
+  the id. The requirement is a `classes` entry for *each* reported id,
+  so a partial mapping kept silently loses the omissions; `other` is the
+  honest record of "no usable class given". An id the verdict does not
+  carry drops with a warning. A `classes` that is not an object, is
+  empty, or holds a value which is no usable class string drops whole
+  with a warning: the class is reference markup that decides nothing,
+  so the verdict stands.
 - **The tail writes the launched record itself.** `submit_review` cannot
   take the two fields, so `_launch_review_tail` runs the same sequence —
   load the task, build the record, pin the prose before the write when

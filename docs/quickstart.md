@@ -95,9 +95,10 @@ of each finding id you report — one class per id — from the project's vocabu
 (`review.finding_classes`, or `correctness`, `contract-mismatch`,
 `claim-accuracy`, `scope`, `test-gap`, `security`, `style` when unset). A class
 outside the vocabulary is recorded as `other` and named in a warning on stderr;
-an entry for an id the verdict does not carry is dropped with a warning; a
-malformed `classes` is dropped as a whole — a verdict is never refused over a
-class.
+an id you report that `classes` omits is recorded as `other` and named in a
+warning; an entry for an id the verdict does not carry is dropped with a
+warning; a malformed `classes` is dropped as a whole — a verdict is never
+refused over a class.
 
 A review record the launcher writes carries `previous_review` — the id of the
 task's latest review when the run began, whatever it bound to — so a task's
