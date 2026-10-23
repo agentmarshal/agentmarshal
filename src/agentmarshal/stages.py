@@ -20,8 +20,10 @@ The invocation protocol — what the command receives and what its exit
 status means — is the coordinator's decision recorded in the change's
 design: the stage's working directory is a fresh temporary snapshot of
 the candidate commit; the environment carries the five ``AGENTMARSHAL_*``
-protocol variables, a minimal ``PATH`` and only the variables the
-manifest's ``isolation.env`` names; the command runs as ``[<the core's
+protocol variables, a minimal ``PATH`` the manifest cannot override —
+a ``PATH`` named in ``isolation.env`` is noted once as fixed by the
+core, not passed through — and only the other variables the manifest's
+``isolation.env`` names; the command runs as ``[<the core's
 Python interpreter>, <the path under bin/>]``, never through a shell and
 never through ``PATH`` lookup; a time limit of the declared
 ``timeout_seconds`` capped by the core's limit bounds it, the process
@@ -70,7 +72,7 @@ from agentmarshal.journal.placement import (
     resolve_placement,
 )
 from agentmarshal.journal.records import JournalRecordError, validate_task_id
-from agentmarshal.journal.review import ReviewLaunchError, _extract_snapshot
+from agentmarshal.journal.review import _extract_snapshot
 from agentmarshal.localstate import LocalState, LocalStateError, local_state
 from agentmarshal.process_log import (
     ProcessLogError,
@@ -343,11 +345,15 @@ def _prepare_extension(
     directory = temp_root / "extensions" / name
     try:
         _materialize_directory(project_root, merge_base, name, directory)
-    except (GateError, StageError, OSError) as error:
+    except Exception as error:
+        # Any failure at all — a git refusal, an unwritable path, a link
+        # target the platform cannot spell (a ValueError, not an
+        # OSError) — is the stage's ``not run`` reason, never an
+        # exception escaping the run.
         return _Prepared(None, f"cannot materialize: {escape_for_display(str(error))}")
     try:
         linked = _symlink_in_directory(directory)
-    except StageError as error:
+    except Exception as error:
         return _Prepared(None, escape_for_display(str(error)))
     if linked is not None:
         return _Prepared(
@@ -357,7 +363,7 @@ def _prepare_extension(
         return _Prepared(directory, None)
     try:
         files = _hash_directory(directory)
-    except ExtensionTrustError as error:
+    except Exception as error:
         return _Prepared(None, escape_for_display(str(error)))
     grant = grants.get(name)
     if grant is None:
@@ -392,17 +398,20 @@ def _stage_env(
 ) -> dict[str, str]:
     """The child environment: declared variables, then the protocol's.
 
-    ``PATH`` starts minimal; a manifest naming it — or any other variable
-    — receives the caller's value, which is what ``isolation.env`` exists
-    to pass. The five protocol variables are written last so a declared
-    name colliding with one cannot override the run's own values.
+    ``PATH`` is always the core's minimal value: a manifest naming it in
+    ``isolation.env`` is not passed the caller's — the run's output notes
+    once that ``PATH`` is fixed by the core. Other declared names receive
+    the caller's value, which is what ``isolation.env`` exists to pass.
+    The five protocol variables are written last so a declared name
+    colliding with one cannot override the run's own values.
     """
 
     env: dict[str, str] = {"PATH": _MINIMAL_PATH}
     if manifest.isolation is not None:
         for variable in manifest.isolation.env:
-            if variable in os.environ:
-                env[variable] = os.environ[variable]
+            if variable == "PATH" or variable not in os.environ:
+                continue
+            env[variable] = os.environ[variable]
     env.update(
         {
             "AGENTMARSHAL_PHASE": phase,
@@ -454,7 +463,7 @@ def _run_stage(
         return _Outcome("not-run", f"command {stage.command} does not exist", b"")
     try:
         _extract_snapshot(project_root, resolved_commit, snapshot)
-    except ReviewLaunchError as error:
+    except Exception as error:
         return _Outcome(
             "not-run",
             f"cannot materialize the candidate snapshot: "
@@ -553,6 +562,19 @@ def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
     if not plan:
         print(f"stage run: no shared extension declares a {args.phase} stage")
         return 0
+    if any(
+        manifest.isolation is not None and "PATH" in manifest.isolation.env
+        for _name, manifest, _stage in plan
+    ):
+        # ``PATH`` is fixed by the core: a manifest naming it in
+        # ``isolation.env`` receives only the minimal value, and the run
+        # says so once however many extensions declare it.
+        print(
+            "stage run: note: PATH is fixed by the core "
+            f"({_MINIMAL_PATH}); a PATH named in isolation.env is not "
+            "passed through",
+            file=stderr,
+        )
     ci = os.environ.get("CI") == "true"
     grants: dict[str, Grant] = {}
     if not ci:

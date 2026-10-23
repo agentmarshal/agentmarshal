@@ -496,6 +496,82 @@ def test_a_gitlink_inside_the_extensions_directory_is_not_run(
     assert "gitlink" in out
 
 
+def test_an_unspellable_symlink_target_is_not_run_not_an_escaped_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a stage that may not run prints not run (<reason>)."""
+    repo = _project(tmp_path, monkeypatch)
+    _extension(repo)
+    _git(repo, "add", "-A")
+    # A link target git stores but no platform call can spell: the blob
+    # carries a NUL, so recreating the entry raises a ValueError inside
+    # materialization — a ``not run`` reason, never an escaped
+    # exception.
+    blob = (
+        subprocess.run(
+            ["git", "hash-object", "-w", "--stdin"],
+            cwd=repo,
+            input=b"target\x00inside",
+            capture_output=True,
+            check=True,
+        )
+        .stdout.decode("ascii")
+        .strip()
+    )
+    _git(
+        repo,
+        "update-index",
+        "--add",
+        "--cacheinfo",
+        f"120000,{blob},.agentmarshal/extensions/openspec/bin/bad-link",
+    )
+    _git(repo, *_WRITER, "commit", "--quiet", "-m", "base")
+    _git(repo, "checkout", "--quiet", "-b", "candidate")
+    (repo / "x.txt").write_text("x\n", encoding="utf-8")
+    _commit_all(repo, "candidate")
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 3
+
+    out = capsys.readouterr().out
+    assert "openspec: not run (cannot materialize:" in out
+    assert "null" in out
+    events = [event for event in _events(repo) if event["event"] == "extension-event"]
+    (event,) = events
+    assert event["decision"] == "not-run"
+    assert "cannot materialize" in str(event["reason"])
+
+
+def test_a_snapshot_that_cannot_materialize_is_not_run_not_an_escaped_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a stage that may not run prints not run (<reason>)."""
+    repo, _base, _candidate = _repo_with_extension(tmp_path, monkeypatch)
+    _ci(monkeypatch)
+
+    def _fail(_root: Path, _commit: str, _snapshot: Path) -> None:
+        raise ValueError("tar says no")
+
+    # A snapshot failure the launch error does not wrap — any exception
+    # at all is the stage's ``not run`` reason, never an escaped
+    # exception.
+    monkeypatch.setattr(stages_module, "_extract_snapshot", _fail)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 3
+
+    out = capsys.readouterr().out
+    assert (
+        "openspec: not run (cannot materialize the candidate snapshot: "
+        "tar says no)" in out
+    )
+    events = [event for event in _events(repo) if event["event"] == "extension-event"]
+    (event,) = events
+    assert event["decision"] == "not-run"
+    assert "cannot materialize the candidate snapshot" in str(event["reason"])
+
+
 def test_the_temporary_directories_are_gone_when_the_command_returns(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -676,6 +752,47 @@ def test_only_the_environment_variables_the_manifest_names_are_passed(
     out = capsys.readouterr().out
     assert "openspec | PASS granted" in out
     assert "openspec | NOT None" in out
+
+
+def test_a_path_named_in_isolation_env_is_not_passed_through(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: the environment carries the protocol variables and a minimal PATH."""
+    repo = _project(tmp_path, monkeypatch)
+    for name in ("alpha", "beta"):
+        _extension(
+            repo,
+            name=name,
+            manifest=_manifest(
+                name=name,
+                isolation=(
+                    "[isolation]\n"
+                    "network = false\n"
+                    'env = ["PATH"]\n'
+                    'writes = "none"\n'
+                    "timeout_seconds = 30\n"
+                ),
+            ),
+            files={"bin/check.py": "import os\nprint('PATH=' + os.environ['PATH'])\n"},
+        )
+    _commit_all(repo, "base")
+    _git(repo, "checkout", "--quiet", "-b", "candidate")
+    (repo / "x.txt").write_text("x\n", encoding="utf-8")
+    _commit_all(repo, "candidate")
+    # The caller's PATH keeps git resolvable for the run's own machinery
+    # but is not the minimal value the stage must see.
+    monkeypatch.setenv("PATH", os.environ["PATH"] + ":/caller/bin")
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 0
+
+    captured = capsys.readouterr()
+    assert "alpha | PATH=/usr/bin:/bin" in captured.out
+    assert "beta | PATH=/usr/bin:/bin" in captured.out
+    assert "/caller/bin" not in captured.out
+    # Two extensions declare PATH; the note still appears exactly once.
+    assert captured.err.count("PATH is fixed by the core") == 1
 
 
 def test_a_protocol_variable_cannot_be_overridden_by_a_declared_name(
