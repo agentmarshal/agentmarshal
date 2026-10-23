@@ -9,8 +9,18 @@ shared extensions come from the base commit; every extension gets a
 result line and its output a frame that cannot read as a gate line. On a
 workstation a stage runs only under a local grant matching the hash of
 the base-materialized directory (CR-209's ``trust.toml``); in CI no grant
-is needed. Each result is appended to the process log as an
-``extension-event`` (ADR-0022 section 7); nothing is written to the
+is needed. The shared switches are read from the base too (decision 6,
+decisions 16 and 17): a stage of a switched-off extension reports
+``switched off (<task>, <reason>)`` and does not run — no pause, no
+warning — and a switches file that cannot be read blocks the stages of
+the extensions it names, its refusal named even where the requested
+phase declares no stage. The switched-off line — and the ``not run``
+line a refused switches file owes the extensions it names — is owed
+even where the clone's trust file cannot be read: neither stage was
+going to be grant-checked, though that failure still ends the command
+at 1 once the owed lines are printed. Each result is appended to the
+process log as an ``extension-event`` (ADR-0022 section 7); nothing is
+written to the
 journal. A ``pre-gate-stop`` stage that failed, did not finish or did not
 run pauses the process before the gate — the command exits 3 — while a
 ``pre-gate-warn`` stage's failure is a loud warning and a ``post-gate``
@@ -81,6 +91,12 @@ from agentmarshal.process_log import (
     write_event,
 )
 from agentmarshal.project import find_project_root
+from agentmarshal.switches import (
+    SWITCHES_RELPATH,
+    Switch,
+    SwitchesError,
+    parse_switches,
+)
 
 #: The core's time limit for one stage; a manifest may declare less
 #: (ADR-0013 decision 8's floor: the timeout no higher than the core's).
@@ -106,7 +122,9 @@ _PHASE_MODES: dict[str, tuple[ExtensionPhase, ...]] = {
     "post-gate": ("post-gate",),
 }
 
-_StageDecision = Literal["checked", "failed", "did-not-finish", "not-run"]
+_StageDecision = Literal[
+    "checked", "failed", "did-not-finish", "not-run", "switched-off"
+]
 
 
 class StageError(Exception):
@@ -194,19 +212,20 @@ def _resolve(stderr: TextIO) -> tuple[Placement, LocalState] | None:
         return None
 
 
-def _base_manifests(
+def _base_extensions(
     project_root: Path, merge_base: str
-) -> dict[str, ExtensionManifest]:
-    """Each directory-form shared extension's manifest at the base tree.
+) -> tuple[frozenset[str], dict[str, ExtensionManifest]]:
+    """The base tree's shared extension names and directory-form manifests.
 
     Discovery is the tree counterpart of the working-tree rule: a symlink
     at ``.agentmarshal``, at ``extensions/`` or at an extension's ``<name>``
     is refused as a link before existence is weighed, an ``extensions/``
-    that is missing or not a tree is simply no directory-form extensions,
-    and a ``<name>.toml`` entry is the file form, which declares no
-    directory and so no stage. Each surviving name is read with the gate's
-    own base-tree reader, so its file-and-directory-form, link and schema
-    refusals apply unchanged rather than being restated here.
+    that is missing or not a tree is simply no extensions, and a
+    ``<name>.toml`` entry is the file form — a shared extension that
+    declares no directory and so no stage, though a switches entry may
+    still name it. Each directory-form name's manifest is read with the
+    gate's own base-tree reader, so its file-and-directory-form, link and
+    schema refusals apply unchanged rather than being restated here.
     """
 
     agentmarshal_entry = _tree_entry(project_root, merge_base, ".agentmarshal")
@@ -221,31 +240,64 @@ def _base_manifests(
             f"{merge_base}:{_EXTENSIONS_RELPATH}"
         )
     if agentmarshal_entry is None or agentmarshal_entry[1] != "tree":
-        return {}
+        return frozenset(), {}
     if extensions_entry is None or extensions_entry[1] != "tree":
-        return {}
+        return frozenset(), {}
     listing = _run_git_lossy(
         project_root, ["ls-tree", "-z", merge_base, "--", f"{_EXTENSIONS_RELPATH}/"]
     )
-    names: list[str] = []
+    names: set[str] = set()
+    directory_names: list[str] = []
     for item in listing.split("\0"):
         if not item:
             continue
         meta, _, path = item.partition("\t")
         fields = meta.split(" ")
         mode, kind = fields[0], fields[1]
+        basename = path.rsplit("/", maxsplit=1)[-1]
         if kind == "tree":
-            names.append(path.rsplit("/", maxsplit=1)[-1])
+            directory_names.append(basename)
+            names.add(basename)
         elif mode == "120000":
             raise ExtensionManifestError(
-                f"refusing to read extension "
-                f"{path.rsplit('/', maxsplit=1)[-1]!r} through a symlink: "
+                f"refusing to read extension {basename!r} through a symlink: "
                 f"{merge_base}:{path}"
             )
-    return {
+        elif basename.endswith(".toml") and basename != ".toml":
+            names.add(basename.removesuffix(".toml"))
+    return frozenset(names), {
         name: _manifest_from_tree(project_root, merge_base, name)
-        for name in sorted(names)
+        for name in sorted(directory_names)
     }
+
+
+def _base_switches(
+    project_root: Path, merge_base: str, names: frozenset[str]
+) -> dict[str, Switch]:
+    """The base tree's shared extension switches; a missing file is all-on.
+
+    Read exactly where the manifests are read — the merge base's tree —
+    so a candidate can neither switch a shared extension off for its own
+    run nor switch on one an operational CR switched off (ADR-0013
+    decision 6). A link or a non-file entry where the file should be is
+    the file's own malformation, named the same way.
+    """
+
+    source = f"{merge_base}:{SWITCHES_RELPATH}"
+    try:
+        entry = _tree_entry(project_root, merge_base, SWITCHES_RELPATH)
+    except GateError as error:
+        raise SwitchesError(f"{source}: {error}") from error
+    if entry is None:
+        return {}
+    mode, kind = entry
+    if mode == "120000" or kind != "blob":
+        raise SwitchesError(f"{source}: not a file")
+    try:
+        data = _run_git_bytes(project_root, ["show", source])
+    except GateError as error:
+        raise SwitchesError(f"{source}: {error}") from error
+    return parse_switches(data, source, names)
 
 
 def _materialize_directory(
@@ -513,7 +565,8 @@ def _run_stage(
 
 
 def _result_text(outcome: _Outcome) -> str:
-    """The result line's tail: checked / failed / did not finish / not run."""
+    """The result line's tail: checked / failed / did not finish / not run /
+    switched off."""
 
     if outcome.decision == "checked":
         return "checked"
@@ -521,6 +574,8 @@ def _result_text(outcome: _Outcome) -> str:
         return f"failed ({outcome.reason})"
     if outcome.decision == "did-not-finish":
         return f"did not finish ({outcome.reason})"
+    if outcome.decision == "switched-off":
+        return f"switched off ({outcome.reason})"
     return f"not run ({outcome.reason})"
 
 
@@ -548,7 +603,7 @@ def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
         merge_base = _run_git(
             project_root, ["merge-base", base_commit, resolved_commit]
         ).strip()
-        manifests = _base_manifests(project_root, merge_base)
+        extension_names, manifests = _base_extensions(project_root, merge_base)
     except (GateError, ExtensionManifestError) as error:
         print(f"stage run: {escape_for_display(str(error))}", file=stderr)
         return 1
@@ -559,6 +614,27 @@ def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
         for stage in manifests[name].stages
         if stage.phase in modes
     ]
+    # The switches are the base's like every other trusted input — an
+    # operational CR's file at the merge base decides, never the
+    # candidate's or the working tree's — and are read before the
+    # empty-plan return, so a file the parse refuses is named on its
+    # one line even where nothing would have run: the no-stage line
+    # then reads as it does for a well-formed or absent file, and the
+    # exit stays 0 — nothing was blocked, because nothing would run.
+    # A refused file blocks the stages of exactly the extensions it
+    # names — every stage when its own entries cannot be read, since
+    # an unreadable file cannot vouch for any extension being on.
+    switches: dict[str, Switch] = {}
+    blocked_names: frozenset[str] | None = None
+    try:
+        switches = _base_switches(project_root, merge_base, extension_names)
+    except SwitchesError as error:
+        print(f"stage run: {escape_for_display(str(error))}", file=stderr)
+        blocked_names = (
+            error.names
+            if error.names is not None
+            else frozenset(name for name, _manifest, _stage in plan)
+        )
     if not plan:
         print(f"stage run: no shared extension declares a {args.phase} stage")
         return 0
@@ -577,12 +653,19 @@ def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
         )
     ci = os.environ.get("CI") == "true"
     grants: dict[str, Grant] = {}
+    grants_unreadable = False
     if not ci:
         try:
             grants = _read_grants(state.trust_file)
         except ExtensionTrustError as error:
+            # The file's refusal still fails the command on its one
+            # line — but a switched-off stage is never grant-checked,
+            # and nor is a stage a refused switches file names, so
+            # their result lines are owed even now: the loop reports
+            # those outcomes and their events and runs nothing else,
+            # then the command exits 1.
             print(f"stage run: {escape_for_display(str(error))}", file=stderr)
-            return 1
+            grants_unreadable = True
     writer: ProcessLogWriter | None = None
     writer_lost = False
 
@@ -656,29 +739,57 @@ def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
     paused: list[str] = []
     warnings: list[str] = []
     for index, (name, manifest, stage) in enumerate(plan):
-        # Each stage gets its own temporary directory: a stage runs its
-        # extension's code with the materialized copy in reach of
-        # ``__file__``, so a copy an earlier stage ran against can no
-        # longer speak for the base. The directory is materialized
-        # afresh and the grant check recomputed on it for every stage,
-        # and the copy goes away with the stage's own context.
-        with tempfile.TemporaryDirectory(prefix="agentmarshal-stage-") as temporary:
-            temp_root = Path(temporary)
-            prepared = _prepare_extension(
-                project_root, merge_base, name, temp_root, ci, grants
+        switch = switches.get(name)
+        if switch is not None and switch.state == "off":
+            # An operational CR switched this extension off: the one
+            # result line says by which task and why — decision 7's
+            # "(by whom and why)" — and nothing of it runs, here even
+            # where the trust file could not be read: the stage was
+            # never going to be grant-checked.
+            outcome = _Outcome(
+                "switched-off",
+                f"{escape_for_display(switch.task)}, "
+                f"{escape_for_display(switch.reason or '')}",
+                b"",
             )
-            outcome = _run_stage(
-                project_root,
-                resolved_commit,
-                merge_base,
-                args.task,
-                args.phase,
-                name,
-                manifest,
-                stage,
-                prepared,
-                temp_root / f"snapshot-{index}",
-            )
+        elif blocked_names is not None and name in blocked_names:
+            # The switches file names this extension and cannot be read:
+            # its switch state is unknown, so the stage does not run —
+            # a pre-gate-stop one pauses like any other not-run stage.
+            # The line is owed even where the trust file also cannot be
+            # read: this stage was never going to be grant-checked.
+            outcome = _Outcome("not-run", "shared switches file unreadable", b"")
+        elif grants_unreadable:
+            # The trust file's refusal already fails the command, and
+            # only the outcomes never grant-checked — the switched-off
+            # stages and the stages a refused switches file names, both
+            # handled above — are still owed a line: nothing else
+            # reports or runs.
+            continue
+        else:
+            # Each stage gets its own temporary directory: a stage runs its
+            # extension's code with the materialized copy in reach of
+            # ``__file__``, so a copy an earlier stage ran against can no
+            # longer speak for the base. The directory is materialized
+            # afresh and the grant check recomputed on it for every stage,
+            # and the copy goes away with the stage's own context.
+            with tempfile.TemporaryDirectory(prefix="agentmarshal-stage-") as temporary:
+                temp_root = Path(temporary)
+                prepared = _prepare_extension(
+                    project_root, merge_base, name, temp_root, ci, grants
+                )
+                outcome = _run_stage(
+                    project_root,
+                    resolved_commit,
+                    merge_base,
+                    args.task,
+                    args.phase,
+                    name,
+                    manifest,
+                    stage,
+                    prepared,
+                    temp_root / f"snapshot-{index}",
+                )
         shown = escape_for_display(name)
         text = outcome.output.decode("utf-8", errors="replace")
         lines = text.split("\n")
@@ -689,9 +800,15 @@ def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
         result_text = _result_text(outcome)
         print(f"{shown}: {result_text}")
         record_event(name, stage, outcome, result_text)
-        if stage.phase == "pre-gate-stop" and outcome.decision != "checked":
+        if stage.phase == "pre-gate-stop" and outcome.decision not in (
+            "checked",
+            "switched-off",
+        ):
             paused.append(f"{shown}: {result_text}")
-        elif stage.phase == "pre-gate-warn" and outcome.decision != "checked":
+        elif stage.phase == "pre-gate-warn" and outcome.decision not in (
+            "checked",
+            "switched-off",
+        ):
             warnings.append(f"{shown}: {result_text}")
     for entry in warnings:
         print(f"stage run: WARNING: extension at pre-gate-warn — {entry}", file=stderr)
@@ -700,4 +817,6 @@ def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
             f"stage run: the process is paused before the gate — {entry}",
             file=stderr,
         )
+    if grants_unreadable:
+        return 1
     return 3 if paused else 0
