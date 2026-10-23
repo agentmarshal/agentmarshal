@@ -1,0 +1,776 @@
+"""Tests for stage isolation — the probe, the namespaces and the notes."""
+
+import os
+import subprocess
+import sys
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+import agentmarshal.isolation as isolation
+from test_stages import (
+    _ci,
+    _commit_all,
+    _extension,
+    _git,
+    _manifest,
+    _project,
+    _repo_with_extension,
+    _stage_run,
+)
+
+
+def _force_probe(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    network: str | None = None,
+    readonly: str | None = None,
+) -> None:
+    """Force the probe's verdict; ``None`` means the guarantee can be enforced."""
+
+    verdicts = isolation.Probe(network=network, readonly=readonly)
+    monkeypatch.setattr(isolation, "probe", lambda: verdicts)
+
+
+def _spy_setup(
+    monkeypatch: pytest.MonkeyPatch, calls: list[dict[str, object]]
+) -> Callable[[], None]:
+    """Record each ``stage_setup`` request and answer a harmless preexec.
+
+    The returned callable does nothing — the wiring is what's tested, so
+    the branch does not depend on whether this machine permits the
+    namespaces.
+    """
+
+    def fake_setup() -> None:
+        pass
+
+    def spy(*, network: bool, readonly: Path | None) -> Callable[[], None]:
+        calls.append({"network": network, "readonly": readonly})
+        return fake_setup
+
+    monkeypatch.setattr(isolation, "stage_setup", spy)
+    return fake_setup
+
+
+def _spy_popen(monkeypatch: pytest.MonkeyPatch, calls: list[dict[str, object]]) -> None:
+    """Record the ``preexec_fn`` each stage's ``Popen`` is started with."""
+
+    real = subprocess.Popen
+
+    def spy(*args: Any, **kwargs: Any) -> subprocess.Popen[bytes]:
+        calls.append({"argv": args[0], "preexec_fn": kwargs.get("preexec_fn")})
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", spy)
+
+
+def _probe_count(monkeypatch: pytest.MonkeyPatch) -> list[int]:
+    """Count how often the run asks the probe for a verdict."""
+
+    calls: list[int] = []
+
+    def counted() -> isolation.Probe:
+        calls.append(1)
+        return isolation.Probe("no", "no")
+
+    monkeypatch.setattr(isolation, "probe", counted)
+    return calls
+
+
+_ISOLATION_BLOCK = (
+    '[isolation]\nnetwork = false\nenv = []\nwrites = "none"\ntimeout_seconds = 30\n'
+)
+
+
+def _isolation_block(env: str = "[]", network: bool = False) -> str:
+    return (
+        "[isolation]\n"
+        f"network = {'true' if network else 'false'}\n"
+        f"env = {env}\n"
+        'writes = "none"\n'
+        "timeout_seconds = 30\n"
+    )
+
+
+# -- network isolation --------------------------------------------------------
+
+
+def test_a_stage_without_declared_network_runs_in_new_user_and_net_namespaces(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a stage whose manifest declares no network runs in a new user and network namespace."""  # noqa: E501
+    _force_probe(monkeypatch)
+    calls: list[dict[str, object]] = []
+    fake_setup = _spy_setup(monkeypatch, calls)
+    popens: list[dict[str, object]] = []
+    _spy_popen(monkeypatch, popens)
+    _repo_with_extension(tmp_path, monkeypatch)
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 0
+
+    assert len(calls) == 1
+    assert calls[0]["network"] is True
+    snapshot = calls[0]["readonly"]
+    assert isinstance(snapshot, Path)
+    assert snapshot.name.startswith("snapshot-")
+    stage_popens = [
+        call["preexec_fn"]
+        for call in popens
+        if isinstance(call["argv"], list)
+        and len(call["argv"]) > 1
+        and str(call["argv"][1]).endswith("check.py")
+    ]
+    assert stage_popens == [fake_setup]
+    captured = capsys.readouterr()
+    assert "not enforced" not in captured.out
+    assert "not enforced" not in captured.err
+
+
+def test_a_stage_declaring_network_true_runs_without_the_network_namespace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a stage declaring network = true runs without the network namespace."""
+    _force_probe(monkeypatch)
+    calls: list[dict[str, object]] = []
+    _spy_setup(monkeypatch, calls)
+    _repo_with_extension(
+        tmp_path,
+        monkeypatch,
+        manifest=_manifest(isolation=_isolation_block(network=True)),
+    )
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 0
+
+    assert calls[0]["network"] is False
+    captured = capsys.readouterr()
+    assert "openspec: checked" in captured.out
+    assert "not enforced: network" not in captured.err
+
+
+def test_a_network_namespace_the_platform_refuses_is_named_and_the_stage_still_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a network namespace the platform refuses is named and the stage still runs."""  # noqa: E501
+    _force_probe(monkeypatch, network="a kernel refusing unprivileged namespaces")
+    calls: list[dict[str, object]] = []
+    _spy_setup(monkeypatch, calls)
+    _repo_with_extension(tmp_path, monkeypatch)
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 0
+
+    assert calls[0]["network"] is False
+    captured = capsys.readouterr()
+    assert "openspec: checked" in captured.out
+    assert (
+        "not enforced: network "
+        "(a kernel refusing unprivileged namespaces)" in captured.err
+    )
+
+
+# -- the pre-gate floor: a read-only candidate --------------------------------
+
+
+def test_a_pre_gate_stage_s_candidate_directory_is_bound_read_only_over_itself(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a pre-gate stage's candidate directory is bound read-only over itself."""  # noqa: E501
+    real_stage_setup = isolation.stage_setup
+    _force_probe(monkeypatch)
+    calls: list[dict[str, object]] = []
+    _spy_setup(monkeypatch, calls)
+    _repo_with_extension(tmp_path, monkeypatch)
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 0
+
+    candidate = calls[0]["readonly"]
+    assert isinstance(candidate, Path)
+    assert candidate.name.startswith("snapshot-")
+    capsys.readouterr()
+
+    # The closure the request builds applies the mount chain in the
+    # child: the user and mount namespaces, the identity maps, the
+    # private propagation, the bind onto itself and the read-only
+    # remount.
+    unshared: list[int] = []
+    written: list[tuple[str, str]] = []
+    mounted: list[tuple[str | None, str, int]] = []
+    monkeypatch.setattr(os, "unshare", unshared.append)
+    monkeypatch.setattr(
+        isolation,
+        "_write_file",
+        lambda path, text: written.append((path, text)),
+    )
+    monkeypatch.setattr(
+        isolation,
+        "_mount",
+        lambda source, target, flags: mounted.append((source, target, flags)),
+    )
+    target = Path("/the/candidate")
+    real_stage_setup(network=False, readonly=target)()
+
+    assert unshared == [isolation._CLONE_NEWUSER | isolation._CLONE_NEWNS]
+    assert written == [
+        ("/proc/self/setgroups", "deny"),
+        ("/proc/self/uid_map", f"{os.getuid()} {os.getuid()} 1\n"),
+        ("/proc/self/gid_map", f"{os.getgid()} {os.getgid()} 1\n"),
+    ]
+    assert mounted == [
+        (None, "/", isolation._MS_REC | isolation._MS_PRIVATE),
+        ("/the/candidate", "/the/candidate", isolation._MS_BIND),
+        (
+            "/the/candidate",
+            "/the/candidate",
+            isolation._MS_BIND | isolation._MS_REMOUNT | isolation._MS_RDONLY,
+        ),
+    ]
+
+
+def test_a_mount_the_platform_refuses_is_named_and_the_stage_still_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a mount the platform refuses is named and the stage still runs."""
+    _force_probe(
+        monkeypatch,
+        readonly="the read-only bind: Operation not permitted",
+    )
+    calls: list[dict[str, object]] = []
+    _spy_setup(monkeypatch, calls)
+    _repo_with_extension(tmp_path, monkeypatch)
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 0
+
+    assert calls[0]["readonly"] is None
+    captured = capsys.readouterr()
+    assert "openspec: checked" in captured.out
+    assert (
+        "not enforced: read-only candidate "
+        "(the read-only bind: Operation not permitted)" in captured.err
+    )
+
+
+def test_a_post_gate_stage_s_candidate_is_not_bound_read_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a post-gate stage's candidate is not bound read-only."""
+    _force_probe(monkeypatch)
+    calls: list[dict[str, object]] = []
+    _spy_setup(monkeypatch, calls)
+    _repo_with_extension(
+        tmp_path,
+        monkeypatch,
+        manifest=_manifest(stages=(("post-gate", "bin/post.py"),)),
+        files={"bin/post.py": "print('post ran')\n"},
+    )
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(phase="post-gate", commit="candidate", base="master") == 0
+
+    assert calls == [{"network": True, "readonly": None}]
+    captured = capsys.readouterr()
+    assert "read-only" not in captured.err
+
+
+def test_a_declared_writes_beyond_the_candidate_is_reported_as_not_enforced(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a declared writes beyond the candidate is reported as not enforced."""
+    _force_probe(monkeypatch)
+    calls: list[dict[str, object]] = []
+    _spy_setup(monkeypatch, calls)
+    _repo_with_extension(
+        tmp_path, monkeypatch, manifest=_manifest(isolation=_ISOLATION_BLOCK)
+    )
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 0
+
+    captured = capsys.readouterr()
+    assert "openspec: checked" in captured.out
+    assert (
+        "not enforced: writes beyond the candidate "
+        "(the core has no filesystem sandbox beyond the candidate)" in captured.err
+    )
+
+
+def test_an_isolated_stage_cannot_reach_the_network_or_write_the_candidate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: an isolated stage cannot reach the network or write the candidate."""
+    verdicts = isolation.probe()
+    if verdicts.network is not None and verdicts.readonly is not None:
+        pytest.skip(
+            "the probe reports nothing it can enforce: "
+            f"network ({verdicts.network}); "
+            f"read-only candidate ({verdicts.readonly})"
+        )
+    _repo_with_extension(
+        tmp_path,
+        monkeypatch,
+        files={
+            "bin/check.py": (
+                "import os, socket\n"
+                "try:\n"
+                '    socket.create_connection(("1.1.1.1", 53), timeout=2)\n'
+                '    print("NET:reachable")\n'
+                "except OSError:\n"
+                '    print("NET:blocked")\n'
+                "try:\n"
+                '    open("probe-write.txt", "w").write("x")\n'
+                '    print("WRITE:ok")\n'
+                "except OSError:\n"
+                '    print("WRITE:blocked")\n'
+            )
+        },
+    )
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 0
+
+    captured = capsys.readouterr()
+    if verdicts.network is None:
+        assert "openspec | NET:blocked" in captured.out
+        assert "not enforced: network" not in captured.err
+    else:
+        assert f"not enforced: network ({verdicts.network})" in captured.err
+    if verdicts.readonly is None:
+        assert "openspec | WRITE:blocked" in captured.out
+        assert "not enforced: read-only candidate" not in captured.err
+    else:
+        assert (
+            f"not enforced: read-only candidate ({verdicts.readonly})" in captured.err
+        )
+
+
+# -- naming what is not enforced -----------------------------------------------
+
+
+def test_each_guarantee_not_enforced_is_named_on_one_note_line_for_the_stage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: each guarantee not enforced is named on one note line for the stage."""
+    _force_probe(
+        monkeypatch,
+        network="a kernel refusing unprivileged namespaces",
+        readonly="the read-only bind: Operation not permitted",
+    )
+    calls: list[dict[str, object]] = []
+    _spy_setup(monkeypatch, calls)
+    _repo_with_extension(
+        tmp_path, monkeypatch, manifest=_manifest(isolation=_ISOLATION_BLOCK)
+    )
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 0
+
+    captured = capsys.readouterr()
+    assert calls == []
+    notes = [
+        line
+        for line in captured.err.splitlines()
+        if line.startswith("stage run: note: openspec:")
+    ]
+    assert len(notes) == 1
+    assert (
+        "not enforced: network (a kernel refusing unprivileged namespaces)" in notes[0]
+    )
+    assert (
+        "not enforced: read-only candidate "
+        "(the read-only bind: Operation not permitted)" in notes[0]
+    )
+    assert "not enforced: writes beyond the candidate" in notes[0]
+
+
+def test_an_enforced_guarantee_is_not_mentioned(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: an enforced guarantee is not mentioned."""
+    _force_probe(monkeypatch)
+    calls: list[dict[str, object]] = []
+    _spy_setup(monkeypatch, calls)
+    _repo_with_extension(tmp_path, monkeypatch)
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 0
+
+    captured = capsys.readouterr()
+    assert "not enforced" not in captured.out
+    assert "not enforced" not in captured.err
+    assert "openspec: checked" in captured.out
+
+
+@pytest.mark.skipif(os.name != "posix", reason="preexec_fn is POSIX-only")
+def test_a_setup_step_that_fails_in_the_stage_s_own_child_is_named(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a setup step that fails in the stage's own child is named."""
+
+    def failing_setup() -> None:
+        os.write(
+            2,
+            b"AGENTMARSHAL-SETUP-FAILED: read-only candidate: "
+            b"a simulated mount failure\n",
+        )
+
+    _force_probe(monkeypatch)
+    monkeypatch.setattr(isolation, "stage_setup", lambda **kwargs: failing_setup)
+    _repo_with_extension(tmp_path, monkeypatch)
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 0
+
+    captured = capsys.readouterr()
+    assert "openspec: checked" in captured.out
+    assert "AGENTMARSHAL-SETUP-FAILED" not in captured.out
+    assert (
+        "not enforced: read-only candidate (a simulated mount failure)" in captured.err
+    )
+
+
+def test_a_platform_without_namespaces_names_each_guarantee_it_cannot_enforce(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a platform without namespaces names each guarantee it cannot enforce."""  # noqa: E501
+    _force_probe(
+        monkeypatch,
+        network="not Linux (darwin)",
+        readonly="not Linux (darwin)",
+    )
+    calls: list[dict[str, object]] = []
+    _spy_setup(monkeypatch, calls)
+    _repo_with_extension(tmp_path, monkeypatch)
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 0
+
+    assert calls == []
+    captured = capsys.readouterr()
+    assert "openspec: checked" in captured.out
+    assert "not enforced: network (not Linux (darwin))" in captured.err
+    assert "not enforced: read-only candidate (not Linux (darwin))" in captured.err
+
+
+def test_the_probe_runs_once_per_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: the probe runs once per run."""
+    calls = _probe_count(monkeypatch)
+    _repo_with_extension(
+        tmp_path,
+        monkeypatch,
+        manifest=_manifest(
+            stages=(
+                ("pre-gate-warn", "bin/first.py"),
+                ("pre-gate-stop", "bin/second.py"),
+            )
+        ),
+        files={
+            "bin/first.py": "print('first ran')\n",
+            "bin/second.py": "print('second ran')\n",
+        },
+    )
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 0
+
+    assert calls == [1]
+
+
+def test_a_stage_that_does_not_run_carries_no_isolation_note(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a stage that does not run carries no isolation note."""
+    calls = _probe_count(monkeypatch)
+    _repo_with_extension(
+        tmp_path,
+        monkeypatch,
+        manifest=_manifest(stages=(("pre-gate-stop", "bin/missing.py"),)),
+        files={"bin/other.py": "print('x')\n"},
+    )
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 3
+
+    captured = capsys.readouterr()
+    assert "openspec: not run" in captured.out
+    assert "not enforced" not in captured.out
+    assert "not enforced" not in captured.err
+    assert calls == []
+
+
+# -- provider secrets withheld at pre-gate -------------------------------------
+
+
+def test_a_provider_secret_named_in_isolation_env_is_withheld_at_pre_gate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a provider secret named in isolation.env is withheld at pre-gate."""
+    _force_probe(monkeypatch)
+    calls: list[dict[str, object]] = []
+    _spy_setup(monkeypatch, calls)
+    _repo_with_extension(
+        tmp_path,
+        monkeypatch,
+        manifest=_manifest(
+            isolation=_isolation_block(
+                env='["ANTHROPIC_API_KEY", "WIDGET_REGION"]', network=True
+            )
+        ),
+        files={
+            "bin/check.py": (
+                "import os\n"
+                'print("secret:", os.environ.get("ANTHROPIC_API_KEY"))\n'
+                'print("region:", os.environ.get("WIDGET_REGION"))\n'
+            )
+        },
+    )
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-hidden")
+    monkeypatch.setenv("WIDGET_REGION", "eu-1")
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 0
+
+    captured = capsys.readouterr()
+    assert "openspec | secret: None" in captured.out
+    assert "openspec | region: eu-1" in captured.out
+    assert "sk-hidden" not in captured.out
+    assert (
+        "provider secrets named in isolation.env are withheld at pre-gate: "
+        "ANTHROPIC_API_KEY" in captured.err
+    )
+    assert captured.err.count("provider secrets") == 1
+
+
+def test_a_name_ending_in_a_provider_secret_suffix_is_withheld_at_pre_gate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a name ending in a provider-secret suffix is withheld at pre-gate."""
+    _force_probe(monkeypatch)
+    calls: list[dict[str, object]] = []
+    _spy_setup(monkeypatch, calls)
+    names = [
+        "ACME_API_KEY",
+        "ACME_TOKEN",
+        "ACME_SECRET",
+        "ACME_PASSWORD",
+    ]
+    declared = ", ".join(f'"{name}"' for name in names)
+    _repo_with_extension(
+        tmp_path,
+        monkeypatch,
+        manifest=_manifest(
+            isolation=_isolation_block(env=f"[{declared}]", network=True)
+        ),
+        files={
+            "bin/check.py": (
+                "import os\n"
+                + "".join(
+                    f'print("{name}:", os.environ.get("{name}"))\n' for name in names
+                )
+            )
+        },
+    )
+    for name in names:
+        monkeypatch.setenv(name, "hidden")
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 0
+
+    captured = capsys.readouterr()
+    for name in names:
+        assert f"openspec | {name}: None" in captured.out
+    assert "hidden" not in captured.out
+    for name in names:
+        assert name in captured.err
+    assert captured.err.count("provider secrets") == 1
+
+
+def test_a_declared_provider_secret_reaches_a_post_gate_stage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a declared provider secret reaches a post-gate stage."""
+    _force_probe(monkeypatch)
+    calls: list[dict[str, object]] = []
+    _spy_setup(monkeypatch, calls)
+    _repo_with_extension(
+        tmp_path,
+        monkeypatch,
+        manifest=_manifest(
+            stages=(("post-gate", "bin/post.py"),),
+            isolation=_isolation_block(env='["ANTHROPIC_API_KEY"]', network=True),
+        ),
+        files={
+            "bin/post.py": (
+                'import os\nprint("secret:", os.environ.get("ANTHROPIC_API_KEY"))\n'
+            )
+        },
+    )
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-passed")
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(phase="post-gate", commit="candidate", base="master") == 0
+
+    captured = capsys.readouterr()
+    assert "openspec | secret: sk-passed" in captured.out
+    assert "provider secrets" not in captured.err
+
+
+def test_the_withheld_provider_secret_names_are_noted_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: the withheld provider-secret names are noted once."""
+    _force_probe(monkeypatch)
+    calls: list[dict[str, object]] = []
+    _spy_setup(monkeypatch, calls)
+    repo = _project(tmp_path, monkeypatch)
+    _extension(
+        repo,
+        name="zeta",
+        manifest=_manifest(
+            name="zeta",
+            stages=(("pre-gate-stop", "bin/z.py"),),
+            isolation=_isolation_block(env='["GH_TOKEN"]', network=True),
+        ),
+        files={"bin/z.py": "print('zeta ran')\n"},
+    )
+    _extension(
+        repo,
+        name="alpha",
+        manifest=_manifest(
+            name="alpha",
+            stages=(("pre-gate-stop", "bin/a.py"),),
+            isolation=_isolation_block(env='["GITLAB_TOKEN"]', network=True),
+        ),
+        files={"bin/a.py": "print('alpha ran')\n"},
+    )
+    _commit_all(repo, "base")
+    _git(repo, "checkout", "--quiet", "-b", "candidate")
+    (repo / "x.txt").write_text("x\n", encoding="utf-8")
+    _commit_all(repo, "candidate")
+    monkeypatch.setenv("GH_TOKEN", "a")
+    monkeypatch.setenv("GITLAB_TOKEN", "b")
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 0
+
+    captured = capsys.readouterr()
+    notes = [line for line in captured.err.splitlines() if "provider secrets" in line]
+    assert len(notes) == 1
+    assert "GH_TOKEN" in notes[0]
+    assert "GITLAB_TOKEN" in notes[0]
+
+
+# -- the probe and the child's own machinery -----------------------------------
+
+
+def test_probe_names_a_platform_that_is_not_linux(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The probe answers without a child where the mechanism cannot exist."""
+
+    monkeypatch.setattr(sys, "platform", "darwin")
+    verdicts = isolation.probe()
+    assert verdicts.network == "not Linux (darwin)"
+    assert verdicts.readonly == "not Linux (darwin)"
+
+
+def test_probe_names_a_missing_mechanism(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A Python without ``os.unshare`` is its own verdict."""
+
+    monkeypatch.delattr(os, "unshare")
+    verdicts = isolation.probe()
+    assert verdicts.network == "os.unshare or os.fork is unavailable"
+
+
+def test_the_child_setup_names_each_refused_namespace(
+    monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
+) -> None:
+    """A combined refusal is decomposed so each guarantee names its own."""
+
+    def refuse(flags: int) -> None:
+        raise OSError(1, "Operation not permitted")
+
+    monkeypatch.setattr(os, "unshare", refuse)
+    isolation.stage_setup(network=True, readonly=Path("/cand"))()
+    err = capfd.readouterr().err
+    assert "AGENTMARSHAL-SETUP-FAILED: network: Operation not permitted" in err
+    assert (
+        "AGENTMARSHAL-SETUP-FAILED: read-only candidate: Operation not permitted" in err
+    )
+
+
+def test_the_child_setup_keeps_a_namespace_the_retry_allows(
+    monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
+) -> None:
+    """A mount-namespace refusal does not take down the network namespace."""
+
+    def refuse_newns(flags: int) -> None:
+        if flags & isolation._CLONE_NEWNS:
+            raise OSError(1, "Operation not permitted")
+
+    monkeypatch.setattr(os, "unshare", refuse_newns)
+    monkeypatch.setattr(isolation, "_write_file", lambda path, text: None)
+    isolation.stage_setup(network=True, readonly=Path("/cand"))()
+    err = capfd.readouterr().err
+    assert "AGENTMARSHAL-SETUP-FAILED: network" not in err
+    assert "AGENTMARSHAL-SETUP-FAILED: read-only candidate" in err
+
+
+def test_the_child_setup_names_a_failed_mount(
+    monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
+) -> None:
+    """A mount failure after the unshares names only the read-only floor."""
+
+    monkeypatch.setattr(os, "unshare", lambda flags: None)
+    monkeypatch.setattr(isolation, "_write_file", lambda path, text: None)
+
+    def refuse(source: str | None, target: str, flags: int) -> None:
+        if flags & isolation._MS_REMOUNT:
+            raise OSError(1, "Operation not permitted")
+
+    monkeypatch.setattr(isolation, "_mount", refuse)
+    isolation.stage_setup(network=True, readonly=Path("/cand"))()
+    err = capfd.readouterr().err
+    assert "AGENTMARSHAL-SETUP-FAILED: network" not in err
+    assert "AGENTMARSHAL-SETUP-FAILED: read-only candidate" in err
+
+
+def test_strip_failure_reports_splits_markers_from_output() -> None:
+    """Marker lines head the stream; the stage's own output is kept whole."""
+
+    output = (
+        b"AGENTMARSHAL-SETUP-FAILED: network: boom\n"
+        b"AGENTMARSHAL-SETUP-FAILED: read-only candidate: bang\n"
+        b"real output\nmore\n"
+    )
+    kept, failures = isolation.strip_failure_reports(output)
+    assert kept == b"real output\nmore\n"
+    assert failures == [("network", "boom"), ("read-only candidate", "bang")]
+    kept, failures = isolation.strip_failure_reports(b"nothing marked\n")
+    assert kept == b"nothing marked\n"
+    assert failures == []

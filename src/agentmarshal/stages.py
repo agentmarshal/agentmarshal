@@ -38,6 +38,18 @@ Python interpreter>, <the path under bin/>]``, never through a shell and
 never through ``PATH`` lookup; a time limit of the declared
 ``timeout_seconds`` capped by the core's limit bounds it, the process
 group killed on a breach; exit status 0 means checked, any other failed.
+
+The isolation floor of ADR-0013 decision 8 rides the same launch (see
+``isolation.py``): a probe — a throwaway child, answered once per run —
+finds what this platform and environment allow; a stage whose manifest
+does not declare ``network = true`` is started in a new user and network
+namespace by the child itself before exec, and at ``pre-gate`` a new
+mount namespace binds the candidate read-only over itself and provider
+secrets are withheld from the declared environment. What the core
+cannot enforce never stops the stage: it runs weakened and one
+``stage run: note:`` line for it names each guarantee not enforced and
+why; a declared ``writes`` is enforced nowhere beyond the candidate and
+is named the same way.
 """
 
 from __future__ import annotations
@@ -48,11 +60,13 @@ import signal
 import subprocess
 import sys
 import tempfile
+from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Literal, TextIO
 
+from agentmarshal import isolation
 from agentmarshal.extension_trust import (
     ExtensionTrustError,
     Grant,
@@ -115,6 +129,30 @@ _DRAIN_TIMEOUT_SECONDS = 5
 #: would name the stage's working directory, the candidate snapshot.
 _MINIMAL_PATH = "/usr/bin:/bin"
 
+#: The provider secrets withheld from a ``pre-gate`` stage even when
+#: ``isolation.env`` declares them — ADR-0013 decision 8's floor: no
+#: provider secrets at pre-gate. The list is fixed and the delta spec
+#: names it; ``post-gate`` withholds nothing.
+_PROVIDER_SECRET_NAMES = frozenset(
+    {
+        "ANTHROPIC_API_KEY",
+        "OPENAI_API_KEY",
+        "GITHUB_TOKEN",
+        "GH_TOKEN",
+        "GITLAB_TOKEN",
+    }
+)
+_PROVIDER_SECRET_SUFFIXES = ("_API_KEY", "_TOKEN", "_SECRET", "_PASSWORD")
+
+
+def _is_provider_secret(variable: str) -> bool:
+    """Whether *variable* is a provider secret the pre-gate floor withholds."""
+
+    return variable in _PROVIDER_SECRET_NAMES or variable.endswith(
+        _PROVIDER_SECRET_SUFFIXES
+    )
+
+
 _EXTENSIONS_RELPATH = ".agentmarshal/extensions"
 
 #: The manifest modes each ``--phase`` value invokes (ADR-0013 decisions
@@ -154,6 +192,10 @@ class _Outcome:
     reason: str
     output: bytes
     event_reason: str | None = None
+    # The guarantees the stage ran without — each a name and a reason —
+    # named on one note line for the stage. Empty when everything the
+    # stage was owed was enforced.
+    not_enforced: tuple[tuple[str, str], ...] = ()
 
 
 def register(
@@ -421,15 +463,20 @@ def _stage_env(
     ``PATH`` is always the core's minimal value: a manifest naming it in
     ``isolation.env`` is not passed the caller's — the run's output notes
     once that ``PATH`` is fixed by the core. Other declared names receive
-    the caller's value, which is what ``isolation.env`` exists to pass.
-    The five protocol variables are written last so a declared name
-    colliding with one cannot override the run's own values.
+    the caller's value, which is what ``isolation.env`` exists to pass —
+    except at ``pre-gate``, where a provider secret is withheld even
+    when declared (the floor the manifest cannot remove), and the run's
+    output notes once which declared names were withheld. The five
+    protocol variables are written last so a declared name colliding
+    with one cannot override the run's own values.
     """
 
     env: dict[str, str] = {"PATH": _MINIMAL_PATH}
     if manifest.isolation is not None:
         for variable in manifest.isolation.env:
             if variable == "PATH" or variable not in os.environ:
+                continue
+            if phase == "pre-gate" and _is_provider_secret(variable):
                 continue
             env[variable] = os.environ[variable]
     env.update(
@@ -468,6 +515,7 @@ def _run_stage(
     stage: ExtensionStage,
     prepared: _Prepared,
     snapshot: Path,
+    probe: Callable[[], isolation.Probe],
 ) -> _Outcome:
     """Run one stage and report its outcome; never raises for the stage itself."""
 
@@ -491,6 +539,40 @@ def _run_stage(
             b"",
         )
     argv = [sys.executable, str(command)]
+    # The guarantees the stage is owed: the network floor unless the
+    # manifest declared ``network = true``, and the pre-gate floor — the
+    # candidate read-only. The probe, cached for the run, says what this
+    # platform and environment can enforce; what it cannot is named, and
+    # a declared ``writes`` beyond the candidate is always named — the
+    # core has no filesystem sandbox there. The child applies only the
+    # guarantees the probe verified; a step that still fails reports
+    # itself on its stderr head, stripped out of the stage's output and
+    # named the same way.
+    probed = probe()
+    not_enforced: list[tuple[str, str]] = []
+    want_network = manifest.isolation is None or not manifest.isolation.network
+    want_readonly = phase == "pre-gate"
+    use_network = want_network and probed.network is None
+    use_readonly = want_readonly and probed.readonly is None
+    if want_network and not use_network:
+        not_enforced.append(("network", probed.network or ""))
+    if want_readonly and not use_readonly:
+        not_enforced.append(("read-only candidate", probed.readonly or ""))
+    if manifest.isolation is not None:
+        not_enforced.append(
+            (
+                "writes beyond the candidate",
+                "the core has no filesystem sandbox beyond the candidate",
+            )
+        )
+    setup = (
+        isolation.stage_setup(
+            network=use_network,
+            readonly=snapshot if use_readonly else None,
+        )
+        if use_network or use_readonly
+        else None
+    )
     try:
         process = subprocess.Popen(
             argv,
@@ -501,12 +583,15 @@ def _run_stage(
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             start_new_session=True,
+            preexec_fn=setup,
         )
-    except OSError as error:
+    except (OSError, subprocess.SubprocessError) as error:
+        detail = (
+            error.strerror or str(error) if isinstance(error, OSError) else str(error)
+        )
         return _Outcome(
             "not-run",
-            f"cannot start {stage.command}: "
-            f"{escape_for_display(error.strerror or str(error))}",
+            f"cannot start {stage.command}: {escape_for_display(detail)}",
             b"",
         )
     try:
@@ -526,10 +611,30 @@ def _run_stage(
                         pipe.close()
             process.wait()
             output = still_open.output or b""
-        return _Outcome("did-not-finish", "timeout", output)
+        output, failures = isolation.strip_failure_reports(output)
+        not_enforced += _new_failures(not_enforced, failures)
+        return _Outcome(
+            "did-not-finish", "timeout", output, not_enforced=tuple(not_enforced)
+        )
+    output, failures = isolation.strip_failure_reports(output)
+    not_enforced += _new_failures(not_enforced, failures)
     if process.returncode == 0:
-        return _Outcome("checked", "", output)
-    return _Outcome("failed", f"exit {process.returncode}", output)
+        return _Outcome("checked", "", output, not_enforced=tuple(not_enforced))
+    return _Outcome(
+        "failed",
+        f"exit {process.returncode}",
+        output,
+        not_enforced=tuple(not_enforced),
+    )
+
+
+def _new_failures(
+    not_enforced: list[tuple[str, str]], failures: list[tuple[str, str]]
+) -> list[tuple[str, str]]:
+    """The child-reported failures a probe verdict did not already name."""
+
+    named = {label for label, _reason in not_enforced}
+    return [(label, reason) for label, reason in failures if label not in named]
 
 
 def _result_text(outcome: _Outcome) -> str:
@@ -638,6 +743,37 @@ def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
             "passed through",
             file=stderr,
         )
+    if args.phase == "pre-gate":
+        # The pre-gate floor the manifest cannot remove: no provider
+        # secret reaches the stage even when ``isolation.env`` names it
+        # (ADR-0013 decision 8) — named once here, however many
+        # manifests declare them.
+        withheld = sorted(
+            {
+                variable
+                for _name, manifest, _stage in plan
+                if manifest.isolation is not None
+                for variable in manifest.isolation.env
+                if _is_provider_secret(variable)
+            }
+        )
+        if withheld:
+            print(
+                "stage run: note: provider secrets named in isolation.env "
+                "are withheld at pre-gate: "
+                + ", ".join(escape_for_display(variable) for variable in withheld),
+                file=stderr,
+            )
+    probed: isolation.Probe | None = None
+
+    def probe_once() -> isolation.Probe:
+        """The run's one probe, answered on the first stage that runs."""
+
+        nonlocal probed
+        if probed is None:
+            probed = isolation.probe()
+        return probed
+
     ci = os.environ.get("CI") == "true"
     grants: dict[str, Grant] = {}
     grants_unreadable = False
@@ -776,6 +912,7 @@ def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
                     stage,
                     prepared,
                     temp_root / f"snapshot-{index}",
+                    probe_once,
                 )
         shown = escape_for_display(name)
         text = outcome.output.decode("utf-8", errors="replace")
@@ -786,6 +923,20 @@ def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
             print(f"{shown} | {escape_for_display(line)}")
         result_text = _result_text(outcome)
         print(f"{shown}: {result_text}")
+        if outcome.not_enforced:
+            # What the stage ran without — one note line for it, each
+            # guarantee named with its reason. A guarantee enforced is
+            # not mentioned, so nothing here changes on a platform that
+            # enforces everything.
+            print(
+                f"stage run: note: {shown}: "
+                + "; ".join(
+                    f"not enforced: {escape_for_display(label)} "
+                    f"({escape_for_display(why)})"
+                    for label, why in outcome.not_enforced
+                ),
+                file=stderr,
+            )
         record_event(name, stage, outcome, result_text)
         if stage.phase == "pre-gate-stop" and outcome.decision not in (
             "checked",
