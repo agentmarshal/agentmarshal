@@ -47,6 +47,39 @@ SwitchState = Literal["on", "off"]
 _SWITCH_STATES: tuple[SwitchState, ...] = ("on", "off")
 
 
+def shared_extension_names(managed: Path) -> frozenset[str]:
+    """The shared extension names *managed* enumerates — ``doctor``'s rule.
+
+    A ``<name>.toml`` entry is the file form and a ``<name>/`` entry the
+    directory form (ADR-0013 decision 9); a symbolic-link entry is kept
+    under the name it carries with ``.toml`` removed, and a name found
+    in more than one form is enumerated once; an entry that is none of
+    these is not an extension, and a *managed* that is not a directory
+    enumerates no names. Whether the manifest under a name reads is no
+    part of the rule — a broken extension is still a declared name, so
+    a broken extension stays switchable.
+
+    This is the rule ``doctor.py``'s ``_extension_names`` implements;
+    ``doctor`` moving onto this function is a follow-up — ``doctor.py``
+    is outside this task's scope.
+    """
+
+    names: list[str] = []
+    if managed.is_dir():
+        for entry in sorted(managed.iterdir()):
+            if entry.is_symlink():
+                name = entry.name.removesuffix(".toml")
+            elif entry.is_dir():
+                name = entry.name
+            elif entry.name.endswith(".toml"):
+                name = entry.name.removesuffix(".toml")
+            else:
+                continue
+            if name not in names:
+                names.append(name)
+    return frozenset(names)
+
+
 class SwitchesError(ValueError):
     """Raised when a switches file is missing the recorded shape.
 

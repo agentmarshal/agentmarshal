@@ -17,6 +17,10 @@ Decision 15's bound stands: this guards against accidental change and a
 sandboxed executor, not a process running with the user's rights — nothing
 here locks the file or checks ownership. No command runs an extension and
 none writes the journal.
+
+The ``switch`` group — ``extension switch off <name> --reason <text>``,
+the operational switch-off of decisions 16 and 17 — is registered here
+under the same ``extension`` group; its logic lives in ``switch_off.py``.
 """
 
 from __future__ import annotations
@@ -94,6 +98,18 @@ def register(
     extension_commands.add_parser(
         "list", help="show each directory-form extension's grant state"
     )
+    switch_parser = extension_commands.add_parser(
+        "switch",
+        help="switch a shared extension off through an operational task",
+    )
+    switch_commands = switch_parser.add_subparsers(dest="switch_command", required=True)
+    off_parser = switch_commands.add_parser(
+        "off", help="open an operational task switching the extension off"
+    )
+    off_parser.add_argument("name", help="extension name")
+    off_parser.add_argument(
+        "--reason", required=True, help="the mandatory switch-off reason"
+    )
 
 
 def run(args: argparse.Namespace, stderr: TextIO) -> int:
@@ -105,6 +121,13 @@ def run(args: argparse.Namespace, stderr: TextIO) -> int:
         return _run_untrust(args, stderr)
     if args.extension_command == "list":
         return _run_list(args, stderr)
+    if args.extension_command == "switch":
+        # Imported where it is dispatched, not at module level:
+        # switch_off borrows this module's _managed_directory and
+        # _toml_string, so a top-level import either way is circular.
+        from agentmarshal import switch_off
+
+        return switch_off.run(args, stderr)
     print(f"extension: unknown command {args.extension_command}", file=stderr)
     return 1
 
