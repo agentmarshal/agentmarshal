@@ -17,7 +17,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TextIO, cast
 
-from agentmarshal.journal.actors import SOURCE_ACTORS_TABLE, _actor_git_identities
+from agentmarshal.journal.actors import _actor_git_identities
 from agentmarshal.journal.contracts import JournalContractError, contract_sha256
 from agentmarshal.journal.display import escape_for_display
 from agentmarshal.journal.records import _project_root_for
@@ -101,17 +101,17 @@ def _is_self_acknowledged(
 def _is_declared_recorder(journal_root: Path, record: dict[str, object]) -> bool:
     """Whether ``recorded_by`` names an actor the project file declares.
 
-    A ``project-actor`` source implies it — the id came out of the table.
-    An override or a git identity can still *name* a declared actor, so
-    declared-ness is otherwise tested on the id against the ``actors``
-    keys of the project file the journal belongs to — the same one the
-    recorder was resolved from. A project file that cannot be read
-    declares nothing; the line then notes the recorder rather than
-    failing (ADR-0022 section 3).
+    "Declared" means in the project's actors table as it stands when
+    ``status`` runs, for every source alike: a ``project-actor`` record
+    says only where the id came from at write time — an actor removed
+    from the table since is no longer declared — and an override or a
+    git identity can still *name* a declared actor, so the id is tested
+    against the ``actors`` keys of the project file the journal belongs
+    to — the same one the recorder was resolved from. A project file
+    that cannot be read declares nothing; the line then notes the
+    recorder rather than failing (ADR-0022 section 3).
     """
 
-    if record.get("recorded_by_source") == SOURCE_ACTORS_TABLE:
-        return True
     try:
         project = read_project_file(project_file_path(_project_root_for(journal_root)))
     except (OSError, ValueError):

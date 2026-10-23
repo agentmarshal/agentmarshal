@@ -430,6 +430,63 @@ def test_a_declared_recorder_is_shown_without_the_note(
     assert "not a declared actor" not in out
 
 
+def test_a_project_actor_recorder_removed_from_the_table_is_shown_as_such(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a recorder that is not a declared actor is shown as such.
+
+    A `project-actor` source says where the id came from at write time,
+    not that the table still declares it — an actor removed from the
+    actors table since the write shows the note like any other source.
+    """
+
+    repo = _repo(
+        tmp_path,
+        monkeypatch,
+        actors={"lead": {"git_identities": ["lead@example.invalid"]}},
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "lead@example.invalid"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+    _write(
+        repo,
+        create_opened_record("CR-001", "1.0"),
+        "00000000000000000000000001",
+        "2026-01-01T00:00:00Z",
+    )
+    _write(
+        repo,
+        create_check_record("CR-001", "1.0", _COMMIT, "lint", "passed"),
+        "00000000000000000000000002",
+        "2026-01-02T00:00:00Z",
+    )
+    record = json.loads(
+        next(
+            (_journal(repo) / "tasks" / "CR-001" / "records").glob(
+                "00000000000000000000000002*.json"
+            )
+        ).read_text(encoding="utf-8")
+    )
+    assert record["recorded_by"] == "lead"
+    assert record["recorded_by_source"] == "project-actor"
+    # The actor is later removed from the table the record was resolved
+    # against.
+    (repo / ".agentmarshal" / "project.json").write_text(
+        json.dumps({"schema": 1, "actors": {}}) + "\n", encoding="utf-8"
+    )
+
+    assert main(["status", "CR-001"]) == 0
+    out = capsys.readouterr().out
+    assert (
+        "- 00000000000000000000000002 check 2026-01-02T00:00:00Z "
+        f"name=lint result=passed commit={_COMMIT[:7]} "
+        "recorded_by=lead (not a declared actor)\n"
+    ) in out
+
+
 # -- self-acknowledgement ----------------------------------------------------
 
 
