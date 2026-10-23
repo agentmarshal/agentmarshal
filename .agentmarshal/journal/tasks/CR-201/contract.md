@@ -5,6 +5,7 @@ title = "complete takes the advisory findings from the review the gate passed on
 scope = [
   "src/agentmarshal/journal/gate.py",
   "src/agentmarshal/journal/complete.py",
+  "src/agentmarshal/cli.py",
   "tests/",
   "openspec/changes/complete-uses-gate-review/",
   "openspec/changes/archive/",

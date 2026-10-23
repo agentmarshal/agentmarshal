@@ -1,0 +1,12 @@
+{
+  "contract": "e6d54ef76bcda8df342600eb0d7ae8a1f0ad9a8515b8ae9fe5d4007c68749fc4",
+  "created_at": "2026-10-23T07:44:04.520736Z",
+  "reason": "Scope gains src/agentmarshal/cli.py: the sidecar complete path passes the gate's report to the completion there, and without it the review window CR-201 closes stays open in a sidecar (coordinator gap, review round 1).",
+  "record_type": "amendment",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "schema": 7,
+  "source": "live",
+  "task": "CR-201",
+  "tool_version": "0.5.0.dev0"
+}
