@@ -42,6 +42,7 @@ from agentmarshal.journal.extensions import (
     ExtensionManifest,
     ExtensionManifestError,
     ExtensionManifestMissing,
+    extension_directory_manifest_path,
     extension_manifest_path,
     parse_extension_manifest_text,
     read_extension_manifest,
@@ -507,51 +508,131 @@ def _range_commits(project_root: Path, merge_base: str, commit: str) -> set[str]
 
 
 def _extension_name(path: str) -> str | None:
-    """Return the name for a manifest at its one allowed lexical location."""
+    """Return the name for a manifest at one of its two allowed locations.
 
-    if not path.startswith(_EXTENSIONS_PREFIX) or not path.endswith(".toml"):
+    The file form is ``.agentmarshal/extensions/<name>.toml``; the directory
+    form's manifest is ``.agentmarshal/extensions/<name>/manifest.toml``.
+    Nothing else under ``<name>/`` names a manifest — a deleted ``bin/`` or
+    ``lock/`` file is not the extension's removal.
+    """
+
+    if not path.startswith(_EXTENSIONS_PREFIX):
         return None
-    name = path.removeprefix(_EXTENSIONS_PREFIX).removesuffix(".toml")
+    relative = path.removeprefix(_EXTENSIONS_PREFIX)
+    name: str | None = None
+    if relative.endswith("/manifest.toml"):
+        name = relative.removesuffix("/manifest.toml")
+    elif "/" not in relative and relative.endswith(".toml"):
+        name = relative.removesuffix(".toml")
     return name if name and "/" not in name else None
+
+
+def _tree_entry(project_root: Path, tree_ref: str, path: str) -> tuple[str, str] | None:
+    """Return the ``(mode, kind)`` of *path*'s entry in *tree_ref*, or None.
+
+    A literal pathspec: a bracket or a star in an extension's name is a
+    character, not a glob.
+    """
+
+    entry = _run_git_lossy(
+        project_root, ["ls-tree", "-z", tree_ref, "--", f":(literal){path}"]
+    )
+    if not entry.strip("\0"):
+        return None
+    mode, kind = entry.split("\0", 1)[0].split(" ")[:2]
+    return mode, kind
+
+
+def _manifest_blob_present(
+    project_root: Path, tree_ref: str, name: str, path: str
+) -> bool:
+    """Whether *path* holds a manifest blob in *tree_ref*; refusals raise.
+
+    The entry's mode is part of the answer — a symlink is refused here as
+    the filesystem reader refuses one, and so is an entry that is not a
+    file.
+    """
+
+    entry = _tree_entry(project_root, tree_ref, path)
+    if entry is None:
+        return False
+    mode, kind = entry
+    if mode == "120000":
+        raise ExtensionManifestError(
+            f"refusing to read extension manifest {name!r} through a symlink: "
+            f"{tree_ref}:{path}"
+        )
+    if kind != "blob":
+        raise ExtensionManifestError(
+            f"extension manifest {name!r} at {tree_ref}:{path} is a {kind}, not a file"
+        )
+    return True
 
 
 def _manifest_from_tree(
     project_root: Path, tree_ref: str, name: str
 ) -> ExtensionManifest:
-    """Read one manifest blob from ``tree_ref`` and use the shared validator."""
+    """Read a manifest blob from ``tree_ref`` and use the shared validator.
 
-    path = extension_manifest_path(name)
-    source = f"{tree_ref}:{path}"
+    An extension lives at ``.agentmarshal/extensions/<name>.toml`` — the
+    file form — or at ``.agentmarshal/extensions/<name>/manifest.toml`` —
+    the directory form of ADR-0013 decision 9 — and the tree read applies
+    the rules the working-tree reader applies, said in tree terms: a
+    manifest in both places is refused naming both; a link entry at the
+    manifest path, or at the ``<name>`` directory itself, is refused as a
+    link — in a tree a link resolves to nothing, so the directory entry is
+    examined before absence is decided; an entry at a manifest path that
+    is not a blob is refused as not a file; and the directory form holds
+    only a schema-2 manifest.
+    """
+
+    file_path = extension_manifest_path(name)
+    directory_path = extension_directory_manifest_path(name)
+    container = directory_path.rsplit("/", maxsplit=1)[0]
+    file_source = f"{tree_ref}:{file_path}"
+    directory_source = f"{tree_ref}:{directory_path}"
+    # `source` tracks the path being probed so a git failure is wrapped
+    # naming the path the run could not read.
+    source = file_source
     try:
-        # A literal pathspec: a bracket or a star in an extension's name is a
-        # character, not a glob. The entry's mode is part of the answer — a
-        # symlink is refused here as the filesystem reader refuses one.
-        entry = _run_git_lossy(
-            project_root, ["ls-tree", "-z", tree_ref, "--", f":(literal){path}"]
+        file_present = _manifest_blob_present(project_root, tree_ref, name, file_path)
+        source = f"{tree_ref}:{container}"
+        container_entry = _tree_entry(project_root, tree_ref, container)
+        if container_entry is not None and container_entry[0] == "120000":
+            raise ExtensionManifestError(
+                f"refusing to read extension manifest {name!r} through a "
+                f"symlink: {source}"
+            )
+        directory_present = (
+            container_entry is not None
+            and container_entry[1] == "tree"
+            and _manifest_blob_present(project_root, tree_ref, name, directory_path)
         )
-        if not entry.strip("\0"):
+        if file_present and directory_present:
+            raise ExtensionManifestError(
+                f"extension {name!r} has a manifest in both the file and the "
+                f"directory form: {file_source} and {directory_source}"
+            )
+        if not file_present and not directory_present:
             raise ExtensionManifestMissing(
-                f"extension manifest {name!r} is missing: {source}"
+                f"extension manifest {name!r} is missing: {file_source}"
             )
-        mode, kind = entry.split("\0", 1)[0].split(" ")[:2]
-        if mode == "120000":
-            raise ExtensionManifestError(
-                f"refusing to read extension manifest {name!r} through a symlink: "
-                f"{source}"
-            )
-        if kind != "blob":
-            raise ExtensionManifestError(
-                f"extension manifest {name!r} at {source} is a {kind}, not a file"
-            )
+        source = file_source if file_present else directory_source
         text = _run_git(project_root, ["show", source])
     except GateError as error:
-        # A blob git cannot show as UTF-8 text, or a tree entry that is not a
-        # blob, is a manifest the gate cannot read — a refusal line, not an
-        # aborted run.
+        # A blob git cannot show as UTF-8 text, or a tree entry that cannot
+        # be listed, is a manifest the gate cannot read — a refusal line,
+        # not an aborted run.
         raise ExtensionManifestError(
             f"cannot read extension manifest {name!r} at {source}: {error}"
         ) from error
-    return parse_extension_manifest_text(text, name, source)
+    manifest = parse_extension_manifest_text(text, name, source)
+    if directory_present and manifest.schema != 2:
+        raise ExtensionManifestError(
+            "the directory form requires a manifest of schema 2; "
+            f"{name!r} declares schema {manifest.schema}: {source}"
+        )
+    return manifest
 
 
 def markers_from_config(project_root: Path) -> tuple[str, ...]:

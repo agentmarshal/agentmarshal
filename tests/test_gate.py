@@ -3010,6 +3010,279 @@ def test_a_symlink_at_the_manifest_path_on_the_base_is_refused(
     assert "symlink" in output
 
 
+def _write_directory_extension_manifest(
+    repo: Path,
+    *,
+    text: str | None = None,
+    files: tuple[str, ...] = (),
+) -> Path:
+    """Write ``.agentmarshal/extensions/openspec/manifest.toml`` and the files
+    the extension's directory holds."""
+
+    path = repo / ".agentmarshal" / "extensions" / "openspec" / "manifest.toml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "schema = 2\n"
+        'name = "openspec"\n'
+        'version = "1.0.0"\n'
+        'footprint = ["openspec/"]\n'
+        "documents = []\n"
+        if text is None
+        else text,
+        encoding="utf-8",
+    )
+    for relative in files:
+        target = path.parent / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("", encoding="utf-8")
+    return path
+
+
+def test_tree_reader_finds_the_directory_form(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: the tree reader finds the directory form at <name>/manifest.toml."""
+
+    repo, _ = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    _write_schema2_contract(repo, ["src/"], extensions=["openspec"])
+    _write_directory_extension_manifest(repo)
+    base = _commit_all(repo, "installed directory-form extension")
+    head = _implement(repo, "openspec/change.md")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    # The footprint joined the effective scope — the manifest was read.
+    assert passed
+    assert "PASS: diff within contract scope (extensions: openspec)" in output
+
+
+def test_manifest_in_both_forms_at_the_base_is_refused_naming_both(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a manifest in both forms at the base is refused naming both."""
+
+    repo, _ = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    _write_schema2_contract(repo, ["src/"], extensions=["openspec"])
+    _write_extension_manifest(repo)
+    _write_directory_extension_manifest(repo)
+    base = _commit_all(repo, "both forms at base")
+    head = _implement(repo, "src/change.py")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    assert not passed
+    assert "FAIL: named extension 'openspec' manifest unreadable" in output
+    assert "openspec.toml" in output
+    assert "openspec/manifest.toml" in output
+
+
+@pytest.mark.parametrize("holds", ["nothing", "a directory without a manifest"])
+def test_manifest_missing_from_the_base_in_either_form_is_reported_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, holds: str
+) -> None:
+    """Scenario: a manifest missing from the base in either form is reported missing."""
+
+    repo, _ = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    _write_schema2_contract(repo, ["src/"], extensions=["openspec"])
+    if holds == "a directory without a manifest":
+        binary = repo / ".agentmarshal" / "extensions" / "openspec" / "bin"
+        binary.mkdir(parents=True)
+        (binary / "tool.py").write_text("", encoding="utf-8")
+    base = _commit_all(repo, "no manifest at base")
+    head = _implement(repo, "src/change.py")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    assert not passed
+    assert "FAIL: named extension 'openspec' manifest unreadable" in output
+    assert "missing" in output
+
+
+def test_symlink_at_the_directory_forms_manifest_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a symlink at the directory form's manifest is refused."""
+
+    repo, _ = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    _write_schema2_contract(repo, ["src/"], extensions=["openspec"])
+    manifest = repo / ".agentmarshal" / "extensions" / "openspec" / "manifest.toml"
+    manifest.parent.mkdir(parents=True)
+    manifest.symlink_to("elsewhere.toml")
+    base = _commit_all(repo, "directory manifest is a symlink at base")
+    head = _implement(repo, "src/change.py")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    assert not passed
+    assert "FAIL: named extension 'openspec' manifest unreadable" in output
+    assert "symlink" in output
+
+
+@pytest.mark.parametrize("target_exists", [False, True])
+def test_symlink_at_the_extensions_directory_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, target_exists: bool
+) -> None:
+    """Scenario: a symlink at the extension's directory is refused."""
+
+    repo, _ = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    _write_schema2_contract(repo, ["src/"], extensions=["openspec"])
+    if target_exists:
+        target_dir = repo / "elsewhere"
+        target_dir.mkdir()
+        (target_dir / "manifest.toml").write_text("", encoding="utf-8")
+    link = repo / ".agentmarshal" / "extensions" / "openspec"
+    link.parent.mkdir(parents=True)
+    link.symlink_to(repo / "elsewhere", target_is_directory=True)
+    base = _commit_all(repo, "extension directory is a symlink at base")
+    head = _implement(repo, "src/change.py")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    # A link at <name> resolves to nothing in a tree; it must not read as
+    # a missing manifest.
+    assert not passed
+    assert "FAIL: named extension 'openspec' manifest unreadable" in output
+    assert "symlink" in output
+    assert "missing" not in output
+
+
+@pytest.mark.parametrize(
+    "manifest_path",
+    [
+        ".agentmarshal/extensions/openspec.toml",
+        ".agentmarshal/extensions/openspec/manifest.toml",
+    ],
+)
+def test_manifest_path_entry_that_is_not_a_file_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, manifest_path: str
+) -> None:
+    """Scenario: a manifest-path entry that is not a file is refused."""
+
+    repo, _ = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    _write_schema2_contract(repo, ["src/"], extensions=["openspec"])
+    directory = repo / manifest_path
+    directory.mkdir(parents=True)
+    (directory / "inner.txt").write_text("not a manifest\n", encoding="utf-8")
+    base = _commit_all(repo, "manifest path holds a directory at base")
+    head = _implement(repo, "src/change.py")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    assert not passed
+    assert "FAIL: named extension 'openspec' manifest unreadable" in output
+    assert "not a file" in output
+
+
+def test_schema_1_manifest_in_the_base_directory_form_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a schema-1 manifest in the base directory form is refused."""
+
+    repo, _ = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    _write_schema2_contract(repo, ["src/"], extensions=["openspec"])
+    _write_directory_extension_manifest(
+        repo,
+        text="schema = 1\n"
+        'name = "openspec"\n'
+        'version = "1.2.3"\n'
+        'footprint = ["openspec/"]\n'
+        "documents = []\n"
+        "artifacts = []\n"
+        'install = "install"\n'
+        'remove = "remove"\n',
+    )
+    base = _commit_all(repo, "schema-1 manifest in a directory at base")
+    head = _implement(repo, "src/change.py")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    assert not passed
+    assert "FAIL: named extension 'openspec' manifest unreadable" in output
+    assert "directory form requires a manifest of schema 2" in output
+
+
+def test_named_file_form_manifest_reads_exactly_as_before(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a named file-form manifest reads exactly as before."""
+
+    repo, _ = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    _write_schema2_contract(repo, ["src/"], extensions=["openspec"])
+    _write_extension_manifest(repo)
+    base = _commit_all(repo, "installed extension")
+    head = _implement(repo, "openspec/change.md")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    assert passed
+    assert "PASS: diff within contract scope (extensions: openspec)" in output
+    assert "manifest unreadable" not in output
+
+
+@pytest.mark.parametrize("leave_footprint", [False, True])
+def test_deleting_the_directory_form_manifest_checks_the_former_footprint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    leave_footprint: bool,
+) -> None:
+    """Scenario: deleting <name>/manifest.toml checks the former footprint."""
+
+    manifest_path = ".agentmarshal/extensions/openspec/manifest.toml"
+    repo, _ = _gate_repo(tmp_path, monkeypatch, [manifest_path])
+    _write_schema2_contract(repo, [manifest_path], extensions=["openspec"])
+    manifest = _write_directory_extension_manifest(repo, files=("bin/tool.py",))
+    first = repo / "openspec" / "first.md"
+    second = repo / "openspec" / "second.md"
+    first.parent.mkdir()
+    first.write_text("first\n", encoding="utf-8")
+    second.write_text("second\n", encoding="utf-8")
+    base = _commit_all(repo, "installed directory-form extension")
+    manifest.unlink()
+    first.unlink()
+    if not leave_footprint:
+        second.unlink()
+    head = _commit_all(repo, "remove extension")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    assert passed is not leave_footprint
+    if leave_footprint:
+        assert "FAIL: extension 'openspec' removal incomplete" in output
+        assert "openspec/second.md" in output
+    else:
+        assert "PASS: extension 'openspec' removal complete" in output
+
+
+@pytest.mark.parametrize("deleted", ["bin/tool.py", "lock/uv.lock"])
+def test_deleting_another_file_under_the_extension_directory_is_not_a_removal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, deleted: str
+) -> None:
+    """Scenario: deleting another file under <name>/ is not a removal."""
+
+    directory = ".agentmarshal/extensions/openspec/"
+    repo, _ = _gate_repo(tmp_path, monkeypatch, [directory])
+    _write_schema2_contract(repo, [directory], extensions=["openspec"])
+    _write_directory_extension_manifest(repo, files=("bin/tool.py", "lock/uv.lock"))
+    base = _commit_all(repo, "installed directory-form extension")
+    (repo / directory / deleted).unlink()
+    head = _commit_all(repo, "drop one file from the extension's directory")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    assert passed
+    assert "removal" not in output
+
+
 def test_sidecar_history_sees_an_artifact_replaced_by_a_symlink(tmp_path: Path) -> None:
     """A type change (file → symlink) in a committed sidecar history is tampering."""
 
