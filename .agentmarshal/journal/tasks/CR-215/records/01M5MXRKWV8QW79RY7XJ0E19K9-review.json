@@ -1,0 +1,109 @@
+{
+  "advisory_findings": [
+    "sidecar-placement-untested",
+    "resolve-commit-duplicated"
+  ],
+  "artifacts": [
+    {
+      "hash": "50bcb77d82d728813c71b5f358d6bb6ba8d7e92df5cfe72b537fc738166714b5",
+      "ref": ".agentmarshal/journal/tasks/CR-215/artifacts/01M5MXRKWV8QW79RY7XJ0E19K9-review.md"
+    }
+  ],
+  "classes": {
+    "resolve-commit-duplicated": "style",
+    "sidecar-placement-untested": "test-gap"
+  },
+  "created_at": "2026-10-23T17:43:28.411579Z",
+  "evidence": {
+    "resolve-commit-duplicated": "grep -rn \"rev-parse --verify\" --include=*.py src → src/agentmarshal/journal/acceptance.py:116, src/agentmarshal/record_ext.py:141, src/agentmarshal/record_check.py:148, src/agentmarshal/acknowledge.py:151; acceptance.py:105-135 and record_check.py:137-167 differ only in the raised exception class",
+    "sidecar-placement-untested": "openspec/specs/operator-acceptance/spec.md:174-181 states the resolution happens in the journal's repository 'in either placement'; tests/test_pause_and_operational_acceptance.py:534 (_status_repo) builds an embedded project where project_root == host_root, and grep for 'sidecar' in that file returns nothing, so substituting placement.host_root at src/agentmarshal/cli.py:741 would pass every new test; the sibling command covers it at tests/test_record_ext.py:340"
+  },
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "bce1e53e1d518634917e36a95fbe5b6e3e015baa",
+  "reviewed_contract": "ae7fb9f61a4bad925f0c370a1c116bef6a165f5b1096460825adfeab4907b595",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-215",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "identical",
+        "what": "diff of openspec/specs/operator-acceptance/spec.md lines 167-311 against the delta spec's ADDED block (lines 5-149)"
+      },
+      {
+        "result": "identical apart from one trailing blank line",
+        "what": "diff of openspec/specs/operator-acceptance/spec.md lines 119-166 against the delta spec's MODIFIED block (lines 153-199)"
+      },
+      {
+        "result": "only 'archive' — openspec/changes/accept-pause-operational/ is gone, so the archive command ran",
+        "what": "ls openspec/changes/"
+      },
+      {
+        "result": "design.md, proposal.md, specs, tasks.md",
+        "what": "ls openspec/changes/archive/2026-10-24-accept-pause-operational/"
+      },
+      {
+        "result": "8 requirements; the three new ones at lines 167, 243, 277",
+        "what": "grep -n '^### Requirement:' openspec/specs/operator-acceptance/spec.md"
+      },
+      {
+        "result": "acceptance.py:116, record_ext.py:141, record_check.py:148, acknowledge.py:151 plus the _run_git call sites in gate.py/review.py/prune.py — four hand-rolled copies of the same helper",
+        "what": "grep -rn \"rev-parse --verify\" --include=*.py src"
+      },
+      {
+        "result": "line 340 test_in_a_sidecar_the_commit_resolves_in_the_journal_repository — the precedent CR-215 does not match",
+        "what": "grep -n sidecar tests/test_record_ext.py"
+      },
+      {
+        "result": "no match — every new test runs the embedded _status_repo fixture (line 534), where project_root == host_root",
+        "what": "grep -rn 'sidecar' tests/test_pause_and_operational_acceptance.py"
+      },
+      {
+        "result": "no match — no test or doc pins accept's help text, so the help rewording breaks nothing",
+        "what": "grep -rn 'record acceptance over|record an operator acceptance' tests docs templates .agents README.md"
+      },
+      {
+        "result": "no match — recent CRs (including CR-212's record-ext) carry no per-CR CHANGELOG or docs entry, so omitting one here follows the repo's current convention and is outside the contract's scope list",
+        "what": "grep -n 'CR-212|CR-215|Unreleased' CHANGELOG.md"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "pytest, ruff, mypy, agentmarshal validate",
+        "why": "read-only review in a sandbox that denied executing the interpreter and test runner; relying on the coordinator's statement that the full CI sequence passed on bce1e53e1d518634917e36a95fbe5b6e3e015baa"
+      },
+      {
+        "what": "an end-to-end sidecar run of accept --pause",
+        "why": "requires executing the CLI, which this session could not do; the gap is reported as the advisory finding rather than asserted as a defect"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/journal/acceptance.py",
+      "src/agentmarshal/cli.py (accept parser 194-229, _run_accept 708-772, _placement 562-580)",
+      "src/agentmarshal/journal/extensions.py (_validate_name 348, read_extension_manifest 564)",
+      "src/agentmarshal/journal/records.py (_check_acceptance_fields_7 1039, create_acceptance_record 2427)",
+      "src/agentmarshal/journal/status.py (load_task_for_record 164)",
+      "src/agentmarshal/journal/placement.py (Placement, resolve_placement)",
+      "src/agentmarshal/record_ext.py (_resolve_commit 130, _declared_kind 163)",
+      "src/agentmarshal/record_check.py (_resolve_commit 137)",
+      "src/agentmarshal/acknowledge.py (_resolve_commit 139)",
+      "tests/test_pause_and_operational_acceptance.py",
+      "openspec/specs/operator-acceptance/spec.md",
+      "openspec/changes/archive/2026-10-24-accept-pause-operational/{proposal.md,design.md,tasks.md,specs/operator-acceptance/spec.md}",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md (decisions 5, 6, 17, 18)",
+      "docs/threat-model.md (sections on extensions and the operational lane)",
+      "pyproject.toml"
+    ]
+  }
+}
