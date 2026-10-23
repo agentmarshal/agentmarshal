@@ -100,6 +100,23 @@ warning; an entry for an id the verdict does not carry is dropped with a
 warning; a malformed `classes` is dropped as a whole — a verdict is never
 refused over a class.
 
+Optionally `verification`: an object saying what you ran and read — one or more
+of the keys `executed` (a list of `{what, result}` objects), `read` (a list of
+strings) and `not_run` (a list of `{what, why}` objects), and no other key; and
+`evidence`: an object naming, for each finding id you report, the evidence
+behind it — a link, a `file:line`, or the command that checked the claim with
+the essential part of its output. A `verification` key outside the three
+sections, a section that is not a non-empty array, or a malformed entry is
+dropped with a warning; an `evidence` entry for an id the verdict does not
+carry — or one whose value is not a usable string — is dropped with a warning;
+a `verification`/`evidence` that is not an object is dropped as a whole — a
+verdict is never refused over these sections, and a verdict without them is
+recorded exactly as before. A finding about an external fact you could not
+check is advisory: report its id under `advisory_findings` and mark its prose
+line "unconfirmed". For a commit review the prompt also asks the prose to
+name, for each acceptance criterion, where the diff meets it and which test
+demonstrates it.
+
 A review record the launcher writes carries `previous_review` — the id of the
 task's latest review when the run began, whatever it bound to — so a task's
 reviews form a chain. A task's first review carries no link, and `submit-review`

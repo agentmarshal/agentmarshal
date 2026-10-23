@@ -612,6 +612,9 @@ def test_submit_review_writes_no_link(
     _launched, submitted = _reviews(repo)
     assert "previous_review" not in submitted
     assert "classes" not in submitted
+    # The launch-only verdict markup never reaches the human path.
+    assert "verification" not in submitted
+    assert "evidence" not in submitted
 
 
 def test_the_link_is_the_latest_review_at_launch_time(

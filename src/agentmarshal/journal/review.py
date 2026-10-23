@@ -50,12 +50,16 @@ from agentmarshal.journal.gate import (
 
 # The allowed verdicts have one definition, in records.py, which validation
 # uses. The prompt renders that same set so it cannot drift from what the
-# record layer will accept. (Module-private today; worth making public the
+# record layer will accept; the `verification` section vocabulary comes from
+# the same place, so what the launcher calls a section can never drift from
+# what the record admits. (Module-private today; worth making public the
 # next time records.py is opened.)
 from agentmarshal.journal.records import (
     _REVIEW_VERDICTS as REVIEW_VERDICTS,
 )
 from agentmarshal.journal.records import (
+    _VERIFICATION_ENTRY_KEYS,
+    _VERIFICATION_SECTIONS,
     JournalRecordError,
     create_review_record,
     forges_rendered_text,
@@ -82,14 +86,15 @@ _ARTIFACT_CONTENT_PREFIX = "|"
 _VERDICT_REQUIRED = {"reviewed_commit", "verdict", "findings"}
 # advisory_findings is in the record schema and create_review_record accepts
 # it; accepting it here is what makes it reachable through the protocol at all.
-# classes is the same kind of key, except the parser must not judge its value:
-# a malformed classes is dropped with a warning, never refused, because the
-# verdict is a paid run's output (ADR-0016 decision 3).
-_VERDICT_OPTIONAL = {"advisory_findings", "classes"}
-# An absent `classes` and a `classes` whose value is null are not the same
+# classes, verification and evidence are the same kind of key, except the
+# parser must not judge their values: a malformed one is dropped with a
+# warning, never refused, because the verdict is a paid run's output
+# (ADR-0016 decision 3, ADR-0017 decisions 4 and 5).
+_VERDICT_OPTIONAL = {"advisory_findings", "classes", "verification", "evidence"}
+# An absent optional key and a key whose value is null are not the same
 # verdict: the first records nothing, the second is a malformed value the
 # launcher drops with a warning. The sentinel keeps them apart.
-_NO_CLASSES = object()
+_VERDICT_ABSENT = object()
 _DRY_RUN_COMMIT = "0" * 40
 _DRY_RUN_CONTRACT = (
     "# Example task\n\nThis synthetic contract exercises the reviewer command."
@@ -216,6 +221,22 @@ def _prose_instruction() -> str:
     )
 
 
+def _criteria_coverage_instruction() -> str:
+    """Return the commit review's ask to map each criterion to the diff.
+
+    Only the commit binding reviews a diff, so only its prompt asks where
+    each acceptance criterion is met and which test demonstrates it — said
+    in the same prose block, for the coordinator who checks coverage by
+    hand today.
+    """
+
+    return (
+        "In the same prose, name for each acceptance criterion where the diff "
+        "meets it\n"
+        "and which test demonstrates it."
+    )
+
+
 def _verdict_protocol(
     subject_field: str, subject_description: str, vocabulary: tuple[str, ...]
 ) -> str:
@@ -223,7 +244,10 @@ def _verdict_protocol(
 
     ``vocabulary`` is the project's finding-class vocabulary: the prompt
     lists it so a class the reviewer names lands the way the launcher
-    records it — a class outside it reads as ``other`` there.
+    records it — a class outside it reads as ``other`` there. The
+    ``verification`` and ``evidence`` asks describe the record layer's
+    admitted shapes so the sections a reviewer writes are the sections
+    the record keeps.
     """
 
     verdicts = ", ".join(sorted(REVIEW_VERDICTS))
@@ -242,7 +266,17 @@ def _verdict_protocol(
         "- classes: an object naming the class of each finding id you report —\n"
         "  one class per id, blocking or advisory — from this vocabulary:\n"
         f"  {', '.join(vocabulary)};\n"
-        '  a class outside the vocabulary is recorded as "other"'
+        '  a class outside the vocabulary is recorded as "other"\n'
+        "- verification: an object saying what you ran and read — one or more\n"
+        '  of the keys "executed" (a list of {"what", "result"} objects),\n'
+        '  "read" (a list of strings) and "not_run" (a list of {"what", "why"}\n'
+        "  objects), and no other key\n"
+        "- evidence: an object naming, for each finding id you report, the\n"
+        "  evidence behind it — a link, a file:line, or the command that\n"
+        "  checked the claim with the essential part of its output\n"
+        "A finding about an external fact you could not check is advisory —\n"
+        "report its id under advisory_findings and mark its prose line "
+        '"unconfirmed".'
     )
 
 
@@ -336,7 +370,9 @@ def _review_prompt(
                 "Extensions whose manifest is absent in the reviewed tree:"
             ),
         ),
-        prose_instruction=_prose_instruction(),
+        prose_instruction=(
+            _prose_instruction() + "\n" + _criteria_coverage_instruction()
+        ),
         verdict_protocol=_verdict_protocol(
             "reviewed_commit", "the exact reviewed commit SHA", vocabulary
         ),
@@ -791,16 +827,17 @@ def _parse_verdict(
     subject_fields: frozenset[str] = frozenset({"reviewed_commit"}),
     expected_field: str | None = None,
     preserve_output: bool = True,
-) -> tuple[str, str, str, list[str], list[str], object]:
+) -> tuple[str, str, str, list[str], list[str], object, object, object]:
     """Parse a verdict for one of the accepted review-subject field sets.
 
     ``subject_fields`` is what the parser will read; ``expected_field`` is what
     the caller asked the reviewer for. A finding launch reads both shapes so a
     commit-shaped verdict can be named in the refusal, and must not invite one:
-    the refusal names the field the prompt asked for. The last element is the
-    verdict's raw ``classes`` value — ``_NO_CLASSES`` when the key is absent —
-    handed over unvalidated: what the launcher cannot keep warns and drops,
-    never refuses, because the verdict is a paid run's output.
+    the refusal names the field the prompt asked for. The last three elements
+    are the verdict's raw ``classes``, ``verification`` and ``evidence`` values
+    — ``_VERDICT_ABSENT`` for each key that is absent — handed over
+    unvalidated: what the launcher cannot keep warns and drops, never refuses,
+    because the verdict is a paid run's output.
     """
 
     def reject(reason: str) -> ReviewLaunchError:
@@ -864,7 +901,9 @@ def _parse_verdict(
         verdict,
         cast(list[str], findings),
         cast(list[str], advisory),
-        verdict_data.get("classes", _NO_CLASSES),
+        verdict_data.get("classes", _VERDICT_ABSENT),
+        verdict_data.get("verification", _VERDICT_ABSENT),
+        verdict_data.get("evidence", _VERDICT_ABSENT),
     )
 
 
@@ -885,11 +924,11 @@ def _verdict_classes(
     ``other`` with a warning naming the id — a usable ``classes`` never
     leaves a reported finding unclassed. An entry naming an id the verdict
     itself does not carry drops alone with a warning. Every reduction
-    returns a note — the markup can be wrong, never silent. ``_NO_CLASSES``
-    — an absent key — is no note and no field.
+    returns a note — the markup can be wrong, never silent.
+    ``_VERDICT_ABSENT`` — an absent key — is no note and no field.
     """
 
-    if classes is _NO_CLASSES:
+    if classes is _VERDICT_ABSENT:
         return None, []
     if not isinstance(classes, dict):
         return None, [
@@ -942,6 +981,170 @@ def _verdict_classes(
                 f"{escape_for_display(finding_id)}; recorded as 'other'"
             )
             recorded[finding_id] = "other"
+    return (recorded or None), notes
+
+
+def _usable_verdict_string(value: object) -> bool:
+    """Whether a verdict string lands on a record — non-empty and safe to render.
+
+    The launcher drops what the record rules would refuse, before the record
+    layer sees it: the shape is the family's own — a non-empty string with no
+    character that could forge a rendered line.
+    """
+
+    return (
+        isinstance(value, str)
+        and bool(value.strip())
+        and not forges_rendered_text(value)
+    )
+
+
+def _verification_entry_fault(section: str, entry: object) -> str | None:
+    """The reason one ``verification`` entry cannot be recorded, or ``None``.
+
+    The fault strings name what the record layer's refusal would name — the
+    position is the caller's to add. The section vocabulary and the entry
+    keys are the record layer's own tables, so a drop here can never diverge
+    from a refusal there.
+    """
+
+    if section == "read":
+        if _usable_verdict_string(entry):
+            return None
+        return "is not a usable string"
+    expected = _VERIFICATION_ENTRY_KEYS[section]
+    if not isinstance(entry, dict):
+        return "is not an object"
+    unexpected = sorted(str(key) for key in entry.keys() - set(expected))
+    if unexpected:
+        return "has unsupported fields: " + ", ".join(unexpected)
+    if entry.keys() != set(expected):
+        return "must contain " + " and ".join(f"'{key}'" for key in expected)
+    for key in expected:
+        if not _usable_verdict_string(entry[key]):
+            return f"field '{key}' is not a usable string"
+    return None
+
+
+def _verdict_verification(
+    verification: object,
+) -> tuple[dict[str, object] | None, list[str]]:
+    """Reduce a verdict's ``verification`` to the sections the record carries.
+
+    A verdict is a paid run's output and the sections are the reviewer's own
+    declaration (ADR-0017 decision 4), so no shape of ``verification``
+    refuses it: a value that is not an object, or an empty object, drops the
+    whole ``verification`` with a warning before the record layer could
+    refuse it. A usable object keeps each admitted section — a key outside
+    ``executed``, ``read`` and ``not_run`` drops with a warning naming it, a
+    section that is not a non-empty array drops with a warning, and inside a
+    section each malformed entry drops alone with a warning naming the
+    position while the section's surviving entries are recorded. A section
+    left with no usable entry lands nothing — the record refuses an empty
+    array — and a ``verification`` whose sections all dropped writes no
+    field. ``_VERDICT_ABSENT`` — an absent key — is no note and no field.
+    """
+
+    if verification is _VERDICT_ABSENT:
+        return None, []
+    if not isinstance(verification, dict):
+        return None, [
+            "note: the verdict's 'verification' is not an object carrying "
+            "'executed', 'read' or 'not_run' sections; the value is dropped "
+            "and the verdict stands"
+        ]
+    if not verification:
+        return None, [
+            "note: the verdict's 'verification' is an empty object; "
+            "no verification is recorded"
+        ]
+    recorded: dict[str, object] = {}
+    notes: list[str] = []
+    for section, entries in verification.items():
+        if section not in _VERIFICATION_SECTIONS:
+            notes.append(
+                "note: the verdict's 'verification' carries "
+                f"'{escape_for_display(str(section))}', which is not one of "
+                "'executed', 'read' and 'not_run'; it is dropped"
+            )
+            continue
+        section_label = f"'verification' section '{section}'"
+        if not isinstance(entries, list) or not entries:
+            notes.append(
+                f"note: the verdict's {section_label} is not a non-empty "
+                "array; it is dropped"
+            )
+            continue
+        position = "item" if section == "read" else "entry"
+        kept: list[object] = []
+        for index, entry in enumerate(entries):
+            fault = _verification_entry_fault(section, entry)
+            if fault is None:
+                kept.append(entry)
+            else:
+                notes.append(
+                    f"note: the verdict's {section_label} {position} {index} "
+                    f"{fault}; it is dropped"
+                )
+        if kept:
+            recorded[section] = kept
+        else:
+            notes.append(
+                f"note: no usable entries remain in the verdict's "
+                f"{section_label}; it is dropped"
+            )
+    return (recorded or None), notes
+
+
+def _verdict_evidence(
+    evidence: object, named_ids: tuple[str, ...]
+) -> tuple[dict[str, str] | None, list[str]]:
+    """Reduce a verdict's ``evidence`` to the entries the record carries.
+
+    A verdict is a paid run's output and the reference is the reviewer's own
+    declaration (ADR-0017 decision 5), so no shape of ``evidence`` refuses
+    it: a value that is not an object, or an empty object, drops the whole
+    ``evidence`` with a warning. A usable object keeps each entry whose key
+    is an id among the verdict's ``findings`` or ``advisory_findings`` and
+    whose value is a usable reference string: an entry for an id the verdict
+    does not carry drops alone with a warning naming the id, and an entry
+    whose value the record could not hold drops alone with a warning naming
+    the id — the entries that remain are recorded. ``_VERDICT_ABSENT`` — an
+    absent key — is no note and no field.
+    """
+
+    if evidence is _VERDICT_ABSENT:
+        return None, []
+    if not isinstance(evidence, dict):
+        return None, [
+            "note: the verdict's 'evidence' is not an object mapping finding "
+            "ids to evidence references; the value is dropped and the verdict "
+            "stands"
+        ]
+    if not evidence:
+        return None, [
+            "note: the verdict's 'evidence' is an empty object; no evidence is recorded"
+        ]
+    named = frozenset(named_ids)
+    recorded: dict[str, str] = {}
+    notes: list[str] = []
+    for finding_id, reference in evidence.items():
+        if finding_id not in named:
+            notes.append(
+                "note: the verdict's 'evidence' entry for "
+                f"{escape_for_display(str(finding_id))} names no finding the "
+                "verdict carries; the entry "
+                f"({escape_for_display(str(reference))}) is dropped"
+            )
+            continue
+        if not _usable_verdict_string(reference):
+            notes.append(
+                "note: the verdict's 'evidence' entry for "
+                f"{escape_for_display(str(finding_id))} is not a usable "
+                "string; it is dropped"
+            )
+            continue
+        recorded[finding_id] = reference
     return (recorded or None), notes
 
 
@@ -1062,6 +1265,8 @@ def dry_run_review(
                 _findings,
                 _advisory,
                 _classes,
+                _verification,
+                _evidence,
             ) = _parse_verdict(output, preserve_output=False)
         except ReviewLaunchError as error:
             # The operator is debugging this command; the output is the evidence.
@@ -1189,17 +1394,20 @@ def _record_launched_review(
     prose: bytes | None = None,
     previous_review: str | None = None,
     classes: dict[str, str] | None = None,
+    verification: dict[str, object] | None = None,
+    evidence: dict[str, str] | None = None,
     reviewer_actor: str | None = None,
 ) -> SubmittedReview:
-    """Write a launched review's record — submit_review's sequence plus two fields.
+    """Write a launched review's record — submit_review's sequence plus its fields.
 
     ``submit_review``'s parameters are the human path's contract, which a
     launch must not grow, so the launcher writes its record itself through
     the same load-check-record-write sequence ``submit_review`` runs. It
     differs only in what a launch alone can name: ``previous_review`` — the
-    link read before the reviewer ran — and ``classes`` — the normalized
-    verdict markup. Errors leave as ``ReviewSubmitError`` so the tail's
-    refusal handling, which keeps the paid run's output, applies unchanged.
+    link read before the reviewer ran — and ``classes``, ``verification``
+    and ``evidence`` — the normalized verdict markup. Errors leave as
+    ``ReviewSubmitError`` so the tail's refusal handling, which keeps the
+    paid run's output, applies unchanged.
     """
 
     if reviewer_actor is not None:
@@ -1223,6 +1431,8 @@ def _record_launched_review(
             advisory_findings=advisory_findings,
             previous_review=previous_review,
             classes=classes,
+            verification=verification,
+            evidence=evidence,
             reviewer_actor=reviewer_actor,
         )
         actor_note = (
@@ -1281,11 +1491,11 @@ def _launch_review_tail(
     ``operator_note`` is something the launch already knows the operator
     should read — the diff decode naming files it could not fully read. It
     rides the diagnostics channel so it survives both a recorded review and
-    every later rejection; the ``classes`` reductions land there too, a
-    warning being a note rather than a refusal. ``previous_review`` is the
-    link the caller captured before the reviewer ran; ``vocabulary`` is the
-    project's finding-class vocabulary the verdict's ``classes`` normalize
-    against.
+    every later rejection; the ``classes``, ``verification`` and
+    ``evidence`` reductions land there too, a warning being a note rather
+    than a refusal. ``previous_review`` is the link the caller captured
+    before the reviewer ran; ``vocabulary`` is the project's finding-class
+    vocabulary the verdict's ``classes`` normalize against.
     """
 
     raw_output = b""
@@ -1332,6 +1542,8 @@ def _launch_review_tail(
                 findings,
                 advisory,
                 classes_data,
+                verification_data,
+                evidence_data,
             ) = _parse_verdict(
                 reviewer_output,
                 subject_fields=subject_fields,
@@ -1352,7 +1564,11 @@ def _launch_review_tail(
         classes, classes_notes = _verdict_classes(
             classes_data, (*findings, *advisory), vocabulary
         )
-        for note in classes_notes:
+        verification, verification_notes = _verdict_verification(verification_data)
+        evidence, evidence_notes = _verdict_evidence(
+            evidence_data, (*findings, *advisory)
+        )
+        for note in (*classes_notes, *verification_notes, *evidence_notes):
             diagnostics_note = (
                 f"{diagnostics_note}\n{note}" if diagnostics_note is not None else note
             )
@@ -1375,6 +1591,8 @@ def _launch_review_tail(
             ),
             previous_review=previous_review,
             classes=classes,
+            verification=verification,
+            evidence=evidence,
             reviewer_actor=reviewer_actor,
         )
     except ReviewSubmitError as error:
