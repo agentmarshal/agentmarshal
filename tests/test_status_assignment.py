@@ -247,7 +247,60 @@ def test_an_undeclared_field_is_shown_as_not_declared(
         "Assignment:\n"
         "- implementers: devin\n"
         "- reviewers: (not declared)\n"
-        "- independence: (not declared)\n"
+        "- independence: (not declared), "
+        "reviewer-not-writer (always checked by the gate)\n"
+    ) in out
+
+
+def test_reviewer_not_writer_the_header_does_not_name_is_named_as_always_checked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: reviewer-not-writer the header does not name is named as
+    always checked — the gate runs it for every candidate whether or not
+    the header names it, so the line states the rules in force."""
+
+    repo = _repo(
+        tmp_path,
+        monkeypatch,
+        _contract3(independence=["distinct-vendor", "distinct-model"]),
+    )
+    _open(repo)
+
+    assert main(["status", "CR-001"]) == 0
+    out = capsys.readouterr().out
+    assert (
+        "- independence: distinct-vendor, distinct-model, "
+        "reviewer-not-writer (always checked by the gate)\n"
+    ) in out
+
+
+def test_sessions_group_before_reviews_whatever_the_record_order(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: sessions group before reviews whatever the record order —
+    a journal whose records stand review-session-review prints the
+    implementer-session line first and the review lines after, each in
+    the order the records stand."""
+
+    repo = _repo(
+        tmp_path,
+        monkeypatch,
+        _contract3(implementers=["devin"], reviewers=["qa-lead"]),
+    )
+    _open(repo)
+    _review(repo, "00000000000000000000000002", "2026-01-02T00:00:00Z")
+    _session(repo, "00000000000000000000000003", "2026-01-03T00:00:00Z")
+    _review(repo, "00000000000000000000000004", "2026-01-04T00:00:00Z")
+
+    assert main(["status", "CR-001"]) == 0
+    out = capsys.readouterr().out
+    assert (
+        "- implementer session 00000000000000000000000003: actor=devin "
+        "vendor=devin-vendor model=devin-model\n"
+        "- review 00000000000000000000000002: actor=qa-lead "
+        "vendor=qa-vendor model=qa-model\n"
+        "- review 00000000000000000000000004: actor=qa-lead "
+        "vendor=qa-vendor model=qa-model\n"
     ) in out
 
 
@@ -693,7 +746,8 @@ def test_section_values_that_could_forge_a_line_print_escaped(
         "Assignment:\n"
         "- implementers: de\\nvin, code\\u202ex\n"
         "- reviewers: qa\\u202elead\n"
-        "- independence: distinct-vendor\n"
+        "- independence: distinct-vendor, "
+        "reviewer-not-writer (always checked by the gate)\n"
         "- implementer session r-session: actor=de\\nvin vendor=pro\\nvider "
         "model=m\\u202e1 fallback_reason=quota\\nhit\n"
         "- review r-review: actor=ra\\u202ector vendor=ven\\ndor "

@@ -15,7 +15,9 @@ fallback is shown, not verified.
 
 - A contract declaring any of the three fields gets an assignment
   section naming the declared lists in their order and the declared
-  rules, a field the header does not declare shown as not declared.
+  rules — `reviewer-not-writer` named as always checked by the gate
+  when the header does not name it — a field the header does not
+  declare shown as not declared.
 - The same section shows what ran: each implementer session's actor,
   vendor from `usage.provider`, model and `fallback_reason` when the
   record carries one; each review's reviewer actor, vendor and model —
@@ -60,11 +62,18 @@ fallback is shown, not verified.
   recorded claims none.
 - **The mark needs a declared list.** `(not declared for the role)`
   ends a ran line whose actor is outside the contract's list for that
-  role — `implementers` for a session, `reviewers` for a review — after
-  the strip-and-casefold normalisation the gate's comparisons apply, so
-  casing cannot move an actor out of the list. No declared list, no
-  mark; an absent actor shows `(absent)` and no mark — there is no name
-  to check against the list.
+  role — `implementers` for a session, `reviewers` for a review — the
+  membership check exact string equality: actor ids are exact labels —
+  the actors table keys them exactly — so an actor differing from every
+  declared entry only in case or surrounding whitespace is not declared.
+  No declared list, no mark; an absent actor shows `(absent)` and no
+  mark — there is no name to check against the list.
+- **The independence line states the rules in force.** The declared
+  rules print in their order; `reviewer-not-writer` runs for every
+  candidate whether or not the header names it — the header naming it
+  adds no second gate line — so where the header did not name it the
+  line adds `reviewer-not-writer (always checked by the gate)`. A
+  header declaring no `independence` still says `(not declared)`.
 - **An undeclared field says so.** A contract declaring `implementers`
   but not `reviewers` shows `reviewers: (not declared)` — the absence is
   stated rather than omitted, the same honesty the agreement line buys

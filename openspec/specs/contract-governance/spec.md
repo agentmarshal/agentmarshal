@@ -764,7 +764,11 @@ SHALL print no assignment section otherwise: a contract declaring none
 of the three leaves the detail view byte for byte unchanged. The section
 SHALL name the declared `implementers` and `reviewers`, each in its
 declared order — the order is the fallback order — and the declared
-`independence` rules, each field on a line of its own, and SHALL then
+`independence` rules, each field on a line of its own; the
+`independence` line SHALL add `reviewer-not-writer` as always checked
+by the gate when the header does not name it — the rule runs for every
+candidate whether or not the header names it — so the line states the
+rules in force, not only the rules declared. The section SHALL then
 show what ran: the implementer-session lines in the order the records
 stand, then the review lines in the order the records stand, as the
 following requirements state. A field the header does not declare SHALL
@@ -780,8 +784,22 @@ be shown as not declared rather than omitted (ADR-0018 decision 3).
 #### Scenario: an undeclared field is shown as not declared
 - **WHEN** the contract header declares `implementers` but neither
   `reviewers` nor `independence`
-- **THEN** the section names the declared implementers and shows the two
-  undeclared fields as not declared
+- **THEN** the section names the declared implementers, shows
+  `reviewers` as not declared, and the `independence` line shows the
+  field as not declared and names `reviewer-not-writer` as always
+  checked by the gate
+
+#### Scenario: reviewer-not-writer the header does not name is named as always checked
+- **WHEN** the contract header declares `independence` without
+  `reviewer-not-writer`
+- **THEN** the `independence` line names the declared rules and adds
+  `reviewer-not-writer (always checked by the gate)`
+
+#### Scenario: sessions group before reviews whatever the record order
+- **WHEN** the task's records stand with a review before an implementer
+  session
+- **THEN** the section prints the implementer-session lines first and
+  the review lines after, each in the order the records stand
 
 #### Scenario: a contract declaring none prints today's view byte for byte
 - **WHEN** the contract header declares none of the three fields

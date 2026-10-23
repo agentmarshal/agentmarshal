@@ -345,6 +345,22 @@ def _declared_list(entries: tuple[str, ...]) -> str:
     return ", ".join(entries) if entries else "(not declared)"
 
 
+def _independence_list(rules: tuple[str, ...]) -> str:
+    """The declared rules plus the rule the gate always checks.
+
+    `reviewer-not-writer` runs for every candidate whether or not the
+    header names it — the header naming it adds no second check — so the
+    rules in force always include it: where the header did not name it,
+    the line names it as always checked by the gate. A header declaring
+    no `independence` still says so.
+    """
+
+    shown = list(rules) if rules else ["(not declared)"]
+    if "reviewer-not-writer" not in rules:
+        shown.append("reviewer-not-writer (always checked by the gate)")
+    return ", ".join(shown)
+
+
 def _shown_value(value: object) -> str:
     """The value as recorded, or the absent mark — never a guess.
 
@@ -434,7 +450,7 @@ def _assignment_lines(task: TaskStatus) -> list[str]:
         "Assignment:",
         f"- implementers: {_declared_list(contract.implementers)}",
         f"- reviewers: {_declared_list(contract.reviewers)}",
-        f"- independence: {_declared_list(contract.independence)}",
+        f"- independence: {_independence_list(contract.independence)}",
     ]
     for record in task.records:
         if (
