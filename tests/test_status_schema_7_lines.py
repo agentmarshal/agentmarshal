@@ -31,7 +31,7 @@ from agentmarshal.journal.records import (
     create_opened_record,
     write_record,
 )
-from agentmarshal.journal.status import TaskStatus
+from agentmarshal.journal.status import TaskStatus, load_task_status
 from agentmarshal.journal.status_view import print_task_detail
 
 _COMMIT = "a" * 40
@@ -140,10 +140,39 @@ def _current_hash(repo: Path) -> str:
 # -- the four record types render on lines of their own ----------------------
 
 
-def test_a_check_record_renders_name_result_commit_failed_step_and_recorder(
+def test_a_check_record_renders_name_result_commit_and_recorder(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Scenario: status shows a check record on a line of its own."""
+    """Scenario: status shows a check record's line."""
+
+    repo = _repo(tmp_path, monkeypatch)
+    monkeypatch.setenv("AGENTMARSHAL_ACTOR", "an-operator")
+    _write(
+        repo,
+        create_opened_record("CR-001", "1.0"),
+        "00000000000000000000000001",
+        "2026-01-01T00:00:00Z",
+    )
+    _write(
+        repo,
+        create_check_record("CR-001", "1.0", _COMMIT, "pytest", "passed"),
+        "00000000000000000000000002",
+        "2026-01-02T00:00:00Z",
+    )
+
+    assert main(["status", "CR-001"]) == 0
+    out = capsys.readouterr().out
+    assert (
+        "- 00000000000000000000000002 check 2026-01-02T00:00:00Z "
+        f"name=pytest result=passed commit={_COMMIT[:7]} "
+        "recorded_by=an-operator (not a declared actor)\n"
+    ) in out
+
+
+def test_a_check_records_failed_step_is_shown_when_present(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a check record's failed step is shown when present."""
 
     repo = _repo(tmp_path, monkeypatch)
     monkeypatch.setenv("AGENTMARSHAL_ACTOR", "an-operator")
@@ -170,22 +199,24 @@ def test_a_check_record_renders_name_result_commit_failed_step_and_recorder(
 
     assert main(["status", "CR-001"]) == 0
     out = capsys.readouterr().out
-    assert (
-        "- 00000000000000000000000002 check 2026-01-02T00:00:00Z "
-        f"name=lint result=failed commit={_COMMIT[:7]} "
-        "failed_step=ruff recorded_by=an-operator (not a declared actor)\n"
-    ) in out
-    assert (
-        "- 00000000000000000000000003 check 2026-01-03T00:00:00Z "
-        f"name=pytest result=passed commit={_COMMIT[:7]} "
-        "recorded_by=an-operator (not a declared actor)\n"
-    ) in out
+    first = next(
+        line
+        for line in out.splitlines()
+        if line.startswith("- 00000000000000000000000002 check ")
+    )
+    second = next(
+        line
+        for line in out.splitlines()
+        if line.startswith("- 00000000000000000000000003 check ")
+    )
+    assert "failed_step=ruff" in first
+    assert "failed_step" not in second
 
 
 def test_an_agreement_record_renders_the_short_hash_and_who_agreed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Scenario: status shows an agreement record on a line of its own."""
+    """Scenario: status shows an agreement record's line."""
 
     repo = _repo(tmp_path, monkeypatch)
     monkeypatch.setenv("AGENTMARSHAL_ACTOR", "ops-lead")
@@ -218,7 +249,7 @@ def test_an_agreement_record_renders_the_short_hash_and_who_agreed(
 def test_an_acknowledgement_renders_commit_file_signature_recorder_and_reason(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Scenario: status shows an acknowledgement record on a line of its own."""
+    """Scenario: status shows an acknowledgement's line."""
 
     repo = _repo(tmp_path, monkeypatch)
     monkeypatch.setenv("AGENTMARSHAL_ACTOR", "an-operator")
@@ -241,6 +272,31 @@ def test_an_acknowledgement_renders_commit_file_signature_recorder_and_reason(
         "00000000000000000000000002",
         "2026-01-02T00:00:00Z",
     )
+
+    assert main(["status", "CR-001"]) == 0
+    out = capsys.readouterr().out
+    assert (
+        "- 00000000000000000000000002 acknowledgement 2026-01-02T00:00:00Z "
+        f"commit={_COMMIT[:7]} file=src/app.py signature=openai-key "
+        "recorded_by=an-operator (not a declared actor) "
+        "reason=Reviewed: an example key in documentation "
+        "self-acknowledgement not checked\n"
+    ) in out
+
+
+def test_a_markers_number_identifies_the_hit_on_the_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a marker's number identifies the hit on the line."""
+
+    repo = _repo(tmp_path, monkeypatch)
+    monkeypatch.setenv("AGENTMARSHAL_ACTOR", "an-operator")
+    _write(
+        repo,
+        create_opened_record("CR-001", "1.0"),
+        "00000000000000000000000001",
+        "2026-01-01T00:00:00Z",
+    )
     _write(
         repo,
         create_acknowledgement_record(
@@ -252,32 +308,26 @@ def test_an_acknowledgement_renders_commit_file_signature_recorder_and_reason(
             signature=None,
             marker=3,
         ),
-        "00000000000000000000000003",
-        "2026-01-03T00:00:00Z",
+        "00000000000000000000000002",
+        "2026-01-02T00:00:00Z",
     )
 
     assert main(["status", "CR-001"]) == 0
     out = capsys.readouterr().out
+    line = next(line for line in out.splitlines() if " acknowledgement " in line)
+    assert "marker=3" in line
+    assert "signature" not in line
     assert (
-        "- 00000000000000000000000002 acknowledgement 2026-01-02T00:00:00Z "
-        f"commit={_COMMIT[:7]} file=src/app.py signature=openai-key "
-        "recorded_by=an-operator (not a declared actor) "
-        "reason=Reviewed: an example key in documentation "
-        "self-acknowledgement not checked\n"
-    ) in out
-    assert (
-        "- 00000000000000000000000003 acknowledgement 2026-01-03T00:00:00Z "
         f"commit={_COMMIT[:7]} file=README.md marker=3 "
         "recorded_by=an-operator (not a declared actor) "
-        "reason=Reviewed: a placeholder "
-        "self-acknowledgement not checked\n"
-    ) in out
+        "reason=Reviewed: a placeholder self-acknowledgement not checked"
+    ) in line
 
 
 def test_an_ext_record_renders_kind_commit_payload_hash_and_recorder(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Scenario: status shows an ext record on a line of its own."""
+    """Scenario: status shows an ext record's line."""
 
     repo = _repo(tmp_path, monkeypatch)
     monkeypatch.setenv("AGENTMARSHAL_ACTOR", "an-operator")
@@ -386,9 +436,8 @@ def test_a_declared_recorder_is_shown_without_the_note(
 def test_an_acknowledgement_by_the_commits_writer_is_marked_self_acknowledged(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Scenario: an acknowledgement by a declared writer of the commit is
-    marked self-acknowledged — the ADR-0007 derivation applied on display,
-    never stored."""
+    """Scenario: a self-acknowledgement is marked — derived on display the
+    way the self-acceptance mark is, never stored."""
 
     repo = _repo(tmp_path, monkeypatch)
     commit = _commit_file(repo, "src/app.py", "key = 'x'\n")
@@ -453,8 +502,8 @@ def test_an_acknowledgement_by_another_actor_is_not_marked(
 def test_an_acknowledgement_git_cannot_read_says_the_mark_was_not_checked(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Scenario: where git cannot read the commit the line says the mark
-    was not checked."""
+    """Scenario: git cannot read the commit — the line says the
+    self-acknowledgement mark was not checked."""
 
     repo = _repo(tmp_path, monkeypatch)
     monkeypatch.setenv("AGENTMARSHAL_ACTOR", "an-operator")
@@ -522,9 +571,8 @@ def test_an_acknowledgement_through_the_actors_table_marks_self_acknowledged(
 def test_a_task_with_no_agreement_says_no_agreement_is_recorded(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Scenario: a task with no agreement record prints one line saying no
-    agreement is recorded — after the record lines, without failing the
-    command or changing the task's state."""
+    """Scenario: a task with no agreement record says so — one line after
+    the record lines saying no agreement with the contract is recorded."""
 
     repo = _repo(tmp_path, monkeypatch)
     monkeypatch.setenv("AGENTMARSHAL_ACTOR", "an-operator")
@@ -544,9 +592,8 @@ def test_a_task_with_no_agreement_says_no_agreement_is_recorded(
 def test_an_agreement_for_an_earlier_contract_text_is_said(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Scenario: a task whose latest agreement's hash differs from the
-    contract's current hash says the agreement is for an earlier text,
-    naming both short hashes."""
+    """Scenario: an agreement for an earlier contract text is said — one
+    line naming the agreed and the current short hashes."""
 
     repo = _repo(tmp_path, monkeypatch)
     monkeypatch.setenv("AGENTMARSHAL_ACTOR", "ops-lead")
@@ -574,10 +621,9 @@ def test_an_agreement_for_an_earlier_contract_text_is_said(
 def test_the_agreement_line_compares_against_the_current_hash_not_the_pin(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Scenario: the agreement-for-an-earlier-text line compares with the
-    contract's current hash — a drifted contract whose pin still equals
-    the agreed hash still prints the earlier-text line beside the drift
-    line."""
+    """Scenario: the comparison is against the current hash, not the pin —
+    a drifted contract whose pin still equals the agreed hash still
+    prints the earlier-text line beside the drift line."""
 
     repo = _repo(tmp_path, monkeypatch)
     monkeypatch.setenv("AGENTMARSHAL_ACTOR", "ops-lead")
@@ -611,8 +657,7 @@ def test_the_agreement_line_compares_against_the_current_hash_not_the_pin(
 def test_an_agreement_at_the_current_hash_prints_no_agreement_line(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Scenario: a task whose latest agreement names the contract's
-    current hash prints no agreement line after the records."""
+    """Scenario: an agreement at the current hash prints no agreement line."""
 
     repo = _repo(tmp_path, monkeypatch)
     monkeypatch.setenv("AGENTMARSHAL_ACTOR", "ops-lead")
@@ -635,15 +680,111 @@ def test_an_agreement_at_the_current_hash_prints_no_agreement_line(
     assert lines[-1].startswith("- ")
 
 
+@pytest.mark.parametrize("contract_bytes", [None, b"\xff\xfe undecodable"])
+def test_a_contract_that_cannot_be_read_or_hashed_prints_nothing(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    contract_bytes: bytes | None,
+) -> None:
+    """Scenario: a contract that cannot be read or hashed prints nothing —
+    a task carrying an `agreement` record whose `contract.md` is missing
+    or does not decode prints no agreement line and still answers."""
+
+    task = TaskStatus(
+        task_id="CR-001",
+        contract=ContractHeader(
+            schema=1, id="CR-001", title="Task", scope=(), acceptance=()
+        ),
+        records=(
+            {
+                "id": "r-opened",
+                "record_type": "opened",
+                "created_at": "t0",
+            },
+            {
+                "id": "r-agreement",
+                "record_type": "agreement",
+                "created_at": "t1",
+                "contract": "b" * 64,
+                "recorded_by": "ops-lead",
+                "recorded_by_source": "override",
+            },
+        ),
+        state="open",
+    )
+    if contract_bytes is not None:
+        contract_path = tmp_path / "tasks" / "CR-001" / "contract.md"
+        contract_path.parent.mkdir(parents=True)
+        contract_path.write_bytes(contract_bytes)
+
+    print_task_detail(tmp_path, task, tmp_path)
+
+    out = capsys.readouterr().out
+    assert "No agreement with the contract is recorded" not in out
+    assert "is for an earlier contract text" not in out
+    assert (
+        "- r-agreement agreement t1 contract=bbbbbbb "
+        "recorded_by=ops-lead (not a declared actor)\n"
+    ) in out
+
+
+def test_the_agreement_line_never_fails_the_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: the line never fails the command — neither a task with no
+    agreement record nor one whose latest agreement is for an earlier
+    contract text fails `status`, and neither changes the task's state."""
+
+    repo = _repo(tmp_path, monkeypatch)
+    monkeypatch.setenv("AGENTMARSHAL_ACTOR", "ops-lead")
+    _write(
+        repo,
+        create_opened_record("CR-001", "1.0"),
+        "00000000000000000000000001",
+        "2026-01-01T00:00:00Z",
+    )
+    records_directory = _journal(repo) / "tasks" / "CR-001" / "records"
+
+    assert main(["status", "CR-001"]) == 0
+    assert "No agreement with the contract is recorded" in capsys.readouterr().out
+    assert sorted(path.name for path in records_directory.iterdir()) == [
+        "00000000000000000000000001-opened.json"
+    ]
+    assert load_task_status(_journal(repo), "CR-001").state == "open"
+
+    _write(
+        repo,
+        create_agreement_record("CR-001", "1.0", _OTHER_HASH),
+        "00000000000000000000000002",
+        "2026-01-02T00:00:00Z",
+    )
+    assert main(["status", "CR-001"]) == 0
+    assert (
+        f"Recorded agreement {_OTHER_HASH[:7]} is for an earlier contract "
+        f"text (now {_current_hash(repo)[:7]})"
+    ) in capsys.readouterr().out
+    assert sorted(path.name for path in records_directory.iterdir()) == [
+        "00000000000000000000000001-opened.json",
+        "00000000000000000000000002-agreement.json",
+    ]
+    assert load_task_status(_journal(repo), "CR-001").state == "open"
+
+
 # -- escaping ----------------------------------------------------------------
 
 
 def test_every_value_from_the_schema_7_lines_prints_escaped(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Scenario: every value taken from a check, agreement,
-    acknowledgement or ext record prints escaped — a hostile value stays
-    on the one line it belongs to."""
+    """Scenario: a check record's values stay on their own line.
+    Scenario: an agreement record's values stay on their own line.
+    Scenario: an acknowledgement's values stay on their own line.
+    Scenario: an ext record's values stay on their own line.
+
+    Each refused character prints as its escape and the record stays on
+    the one line — the four record types' lines pinned byte for byte
+    together.
+    """
 
     task = TaskStatus(
         task_id="CR-001",
