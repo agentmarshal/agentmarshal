@@ -1,0 +1,12 @@
+{
+  "contract": "0bf6173d5af546a66938098174570855cb02399c2426bc32df067ed7969c2b7b",
+  "created_at": "2026-10-23T20:28:49.728163Z",
+  "reason": "A switches file at the base that cannot be parsed now keeps the candidate off the operational lane (it needs a review), since removals and unchanged entries cannot be judged against it (coordinator gap, review round 2).",
+  "record_type": "amendment",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "schema": 7,
+  "source": "live",
+  "task": "CR-219",
+  "tool_version": "0.6.0.dev0"
+}
