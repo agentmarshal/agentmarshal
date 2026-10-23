@@ -1,0 +1,17 @@
+{
+  "advisory_dispositions": {
+    "ADV-readme-sweeping-recipe": {
+      "disposition": "deferred",
+      "reason": "README.md was outside this task's scope; its git add .agentmarshal example moves to per-task staging in the 0.6.0 release documentation task."
+    }
+  },
+  "completed_commit": "1009d947504fd12158feb0098ca74dd6aa872a04",
+  "created_at": "2026-10-23T16:42:45.473017Z",
+  "record_type": "completed",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "schema": 7,
+  "source": "live",
+  "task": "CR-207",
+  "tool_version": "0.6.0.dev0"
+}

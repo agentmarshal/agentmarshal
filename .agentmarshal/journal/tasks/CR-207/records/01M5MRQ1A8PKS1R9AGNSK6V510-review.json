@@ -1,0 +1,87 @@
+{
+  "artifacts": [
+    {
+      "hash": "7a39ecf9a81b8b4f90146b1a97622945002304f5a0cf308aab74e4e5b7b62e5f",
+      "ref": ".agentmarshal/journal/tasks/CR-207/artifacts/01M5MRQ1A8PKS1R9AGNSK6V510-review.md"
+    }
+  ],
+  "classes": {
+    "CR207-001": "contract-mismatch",
+    "CR207-002": "correctness"
+  },
+  "created_at": "2026-10-23T16:15:13.736664Z",
+  "evidence": {
+    "CR207-001": "templates/journal-transaction.sh:80 and templates/journal-transaction.sh:84 pass \"$task_dir\" as an ordinary pathspec; neither command uses :(literal) nor --literal-pathspecs.",
+    "CR207-002": "templates/journal-transaction.sh:72 filters complete status lines with grep -v \"tasks/$task/\"; feeding it 'R  .agentmarshal/journal/tasks/CR-002/records/a.json -> .agentmarshal/journal/tasks/CR-001/records/a.json' produced no output and grep exit=1."
+  },
+  "findings": [
+    "CR207-001",
+    "CR207-002"
+  ],
+  "previous_review": "01M5MR9VT3B7HJTMFM826BXGDZ",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "a386a66e2d817cc76d18d401208cb31ea1c3ba86",
+  "reviewed_contract": "bad9be013154b6da0abfcf047ebf07a880ea27df73a03318fbf432cf245bdf26",
+  "reviewer": {
+    "email": "auto-review-openai@agent.example.invalid",
+    "model": "gpt-5.6-sol",
+    "role": "code-reviewer",
+    "vendor": "openai"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-207",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "passed",
+        "what": "sh -n templates/journal-transaction.sh"
+      },
+      {
+        "result": "executable mode 755",
+        "what": "stat -c '%A %a %n' templates/journal-transaction.sh"
+      },
+      {
+        "result": "grep exited 1 for both, demonstrating that each foreign path would be suppressed",
+        "what": "grep reproduction of the line-72 filter against a CR-002-to-CR-001 rename and a foreign nested path"
+      },
+      {
+        "result": "none found",
+        "what": "search for remaining sweeping git-add recipes in docs/quickstart.md and docs/sidecar.md"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "full CI sequence",
+        "why": "uv and Python are unavailable in the read-only review environment; the coordinator reports the full sequence passed at the reviewed commit"
+      },
+      {
+        "what": "Git inspection of reviewed commit",
+        "why": "the supplied snapshot contains no Git metadata"
+      },
+      {
+        "what": "temporary-repository reproduction",
+        "why": "the review filesystem is read-only and mktemp failed"
+      }
+    ],
+    "read": [
+      ".agentmarshal/journal/tasks/CR-207/contract.md",
+      "templates/journal-transaction.sh",
+      "tests/test_journal_transaction.py",
+      "src/agentmarshal/project.py",
+      "tests/test_project.py",
+      "tests/test_quickstart.py",
+      "docs/quickstart.md",
+      "docs/sidecar.md",
+      "docs/proposals/019-journal-transactions-assume-direct-commits.md",
+      "docs/proposals/035-journal-transactions-sweep-records-of-other-tasks.md",
+      "docs/adr/ADR-0012-what-the-tool-does-and-what-it-supplies.md",
+      "docs/threat-model.md",
+      "openspec/specs/outbox/spec.md"
+    ]
+  }
+}

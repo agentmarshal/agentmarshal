@@ -18,6 +18,7 @@ from agentmarshal import (
     extension_trust,
     outbox,
     record_check,
+    record_ext,
     stages,
     steps,
 )
@@ -92,6 +93,7 @@ from agentmarshal.journal.status_view import (
     print_overdue_steps,
     print_paths,
     print_task_detail,
+    records_absent_from_ref,
 )
 from agentmarshal.journal.submit_review import (
     ReviewSubmitError,
@@ -148,6 +150,13 @@ def _build_parser() -> argparse.ArgumentParser:
     brief_parser.add_argument("--task", required=True, help="task identifier")
     status_parser = subparsers.add_parser("status", help="show journal task status")
     status_parser.add_argument("task_id", nargs="?", help="task identifier")
+    status_parser.add_argument(
+        "--base",
+        help=(
+            "list the task's records present in the journal's working tree but "
+            "absent from this ref (applies only to a named task)"
+        ),
+    )
     review_parser = subparsers.add_parser(
         "submit-review", help="record a task review verdict"
     )
@@ -474,6 +483,7 @@ def _build_parser() -> argparse.ArgumentParser:
     acknowledge.register(subparsers)
     agree.register(subparsers)
     record_check.register(subparsers)
+    record_ext.register(subparsers)
     return parser
 
 
@@ -1172,7 +1182,10 @@ def _run_report(task_id: str | None, stderr: TextIO, findings: bool) -> int:
     return 0
 
 
-def _run_status(task_id: str | None, stderr: TextIO) -> int:
+def _run_status(task_id: str | None, base: str | None, stderr: TextIO) -> int:
+    if base is not None and task_id is None:
+        print("status --base applies only to a named task", file=stderr)
+        return 1
     placement = _placement("status", stderr)
     if placement is None:
         return 1
@@ -1230,7 +1243,27 @@ def _run_status(task_id: str | None, stderr: TextIO) -> int:
                 if checked_placement is None:
                     return 1
                 placement = checked_placement
+            # Proposal 035's disposition: with --base the command lists the
+            # task's records the working tree holds that the named ref does
+            # not — resolved in the journal's own repository, so a ref that
+            # cannot be answered refuses before anything of the view prints.
+            absent = (
+                records_absent_from_ref(journal, task, base)
+                if base is not None
+                else None
+            )
             print_task_detail(placement.host_root, task, journal)
+            if absent is not None:
+                if absent:
+                    print(escape_for_display(f"Records absent from {base}:"))
+                    for record in absent:
+                        print(
+                            escape_for_display(
+                                f"- {record['id']} {record['record_type']}"
+                            )
+                        )
+                else:
+                    print(escape_for_display(f"Records absent from {base}: (none)"))
             print_overdue_steps(
                 steps.open_steps(
                     task.task_id,
@@ -1534,7 +1567,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "brief":
         return _run_brief(args.task, sys.stderr)
     if args.command == "status":
-        return _run_status(args.task_id, sys.stderr)
+        return _run_status(args.task_id, args.base, sys.stderr)
     if args.command == "submit-review":
         return _run_submit_review(args, sys.stderr)
     if args.command == "accept":
@@ -1579,5 +1612,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return agree.run(args, sys.stderr)
     if args.command == "record-check":
         return record_check.run(args, sys.stderr)
+    if args.command == "record-ext":
+        return record_ext.run(args, sys.stderr)
 
     parser.error(f"unknown command: {args.command}")

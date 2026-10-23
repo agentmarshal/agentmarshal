@@ -1,0 +1,72 @@
+{
+  "artifacts": [
+    {
+      "hash": "cb32fdc1d04848c5f96b442ada66122769b3b3e5141a56de24265fb0b2306b15",
+      "ref": ".agentmarshal/journal/tasks/CR-207/artifacts/01M5MSKD15C1QK6YH4BDYW0MXR-review.md"
+    }
+  ],
+  "classes": {
+    "CR207-001": "correctness"
+  },
+  "created_at": "2026-10-23T16:30:43.237479Z",
+  "evidence": {
+    "CR207-001": "templates/journal-transaction.sh:83 converts NUL separators to newlines before record parsing. Parser replay with `printf '?? .agentmarshal/journal/other/foreign\\n?? .agentmarshal/journal/tasks/CR-001/hidden.json\\0'` printed only `?? .agentmarshal/journal/other/foreign`. openspec/specs/record-text-safety/spec.md:130-147 confirms newline-bearing Git paths are supported inputs."
+  },
+  "findings": [
+    "CR207-001"
+  ],
+  "previous_review": "01M5MRQ1A8PKS1R9AGNSK6V510",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "bc929a76867b70a0ec92543c5a288282ebac6851",
+  "reviewed_contract": "bad9be013154b6da0abfcf047ebf07a880ea27df73a03318fbf432cf245bdf26",
+  "reviewer": {
+    "email": "auto-review-openai@agent.example.invalid",
+    "model": "gpt-5.6-sol",
+    "role": "code-reviewer",
+    "vendor": "openai"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-207",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "passed",
+        "what": "sh -n templates/journal-transaction.sh"
+      },
+      {
+        "result": "output contained only '?? .agentmarshal/journal/other/foreign'; the remainder of the filename was suppressed",
+        "what": "Replay lines 81-117's parser with a NUL-terminated foreign path containing a newline followed by an own-task-looking suffix"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "Targeted pytest suite and full CI sequence",
+        "why": "uv is unavailable and the system Python has no pytest; the coordinator states the full sequence passed on the reviewed commit"
+      },
+      {
+        "what": "Full temporary-repository reproduction of CR207-001",
+        "why": "the review filesystem, including /tmp, is read-only; the exact parser was reproduced using a synthetic porcelain byte stream"
+      }
+    ],
+    "read": [
+      "Task contract and supplied diff",
+      "templates/journal-transaction.sh",
+      "tests/test_journal_transaction.py",
+      "src/agentmarshal/project.py and tests/test_project.py",
+      "docs/quickstart.md",
+      "docs/sidecar.md",
+      "docs/proposals/019-journal-transactions-assume-direct-commits.md",
+      "docs/proposals/035-journal-transactions-sweep-records-of-other-tasks.md",
+      "docs/adr/ADR-0012-what-the-tool-does-and-what-it-supplies.md",
+      "docs/threat-model.md",
+      "openspec/specs/outbox/spec.md",
+      "openspec/specs/record-text-safety/spec.md",
+      "Coordinator's full-CI pass statement for bc929a76867b70a0ec92543c5a288282ebac6851"
+    ]
+  }
+}

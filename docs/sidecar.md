@@ -150,8 +150,12 @@ semantics, the Quickstart remains the reference.
 ```sh
 cd ~/work-journal
 agentmarshal open --title "Add a greeting helper" --scope src/
-git add -A && git commit -m "open CR-001"
+git add .agentmarshal/journal/tasks/CR-001 && git commit -m "open CR-001"
 ```
+
+The commit stages the one task's journal directory — the recipe the
+Quickstart's step 2 explains — so records of other tasks in flight never
+ride this task's transaction.
 
 Scope is checked against the **host's** working tree, so its warnings are about
 host paths — and this example earns one, because the host has no `src/` until a
@@ -185,7 +189,7 @@ git switch -c feat/greeting
 mkdir -p src
 printf 'def greet(name):\n    return f"Hello, {name}!"\n' >> src/app.py
 
-git add -A && git commit -m "implement the greeting helper"
+git add src && git commit -m "implement the greeting helper"
 IMPL=$(git rev-parse HEAD)                  # the candidate
 ```
 
@@ -298,7 +302,7 @@ agentmarshal record-session --task CR-001 --role implementer \
   --actor your/model --activity implementation --outcome implemented \
   --input-tokens 1200 --output-tokens 300 \
   --usage-provider your-provider --usage-method reported
-git add -A && git commit -m "review, complete and record CR-001 economics"
+git add .agentmarshal/journal/tasks/CR-001 && git commit -m "review, complete and record CR-001 economics"
 ```
 
 ### Inspect the evidence

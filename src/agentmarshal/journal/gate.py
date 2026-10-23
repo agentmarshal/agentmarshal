@@ -1667,6 +1667,33 @@ def run_gate(
         + ", ".join(sorted(duplicate_opened)),
     )
 
+    # Proposal 035's disposition: `open` and `amend` are the events that must
+    # arrive on the base in a transaction naming their own task, and a
+    # transaction staging outside its task swept other tasks' records in —
+    # more than a quarter of one adopter's journal transactions carried
+    # them. The record stays valid evidence; what was wrong is which
+    # transaction carried it, so this warns and refuses nothing. Only the
+    # agreement events warn: a review or a session riding the wrong
+    # transaction is bookkeeping noise the reporter's measurements call
+    # the common case, not the one that cost a round.
+    other_agreement_records: dict[str, set[str]] = {}
+    for path in added_records:
+        if not path.startswith(f"{_JOURNAL_PREFIX}tasks/"):
+            continue
+        record_type = _record_type_from_record_path(path)
+        other = _task_of(path)
+        if other != task_id and record_type in ("opened", "amendment"):
+            other_agreement_records.setdefault(other, set()).add(record_type)
+    if other_agreement_records:
+        say(
+            "WARN: candidate adds opened/amendment records of other tasks "
+            "(the records stay valid evidence): "
+            + "; ".join(
+                f"{other} ({', '.join(sorted(kinds))})"
+                for other, kinds in sorted(other_agreement_records.items())
+            )
+        )
+
     # Advisory leak-scan (ADR-0005, CR-041): best-effort and never
     # fail-closed. The scanner is heuristic — a clean result is not proof of
     # safety and a hit is not proof of a leak — so it warns but does not

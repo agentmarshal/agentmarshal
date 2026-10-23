@@ -1,0 +1,13 @@
+No blocking or advisory findings.
+
+Acceptance criteria:
+
+1. The archived change contains proposal, design, tasks, and both ADDED delta specs; durable specs are synchronized. Every scenario maps to a same-named docstring in `tests/test_gate.py` or `tests/test_status_base.py`. The coordinator-confirmed validation run covers the archive/spec structure.
+2. The advisory gate warning is implemented without changing violations. Demonstrated by `test_a_candidate_adding_another_tasks_opened_record_warns`, `test_the_one_warn_line_names_each_such_task_and_the_record_kinds`, `test_records_of_other_kinds_do_not_warn`, and the transcript-pin tests.
+3. `status --base` lists absent records, handles none, preserves flagless output, and refuses unknown refs. Demonstrated by the corresponding tests in `test_status_base.py`.
+4. Output passes through `escape_for_display`, and repository discovery starts from the journal root. Demonstrated by `test_a_value_the_listing_prints_is_escaped_on_display` and `test_a_sidecar_compares_against_the_journal_repositorys_ref`; the design explicitly documents sidecar behavior.
+5. Changes are confined to the contract scope and no unrelated command path changes. The coordinator reports the full CI sequence passed at the reviewed commit.
+
+AGENTMARSHAL_VERDICT_BEGIN
+{"reviewed_commit":"bb8e4374e9d7cc644abfdf5a24534c4b6a80cbbd","verdict":"approved","findings":[],"verification":{"executed":[{"what":"Read-only searches and line-level inspection with rg, sed, nl, and find","result":"Implementation, tests, archived change, synchronized specs, contract, threat model, and named ADRs were inspected; no contract mismatch found."},{"what":"git rev-parse HEAD","result":"Unavailable because the supplied snapshot contains no .git directory."},{"what":"uv and openspec availability checks","result":"Neither executable is installed in the review environment."}],"read":[".agentmarshal/journal/tasks/CR-210/contract.md","docs/threat-model.md","docs/adr/ADR-0004-journal-data-model.md","docs/adr/ADR-0012-what-the-tool-does-and-what-it-supplies.md","openspec/changes/archive/2026-10-24-other-task-records/","openspec/specs/gate-lanes/spec.md","openspec/specs/record-lifecycle/spec.md","src/agentmarshal/cli.py","src/agentmarshal/journal/gate.py","src/agentmarshal/journal/status_view.py","src/agentmarshal/journal/status.py","src/agentmarshal/journal/records.py","src/agentmarshal/journal/placement.py","src/agentmarshal/project.py","tests/test_gate.py","tests/test_status_base.py"],"not_run":[{"what":"Full CI sequence","why":"The coordinator states it passed on the reviewed commit, while this snapshot has no uv installation or Git metadata."}]}}
+AGENTMARSHAL_VERDICT_END

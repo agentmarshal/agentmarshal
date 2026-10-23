@@ -13,8 +13,19 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TextIO
 
+from agentmarshal.extension_trust import (
+    Grant,
+    _changed_after_approval,
+    _hash_directory,
+    _managed_directory,
+    _read_grants,
+)
 from agentmarshal.journal.actors import SOURCE_GIT_IDENTITY, resolve_recorded_by
 from agentmarshal.journal.display import escape_for_display
+from agentmarshal.journal.extensions import (
+    ExtensionManifestError,
+    read_extension_manifest,
+)
 from agentmarshal.journal.placement import PlacementError, resolve_placement
 from agentmarshal.journal.review import ReviewLaunchError, _reviewer_command
 from agentmarshal.journal.status import TaskStatusError, list_task_statuses
@@ -303,13 +314,97 @@ def _check_validate_ci_definition(start: Path) -> tuple[bool, str]:
     )
 
 
+def _check_extension_manifest(start: Path, name: str) -> tuple[bool, str]:
+    """Read one extension's manifest the way every other reader reads it.
+
+    A manifest that cannot be read or validated fails this check alone
+    — the way a malformed project setting fails its own check — while
+    the section line names the same extension with the same reason.
+    """
+
+    project_root, discovery_error = _find_project_root(start)
+    if discovery_error is not None:
+        return False, discovery_error
+    assert project_root is not None
+    try:
+        manifest = read_extension_manifest(project_root, name)
+    except ExtensionManifestError as error:
+        return False, escape_for_display(str(error))
+    form = "directory" if manifest.directory is not None else "file"
+    return True, f"{form} form, manifest schema {manifest.schema}"
+
+
+def _extension_names(managed: Path) -> list[str]:
+    """The extension names under *managed*, in the entries' sorted order.
+
+    A ``<name>.toml`` entry is the file form and a ``<name>/`` entry the
+    directory form (ADR-0013 decision 9); a symbolic-link entry is kept
+    under the name it carries, so the manifest reader's own refusal can
+    report it — a dangling link would otherwise list nothing at all. A
+    name in both forms is found once — the reader's refusal names both
+    paths — and an entry that is neither is not an extension.
+    """
+
+    names: list[str] = []
+    for entry in sorted(managed.iterdir()):
+        if entry.is_symlink():
+            name = entry.name.removesuffix(".toml")
+        elif entry.is_dir():
+            name = entry.name
+        elif entry.name.endswith(".toml"):
+            name = entry.name.removesuffix(".toml")
+        else:
+            continue
+        if name not in names:
+            names.append(name)
+    return names
+
+
+def _extension_checks(start: Path) -> list[DoctorCheck]:
+    """One ``extension manifest <name>`` check per shared extension found.
+
+    Discovery shares ``extension list``'s managed directory, so a link
+    at ``.agentmarshal`` or ``extensions/`` is refused the same way —
+    as a failure of one ``extension manifests`` check — and a project
+    that cannot be found adds no checks, the discovery-error checks
+    already saying why. The same goes when project discovery itself
+    breaks: the checks that run it report it, and building the list of
+    checks never raises out of ``doctor_checks``.
+    """
+
+    try:
+        project_root, _ = _find_project_root(start)
+    except Exception:
+        return []
+    if project_root is None:
+        return []
+    try:
+        managed = _managed_directory(project_root)
+        names = _extension_names(managed) if managed.is_dir() else []
+    except Exception as error:
+        detail = escape_for_display(str(error))
+
+        def fail() -> tuple[bool, str]:
+            return False, detail
+
+        return [DoctorCheck("extension manifests", fail)]
+
+    def manifest_check(name: str) -> DoctorCheck:
+        def run() -> tuple[bool, str]:
+            return _check_extension_manifest(start, name)
+
+        return DoctorCheck(f"extension manifest {escape_for_display(name)}", run)
+
+    return [manifest_check(name) for name in names]
+
+
 def doctor_checks(
     start: Path | None = None, resolver: ExecutableResolver = shutil.which
 ) -> list[DoctorCheck]:
     """Build the data-driven onboarding checks for *start*."""
 
     search_start = Path.cwd() if start is None else start
-    return [
+    checks = [
         DoctorCheck("git", lambda: _check_git_available(resolver)),
         DoctorCheck("git repository", lambda: _check_git_repository(search_start)),
         DoctorCheck(
@@ -352,6 +447,110 @@ def doctor_checks(
             precondition=True,
         ),
     ]
+    return checks + _extension_checks(search_start)
+
+
+def _grant_state(
+    directory: Path, grants: dict[str, Grant] | None, grants_reason: str
+) -> str:
+    """The extension's local grant state, the way ``extension list`` reports it.
+
+    The same computation CR-209's ``extension list`` runs — the recorded
+    per-file hashes against a fresh hash of the directory — and the same
+    words, including the error in place of a state when the directory
+    cannot be hashed. When the clone's grants could not be read at all
+    the state is ``unavailable`` with the reason, never a failure.
+    """
+
+    if grants is None:
+        return f"unavailable ({grants_reason})"
+    try:
+        files = _hash_directory(directory)
+    except Exception as error:
+        return str(error)
+    grant = grants.get(directory.name)
+    if grant is None:
+        return "not granted"
+    difference = _changed_after_approval(grant.files, files)
+    if difference is None:
+        return "granted"
+    path, kind = difference
+    return f"changed after approval: {path} ({kind})"
+
+
+def _report_extensions(
+    project_root: Path,
+    state: LocalState | None,
+    state_error: str | None,
+    stderr: TextIO,
+) -> None:
+    """Print one line per shared extension of the working tree.
+
+    ADR-0013 decision 14 and section F give ``doctor`` the overview of
+    extensions: what is installed and whether this machine approved it.
+    Each extension under ``.agentmarshal/extensions/`` — a
+    ``<name>.toml`` file or a ``<name>/`` directory — gets a line
+    naming it, its form, the manifest's declared schema, its stages'
+    modes and its declared ``ext`` kinds; a real directory adds this
+    clone's grant state, the state ``extension list`` computes — a
+    missing grant reading as information, never a failure. A manifest
+    that cannot be read is named with the reason on its one line and
+    stops nothing else; a link entry is named, never hashed through;
+    and nothing an extension declares is run. Every line is escaped
+    like other displayed text.
+    """
+
+    try:
+        managed = _managed_directory(project_root)
+        names = _extension_names(managed) if managed.is_dir() else []
+    except Exception as error:
+        print(
+            f"extensions: unavailable ({escape_for_display(str(error))})",
+            file=stderr,
+        )
+        return
+    if not names:
+        print("extensions: none", file=stderr)
+        return
+    grants: dict[str, Grant] | None = None
+    grants_reason = "the clone's local state is unavailable"
+    if state is None:
+        if state_error:
+            grants_reason = state_error
+    else:
+        try:
+            grants = _read_grants(state.trust_file)
+        except Exception as error:
+            grants_reason = str(error)
+    for name in names:
+        # The grant covers the directory's contents, not the manifest's
+        # health: a real <name>/ is hashed for its state even when the
+        # manifest cannot be read — a link never is.
+        directory = managed / name
+        grant: str | None = None
+        if directory.is_dir() and not directory.is_symlink():
+            grant = _grant_state(directory, grants, grants_reason)
+        try:
+            manifest = read_extension_manifest(project_root, name)
+        except ExtensionManifestError as error:
+            line = f"extension {name}: {error}"
+            if grant is not None:
+                line += f", grant: {grant}"
+            print(escape_for_display(line), file=stderr)
+            continue
+        form = "directory" if manifest.directory is not None else "file"
+        parts = [
+            f"{form} form",
+            f"manifest schema {manifest.schema}",
+            f"stages: {', '.join(stage.phase for stage in manifest.stages) or 'none'}",
+            f"ext kinds: {', '.join(manifest.record_kinds) or 'none'}",
+        ]
+        if grant is not None:
+            parts.append(f"grant: {grant}")
+        print(
+            escape_for_display(f"extension {name}: {', '.join(parts)}"),
+            file=stderr,
+        )
 
 
 def _report_locations_and_steps(
@@ -363,10 +562,12 @@ def _report_locations_and_steps(
     what ``status`` already does: the journal, the process log and the
     local state print on *stderr* through the same
     ``status_view.print_paths`` call, one line each and escaped like
-    other displayed text, and every overdue step across the project's
-    tasks prints one line naming its task. Nothing here is a check: an
-    overdue step, an unreadable log and an unresolvable path are named,
-    never a failure — the exit status stays the checks'.
+    other displayed text, every shared extension of the working tree
+    prints one line (ADR-0013 decision 14 and section F), and every
+    overdue step across the project's tasks prints one line naming its
+    task. Nothing here is a check: an overdue step, an unreadable log,
+    an unresolvable path and an unreadable grant are named, never a
+    failure — the exit status stays the checks'.
     """
 
     project_root, discovery_error = _find_project_root(start)
@@ -382,6 +583,7 @@ def _report_locations_and_steps(
         print(f"journal: unavailable ({reason})", file=stderr)
         print(f"process log: unavailable ({reason})", file=stderr)
         print(f"local state: unavailable ({reason})", file=stderr)
+        print(f"extensions: unavailable ({reason})", file=stderr)
         return
     state: LocalState | None = None
     state_error: str | None = None
@@ -390,6 +592,7 @@ def _report_locations_and_steps(
     except LocalStateError as error:
         state_error = str(error)
     print_paths(placement.journal_root, state, state_error, stderr)
+    _report_extensions(placement.project_root, state, state_error, stderr)
     _report_overdue_steps(placement.journal_root, state, stderr, now)
 
 
@@ -483,7 +686,7 @@ def run_doctor(
         # The report is no check: whatever goes wrong in it is named on
         # stderr rather than failing the command.
         print(
-            f"doctor: cannot report paths and overdue steps "
+            f"doctor: cannot report paths, extensions and overdue steps "
             f"({escape_for_display(str(error))})",
             file=report_stderr,
         )

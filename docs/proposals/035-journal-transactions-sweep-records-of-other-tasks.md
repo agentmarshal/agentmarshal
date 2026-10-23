@@ -96,7 +96,11 @@ the same work. Accepted; not shipped yet.
 
 ## Where
 
-Nothing here is shipped yet. The per-task staging rides on proposal 019's
-transaction helper; the gate warning about another task's `opened` or
-`amendment` records, and the `status` listing of unpublished records,
-come with the same work.
+- 2026-10-24: the staging half shipped. The transaction helper is
+  `templates/journal-transaction.sh` — it stages only the named task's
+  journal directory by a literal pathspec and lists, does not take,
+  anything else under `.agentmarshal/journal/` — and the same recipe
+  replaced the sweeping `git add` forms in the quickstart, the sidecar
+  guide and the outbox README `init` writes. Still open: the gate warning
+  about another task's `opened` or `amendment` records, and the `status`
+  listing of unpublished records — a later task.
