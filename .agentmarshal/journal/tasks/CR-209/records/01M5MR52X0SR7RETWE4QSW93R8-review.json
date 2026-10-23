@@ -1,0 +1,65 @@
+{
+  "artifacts": [
+    {
+      "hash": "fed965ee1c13458eb0c8745735371444d8499e1a00e0743e328045b1c98c707e",
+      "ref": ".agentmarshal/journal/tasks/CR-209/artifacts/01M5MR52X0SR7RETWE4QSW93R8-review.md"
+    }
+  ],
+  "created_at": "2026-10-23T16:05:25.536320Z",
+  "findings": [],
+  "previous_review": "01M5MQPZF3NE9JQ17XKD3PZ6QY",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "6a67de6c4464ee3523c343ffe56ddc1fe170144f",
+  "reviewed_contract": "cebbeba9cdc75f2bac943b32e5cd0a9c8f900793c32a414f2b72bcda3f0fb3ed",
+  "reviewer": {
+    "email": "auto-review-openai@agent.example.invalid",
+    "model": "gpt-5.6-sol",
+    "role": "code-reviewer",
+    "vendor": "openai"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-209",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "36 scenarios, 36 unique matching test docstrings, no missing or extra titles; changed Python files parsed successfully",
+        "what": "Static Python AST and scenario/docstring comparison"
+      },
+      {
+        "result": "Only the expected archive transformations and Purpose-heading whitespace differed",
+        "what": "Archived delta versus main specification diff"
+      },
+      {
+        "result": "Commit metadata was unavailable because the supplied snapshot contains no .git repository",
+        "what": "git rev-parse HEAD"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "Full CI sequence",
+        "why": "The coordinator states it passed on the reviewed commit; the supplied snapshot is read-only and lacks Git metadata"
+      }
+    ],
+    "read": [
+      ".agentmarshal/journal/tasks/CR-209/contract.md",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md",
+      "docs/adr/ADR-0014-where-things-live.md",
+      "docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md",
+      "docs/threat-model.md",
+      "src/agentmarshal/extension_trust.py",
+      "src/agentmarshal/cli.py",
+      "src/agentmarshal/localstate.py",
+      "src/agentmarshal/process_log.py",
+      "src/agentmarshal/journal/actors.py",
+      "src/agentmarshal/journal/extensions.py",
+      "tests/test_extension_trust.py",
+      "openspec/changes/archive/2026-10-24-extension-trust-grants/",
+      "openspec/specs/extension-trust/spec.md"
+    ]
+  }
+}
