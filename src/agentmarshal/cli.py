@@ -23,6 +23,7 @@ from agentmarshal import (
     steps,
 )
 from agentmarshal.doctor import run_doctor
+from agentmarshal.extension_trust import _managed_directory
 from agentmarshal.journal.acceptance import (
     AcceptanceError,
     accept_findings,
@@ -114,6 +115,11 @@ from agentmarshal.project import (
     find_git_root,
     find_project_root,
     initialize_project,
+)
+from agentmarshal.switches import (
+    SWITCHES_RELPATH,
+    read_switches,
+    shared_extension_names,
 )
 
 
@@ -1257,6 +1263,42 @@ def _run_report(task_id: str | None, stderr: TextIO, findings: bool) -> int:
     return 0
 
 
+def _print_switched_off(project_root: Path, stderr: TextIO) -> None:
+    """Print one line per shared extension the working tree switches off.
+
+    ADR-0013 decision 17's ``status`` half: ``switched off: <name>
+    since <task> (<reason>)``, one line per shared extension the
+    working tree's ``switches.toml`` switches off — the file ``doctor``
+    reads, through the same ``read_switches``, against the names
+    ``shared_extension_names`` enumerates for the working tree's
+    ``.agentmarshal/extensions/``, in the enumeration's sorted order.
+    Every value the file carries is escaped for display. A missing file
+    is every extension on; a file the parse refuses, or a names
+    enumeration that itself fails, is named on one
+    ``switches: unavailable (<reason>)`` line — a report beside the
+    paths, never a failure, and stdout is untouched.
+    """
+
+    try:
+        names = shared_extension_names(_managed_directory(project_root))
+        switches = read_switches(project_root / SWITCHES_RELPATH, names)
+    except Exception as error:
+        print(
+            f"switches: unavailable ({escape_for_display(str(error))})",
+            file=stderr,
+        )
+        return
+    for name in sorted(switches):
+        switch = switches[name]
+        if switch.state == "off":
+            print(
+                escape_for_display(
+                    f"switched off: {name} since {switch.task} ({switch.reason})"
+                ),
+                file=stderr,
+            )
+
+
 def _run_status(task_id: str | None, base: str | None, stderr: TextIO) -> int:
     if base is not None and task_id is None:
         print("status --base applies only to a named task", file=stderr)
@@ -1279,6 +1321,10 @@ def _run_status(task_id: str | None, base: str | None, stderr: TextIO) -> int:
     except LocalStateError as error:
         state_error = str(error)
     print_paths(journal, state, state_error, stderr)
+    # ADR-0013 decision 17's status half goes beside the paths: the
+    # switched-off lines are owed in every case print_paths printed —
+    # before the listing's "No tasks." or the view's lookup can return.
+    _print_switched_off(placement.project_root, stderr)
     now = datetime.now(UTC)
     # The log is read once for the run — not once per task — and the
     # step events are indexed by task once, so each task's lookup scans
