@@ -9,11 +9,11 @@ rather than of someone's memory: task contracts, review verdicts bound to
 exact commits, and merge gates — with the evidence living in git, not in
 an ephemeral session log.
 
-**Trust boundary (0.4.1):** the merge gate enforces that a review's recorded
+**Trust boundary (0.5.0):** the merge gate enforces that a review's recorded
 reviewer email differs from the commit authors', and binds the verdict to the
 exact commit SHA. It does **not** cryptographically authenticate who recorded
 a review or which checkout was gated — the recorder and the reviewed tree are
-operator-trusted. Signing/provenance is roadmap, not a 0.4.1 guarantee.
+operator-trusted. Signing/provenance is roadmap, not a 0.5.0 guarantee.
 
 One consequence is worth stating outright, because the gate's output can read
 like more than it is: **a `human` reviewer is a self-declaration.** The gate
@@ -43,7 +43,7 @@ historical 0.1.0 boundary and note what has changed since:
 - [ADR-0004](docs/adr/ADR-0004-journal-data-model.md) and
   [ADR-0005](docs/adr/ADR-0005-evidence-capture-and-format.md) mark planned
   supplementary-artifact capture policy, the private store, and the
-  in-toto/attestation projection as roadmap. They remain inactive in 0.4.1;
+  in-toto/attestation projection as roadmap. They remain inactive in 0.5.0;
   ADR-0005 separately records the advisory leak-scan that has shipped.
 - [docs/migration-v1-to-v2.md](docs/migration-v1-to-v2.md) records what the
   v1→v2 migration lost (contract prose) and that the machine-readable
@@ -54,10 +54,21 @@ To see how the project actually evolved, token spend and all, read the journal.
 
 ## Status
 
-**Pre-alpha.** Version 0.4.1 ships the governed loop end to end: task
+**Pre-alpha.** Version 0.5.0 ships the governed loop end to end: task
 contracts, review and operator-acceptance evidence, lifecycle repair, the
 fail-closed gate, completion, reporting, validation, advisory leak scanning,
-and local pruning. New in 0.4.1: `validate` reads a journal 0.4.0 refused over
+and local pruning. New in 0.5.0: the record model moves to schema 7 in one
+transition — 0.5.0 reads every record a 0.4.x journal holds, and a 0.4.x
+reader refuses the new records, so every clone and CI job upgrades before
+the first 0.5.0 write ([UPGRADING.md](UPGRADING.md)); contracts pin their
+hash on `open`/`amend` and can declare `implementers`, `reviewers` and
+`independence` rules the gate checks; review findings carry classes and
+each advisory finding takes a disposition at `complete`; pipeline checks
+land as `check` records, and a reported leak-scan hit can be acknowledged
+as verified; sessions record time, quota resets and cost, and `report`
+shows lead times, spend and finding classes; the `outbox` group drafts and
+commits upstream-finding batches; and `status`/`doctor` read this machine's
+process log for steps past deadline. New in 0.4.1: `validate` reads a journal 0.4.0 refused over
 a space separator in a record an earlier release wrote (CR-114). New in 0.4.0:
 research work lands as hash-pinned findings reviewed by finding rather than by
 commit; contracts can name the decisions, documents, and process tools a task
@@ -77,7 +88,7 @@ from.
 Install the published release:
 
 ```sh
-pip install agentmarshal==0.4.1
+pip install agentmarshal==0.5.0
 agentmarshal --version
 ```
 

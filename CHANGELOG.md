@@ -8,6 +8,209 @@ local timestamp that can read a day either side of it. The journal under
 This project describes what it does and not what it intends to do. Where a
 capability is partial, the entry says so.
 
+## 0.5.0 — 2026-10-23
+
+The headline is the record model of ADR-0022: one transition carries record
+schema 7, contract-header schema 3 and extension-manifest schema 2, together
+with the record types, fields, commands and checks that write and read them —
+the decisions of ADR-0016 through ADR-0021 become commands, records and
+checks, apart from the pieces the last section names, and the reading half of
+ADR-0013 lands. A task opened on 0.5.0 carries a schema-7 record from its
+first write — the `opened` record pins the contract's hash — so the
+transition is immediate, not opt-in, and a 0.4.x installation cannot read it.
+**Every clone and every CI job moves to 0.5.0 before the first 0.5.0 record
+is written:** [UPGRADING.md](UPGRADING.md) has the rule and the procedure.
+
+### Records are read by their own schema's rules (CR-145, CR-151, CR-154)
+
+Every rule record validation makes now names the schema it applies from, in
+one table — a record is read by the rules of the schema it declares and
+written by the current ones, and a writer stamps the minimum schema a record
+needs from the same table. Record schema 7 is known, the record types come
+from one registry, and schema 8 is refused. `project.json` gains
+`review.finding_classes` (the vocabulary finding classes are checked
+against), `review.changes_required_threshold` (default 3) and
+`contract.require_agreement` (default false); `doctor` names a malformed
+value rather than failing or guessing.
+
+### The contract is pinned and can name who may work on it (CR-147, CR-163, CR-171, CR-177, CR-180, CR-182, CR-186, CR-191, CR-200, CR-202, CR-203)
+
+An `opened` or `amendment` record written on 0.5.0 carries the sha256 of the
+contract text it establishes — the record names the exact contract text by
+its hash, and `status` and the gate compare against it: `open` and `amend`
+pin it, `migrate` pins each contract it writes, `open --contract-file` opens
+a task from a contract already written, `status` says when a contract has
+drifted from its last pin, and the gate holds an agreement the project
+requires to the hash of the contract it judges. Contract
+header schema 3 declares `implementers` and `reviewers` — ordered lists of
+actor ids, in fallback order — and the `independence` rules in
+force: `reviewer-not-writer` (the existing check), `distinct-actor`,
+`distinct-vendor` and `distinct-model`. The gate judges each declared rule
+against the implementer sessions whose `commit` falls in the candidate's
+range, checks the latest review's `reviewer.actor` against the declared
+`reviewers` and the in-range implementer sessions against `implementers`,
+and says `not checked` where a rule's field is absent. An `agreement`
+record records an actor's agreement with the contract at a stated hash —
+any recorder is accepted, and `status` shows one that is not a declared
+actor. `agentmarshal agree` writes it for the contract's current text,
+`status` shows it — including that a task holds none, or one for an earlier
+contract text — and when
+`contract.require_agreement` is set the gate refuses a candidate whose task
+holds no agreement with the contract it judges against. `review` and
+`submit-review` take `--actor` to record the reviewer's declared actor.
+`status` shows the declared assignment and the rules in force beside what
+actually ran, and `none` on the ran side when nothing did.
+
+### Review findings have a lifecycle (CR-168, CR-174, CR-175, CR-185, CR-192, CR-194, CR-201)
+
+A review the launcher writes links the task's previous review, so a task's
+reviews form a chain — `submit-review` writes no link — and a verdict may
+carry `classes`: one class per finding id from the project's vocabulary,
+with a class outside it recorded as `other` and a warning, never a refused
+verdict. `complete` takes a recorded disposition for each advisory finding
+of the review the gate passed on — `fixed`, `deferred` with a reason and an
+optional follow-up task, or `rejected` with a reason — kept in the
+`completed` record's `advisory_dispositions`, and refuses before writing
+`completed` when one is missing, so an approval is no longer a
+silence about known defects; it reads the findings needing a disposition
+from the review the gate's own report names, so a review appended after the
+gate ran cannot change what is required. The gate's output and `status`
+carry the task's count of `changes_required` verdicts, flagged at the
+project's threshold — it decides nothing — and `status` lists the
+deferrals still open.
+
+### A check outcome and an acknowledged hit are evidence (CR-167, CR-170, CR-178, CR-183, CR-187, CR-189, CR-190, CR-193, CR-195, CR-197)
+
+A `check` record records what a pipeline check found on a commit — the
+observer's declaration, not proof; the gate decides nothing from it. It is
+admitted after any terminal record, a measurement on a par with `session`.
+`record-check` writes it, keeps the check's full output under the clone's
+local state announced by a `check-output` event, and carries a masked
+excerpt passed through the leak scan before writing. A review's verdict may
+carry `verification` — what the reviewer executed, read and could not run —
+and `evidence` for its findings, and the reviewer's prompt asks for both
+and for each criterion's place in the diff; a
+finding about an external fact the reviewer could not check lands as
+advisory. An `acknowledgement` is a recorded statement that an operator
+verified a reported leak-scan hit, bound to the commit, the file as the scan
+prints it and the hit's identification — a new commit or a renumbered marker
+list fails visible. `agentmarshal acknowledge` writes it only against a hit the scan
+reports. The hit stays printed, marked with who acknowledged and why: on
+`leak-scan`, which now exits 1 only on a hit nobody acknowledged; on
+`status`; and on the gate's advisory line within its existing bound.
+`brief` names the task's last failing check — and says when a later run of
+the same name passed, so a fix round is not sent after a failure already
+fixed.
+
+### Sessions record time, resets and money (CR-160, CR-166, CR-176, CR-188, CR-196, CR-199)
+
+A session may carry `started_at`/`ended_at` — `created_at` stays the write
+time — `resets_at` on a `provider-limit` session, a `cost` of
+`{amount, currency, source}`, and the fields the loop readers need:
+`commit`, `model`, `trace`, `cli_session`, `report_ready` and
+`fallback_reason`. `record-session` writes them all through new flags, and
+`--if-missing` makes a repeat write under the same
+`task + role + actor + activity` a no-op, so recording cost after
+completion is safe to repeat. `report` shows a task's lead time and its
+phases — opened, first implementer start, first review, approval,
+completion — and the review rounds, `unknown` where a record cannot say;
+sums cost per currency and converts nothing; counts the candidates a
+`check` record marked `failed` or `error`; and with `--findings` lists the
+finding classes across tasks with counts and the deferred advisories still
+open.
+
+### The extension manifest's new schema is read; nothing executes (CR-152, CR-158, CR-173, CR-179)
+
+Manifest schema 2 is parsed — stages, dependencies, a wrapped product,
+record kinds and isolation — and an extension may live in a directory
+(`<name>/manifest.toml` with `bin/` and `lock/`), found beside the
+single-file form by the readers that work from a working tree: `brief`,
+`review` and the sidecar gate. The `ext` record type exists — a declared
+kind, the commit, an opaque payload and its hash — and the `acceptance`
+record admits `accepted_pause` and `operational` forms which `status`
+already prints and no command writes — readers keep "acceptance over
+findings" to the acceptances that carry findings.
+
+### Local state has one home, and the process log is a format (CR-148, CR-153, CR-157, CR-162, CR-165, CR-169)
+
+The clone's local state resolves to one place — the git common directory of
+the repository the journal lives in, shared by all worktrees — and the
+process log under it is one JSON event per line, one file per writer, read
+tolerating a torn last line and rotation. `step start` and `step end` write
+a step's events, its deadline included; `status` marks an open step past
+its deadline — on the task list and the task view, naming this machine's
+process log as the source — and `doctor` reports overdue steps across
+tasks. `status` and `doctor` print where the journal, the process log and
+the local state actually are, and `doctor`'s git check names the minimum
+version local state needs. At capture level `hash` a review's prose and
+diagnostics are kept under the local state and announced by
+`review-prose`/`review-diagnostics` events instead of sitting in temporary
+files.
+
+### The outbox is a command group (CR-150, CR-156)
+
+`agentmarshal outbox new` scaffolds a finding draft in
+`.agentmarshal/upstream/` carrying the five fields of the finding form;
+`outbox check` names what each draft lacks and runs the merge boundary's
+leak scan over what a batch would carry; `outbox send` runs the check and
+commits the outbox as one batch — it transmits nothing and opens no
+network; `outbox status` reports which drafts an upstream index file
+claims.
+
+### The surfaces escape what a record could forge (CR-155, CR-161, CR-164)
+
+`status`, `report`, the gate's transcript, the brief and the reviewer prompt
+escape on display the characters the forgeable-text rule refuses at write —
+a record written around the tool cannot make its text forge a line or
+reorder what is read — and the gate escapes candidate paths and the values
+in its error messages the same way, so a file name cannot forge a line of
+the transcript.
+
+### Robustness and smaller corrections (CR-121, CR-127, CR-129, CR-149, CR-184)
+
+One file of bytes that do not decode no longer switches the leak scan off
+for every other file, and no longer ends `review` in a traceback: the scan
+works per file and names what it could not read, and the diff reaches the
+reviewer per file with the undecodable one named. `status` renders each new
+record type on a line of its own — `check`, `agreement`, `acknowledgement`,
+`ext` — naming the recorder and marking one that is not a declared actor,
+and states the task's agreement state on a line of its own; the per-task
+view lives in a module with one renderer per record type. The journal rule
+the brief prints now says what the gate holds — nothing under
+`.agentmarshal/journal/` is the implementer's to edit, and another file
+under `.agentmarshal/` may change only when the scope names it — and each
+rule sits under a heading that says truthfully whether the gate checks it.
+
+### What 0.5.0 leaves out
+
+The operator decided on 2026-10-23 what this release does not carry; each
+item names the decision that holds it. **Executing extensions** — the
+stages, the isolation enforcement, the local trust, the switches, an
+extension's pause and its acceptance, and the operational lane — is not
+shipped (ADR-0013; what this release reads is said above: manifest schema 2
+and the directory form are read since CR-152 and CR-158, and the `ext`
+record exists since CR-179). **`next` and the plan file** stay decided but
+unshipped while the queue model is under review (ADR-0023, ADR-0022 section
+7): there is no `agentmarshal next` and nothing reads `plan.toml`. **The
+watchdog and the monitor** (proposal 042 — supplied components the harness
+runs; the core launches no background process, and this package ships
+neither) and **the merge slot with the resolution-mode review** (proposal
+043 — `mode: resolution` and `carried_approval` are not fields this
+release's record model carries) are held by the same review of the queue
+model. **The unfinished-candidate work of proposal 036** — the refusal of
+a candidate whose producing session did not end `implemented`, and the
+explicit override that is the operator's way through — **and the review-by
+dates** on acceptances and deferrals arrive after 0.5.0 under a later
+record schema, which will need another coordinated upgrade. **Raw provider
+exports to the process log** stay a named event kind in the decided format
+(ADR-0019 decision 7, ADR-0022 section 7) — nothing writes a
+`provider-export` event.
+
+Documentation-only and process tasks: CR-116, CR-117, CR-118, CR-119,
+CR-120, CR-122, CR-123, CR-124, CR-125, CR-126, CR-128, CR-130, CR-131,
+CR-132, CR-133, CR-134, CR-135, CR-136, CR-137, CR-138, CR-139, CR-140,
+CR-141, CR-142, CR-143, CR-144, CR-146, CR-159, CR-172, CR-181, CR-198.
+
 ## 0.4.1 — 2026-09-24
 
 A patch release for one defect an adopter hit on 0.4.0, plus the documentation
