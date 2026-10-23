@@ -1,0 +1,72 @@
+{
+  "artifacts": [
+    {
+      "hash": "2bcaac6efea1174dea30a652980ec51e2f3c233e8564a427b574c9ad6eb641e0",
+      "ref": ".agentmarshal/journal/tasks/CR-199/artifacts/01M5KRXQSBGKXG4VBCSZVGFAT2-review.md"
+    }
+  ],
+  "classes": {
+    "CR199-ERROR-TEST-GAP": "test-gap"
+  },
+  "created_at": "2026-10-23T06:59:38.923556Z",
+  "evidence": {
+    "CR199-ERROR-TEST-GAP": "tests/test_report_cost_checks_findings.py:439-456 omits result='error' from the test whose docstring names the scenario at openspec/changes/archive/2026-10-23-report-cost-checks-findings/specs/session-activity/spec.md:596-599"
+  },
+  "findings": [
+    "CR199-ERROR-TEST-GAP"
+  ],
+  "previous_review": "01M5KRECC9GTXJ4KCG3N31S0JH",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "a92afc0905e463700209c6829e1cfc7378d700b4",
+  "reviewed_contract": "1f41aa6dba6fcd2b61707b5d8cedcf8b56a1070303e5b53e3097a94f4d1ed03d",
+  "reviewer": {
+    "email": "auto-review-openai@agent.example.invalid",
+    "model": "gpt-5.6-sol",
+    "role": "code-reviewer",
+    "vendor": "openai"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-199",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "30 scenarios found; all 30 have matching scenario-named test docstrings",
+        "what": "Python AST audit matching archived OpenSpec scenario titles to test docstrings"
+      },
+      {
+        "result": "The named test supplies failed, passed, and skipped but no error; the aggregate test independently exercises error counting",
+        "what": "Direct inspection of the scenario-named failed/error test and related rejected-commit tests"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "Full CI sequence",
+        "why": "The coordinator supplied a passing result for the exact reviewed commit; uv is unavailable in this read-only snapshot environment"
+      }
+    ],
+    "read": [
+      ".agentmarshal/journal/tasks/CR-199/contract.md",
+      "docs/adr/ADR-0016-the-lifecycle-of-review-findings.md",
+      "docs/adr/ADR-0017-evidence-of-reviews-and-checks.md",
+      "docs/adr/ADR-0019-accounting-time-quota-resets-money.md",
+      "docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md",
+      "docs/threat-model.md",
+      "src/agentmarshal/journal/report.py",
+      "src/agentmarshal/cli.py",
+      "src/agentmarshal/journal/records.py",
+      "src/agentmarshal/journal/status.py",
+      "openspec/changes/archive/2026-10-23-report-cost-checks-findings/",
+      "openspec/specs/session-activity/spec.md",
+      "openspec/specs/finding-lifecycle/spec.md",
+      "tests/test_report_cost_checks_findings.py",
+      "tests/test_report.py",
+      "tests/test_report_lead_time.py",
+      "tests/test_display.py"
+    ]
+  }
+}
