@@ -78,15 +78,23 @@ launcher refuses before it spends a reviewer run".)
 
 **An acceptance is not a bypass.** An acceptance is a record, not a mode:
 there is no flag, no environment variable and no configuration that makes
-the gate lenient. It is valid only when the latest review of that exact
-commit or finding is non-approving, and it must name every blocking
-finding that review raised — all of them, and nothing else. It
-substitutes for the approving-verdict check and nothing else: scope,
-reviewer independence, pipeline attestation, append-only integrity,
-record validity and lifecycle consistency apply unchanged. Accepted work
-is never displayed as approved, and an acceptance by a writer of the
-candidate is permitted and always marked as self-acceptance. (ADR-0007,
-decisions 1, 2, 3, 4 and 5.)
+the gate lenient. An acceptance over findings is valid only when the
+latest review of that exact commit or finding is non-approving, and it
+must name every blocking finding that review raised — all of them, and
+nothing else. It substitutes for the approving-verdict check and nothing
+else: scope, reviewer independence, pipeline attestation, append-only
+integrity, record validity and lifecycle consistency apply unchanged.
+The record model admits two further forms — the acceptance of an
+extension pause (`accepted_pause`) and of an operational CR
+(`operational`), each bound by `accepted_commit` alone and carrying no
+`findings` — and the lanes that consume them are decided, not yet
+implemented; on the lanes that exist today the gate judges only
+acceptances that carry findings, so one standing alone satisfies
+nothing. Accepted work is never displayed as approved, and an
+acceptance by a writer of the candidate is permitted and always marked
+as self-acceptance. (ADR-0007,
+decisions 1, 2, 3, 4 and 5; ADR-0013, decisions 5 and 17 — decided, not
+yet implemented; ADR-0022, decision 2.)
 
 **Forgeable text cannot forge output.** The write-time refusal applies
 to the fields the specification names: a review record's finding and
@@ -98,9 +106,16 @@ extension manifest's footprint entries — plus the schema-3 contract
 header's `implementers`, `reviewers` and `independence` entries, and
 the schema-7 fields the shared validators register: a session's
 `commit`, `model`, `trace`, `cli_session` and `fallback_reason`, an
-`opened` or `amendment` record's `contract`, a `check` record's
-`name`, `failed_step`, `excerpt` and `run_url`, an acknowledgement's
-`file` and `reason`. Such a value is refused at write time when it
+`opened`, `amendment` or `agreement` record's `contract`, a `check`
+record's `name`, `failed_step`, `excerpt` and `run_url`, an
+acknowledgement's `file` and `reason`, a review's `previous_review`,
+and an `ext` record's `kind`, `commit` and `payload_sha256`. The
+strings the schema-7 object fields nest take the same refusal inside
+each family's own rule instead of the shared registration: a review's
+`classes` values, `verification` strings and `evidence` references and
+its `reviewer.actor`, a completed record's `advisory_dispositions`
+finding ids, `reason` and `follow_up`, and an acceptance's
+`accepted_pause` extension name. Such a value is refused at write time when it
 contains a character that could add a line to rendered output or
 reorder it: the control, surrogate, line- and paragraph-separator
 categories and the bidirectional marks, embeddings, overrides and
@@ -366,10 +381,12 @@ shown, not verified — the contract header admits the lists and the
 decided, not yet implemented. A documents check checks the presence of
 a change, not its truth. The session outcome vocabulary is
 documentation, not code — `outcome` accepts any non-empty string. An
-`ext` record's body is opaque to the core — the type is decided, not
-yet implemented. The outbox is neither evidence nor journal — not
-append-only, not task-scoped and not gated — and the tool transmits
-nothing and opens no network for it. And nothing in the tool can tell
+`ext` record's body is opaque to the core — the type exists in the
+record model, and the extension stages that would write one are
+decided, not yet implemented, so nothing produces one today. The
+outbox is neither evidence nor journal — not append-only, not
+task-scoped and not gated — and the tool transmits nothing and opens
+no network for it. And nothing in the tool can tell
 an honest acceptance from a convenient one. (ADR-0017, decision 2 and
 "Consequences"; gate-lanes specification, "The transcript reports the
 task's changes_required count"; ADR-0016, decision 4; ADR-0018,

@@ -46,6 +46,20 @@ no flag — at the moment the review does exist, which is what this
 repository's own merge tooling does and what review materialisation would
 replace. See the open item below.
 
+## A skipped gate job still reports green
+
+Per GitHub's documentation, a job skipped by its conditional reports
+"Success" — and `skipped` is a successful check status, so a required
+check that never ran satisfies branch protection
+([Troubleshooting required status checks](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/collaborating-on-repositories-with-code-quality-features/troubleshooting-required-status-checks#handling-skipped-but-required-checks)).
+The shipped `gate` job runs only on pull-request events — its `if:` is
+`github.event_name == 'pull_request'` — because a pull-request head is
+the candidate it can examine. If you add another trigger a required
+check is evaluated on — a merge queue's `merge_group` is the common one
+— the `if:` must cover that event too. On a trigger the `if:` does not
+name, the job skips, GitHub reports the skip as success, and the
+required `gate` check passes with nothing examined.
+
 ## Token permissions
 
 The template declares least-privilege `permissions: contents: read` at the
