@@ -188,8 +188,8 @@ def test_an_ext_record_that_carries_no_payload_is_refused(
 def test_a_payload_at_the_byte_bound_is_admitted_and_one_past_it_is_refused(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Scenario: a payload at the byte bound is admitted and one past it is
-    refused.
+    """Scenario:
+    a payload at the byte bound is admitted and one past it is refused.
 
     The bound is measured on the canonical form — a string payload
     serializes as itself between quotes, so 65534 characters are exactly
@@ -411,8 +411,7 @@ def test_a_candidate_adding_an_ext_record_after_a_terminal_record_is_refused(
 def test_status_and_validate_handle_a_task_carrying_an_ext_record(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Scenario: status and validate handle a task carrying an ext
-    record."""
+    """Scenario: status and validate handle a task carrying an ext record."""
 
     monkeypatch.setenv("AGENTMARSHAL_ACTOR", "ext-writer")
     repo = tmp_path / "repo"

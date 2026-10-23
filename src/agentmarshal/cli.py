@@ -23,7 +23,11 @@ from agentmarshal import (
     steps,
 )
 from agentmarshal.doctor import run_doctor
-from agentmarshal.journal.acceptance import AcceptanceError, accept_findings
+from agentmarshal.journal.acceptance import (
+    AcceptanceError,
+    accept_findings,
+    accept_pause_or_operational,
+)
 from agentmarshal.journal.brief import build_brief
 from agentmarshal.journal.capture import (
     CaptureError,
@@ -190,14 +194,40 @@ def _build_parser() -> argparse.ArgumentParser:
         help="file containing the reviewer's prose to preserve and pin",
     )
     accept_parser = subparsers.add_parser(
-        "accept", help="record acceptance over a review's blocking findings"
+        "accept",
+        help=(
+            "record an operator acceptance — over a review's blocking "
+            "findings, an extension's pause, or an operational CR"
+        ),
     )
     accept_parser.add_argument("--task", required=True, help="task identifier")
     accept_binding = accept_parser.add_mutually_exclusive_group(required=True)
-    accept_binding.add_argument("--commit", help="reviewed commit SHA")
+    accept_binding.add_argument(
+        "--commit",
+        help=(
+            "the accepted commit — the reviewed commit SHA over findings; a "
+            "revision resolved in the journal's repository with --pause or "
+            "--operational"
+        ),
+    )
     accept_binding.add_argument("--accepted-finding", help="accepted finding record id")
     accept_parser.add_argument("--by", required=True, help="accepting party")
     accept_parser.add_argument("--reason", required=True, help="acceptance reason")
+    accept_form = accept_parser.add_mutually_exclusive_group()
+    accept_form.add_argument(
+        "--pause",
+        metavar="EXTENSION",
+        help=(
+            "accept an extension's pause — binds --commit, consults no "
+            "review; EXTENSION must be a shared extension the working tree "
+            "declares"
+        ),
+    )
+    accept_form.add_argument(
+        "--operational",
+        action="store_true",
+        help="accept an operational CR — binds --commit, no review is required",
+    )
     accept_parser.add_argument(
         "--finding",
         action="append",
@@ -678,6 +708,51 @@ def _run_submit_review(args: argparse.Namespace, stderr: TextIO) -> int:
 
 
 def _run_accept(args: argparse.Namespace, stderr: TextIO) -> int:
+    # argparse enforces exactly one of --commit / --accepted-finding, and
+    # that --pause and --operational never combine; a new form binds
+    # --commit alone and takes none of the findings form's flags — the
+    # refusal is pure argument checking and can never write.
+    if args.pause is not None or args.operational:
+        form = "--pause" if args.pause is not None else "--operational"
+        refused = [
+            flag
+            for flag, given in (
+                ("--accepted-finding", args.accepted_finding is not None),
+                ("--finding", bool(args.finding)),
+            )
+            if given
+        ]
+        if refused:
+            print(
+                f"accept {form} cannot be combined with " + " or ".join(refused),
+                file=stderr,
+            )
+            return 1
+        if args.commit is None:
+            # Unreachable while the binding group is required — an absent
+            # --commit means --accepted-finding was given, refused above —
+            # but it is the binding rule the new forms are held to.
+            print(f"accept {form} requires --commit", file=stderr)
+            return 1
+        placement = _placement("accept", stderr)
+        if placement is None:
+            return 1
+        try:
+            record_path = accept_pause_or_operational(
+                placement.journal_root,
+                placement.project_root,
+                args.task,
+                args.commit,
+                args.by,
+                args.reason,
+                accepted_pause=args.pause,
+                operational=args.operational,
+            )
+        except AcceptanceError as error:
+            print(error, file=stderr)
+            return 1
+        print(record_path)
+        return 0
     placement = _placement("accept", stderr)
     if placement is None:
         return 1
