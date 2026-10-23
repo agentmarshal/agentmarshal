@@ -1,0 +1,62 @@
+{
+  "artifacts": [
+    {
+      "hash": "6c08a51272a750a0d217b1db535307ef4907c40ab23e98874085b7b0c276d3fd",
+      "ref": ".agentmarshal/journal/tasks/CR-214/artifacts/01M5MVTZB442TQS32HJ078XJNV-review.md"
+    }
+  ],
+  "created_at": "2026-10-23T17:09:48.516157Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "70a6aeee5e7d9bf2245a2f2b53237b5da065235f",
+  "reviewed_contract": "51b28ea3ffae04b223964afd7c3d72253d2a690f269b02f008cd3ebfd4a6bb15",
+  "reviewer": {
+    "email": "auto-review-openai@agent.example.invalid",
+    "model": "gpt-5.6-sol",
+    "role": "code-reviewer",
+    "vendor": "openai"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-214",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "All required artifacts and scenario-naming tests were present",
+        "what": "Inspected archived OpenSpec files and mapped every delta-spec scenario to named tests with find and rg"
+      },
+      {
+        "result": "Implementation and documentation matched the contract and named decisions",
+        "what": "Inspected validate.py, extensions.py, CLI rendering, ADR-0010, ADR-0013, the threat model, CR-214 contract, and extension-records specifications"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "Focused pytest invocation",
+        "why": "The read-only snapshot had no .venv or pytest executable; the command did not start"
+      },
+      {
+        "what": "Full CI sequence",
+        "why": "The coordinator supplied its passing result for the exact reviewed commit, and uv was unavailable in the snapshot"
+      }
+    ],
+    "read": [
+      ".agentmarshal/journal/tasks/CR-214/contract.md",
+      "docs/adr/ADR-0010-process-extensions.md",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md",
+      "docs/threat-model.md",
+      "src/agentmarshal/journal/validate.py",
+      "src/agentmarshal/journal/extensions.py",
+      "src/agentmarshal/journal/display.py",
+      "src/agentmarshal/cli.py",
+      "tests/test_validate_addressee.py",
+      "tests/test_ext.py",
+      "openspec/changes/archive/2026-10-24-validate-addressee-not-found/",
+      "openspec/specs/extension-records/spec.md"
+    ]
+  }
+}
