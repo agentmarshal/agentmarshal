@@ -394,6 +394,95 @@ def test_a_switches_file_that_cannot_be_read_leaves_every_stage_not_run(
     assert "paused before the gate" in captured.err
 
 
+def test_a_malformed_trust_file_still_reports_the_switched_off_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a malformed trust.toml fails the command naming it."""
+    # Extended: a switched-off stage is never grant-checked, so a trust
+    # file the run cannot read does not suppress its result line — the
+    # command still fails naming the file, once the owed line is printed.
+    repo = stage_helpers._project(tmp_path, monkeypatch)
+    stage_helpers._extension(repo, name="openspec")
+    stage_helpers._extension(
+        repo,
+        name="zeta",
+        manifest=stage_helpers._manifest(name="zeta"),
+        files={"bin/check.py": "print('z')\n"},
+    )
+    (repo / ".agentmarshal" / "switches.toml").write_text(
+        "format = 1\n\n"
+        "[switches.openspec]\n"
+        'state = "off"\n'
+        'task = "CR-214"\n'
+        'reason = "hangs on empty repositories"\n\n'
+        "[switches.zeta]\n"
+        'state = "on"\n'
+        'task = "CR-9"\n',
+        encoding="utf-8",
+    )
+    stage_helpers._commit_all(repo, "base")
+    stage_helpers._git(repo, "checkout", "--quiet", "-b", "candidate")
+    (repo / "x.txt").write_text("x\n", encoding="utf-8")
+    stage_helpers._commit_all(repo, "candidate")
+    trust_file = repo / ".git" / "agentmarshal" / "trust.toml"
+    trust_file.parent.mkdir(parents=True, exist_ok=True)
+    trust_file.write_text("this is not toml [", encoding="utf-8")
+    stage_helpers._workstation(monkeypatch)
+    capsys.readouterr()
+
+    assert stage_helpers._stage_run(commit="candidate", base="master") == 1
+
+    captured = capsys.readouterr()
+    trust = [line for line in captured.err.splitlines() if "trust.toml" in line]
+    assert len(trust) == 1
+    assert "openspec: switched off (CR-214, hangs on empty repositories)" in (
+        captured.out
+    )
+    # The switched-on extension's stage neither ran nor reported a line.
+    assert "zeta" not in captured.out
+    events = [
+        event
+        for event in stage_helpers._events(repo)
+        if event["event"] == "extension-event"
+    ]
+    (event,) = events
+    assert event["extension"] == "openspec"
+    assert event["decision"] == "switched-off"
+    assert event["reason"] == "CR-214, hangs on empty repositories"
+
+
+def test_a_malformed_switches_file_is_reported_even_with_no_stage_in_the_phase(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a malformed switches file is reported on one line and no stage of an extension it names runs."""  # noqa: E501
+    # Extended: the base's file is read before the empty-plan return, so
+    # its refusal prints even where the requested phase declares no
+    # stage — then the no-stage line and exit 0, nothing having been
+    # blocked because nothing would have run.
+    repo = stage_helpers._project(tmp_path, monkeypatch)
+    stage_helpers._extension(repo, name="openspec")  # a pre-gate-stop stage only
+    (repo / ".agentmarshal" / "switches.toml").write_text(
+        "this is not = toml [", encoding="utf-8"
+    )
+    stage_helpers._commit_all(repo, "base")
+    stage_helpers._git(repo, "checkout", "--quiet", "-b", "candidate")
+    (repo / "x.txt").write_text("x\n", encoding="utf-8")
+    stage_helpers._commit_all(repo, "candidate")
+    stage_helpers._ci(monkeypatch)
+    capsys.readouterr()
+
+    assert (
+        stage_helpers._stage_run(phase="post-gate", commit="candidate", base="master")
+        == 0
+    )
+
+    captured = capsys.readouterr()
+    malformed = [line for line in captured.err.splitlines() if "switches.toml" in line]
+    assert len(malformed) == 1
+    assert "malformed" in malformed[0]
+    assert "no shared extension declares a post-gate stage" in captured.out
+
+
 # -- doctor --------------------------------------------------------------------
 
 

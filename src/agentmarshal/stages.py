@@ -13,7 +13,11 @@ is needed. The shared switches are read from the base too (decision 6,
 decisions 16 and 17): a stage of a switched-off extension reports
 ``switched off (<task>, <reason>)`` and does not run — no pause, no
 warning — and a switches file that cannot be read blocks the stages of
-the extensions it names. Each result is appended to the process log as an
+the extensions it names, its refusal named even where the requested
+phase declares no stage. The switched-off line is owed even where the
+clone's trust file cannot be read — a switched-off stage is never
+grant-checked — though that failure still ends the command at 1 once
+the owed lines are printed. Each result is appended to the process log as an
 ``extension-event`` (ADR-0022 section 7); nothing is written to the
 journal. A ``pre-gate-stop`` stage that failed, did not finish or did not
 run pauses the process before the gate — the command exits 3 — while a
@@ -608,16 +612,16 @@ def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
         for stage in manifests[name].stages
         if stage.phase in modes
     ]
-    if not plan:
-        print(f"stage run: no shared extension declares a {args.phase} stage")
-        return 0
     # The switches are the base's like every other trusted input — an
     # operational CR's file at the merge base decides, never the
-    # candidate's or the working tree's. A file the parse refuses is
-    # reported on one line and blocks the stages of exactly the
-    # extensions it names — every stage when its own entries cannot be
-    # read, since an unreadable file cannot vouch for any extension
-    # being on.
+    # candidate's or the working tree's — and are read before the
+    # empty-plan return, so a file the parse refuses is named on its
+    # one line even where nothing would have run: the no-stage line
+    # then reads as it does for a well-formed or absent file, and the
+    # exit stays 0 — nothing was blocked, because nothing would run.
+    # A refused file blocks the stages of exactly the extensions it
+    # names — every stage when its own entries cannot be read, since
+    # an unreadable file cannot vouch for any extension being on.
     switches: dict[str, Switch] = {}
     blocked_names: frozenset[str] | None = None
     try:
@@ -629,6 +633,9 @@ def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
             if error.names is not None
             else frozenset(name for name, _manifest, _stage in plan)
         )
+    if not plan:
+        print(f"stage run: no shared extension declares a {args.phase} stage")
+        return 0
     if any(
         manifest.isolation is not None and "PATH" in manifest.isolation.env
         for _name, manifest, _stage in plan
@@ -644,12 +651,18 @@ def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
         )
     ci = os.environ.get("CI") == "true"
     grants: dict[str, Grant] = {}
+    grants_unreadable = False
     if not ci:
         try:
             grants = _read_grants(state.trust_file)
         except ExtensionTrustError as error:
+            # The file's refusal still fails the command on its one
+            # line — but a switched-off stage is never grant-checked,
+            # so its result line is owed even now: the loop reports the
+            # switched-off outcomes and their events and runs nothing
+            # else, then the command exits 1.
             print(f"stage run: {escape_for_display(str(error))}", file=stderr)
-            return 1
+            grants_unreadable = True
     writer: ProcessLogWriter | None = None
     writer_lost = False
 
@@ -724,21 +737,28 @@ def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
     warnings: list[str] = []
     for index, (name, manifest, stage) in enumerate(plan):
         switch = switches.get(name)
-        if blocked_names is not None and name in blocked_names:
-            # The switches file names this extension and cannot be read:
-            # its switch state is unknown, so the stage does not run —
-            # a pre-gate-stop one pauses like any other not-run stage.
-            outcome = _Outcome("not-run", "shared switches file unreadable", b"")
-        elif switch is not None and switch.state == "off":
+        if switch is not None and switch.state == "off":
             # An operational CR switched this extension off: the one
             # result line says by which task and why — decision 7's
-            # "(by whom and why)" — and nothing of it runs.
+            # "(by whom and why)" — and nothing of it runs, here even
+            # where the trust file could not be read: the stage was
+            # never going to be grant-checked.
             outcome = _Outcome(
                 "switched-off",
                 f"{escape_for_display(switch.task)}, "
                 f"{escape_for_display(switch.reason or '')}",
                 b"",
             )
+        elif grants_unreadable:
+            # The trust file's refusal already fails the command, and
+            # only the switched-off outcomes — never grant-checked —
+            # are still owed a line: nothing else reports or runs.
+            continue
+        elif blocked_names is not None and name in blocked_names:
+            # The switches file names this extension and cannot be read:
+            # its switch state is unknown, so the stage does not run —
+            # a pre-gate-stop one pauses like any other not-run stage.
+            outcome = _Outcome("not-run", "shared switches file unreadable", b"")
         else:
             # Each stage gets its own temporary directory: a stage runs its
             # extension's code with the materialized copy in reach of
@@ -790,4 +810,6 @@ def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
             f"stage run: the process is paused before the gate — {entry}",
             file=stderr,
         )
+    if grants_unreadable:
+        return 1
     return 3 if paused else 0

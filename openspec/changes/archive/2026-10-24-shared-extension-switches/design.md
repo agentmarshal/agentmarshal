@@ -88,10 +88,23 @@ per-stage refusal into a `not run (<reason>)` result line, an
   decision and reason, and the stage is excluded from both the
   `pre-gate-stop` pause and the `pre-gate-warn` warning. The check is
   skipped before materialization or the grant check begins: nothing
-  executes, nothing is trusted beyond the file itself. This is the
+  executes, nothing is trusted beyond the file itself. The switched-off
+  line is therefore owed even where the workstation's `trust.toml`
+  cannot be read — the stage was never going to be grant-checked:
+  that refusal still fails the command on its one line, but only after
+  every switched-off outcome in the plan has been reported; no stage
+  that would be grant-checked runs, and the exit is 1. This is the
   reading of "a switched-off pre-gate-stop extension does not pause":
   an operational CR silences the check it names — the file's
   visibility, not the pause, is the audit.
+- **A refused switches file is named even where nothing would run.**
+  The base read happens before the empty-plan return, so a file the
+  parse refuses is reported on its one stderr line even when the
+  requested phase declares no stage — then the
+  `no shared extension declares a <phase> stage` line and exit 0,
+  unchanged: nothing was blocked, because nothing would have run. The
+  trust file keeps its place after the empty-plan return — grants are
+  consulted only where a stage exists to check.
 - **`doctor` shows the switch on the extension's own line.**
   `switched off since <task> (<reason>)` joins the line's parts after
   the grant state — the report's shape stays one line per extension —
