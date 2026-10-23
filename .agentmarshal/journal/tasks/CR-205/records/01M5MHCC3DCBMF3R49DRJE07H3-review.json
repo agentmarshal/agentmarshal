@@ -1,0 +1,57 @@
+{
+  "artifacts": [
+    {
+      "hash": "356f408c16905ab88303bc93e3117cc31830b9198089898ce51701a7e1c938bd",
+      "ref": ".agentmarshal/journal/tasks/CR-205/artifacts/01M5MHCC3DCBMF3R49DRJE07H3-review.md"
+    }
+  ],
+  "created_at": "2026-10-23T14:07:04.301243Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "096d23d8fe7142bca3491da640aa844071a3cb3b",
+  "reviewed_contract": "a5fa179a833d1bee9d3a9bb08b4fbf1bb25ba41f5a7faced524f7e9adf155deb",
+  "reviewer": {
+    "email": "auto-review-openai@agent.example.invalid",
+    "model": "gpt-5.6-sol",
+    "role": "code-reviewer",
+    "vendor": "openai"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-205",
+  "tool_version": "0.5.0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "All inspected content satisfies CR-205",
+        "what": "Static inspection of version declarations, CLI parser wiring, smoke tests, and scoped diff"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "Full CI sequence and focused smoke test",
+        "why": "The review image has neither uv nor python installed; the coordinator reports the full sequence passed on the exact reviewed commit"
+      },
+      {
+        "what": "Independent Git commit and parent-diff inspection",
+        "why": "The supplied snapshot contains no .git metadata; scope was checked against the supplied diff"
+      }
+    ],
+    "read": [
+      ".agentmarshal/journal/tasks/CR-205/contract.md",
+      "pyproject.toml",
+      "uv.lock",
+      "src/agentmarshal/__init__.py",
+      "src/agentmarshal/__main__.py",
+      "src/agentmarshal/cli.py",
+      "tests/test_smoke.py",
+      "CONTRIBUTING.md",
+      "docs/threat-model.md",
+      "supplied diff",
+      "coordinator's passing full-CI report for commit 096d23d8fe7142bca3491da640aa844071a3cb3b"
+    ]
+  }
+}
