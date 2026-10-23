@@ -52,6 +52,7 @@ from agentmarshal.journal.records import (
 from agentmarshal.journal.status import TaskStatusError, load_task_for_record
 from agentmarshal.journal.submit_review import (
     ReviewSubmitError,
+    reviewer_actor_refusal,
     submit_review,
 )
 
@@ -126,12 +127,15 @@ class LaunchedReview:
     ``diagnostics_note`` carries what survived a successful command's error
     stream, and anything else the launch must not drop in silence — files
     the diff decode could not fully read are named through it.
+    ``actor_note`` is the not-a-declared-actor line the record owes the
+    operator when ``--actor`` names an id the actors table lacks.
     """
 
     record_path: Path
     artifact_ref: str | None
     diagnostics_note: str | None
     prose_note: str | None
+    actor_note: str | None = None
 
 
 @dataclass(frozen=True)
@@ -862,6 +866,7 @@ def dry_run_review(
     reviewer_model: str | None,
     *,
     journal_root: Path | None = None,
+    reviewer_actor: str | None = None,
 ) -> tuple[str, str | None]:
     """Exercise the configured reviewer without writing to any journal.
 
@@ -873,8 +878,15 @@ def dry_run_review(
     against — the diagnostics land in that repository's process log; left
     ``None`` it resolves under ``project_root``, the same default
     ``launch_review`` applies when its own caller names no journal.
+    ``reviewer_actor`` is the ``--actor`` the run would record — the one
+    record flag a dry run accepts — checked by the same preflight a
+    recorded launch applies, so a refused value costs no reviewer run.
     """
 
+    if reviewer_actor is not None:
+        refusal = reviewer_actor_refusal(reviewer_actor)
+        if refusal is not None:
+            raise ReviewLaunchError(refusal)
     template = os.environ.get("AGENTMARSHAL_REVIEWER_CMD")
     if template is not None and reviewer_model is None and _names_model(template):
         raise ReviewLaunchError(
@@ -1053,6 +1065,7 @@ def _launch_review_tail(
     reviewed_finding: str | None = None,
     prose_capture_level: CaptureLevel,
     operator_note: str | None = None,
+    reviewer_actor: str | None = None,
 ) -> LaunchedReview:
     """Run, parse, and record either kind of review after its setup is known.
 
@@ -1139,6 +1152,7 @@ def _launch_review_tail(
             reviewed_contract=contract_sha256(
                 contract.encode("utf-8"), f"task {task_id} contract"
             ),
+            reviewer_actor=reviewer_actor,
         )
     except ReviewSubmitError as error:
         if error.artifact_ref is not None:
@@ -1162,6 +1176,7 @@ def _launch_review_tail(
         submitted.artifact_ref,
         diagnostics_note,
         prose_note,
+        submitted.actor_note,
     )
 
 
@@ -1175,6 +1190,8 @@ def _launch_finding_review(
     reviewer_model: str,
     reviewer_email: str,
     prose_capture_level: CaptureLevel,
+    *,
+    reviewer_actor: str | None = None,
 ) -> LaunchedReview:
     """Review verified finding artifacts and bind the resulting record to it."""
 
@@ -1267,6 +1284,7 @@ def _launch_finding_review(
         ),
         reviewed_finding=reviewed_finding,
         prose_capture_level=prose_capture_level,
+        reviewer_actor=reviewer_actor,
     )
 
 
@@ -1282,9 +1300,20 @@ def launch_review(
     *,
     journal_root: Path | None = None,
     reviewed_finding: str | None = None,
+    reviewer_actor: str | None = None,
 ) -> LaunchedReview:
-    """Review an exact commit or a hash-pinned finding and record the verdict."""
+    """Review an exact commit or a hash-pinned finding and record the verdict.
 
+    ``reviewer_actor`` is the declared reviewer actor ``--actor`` names —
+    checked before anything is read and before the reviewer command runs,
+    because a launched reviewer costs a paid run — and recorded into the
+    `reviewer` object, which is what schema 7 admits it into.
+    """
+
+    if reviewer_actor is not None:
+        refusal = reviewer_actor_refusal(reviewer_actor)
+        if refusal is not None:
+            raise ReviewLaunchError(refusal)
     sidecar_journal = journal_root
     journal_root = journal_root or project_root / ".agentmarshal" / "journal"
     try:
@@ -1317,6 +1346,7 @@ def launch_review(
             reviewer_model,
             reviewer_email,
             prose_capture_level,
+            reviewer_actor=reviewer_actor,
         )
     if commit is None or base is None:
         raise ReviewLaunchError("a commit review requires both commit and base")
@@ -1444,4 +1474,5 @@ def launch_review(
         reviewed_commit=resolved_commit,
         prose_capture_level=prose_capture_level,
         operator_note=diff_note,
+        reviewer_actor=reviewer_actor,
     )
