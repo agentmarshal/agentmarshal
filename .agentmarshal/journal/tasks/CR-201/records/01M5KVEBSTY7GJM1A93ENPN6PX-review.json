@@ -1,0 +1,61 @@
+{
+  "artifacts": [
+    {
+      "hash": "fa68b6ecf4fdb24711387129af2de158e3833cd84fc9cede374cbfed88b59793",
+      "ref": ".agentmarshal/journal/tasks/CR-201/artifacts/01M5KVEBSTY7GJM1A93ENPN6PX-review.md"
+    }
+  ],
+  "classes": {
+    "CR201-SIDECAR-UNPINNED-REVIEW": "contract-mismatch"
+  },
+  "created_at": "2026-10-23T07:43:40.858309Z",
+  "evidence": {
+    "CR201-SIDECAR-UNPINNED-REVIEW": "src/agentmarshal/cli.py:925-943 omits report.resolved_review; src/agentmarshal/journal/complete.py:275-282 consequently selects the latest review from a second read; openspec/changes/archive/2026-10-23-complete-uses-gate-review/design.md:61-71 explicitly says the sidecar concurrency window remains."
+  },
+  "findings": [
+    "CR201-SIDECAR-UNPINNED-REVIEW"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "6eb098ce79e0075e9232636546686611c22b3dc7",
+  "reviewed_contract": "27573cdf8e68ad86154640096a4c7bdf36a135cf5df317bca24d373d9201f10a",
+  "reviewer": {
+    "email": "auto-review-openai@agent.example.invalid",
+    "model": "gpt-5.6-sol",
+    "role": "code-reviewer",
+    "vendor": "openai"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-201",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "Confirmed the sidecar call omits resolved_review, the fallback reselects reviews[-1], and the design records the remaining concurrency window.",
+        "what": "Read-only inspection with rg, sed, and numbered source listings"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "Full CI sequence",
+        "why": "The coordinator supplied its passing result for the reviewed commit; the read-only snapshot has no Git metadata or prepared virtual environment."
+      }
+    ],
+    "read": [
+      ".agentmarshal/journal/tasks/CR-201/contract.md",
+      "docs/adr/ADR-0007-operator-acceptance.md",
+      "docs/adr/ADR-0016-the-lifecycle-of-review-findings.md",
+      "docs/threat-model.md",
+      "src/agentmarshal/journal/gate.py",
+      "src/agentmarshal/journal/complete.py",
+      "src/agentmarshal/cli.py",
+      "tests/test_complete_dispositions.py",
+      "tests/test_gate.py",
+      "openspec/changes/archive/2026-10-23-complete-uses-gate-review/",
+      "openspec/specs/finding-lifecycle/spec.md"
+    ]
+  }
+}
