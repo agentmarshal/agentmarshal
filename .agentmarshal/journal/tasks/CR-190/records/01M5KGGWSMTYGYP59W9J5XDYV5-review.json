@@ -1,0 +1,39 @@
+{
+  "advisory_findings": [
+    "mark-masking-unspecified",
+    "stale-acknowledge-docstring",
+    "sidecar-read-untested",
+    "help-verification-unperformed"
+  ],
+  "artifacts": [
+    {
+      "hash": "69531f48f7ec18da90eb04a89e938a0964d280464534bc6d77cb265fa77d2864",
+      "ref": ".agentmarshal/journal/tasks/CR-190/artifacts/01M5KGGWSMTYGYP59W9J5XDYV5-review.md"
+    }
+  ],
+  "classes": {
+    "help-verification-unperformed": "claim-accuracy",
+    "mark-masking-unspecified": "contract-mismatch",
+    "sidecar-read-untested": "test-gap",
+    "stale-acknowledge-docstring": "claim-accuracy"
+  },
+  "created_at": "2026-10-23T04:32:49.460520Z",
+  "findings": [],
+  "previous_review": "01M5KFJMQCDQ8E6YFEFFPM5S4S",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "b3ba0215780fa8a014046150df453357cfa93a80",
+  "reviewed_contract": "35f36962e3206608473bfca5003301084ecfe750c576920ef6861b6f1eb9d34e",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-190",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "approved"
+}
