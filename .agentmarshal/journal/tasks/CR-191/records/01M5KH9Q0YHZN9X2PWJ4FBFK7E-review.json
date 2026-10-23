@@ -1,0 +1,35 @@
+{
+  "advisory_findings": [
+    "A1-ran-side-silent-when-nothing-ran",
+    "A2-unreachable-absent-session-actor"
+  ],
+  "artifacts": [
+    {
+      "hash": "95a683370dcdf66e1679cd855641de1fb003ae57ddd096ed5056234b91b3520f",
+      "ref": ".agentmarshal/journal/tasks/CR-191/artifacts/01M5KH9Q0YHZN9X2PWJ4FBFK7E-review.md"
+    }
+  ],
+  "classes": {
+    "A1-ran-side-silent-when-nothing-ran": "style",
+    "A2-unreachable-absent-session-actor": "claim-accuracy"
+  },
+  "created_at": "2026-10-23T04:46:22.750061Z",
+  "findings": [],
+  "previous_review": "01M5KGCTNF4CPBP796YEXT3XEJ",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "8691817adf50c5e8449bd44e5aa7c967fae74e9d",
+  "reviewed_contract": "22aa9b2d393a797ab164c9798475a197a9adaa4f609857cf8844b6d893a6b907",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-191",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "approved"
+}
