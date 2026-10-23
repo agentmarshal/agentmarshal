@@ -13,14 +13,20 @@ The name must be a shared extension the working tree declares — a
 ``<name>.toml`` entry or a ``<name>/`` directory — and the reason must
 pass the parser's own rule, each checked with the existing file before
 the task is opened, so an early refusal writes nothing. The rewrite is
-textual — there is no TOML writer to add — an ``on`` entry's table
-replaced or a new one appended; the new text is verified before the
-task exists — it must parse to the old text everywhere but the one
-switch, under a placeholder task id — and verified again under the
-opened task's real id before the file is swapped in atomically; a
-failure once the task is opened is reported on one line naming it. In
-a sidecar the command refuses: an operational CR's force is the gate
-lane that admits its diff, and a sidecar gate decides no merge.
+textual — there is no TOML writer to add — an ``on`` entry has the
+switch's own key/value lines inside its table replaced, every other
+key and line kept, or a new table is appended; the new text is
+verified before the task exists — it must parse to the old text
+everywhere but the one switch, under a placeholder task id — and
+verified again under the opened task's real id before the file is
+swapped in atomically. An ``on`` entry whose table the command cannot
+bound on its own lines — a multi-line value inside it holding a line
+that reads as a table header — is refused before any task is opened;
+switching it off is then an edit of the file in an operational task,
+by hand. A failure once the task is opened is reported on one line
+naming it. In a sidecar the command refuses: an operational CR's
+force is the gate lane that admits its diff, and a sidecar gate
+decides no merge.
 """
 
 from __future__ import annotations
@@ -72,8 +78,24 @@ _COMMAND = "extension switch off"
 #: A TOML bare key — anything else is written as a quoted string.
 _BARE_KEY = re.compile(r"[A-Za-z0-9_-]+$")
 
-#: A line that opens any table — where one table's text ends.
-_ANY_TABLE_HEADER = re.compile(r"[ \t]*\[")
+#: A key in a table header — bare, a basic string or a literal string.
+_HEADER_KEY = r"(?:[A-Za-z0-9_-]+|\"(?:[^\"\\]|\\.)*\"|'[^']*')"
+
+#: A line that is a full TOML table or array-of-tables header by the
+#: grammar — the only line that ends a table's own text. A ``[``-led
+#: line inside a multi-line value is a continuation, not a header:
+#: ``["a", "b"],`` fails for its trailing comma, ``[1, 2]`` for the
+#: comma inside, so they do not bound the table. One that still
+#: matches — a last array element ``["x"]`` on its own line — does,
+#: and bounds the table short; the self-containedness check in
+#: ``_entry_span`` is what refuses that.
+_TABLE_HEADER = re.compile(
+    r"^[ \t]*\[\[?[ \t]*"
+    + _HEADER_KEY
+    + r"(?:[ \t]*\.[ \t]*"
+    + _HEADER_KEY
+    + r")*[ \t]*\]\]?[ \t]*(?:#.*)?$"
+)
 
 #: The task id the new text is verified under before the task exists —
 #: a ``CR-<n>`` of the valid form the journal's allocator never assigns.
@@ -200,20 +222,23 @@ def _entry_header(name: str) -> re.Pattern[str]:
 
 
 def _entry_span(lines: list[str], header: re.Pattern[str]) -> tuple[int, int] | None:
-    """The line span of the ``[switches.<name>]`` table's own text.
+    """The line span of the ``[switches.<name>]`` table, or ``None``.
 
     The table runs from its header line to the line before the next
-    table header or the file's end; the span returned ends at the
-    table's last content line, so the blank and comment lines that
-    trail it — the file's own spacing and notes — stay as they were.
-    ``None`` when zero lines or more than one open the table: an ``on``
-    entry the parse found can be carried in a form with no header — an
-    inline table or dotted keys under ``[switches]`` — and a duplicate
-    match can only be a line that is not a header at all, like one
-    inside a multi-line string. Either way there is no one table to
-    replace; and where the span is mis-detected — a ``[``-led line
-    inside a multi-line value is no header — ``_verify_rewrite`` is the
-    check that catches what the scanner cannot.
+    table header — a line that is a full TOML table or array-of-tables
+    header by the grammar, nothing shorter — or the file's end, and
+    everything between is its own: comments, blanks, and the key/value
+    lines of every key it carries. ``None`` when zero lines or more
+    than one open the table — an ``on`` entry the parse found can be
+    carried in a form with no header at all, an inline table or dotted
+    keys under ``[switches]``, and a second match can only be a
+    header-shaped line inside a multi-line value — and ``None`` when
+    the lines the span claims do not form a complete TOML document on
+    their own: a table's own lines are always a sequence of pairs, so a
+    span that ends inside a multi-line value — cut short by a
+    header-shaped line that is really a continuation, like a last
+    array element ``["x"]`` — leaves a value unclosed and is no bound
+    the command can trust.
     """
 
     matches = [
@@ -222,15 +247,108 @@ def _entry_span(lines: list[str], header: re.Pattern[str]) -> tuple[int, int] | 
     if len(matches) != 1:
         return None
     start = matches[0]
-    last = start
-    for index in range(start + 1, len(lines)):
-        line = lines[index]
-        if _ANY_TABLE_HEADER.match(line):
-            break
-        stripped = line.strip()
-        if stripped and not stripped.startswith("#"):
-            last = index
-    return start, last + 1
+    end = next(
+        (
+            index
+            for index in range(start + 1, len(lines))
+            if _TABLE_HEADER.match(lines[index].rstrip("\r"))
+        ),
+        len(lines),
+    )
+    try:
+        tomllib.loads(
+            "\n".join(line.removesuffix("\r") for line in lines[start + 1 : end])
+        )
+    except tomllib.TOMLDecodeError:
+        return None
+    return start, end
+
+
+def _key_pair(lines: list[str], lo: int, hi: int, key: str) -> tuple[int, int] | None:
+    """The line span of the pair assigning *key* inside ``[lo, hi)``.
+
+    The pair's first line is the one that opens with the key itself —
+    bare, or in either quoted spelling — followed by ``=``; its last
+    line is the one the value completes on, found by parsing the
+    line's prefix: the smallest ``lines[start:end]`` that parses as a
+    TOML document is exactly the pair, since a value an earlier cut
+    leaves open — an array, an inline table, a multi-line string —
+    does not parse, and nothing continues a pair past its line. An
+    ``on`` entry's ``state`` and ``task`` are strings, so each is one
+    pair somewhere in the table's own lines; ``None`` means there is
+    not exactly one line the key could assign on — zero, or more than
+    one where a line inside a multi-line value only reads as the key —
+    or that the one found will not bound, and either way the entry is
+    one the command cannot rewrite on its own.
+    """
+
+    pattern = re.compile(r"^[ \t]*(?:" + _key_spellings(key) + r")[ \t]*=")
+    matches = [
+        index
+        for index in range(lo, hi)
+        if pattern.match(lines[index].removesuffix("\r"))
+    ]
+    if len(matches) != 1:
+        return None
+    start = matches[0]
+    for end in range(start + 1, hi + 1):
+        try:
+            tomllib.loads(
+                "\n".join(line.removesuffix("\r") for line in lines[start:end])
+            )
+        except tomllib.TOMLDecodeError:
+            continue
+        return start, end
+    return None
+
+
+def _entry_body(
+    lines: list[str],
+    lo: int,
+    hi: int,
+    task_id: str,
+    reason: str,
+    crlf: bool,
+) -> list[str] | None:
+    """The table's own lines with the switch's pairs rewritten — or ``None``.
+
+    ``state``'s pair is replaced by ``state = "off"`` and ``task``'s by
+    the opened task's id with ``reason`` added after it — every other
+    line of the table, keys the entry carries beyond the switch's own
+    included, stays as it was. ``None`` when either pair cannot be
+    located — the entry is then one the command cannot rewrite on its
+    own lines.
+    """
+
+    suffix = "\r" if crlf else ""
+    spans: dict[int, tuple[int, list[str]]] = {}
+    for key, replacement in (
+        ("state", ['state = "off"']),
+        (
+            "task",
+            [f"task = {_toml_string(task_id)}", f"reason = {_toml_string(reason)}"],
+        ),
+    ):
+        pair = _key_pair(lines, lo, hi, key)
+        if pair is None:
+            return None
+        if any(start < pair[1] and pair[0] < end for start, (end, _) in spans.items()):
+            # One located pair inside another's lines — a key-shaped
+            # line inside a multi-line value. There is no safe rewrite.
+            return None
+        spans[pair[0]] = (pair[1], replacement)
+    out: list[str] = []
+    index = lo
+    while index < hi:
+        found = spans.get(index)
+        if found is not None:
+            end, replacement = found
+            out.extend(line + suffix for line in replacement)
+            index = end
+        else:
+            out.append(lines[index])
+            index += 1
+    return out
 
 
 def _entry_lines(task_id: str, reason: str) -> list[str]:
@@ -249,14 +367,18 @@ def _switches_text(
     span: tuple[int, int] | None,
     task_id: str,
     reason: str,
-) -> str:
-    """The file's new text: the off entry in, everything else as it was.
+) -> str | None:
+    """The file's new text, or ``None`` when the rewrite cannot be built.
 
     *text* is ``None`` when the file does not exist — it is created
     with ``format = 1`` and a ``[switches]`` table. *span* is the
-    ``on`` entry's table to replace — the header line stays as it was
-    found — and when it is ``None`` the new table is appended after the
-    file's existing content, on the file's own line-ending convention.
+    ``on`` entry's table: its ``state`` and ``task`` key/value lines
+    are replaced by the off entry's — the header line, every other key
+    the entry carries and every other line stay as they were — and
+    when the table's pairs cannot be located on their own lines the
+    result is ``None``: the entry is refused, not corrupted. When
+    *span* is ``None`` the new table is appended after the file's
+    existing content, on the file's own line-ending convention.
     """
 
     if text is None:
@@ -270,7 +392,9 @@ def _switches_text(
     if span is not None:
         lines = text.split("\n")
         start, end = span
-        body = [line + ("\r" if crlf else "") for line in _entry_lines(task_id, reason)]
+        body = _entry_body(lines, start + 1, end, task_id, reason, crlf)
+        if body is None:
+            return None
         return "\n".join(lines[: start + 1] + body + lines[end:])
     eol = "\r\n" if crlf else "\n"
     addition = (
@@ -295,17 +419,17 @@ def _verify_rewrite(
 ) -> str | None:
     """Why *new_text* is not *text* with only the switch changed — or ``None``.
 
-    The line scanner the rewrite stands on cannot tell a table header
-    from a ``[``-led line inside a multi-line value, so the new text is
-    trusted only as far as TOML itself proves it: the parsed new text
-    must equal the parsed old text everywhere except the one ``switches``
-    entry — which must carry exactly the off entry — and the shared
-    parser must accept the file and read that entry back as ``off`` with
-    *task_id* and *reason*. A missing file's old text is the empty
-    document, checked against the skeleton the command creates. A
-    mis-detected span, an ``on`` entry with no header to find, anything
-    that makes the new text differ where the switch does not reach is
-    named here.
+    The new text is trusted only as far as TOML itself proves it: the
+    parsed new text must equal the parsed old text everywhere, with
+    the one ``switches`` entry carrying the keys it carried plus the
+    off entry's ``state``, ``task`` and ``reason`` — so a key the
+    rewrite dropped shows here — and the shared parser must accept
+    the file and read that entry back as ``off`` with *task_id* and
+    *reason*. A missing file's old text is the empty document, checked
+    against the skeleton the command creates. A mis-detected span, an
+    ``on`` entry with no header to find, a rewritten value that is not
+    what the lines claimed — anything that makes the new text differ
+    where the switch does not reach — is named here.
     """
 
     try:
@@ -315,11 +439,9 @@ def _verify_rewrite(
     expected: dict[str, Any] = (
         tomllib.loads(text) if text is not None else {"format": 1}
     )
-    expected.setdefault("switches", {})[name] = {
-        "state": "off",
-        "task": task_id,
-        "reason": reason,
-    }
+    expected_entry = dict(expected.get("switches", {}).get(name) or {})
+    expected_entry.update({"state": "off", "task": task_id, "reason": reason})
+    expected.setdefault("switches", {})[name] = expected_entry
     if new_data != expected:
         return "the rewritten text changed more than the switch"
     try:
@@ -513,26 +635,34 @@ def _run_off(args: argparse.Namespace, stderr: TextIO) -> int:
         span = _entry_span(text.split("\n"), _entry_header(args.name))
     # The rewrite is produced and verified before the task exists, under
     # a placeholder task id of the valid form: a file whose text the
-    # command cannot carry the switch through — a mis-detected span, an
-    # `on` entry with no table to replace — is refused here, so nothing
-    # is written and no task is opened; switching it off is then an edit
-    # of the file in an operational task, by hand.
-    new_text = _switches_text(text, args.name, span, _PLACEHOLDER_TASK, args.reason)
-    refusal = _verify_rewrite(
-        new_text,
-        text,
-        args.name,
-        _PLACEHOLDER_TASK,
-        args.reason,
-        switches_file,
-        names,
-    )
+    # command cannot carry the switch through — an `on` entry whose
+    # table it cannot bound on its own lines, a mis-detected span — is
+    # refused here, so nothing is written and no task is opened;
+    # switching it off is then an edit of the file in an operational
+    # task, by hand.
+    new_text: str | None = None
+    if current is None or span is not None:
+        new_text = _switches_text(text, args.name, span, _PLACEHOLDER_TASK, args.reason)
+    if new_text is None:
+        refusal: str | None = "its table could not be bounded on its own lines"
+    else:
+        checked = _verify_rewrite(
+            new_text,
+            text,
+            args.name,
+            _PLACEHOLDER_TASK,
+            args.reason,
+            switches_file,
+            names,
+        )
+        refusal = (
+            None if checked is None else f"the rewrite could not be verified: {checked}"
+        )
     if refusal is not None:
         print(
             f"{_COMMAND}: {escape_for_display(str(switches_file))}: the "
             f"entry for '{escape_for_display(args.name)}' must be "
             "switched off by editing the file in an operational task — "
-            f"the rewrite could not be verified: "
             f"{escape_for_display(refusal)}",
             file=stderr,
         )
@@ -553,14 +683,18 @@ def _run_off(args: argparse.Namespace, stderr: TextIO) -> int:
     # to the opened task's id — and the same verification run over it
     # before the file is replaced.
     new_text = _switches_text(text, args.name, span, opened.task_id, args.reason)
-    refusal = _verify_rewrite(
-        new_text,
-        text,
-        args.name,
-        opened.task_id,
-        args.reason,
-        switches_file,
-        names,
+    refusal = (
+        "its table could not be bounded on its own lines"
+        if new_text is None
+        else _verify_rewrite(
+            new_text,
+            text,
+            args.name,
+            opened.task_id,
+            args.reason,
+            switches_file,
+            names,
+        )
     )
     if refusal is not None:
         print(
@@ -571,6 +705,7 @@ def _run_off(args: argparse.Namespace, stderr: TextIO) -> int:
             file=stderr,
         )
         return 1
+    assert new_text is not None
     try:
         _write_switches(project_root, switches_file, new_text)
     except OSError as error:

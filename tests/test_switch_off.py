@@ -290,6 +290,71 @@ def test_an_existing_on_entrys_table_is_replaced_and_the_files_other_content_is_
     )
 
 
+def test_an_on_entrys_other_keys_are_kept_through_the_rewrite(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: an on entry's other keys are kept through the rewrite.
+
+    Keys beyond state/task/reason pass unread, so the parser accepts the
+    entry — and a `[`-led continuation line inside the array, like
+    `["nested", "array"],`, is not a table header: the entry is rewritten
+    in place and the extra key's value is as it was.
+    """
+    repo = stage_helpers._project(tmp_path, monkeypatch)
+    _extension(repo)
+    _switches_file(repo).write_text(
+        "format = 1\n\n[switches]\n\n"
+        "[switches.openspec]\n"
+        'state = "on"\n'
+        'task = "CR-1"\n'
+        "extra = [\n"
+        '  ["nested", "array"],\n'
+        '  ["lines"],\n'
+        "]\n",
+        encoding="utf-8",
+    )
+
+    assert _switch_off() == 0
+
+    (task,) = _task_dirs(repo)
+    entry = _switches(repo)["openspec"]
+    assert entry["state"] == "off"
+    assert entry["task"] == task.name
+    assert entry["reason"] == _REASON
+    # The extra key's multi-line array survives intact.
+    assert entry["extra"] == [["nested", "array"], ["lines"]]
+
+
+def test_an_on_entry_the_command_cannot_bound_on_its_own_lines_is_refused_before_any_task_is_opened(  # noqa: E501
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: an on entry the command cannot bound on its own lines is refused before any task is opened."""  # noqa: E501
+    repo = stage_helpers._project(tmp_path, monkeypatch)
+    _extension(repo)
+    # A last array element `["x"]` on its own line reads as a table
+    # header — the entry's table cannot be bounded on its own lines, so
+    # the refusal lands before any task is opened and nothing is written.
+    original = (
+        "format = 1\n\n[switches]\n\n"
+        "[switches.openspec]\n"
+        'state = "on"\n'
+        'task = "CR-1"\n'
+        "extra = [\n"
+        '  "a",\n'
+        '  ["x"]\n'
+        "]\n"
+    )
+    _switches_file(repo).write_text(original, encoding="utf-8")
+
+    assert _switch_off() == 1
+
+    captured = capsys.readouterr()
+    assert "switches.toml" in captured.err
+    assert "editing the file in an operational task" in captured.err
+    assert _task_dirs(repo) == []
+    assert _switches_file(repo).read_text(encoding="utf-8") == original
+
+
 def test_a_new_entry_is_appended_after_the_files_existing_content(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -463,49 +528,6 @@ def test_a_value_that_could_forge_a_line_is_escaped_on_display(
 
 
 # -- beyond the spec ------------------------------------------------------------
-
-
-def test_an_on_entry_carrying_a_multi_line_nested_array_is_not_corrupted(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """An `on` entry with a multi-line nested array is rewritten or refused.
-
-    Keys beyond state/task/reason pass unread, so the parser accepts the
-    entry — but a `[`-led continuation line inside the array is where a
-    line scanner can mistake the table's end. The command either replaces
-    the table correctly or refuses before any task is opened; in both
-    cases there is no orphan task and no corrupted file.
-    """
-    repo = stage_helpers._project(tmp_path, monkeypatch)
-    _extension(repo)
-    original = (
-        "format = 1\n\n[switches]\n\n"
-        "[switches.openspec]\n"
-        'state = "on"\n'
-        'task = "CR-1"\n'
-        "extra = [\n"
-        '  ["nested", "array"],\n'
-        '  ["lines"],\n'
-        "]\n"
-    )
-    _switches_file(repo).write_text(original, encoding="utf-8")
-
-    result = _switch_off()
-
-    if result == 0:
-        # The table was replaced correctly — the off entry reads back.
-        (task,) = _task_dirs(repo)
-        assert _switches(repo)["openspec"] == {
-            "state": "off",
-            "task": task.name,
-            "reason": _REASON,
-        }
-    else:
-        # Refused before any task was opened: the file stands as it was.
-        assert result == 1
-        assert "switches.toml" in capsys.readouterr().err
-        assert _task_dirs(repo) == []
-        assert _switches_file(repo).read_text(encoding="utf-8") == original
 
 
 def test_every_path_the_command_prints_is_escaped_on_display(

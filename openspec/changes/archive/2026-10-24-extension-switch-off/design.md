@@ -82,31 +82,45 @@ command resolves its journal placement with.
   kept and only what the switch needs changes. An `on` entry's
   `[switches.<name>]` table — the header line in every spelling TOML
   allows for the two keys, whitespace and trailing comment included —
-  has its key/value lines replaced; the header line and whatever trails
-  the table's last content line — blank lines, comments — stay. Any
-  other extension gains a `[switches.<name>]` table appended after the
-  file's existing content; a missing file is created as `format = 1`, a
-  `[switches]` table and the entry. `reason` is quoted by
-  `_toml_string` — every character a TOML basic string must escape is
-  escaped — and `task` carries the opened task's id.
+  runs to the next line that is a full table or array-of-tables header
+  by the grammar, so a `[`-led continuation inside a multi-line value —
+  `["a", "b"],`, `[1, 2]` — stays part of the entry. The bound is then
+  proven, not trusted: the table's own lines must parse as a TOML
+  document on their own — a table's own lines are always a sequence of
+  pairs, so a bound that lands inside a multi-line value, like a last
+  array element `["x"]` that still reads as a header, leaves a value
+  unclosed and fails. Within the table the `state` and `task` pairs are
+  located by key spelling, each bounded by the smallest prefix of its
+  lines that parses, and replaced in place — `state = "off"`, `task`
+  with the opened task's id, `reason` added after it — while every
+  other key and line of the entry stays. An entry that cannot be
+  bounded — a header-shaped line inside a multi-line value, an `on`
+  entry carried in a form with no table header, a `state` or `task`
+  that is not exactly one pair — is refused before the task is opened,
+  saying the extension is switched off by editing the file in an
+  operational task. Any other extension gains a `[switches.<name>]`
+  table appended after the file's existing content; a missing file is
+  created as `format = 1`, a `[switches]` table and the entry.
+  `reason` is quoted by `_toml_string` — every character a TOML basic
+  string must escape is escaped — and `task` carries the opened task's
+  id.
 - **The new text is verified before the task is opened and again
-  before the file is replaced.** A line scanner cannot tell a table
-  header from a `[`-led line inside a multi-line value, so the
-  rewritten text is trusted only as far as TOML itself proves it. It
-  is built first under a placeholder task id — `CR-0`, a `CR-<n>` of
-  the valid form the allocator never assigns — and accepted only where
-  `tomllib.loads(new)` equals `tomllib.loads(old)` — the empty
-  document where the file is missing — everywhere except the one
-  `switches` entry, which must be exactly the off entry, and where
-  `parse_switches` reads the entry back as `off` with the placeholder
-  task and the reason. Any mismatch — a mis-detected span, an `on`
-  entry carried in a form with no table header to replace, anything —
-  refuses before the task is opened, on one line naming the file and
-  saying the entry must be switched off by editing the file in an
-  operational task, writing nothing. After the open, only the `task`
-  value's string changes to the real id and the same check runs again
-  before the replace; a failure there is reported like any other
-  post-open failure.
+  before the file is replaced.** The rewritten text is trusted only
+  as far as TOML itself proves it — the safety net behind every line
+  scan the rewrite stands on. It is built first under a placeholder
+  task id — `CR-0`, a `CR-<n>` of the valid form the allocator never
+  assigns — and accepted only where `tomllib.loads(new)` equals
+  `tomllib.loads(old)` — the empty document where the file is missing —
+  everywhere, with the one `switches` entry carrying the keys it
+  carried plus the off entry's `state`, `task` and `reason` — so a key
+  the rewrite dropped shows there — and where `parse_switches` reads
+  the entry back as `off` with the placeholder task and the reason.
+  Any mismatch refuses before the task is opened, on one line naming
+  the file and saying the entry must be switched off by editing the
+  file in an operational task, writing nothing. After the open, only
+  the `task` value's string changes to the real id and the same check
+  runs again before the replace; a failure there is reported like any
+  other post-open failure.
 - **The replace is atomic and lands beside the file.** A temporary
   file is created in `.agentmarshal/` — the switches file's own
   directory, the same-directory rule `_write_grants` follows — written,
