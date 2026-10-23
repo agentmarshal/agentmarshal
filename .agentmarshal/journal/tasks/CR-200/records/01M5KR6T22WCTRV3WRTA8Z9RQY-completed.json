@@ -1,0 +1,11 @@
+{
+  "completed_commit": "4eea87a90fe4058ecbecbb9d8bb6c2bf63c6f8ca",
+  "created_at": "2026-10-23T06:47:07.586681Z",
+  "record_type": "completed",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "schema": 3,
+  "source": "live",
+  "task": "CR-200",
+  "tool_version": "0.5.0.dev0"
+}
