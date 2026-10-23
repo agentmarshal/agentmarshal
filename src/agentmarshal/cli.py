@@ -18,6 +18,7 @@ from agentmarshal import (
     extension_trust,
     outbox,
     record_check,
+    stages,
     steps,
 )
 from agentmarshal.doctor import run_doctor
@@ -468,6 +469,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     outbox.register(subparsers)
     steps.register(subparsers)
+    stages.register(subparsers)
     extension_trust.register(subparsers)
     acknowledge.register(subparsers)
     agree.register(subparsers)
@@ -1569,6 +1571,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return outbox.run(args, sys.stderr)
     if args.command == "step":
         return steps.run(args, sys.stderr)
+    if args.command == "stage":
+        return stages.run(args, sys.stderr)
     if args.command == "extension":
         return extension_trust.run(args, sys.stderr)
     if args.command == "agree":
