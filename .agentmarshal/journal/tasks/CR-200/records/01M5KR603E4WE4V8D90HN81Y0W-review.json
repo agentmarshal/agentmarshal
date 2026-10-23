@@ -1,0 +1,50 @@
+{
+  "artifacts": [
+    {
+      "hash": "e8564a31b8393ad44c0498c38a1e862290273cbc62eda2aece785e6b10009ae3",
+      "ref": ".agentmarshal/journal/tasks/CR-200/artifacts/01M5KR603E4WE4V8D90HN81Y0W-review.md"
+    }
+  ],
+  "created_at": "2026-10-23T06:46:41.006403Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "4eea87a90fe4058ecbecbb9d8bb6c2bf63c6f8ca",
+  "reviewed_contract": "7fa080a2c590c0e57e0269da203292c84946db57dae334e5061d1e179b6564d2",
+  "reviewer": {
+    "email": "auto-review-openai@agent.example.invalid",
+    "model": "gpt-5.6-sol",
+    "role": "code-reviewer",
+    "vendor": "openai"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-200",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "archive present; active change absent; all eight delta scenarios have matching scenario-named tests; required output pins are present",
+        "what": "archive-presence, active-change-absence, scenario-heading, test-docstring, and output-pin consistency checks"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "full CI sequence",
+        "why": "The coordinator supplied its passing result for the exact reviewed commit; the snapshot has no Git worktree metadata and the review was required to remain read-only."
+      }
+    ],
+    "read": [
+      ".agentmarshal/journal/tasks/CR-200/contract.md",
+      "docs/adr/ADR-0018-governing-the-contract.md",
+      "docs/threat-model.md",
+      "src/agentmarshal/journal/status_view.py",
+      "tests/test_status_assignment.py",
+      "tests/test_status_view.py",
+      "openspec/changes/archive/2026-10-23-status-assignment-none-ran/",
+      "openspec/specs/contract-governance/spec.md"
+    ]
+  }
+}
