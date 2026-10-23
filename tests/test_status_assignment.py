@@ -5,7 +5,9 @@ ran: a schema-3 header's `implementers` and `reviewers` — the fallback
 order — and its `independence` rules print beside the implementer
 sessions and the reviews, each ran actor outside its role's declared
 list marked as not declared for the role, each absent value shown as
-absent and never derived. A contract declaring none of the three fields
+absent and never derived. A declared list whose ran side is empty says
+so with a `(none)` line where the group's lines would stand — the scope
+section's mark (CR-200). A contract declaring none of the three fields
 leaves the detail view byte for byte unchanged.
 """
 
@@ -249,6 +251,7 @@ def test_an_undeclared_field_is_shown_as_not_declared(
         "- reviewers: (not declared)\n"
         "- independence: (not declared), "
         "reviewer-not-writer (always checked by the gate)\n"
+        "- implementer sessions: (none)\n"
     ) in out
 
 
@@ -326,6 +329,78 @@ def test_a_contract_declaring_none_prints_todays_view_byte_for_byte(
     schema_3_out = capsys.readouterr().out
     assert "Assignment" not in schema_3_out
     assert schema_3_out == schema_1_out
+
+
+# -- what ran: the empty side says none --------------------------------------
+
+
+def test_a_declared_implementers_list_with_no_session_recorded_says_none(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a declared implementers list with no session recorded says none —
+    the ran side states the absence as the scope prints `(none)` for an
+    empty scope."""
+
+    repo = _repo(tmp_path, monkeypatch, _contract3(implementers=["devin"]))
+    _open(repo)
+
+    assert main(["status", "CR-001"]) == 0
+    out = capsys.readouterr().out
+    assert (
+        "Assignment:\n"
+        "- implementers: devin\n"
+        "- reviewers: (not declared)\n"
+        "- independence: (not declared), "
+        "reviewer-not-writer (always checked by the gate)\n"
+        "- implementer sessions: (none)\n"
+        "Records:\n"
+    ) in out
+
+
+def test_a_declared_reviewers_list_with_no_review_recorded_says_none(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a declared reviewers list with no review recorded says none —
+    the line stands where the review lines would, after the session
+    lines."""
+
+    repo = _repo(
+        tmp_path,
+        monkeypatch,
+        _contract3(implementers=["devin"], reviewers=["qa-lead"]),
+    )
+    _open(repo)
+    _session(repo, "00000000000000000000000002", "2026-01-02T00:00:00Z")
+
+    assert main(["status", "CR-001"]) == 0
+    out = capsys.readouterr().out
+    assert (
+        "- implementer session 00000000000000000000000002: actor=devin "
+        "vendor=devin-vendor model=devin-model\n"
+        "- reviews: (none)\n"
+        "Records:\n"
+    ) in out
+
+
+def test_a_side_with_no_declared_list_prints_no_none_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a side with no declared list prints no (none) line —
+    `(not declared)` already states that side has no assignment."""
+
+    repo = _repo(tmp_path, monkeypatch, _contract3(independence=["distinct-vendor"]))
+    _open(repo)
+
+    assert main(["status", "CR-001"]) == 0
+    out = capsys.readouterr().out
+    assert (
+        "Assignment:\n"
+        "- implementers: (not declared)\n"
+        "- reviewers: (not declared)\n"
+        "- independence: distinct-vendor, "
+        "reviewer-not-writer (always checked by the gate)\n"
+        "Records:\n"
+    ) in out
 
 
 # -- what ran: implementer sessions ------------------------------------------
@@ -586,7 +661,9 @@ def test_a_session_of_another_role_prints_no_implementer_session_line(
     assert main(["status", "CR-001"]) == 0
     out = capsys.readouterr().out
     assert "Assignment:\n" in out
-    assert "implementer session" not in out
+    # No implementer session ran, and the declared list says so.
+    assert "- implementer session 00000000000000000000000002" not in out
+    assert "- implementer sessions: (none)\n" in out
     # The session still renders its own record line below.
     assert "- 00000000000000000000000002 session 2026-01-02T00:00:00Z\n" in out
 
