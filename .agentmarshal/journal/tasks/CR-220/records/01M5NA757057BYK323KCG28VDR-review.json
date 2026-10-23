@@ -1,0 +1,103 @@
+{
+  "advisory_findings": [
+    "SWITCHOFF-REPLACE-DROPS-FILE-MODE"
+  ],
+  "artifacts": [
+    {
+      "hash": "5cc1b3d971fa441b8981b709305ad24ac81eae70750294f34a905c675a579395",
+      "ref": ".agentmarshal/journal/tasks/CR-220/artifacts/01M5NA757057BYK323KCG28VDR-review.md"
+    }
+  ],
+  "classes": {
+    "SWITCHOFF-BROKEN-EXTENSION-UNSWITCHABLE": "contract-mismatch",
+    "SWITCHOFF-NAMESET-DIVERGES-FROM-READERS": "correctness",
+    "SWITCHOFF-REPLACE-DROPS-FILE-MODE": "correctness"
+  },
+  "created_at": "2026-10-23T21:21:07.808108Z",
+  "evidence": {
+    "SWITCHOFF-BROKEN-EXTENSION-UNSWITCHABLE": "src/agentmarshal/switch_off.py:620-635 refuses on any ExtensionManifestError from read_extension_manifest; src/agentmarshal/journal/extensions.py:623-634 makes a directory-form manifest whose declared bin/ path is missing, or a manifest in both forms, exactly such an error; src/agentmarshal/stages.py:606-609 shows the same error aborts `stage run`; docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md:282 'otherwise a broken extension blocks its own switching off'; openspec/specs/extension-stages/spec.md:497 requires doctor to show the switched-off line for an extension whose manifest cannot be read",
+    "SWITCHOFF-NAMESET-DIVERGES-FROM-READERS": "src/agentmarshal/switch_off.py:147-177 filters candidates through read_extension_manifest and src/agentmarshal/switch_off.py:649 feeds that narrowed set to parse_switches, which refuses an entry naming anything outside it (src/agentmarshal/switches.py:120-123); src/agentmarshal/doctor.py:488-511 and src/agentmarshal/stages.py:215-260 keep such names, the latter commenting 'though a switches entry may still name it'; the diff's own tests/test_switch_off.py::test_a_switch_naming_a_symlinked_extension_is_refused_naming_the_file asserts the refusal of a file that doctor reads without complaint",
+    "SWITCHOFF-REPLACE-DROPS-FILE-MODE": "src/agentmarshal/switch_off.py:552-559 — tempfile.mkstemp (documented mode 0600) then os.replace over the git-tracked .agentmarshal/switches.toml, with no chmod anywhere in src/agentmarshal (grep -rn 'chmod' src/agentmarshal returns nothing)"
+  },
+  "findings": [
+    "SWITCHOFF-BROKEN-EXTENSION-UNSWITCHABLE",
+    "SWITCHOFF-NAMESET-DIVERGES-FROM-READERS"
+  ],
+  "previous_review": "01M5N8PKXKWBDKE49DBNM265KN",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "bd7a3f6ea7ff81a3f5bd1427dd7916c42e8cf302",
+  "reviewed_contract": "eac977455545bec574ded16d2a40d5f75497abebc81507f930579d183992479d",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-220",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "19 scenarios; grep -o 'Scenario: .*' tests/test_switch_off.py printed 21 docstring lines covering all 19 unique headings (two scenarios demonstrated twice)",
+        "what": "grep -c '^#### Scenario: ' openspec/changes/archive/2026-10-24-extension-switch-off/specs/extension-stages/spec.md"
+      },
+      {
+        "result": "only doctor._extension_names (doctor.py:488) and stages._base_extensions (stages.py:215) enumerate shared extension names; neither filters candidates through read_extension_manifest",
+        "what": "grep -rn 'read_switches|shared_extension_names|extension_names' src/agentmarshal/ (excluding switch_off)"
+      },
+      {
+        "result": "line 282 — 'otherwise a broken extension blocks its own switching off'",
+        "what": "grep -n 'blocks its own switching off' docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md"
+      },
+      {
+        "result": "line 497 — doctor shows the switched-off line on the line of an extension whose manifest cannot be read",
+        "what": "grep -n 'manifest cannot be read' openspec/specs/extension-stages/spec.md"
+      },
+      {
+        "result": "switch_off.py:552/559 mkstemp + os.replace with no chmod; no mode-preserving helper exists in the package",
+        "what": "grep -rn 'os.replace|mkstemp|chmod' src/agentmarshal/"
+      },
+      {
+        "result": "write_record uses _create_exclusive, not os.replace — so the two tests that monkeypatch os.replace do not disturb open_task",
+        "what": "grep -n 'def write_record' -A 40 src/agentmarshal/journal/records.py"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "the snapshot has no virtualenv and no installed pytest/ruff/mypy, and executing Python in this session was not permitted; the coordinator's statement that the full CI sequence passed on this commit is taken as given and no tool-failure claim is made"
+      },
+      {
+        "what": "dynamic probing of _entry_span/_key_pair/_switches_text against hand-built switches.toml variants",
+        "why": "script execution was refused; the rewrite logic was traced by hand instead, and the two blocking findings do not depend on it"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/switch_off.py",
+      "src/agentmarshal/switches.py",
+      "src/agentmarshal/extension_trust.py",
+      "src/agentmarshal/journal/open_task.py",
+      "src/agentmarshal/journal/display.py",
+      "src/agentmarshal/journal/extensions.py (_validate_name, _manifest_candidate, read_extension_manifest)",
+      "src/agentmarshal/journal/contracts.py (parse_contract_text, reject_control_characters, validate_scope_entry)",
+      "src/agentmarshal/journal/records.py (forges_rendered_text, write_record)",
+      "src/agentmarshal/journal/placement.py (Placement, resolve_placement)",
+      "src/agentmarshal/doctor.py (_extension_names, the switches section)",
+      "src/agentmarshal/stages.py (_base_extensions, _base_switches)",
+      "src/agentmarshal/cli.py (_run_open)",
+      "tests/test_switch_off.py",
+      "tests/test_stages.py (helpers), tests/test_placement.py (_host_and_sidecar)",
+      "openspec/specs/extension-stages/spec.md",
+      "openspec/changes/archive/2026-10-24-extension-switch-off/ (proposal.md, design.md, tasks.md, delta spec)",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md section E",
+      "docs/adr/ADR-0014-where-things-live.md (switches.toml placement)",
+      "docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md sections 7 and 8",
+      "AGENTS.md, pyproject.toml"
+    ]
+  }
+}

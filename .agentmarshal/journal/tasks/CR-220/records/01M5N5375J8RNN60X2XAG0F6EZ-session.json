@@ -1,0 +1,23 @@
+{
+  "activity": "implementation",
+  "actor": "devin/swe-2-max",
+  "created_at": "2026-10-23T19:51:35.858490Z",
+  "outcome": "implemented",
+  "record_type": "session",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "role": "implementer",
+  "schema": 3,
+  "source": "live",
+  "task": "CR-220",
+  "tokens": {
+    "cache": 2449408,
+    "input": 58610,
+    "output": 24928
+  },
+  "tool_version": "0.6.0.dev0",
+  "usage": {
+    "method": "reported",
+    "provider": "devin"
+  }
+}

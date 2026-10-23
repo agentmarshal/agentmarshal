@@ -1,0 +1,77 @@
+{
+  "artifacts": [
+    {
+      "hash": "8ae2b190f40add960571366fd45441502d6abd956d87affa6f23e8cd686cf2d5",
+      "ref": ".agentmarshal/journal/tasks/CR-220/artifacts/01M5N7V5DZ6A7PENGBWKV505E2-review.md"
+    }
+  ],
+  "classes": {
+    "CR220-F1": "contract-mismatch"
+  },
+  "created_at": "2026-10-23T20:39:37.663817Z",
+  "evidence": {
+    "CR220-F1": "src/agentmarshal/switch_off.py:143 adds every symlink entry to the declared-name set, and src/agentmarshal/switch_off.py:600 accepts membership without calling the manifest reader; src/agentmarshal/journal/extensions.py:485-510 instead refuses symlinked manifest paths."
+  },
+  "findings": [
+    "CR220-F1"
+  ],
+  "previous_review": "01M5N6EDBGNFXB355GC46G7WH5",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "4c0fffb0cbed38a1f3f194664e9d08d71da9d9e0",
+  "reviewed_contract": "c7e6129331ab0326b32b6900df15f44d69fcd98950c164c92271cce971e693ef",
+  "reviewer": {
+    "email": "auto-review-openai@agent.example.invalid",
+    "model": "gpt-5.6-sol",
+    "role": "code-reviewer",
+    "vendor": "openai"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-220",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "All 19 scenarios have correspondingly named test docstrings.",
+        "what": "Compared delta-spec scenario headings with test docstrings using rg"
+      },
+      {
+        "result": "The proposal, design, tasks, ADDED requirements, archive location, and synchronized requirements are present.",
+        "what": "Inspected the archived change and active extension-stages specification"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "Full CI sequence",
+        "why": "The coordinator reports it passed on the reviewed commit, and uv is unavailable in this review environment."
+      },
+      {
+        "what": "Focused end-to-end symlink reproduction",
+        "why": "The read-only environment provides no writable temporary directory; the finding follows directly from the unconditional symlink admission and subsequent membership check."
+      },
+      {
+        "what": "Independent Git commit/diff verification",
+        "why": "The supplied snapshot contains no discoverable .git metadata."
+      }
+    ],
+    "read": [
+      ".agentmarshal/journal/tasks/CR-220/contract.md",
+      "docs/threat-model.md",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md",
+      "docs/adr/ADR-0014-where-things-live.md",
+      "docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md",
+      "src/agentmarshal/switch_off.py",
+      "src/agentmarshal/switches.py",
+      "src/agentmarshal/extension_trust.py",
+      "src/agentmarshal/journal/extensions.py",
+      "src/agentmarshal/journal/open_task.py",
+      "tests/test_switch_off.py",
+      "tests/test_extension_trust.py",
+      "openspec/changes/archive/2026-10-24-extension-switch-off/specs/extension-stages/spec.md",
+      "openspec/specs/extension-stages/spec.md"
+    ]
+  }
+}

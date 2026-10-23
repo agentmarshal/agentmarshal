@@ -1,0 +1,75 @@
+{
+  "artifacts": [
+    {
+      "hash": "ef22a8c1eb00d347d6a6b791b4d103c2bbc37cbf05220b4b83d165a4a437049b",
+      "ref": ".agentmarshal/journal/tasks/CR-220/artifacts/01M5N8PKXKWBDKE49DBNM265KN-review.md"
+    }
+  ],
+  "classes": {
+    "CR220-001": "contract-mismatch",
+    "CR220-002": "correctness"
+  },
+  "created_at": "2026-10-23T20:54:37.235030Z",
+  "evidence": {
+    "CR220-001": "src/agentmarshal/switch_off.py:208-233 and :297-304; probe output: escaped table key span=None rewrite=False, escaped state/task keys rewrite=False after parse_switches accepted them.",
+    "CR220-002": "src/agentmarshal/switch_off.py:575-584; probe output: UnicodeDecodeError: 'utf-8' codec can't decode byte 0xff in position 0."
+  },
+  "findings": [
+    "CR220-001",
+    "CR220-002"
+  ],
+  "previous_review": "01M5N7V5DZ6A7PENGBWKV505E2",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "2bfc2d1a0a723669934ce4d3eb39192e9189dd0c",
+  "reviewed_contract": "c7e6129331ab0326b32b6900df15f44d69fcd98950c164c92271cce971e693ef",
+  "reviewer": {
+    "email": "auto-review-openai@agent.example.invalid",
+    "model": "gpt-5.6-sol",
+    "role": "code-reviewer",
+    "vendor": "openai"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-220",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "parse_switches accepted all three inputs, while the rewrite reported span=None or rewrite=False.",
+        "what": "In-memory parser/rewrite probe for escaped TOML key spellings"
+      },
+      {
+        "result": "Raised UnicodeDecodeError instead of SwitchesError.",
+        "what": "In-memory _read_existing probe with bytes b'\\xff'"
+      },
+      {
+        "result": "scenarios=19 docstring_matches=19 missing=[]",
+        "what": "AST comparison of archived scenario headings with test docstrings"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "Full CI sequence",
+        "why": "uv is unavailable in the review environment; the coordinator supplied a passing result for the reviewed commit."
+      }
+    ],
+    "read": [
+      ".agentmarshal/journal/tasks/CR-220/contract.md",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md",
+      "docs/adr/ADR-0014-where-things-live.md",
+      "docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md",
+      "docs/threat-model.md",
+      "openspec/changes/archive/2026-10-24-extension-switch-off/",
+      "openspec/specs/extension-stages/spec.md",
+      "src/agentmarshal/extension_trust.py",
+      "src/agentmarshal/switch_off.py",
+      "src/agentmarshal/switches.py",
+      "src/agentmarshal/journal/extensions.py",
+      "src/agentmarshal/journal/open_task.py",
+      "tests/test_switch_off.py"
+    ]
+  }
+}
