@@ -938,6 +938,7 @@ def _run_complete(args: argparse.Namespace, stderr: TextIO) -> int:
                     placement.journal_root,
                     args.task,
                     report.resolved_commit,
+                    resolved_review=report.resolved_review,
                     dispositions=args.disposition,
                     follow_ups=args.follow_up,
                 )

@@ -6,17 +6,24 @@ acceptance covered — `complete` takes a `--disposition` for each of its
 advisory findings, recorded in `advisory_dispositions` through
 `create_completed_record`'s parameter (CR-175's field), and refuses
 before writing `completed` when any lacks one. `complete --findings`
-takes no dispositions.
+takes no dispositions. The gate's report carries that review's id —
+set by the same code that decides the verdict check — and `complete`
+reads the advisory findings from the record carrying it among the
+records the gate evaluated, so a review appended after the gate ran
+cannot change which are owed.
 """
 
 import hashlib
 import json
 import subprocess
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from agentmarshal.cli import main
+from agentmarshal.journal.complete import LifecycleError, record_commit_completion
+from agentmarshal.journal.gate import GateReport, run_gate
 from agentmarshal.journal.records import read_records
 
 _WRITER = ["-c", "user.name=Worker", "-c", "user.email=worker@test.invalid"]
@@ -677,6 +684,47 @@ def test_the_sidecar_lane_takes_and_requires_dispositions(
     assert completed["advisory_dispositions"] == {"A-1": {"disposition": "fixed"}}
 
 
+def test_a_sidecar_appended_review_cannot_change_which_advisory_findings_are_owed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a review appended after the gate ran cannot change
+    which advisory findings are owed — on the sidecar lane, whose
+    `complete` hands the gate's resolved review to the write."""
+
+    host = tmp_path / "host"
+    host.mkdir()
+    _git(host, "init", "--quiet", "-b", "master")
+    (host / "app.txt").write_text("one\n", encoding="utf-8")
+    base = _commit_all(host, "base")
+    (host / "app.txt").write_text("two\n", encoding="utf-8")
+    head = _commit_all(host, "work")
+    sidecar = tmp_path / "sidecar"
+    sidecar.mkdir()
+    _git(sidecar, "init", "--quiet", "-b", "master")
+    monkeypatch.chdir(sidecar)
+    assert main(["init", "--host", str(host)]) == 0
+    assert main(["open", "--title", "Sidecar gate", "--scope", "app.txt"]) == 0
+    _review(head, advisory=("A-1",))
+
+    # A concurrent process of the same user appends a newer review of
+    # the same commit — carrying no advisory findings — between the
+    # gate's verdict check and the disposition check `complete` runs
+    # after it.
+    def gate_then_append(*args: Any, **kwargs: Any) -> GateReport:
+        report = run_gate(*args, **kwargs)
+        _review(head)
+        return report
+
+    monkeypatch.setattr("agentmarshal.cli.run_gate", gate_then_append)
+    capsys.readouterr()
+
+    assert _complete(head, base) == 1
+
+    error = capsys.readouterr().err
+    assert "A-1" in error
+    assert _no_completed_record(sidecar)
+
+
 def test_an_advisory_finding_id_carrying_an_equals_sign_is_answered(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -728,3 +776,158 @@ def test_an_advisory_id_named_follow_up_reports_its_flag(
     assert "--follow-up" not in error
     assert "follow_up" in error
     assert _no_completed_record(repo)
+
+
+def test_the_gate_report_carries_the_id_of_the_approving_review_it_passed_on(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: the gate's report carries the id of the approving
+    review it passed on."""
+
+    repo, base = _repo(tmp_path, monkeypatch)
+    head = _implement(repo)
+    _review(head, advisory=("F-1",))
+    review_id = str(read_records(_journal(repo), "CR-001")[-1]["id"])
+    capsys.readouterr()
+
+    report = run_gate(repo, "CR-001", head, base, head)
+
+    assert report.passed
+    assert report.resolved_review == review_id
+
+
+def test_the_gate_report_carries_the_id_of_the_review_an_acceptance_covered(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: the gate's report carries the id of the review an
+    acceptance covered."""
+
+    repo, base = _repo(tmp_path, monkeypatch)
+    head = _implement(repo)
+    _review(head, "changes_required", findings=("F-1",), advisory=("A-1",))
+    review_id = str(read_records(_journal(repo), "CR-001")[-1]["id"])
+    assert (
+        main(
+            [
+                "accept",
+                "--task",
+                "CR-001",
+                "--commit",
+                head,
+                "--by",
+                "operator@test.invalid",
+                "--reason",
+                "The review loop did not converge",
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+
+    report = run_gate(repo, "CR-001", head, base, head)
+
+    assert report.passed
+    assert report.resolved_review == review_id
+
+
+def test_the_gate_report_carries_no_review_id_when_it_passed_on_no_review(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: the gate's report carries no review id when it passed
+    on no review."""
+
+    repo, base = _repo(tmp_path, monkeypatch)
+    head = _implement(repo)
+    capsys.readouterr()
+
+    report = run_gate(repo, "CR-001", head, base, head, review_required=False)
+
+    assert report.passed
+    assert report.review_not_examined
+    assert report.resolved_review is None
+
+
+def test_an_appended_review_cannot_change_which_advisory_findings_are_owed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a review appended after the gate ran cannot change
+    which advisory findings are owed — the command end to end."""
+
+    repo, base = _repo(tmp_path, monkeypatch)
+    head = _implement(repo)
+    _review(head, advisory=("F-1", "F-2"))
+
+    # A concurrent process of the same user appends a newer review of the
+    # same commit — carrying no advisory findings — between the gate's
+    # verdict check and the disposition check `complete` runs after it.
+    def gate_then_append(*args: Any, **kwargs: Any) -> GateReport:
+        report = run_gate(*args, **kwargs)
+        _review(head)
+        return report
+
+    monkeypatch.setattr("agentmarshal.journal.complete.run_gate", gate_then_append)
+    capsys.readouterr()
+
+    assert _complete(head, base) == 1
+
+    error = capsys.readouterr().err
+    assert "F-1" in error and "F-2" in error
+    assert _no_completed_record(repo)
+
+
+def test_an_advisory_id_of_an_appended_review_refuses_naming_the_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: an advisory id raised only by a review appended after
+    the gate refuses, naming the id."""
+
+    repo, base = _repo(tmp_path, monkeypatch)
+    head = _implement(repo)
+    _review(head, advisory=("F-1",))
+    report = run_gate(repo, "CR-001", head, base, head)
+    assert report.passed
+    _review(head, advisory=("F-9",))
+    capsys.readouterr()
+
+    with pytest.raises(LifecycleError) as excinfo:
+        record_commit_completion(
+            _journal(repo),
+            "CR-001",
+            report.resolved_commit,
+            resolved_review=report.resolved_review,
+            dispositions=["F-1=fixed", "F-9=fixed"],
+        )
+
+    assert "F-9" in str(excinfo.value)
+    assert _no_completed_record(repo)
+
+
+def test_a_completion_after_an_appended_review_writes_its_dispositions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a completion after an appended review writes the
+    passed-on review's dispositions."""
+
+    repo, base = _repo(tmp_path, monkeypatch)
+    head = _implement(repo)
+    _review(head, advisory=("F-1", "F-2"))
+    report = run_gate(repo, "CR-001", head, base, head)
+    assert report.passed
+    _review(head, advisory=("F-9",))
+    capsys.readouterr()
+
+    record_path = record_commit_completion(
+        _journal(repo),
+        "CR-001",
+        report.resolved_commit,
+        resolved_review=report.resolved_review,
+        dispositions=["F-1=fixed", "F-2=deferred:not this round"],
+    )
+
+    assert record_path.exists()
+    completed = read_records(_journal(repo), "CR-001")[-1]
+    assert completed["record_type"] == "completed"
+    assert completed["advisory_dispositions"] == {
+        "F-1": {"disposition": "fixed"},
+        "F-2": {"disposition": "deferred", "reason": "not this round"},
+    }
