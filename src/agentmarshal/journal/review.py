@@ -16,8 +16,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
+from agentmarshal import __version__
 from agentmarshal.journal.actors import finding_reviewer_identity_refusal
-from agentmarshal.journal.artifacts import artifact_path as artifact_path
+from agentmarshal.journal.artifacts import (
+    artifact_path as artifact_path,
+)
+from agentmarshal.journal.artifacts import (
+    write_artifact,
+)
 from agentmarshal.journal.brief import (
     append_amendment_history,
     render_amendment_history,
@@ -49,12 +55,22 @@ from agentmarshal.journal.gate import (
 from agentmarshal.journal.records import (
     _REVIEW_VERDICTS as REVIEW_VERDICTS,
 )
+from agentmarshal.journal.records import (
+    JournalRecordError,
+    create_review_record,
+    forges_rendered_text,
+    generate_ulid,
+    validate_record_for_write,
+    write_record,
+)
 from agentmarshal.journal.status import TaskStatusError, load_task_for_record
 from agentmarshal.journal.submit_review import (
     ReviewSubmitError,
+    SubmittedReview,
+    reviewer_actor_note,
     reviewer_actor_refusal,
-    submit_review,
 )
+from agentmarshal.settings import finding_classes
 
 _VERDICT_BEGIN = "AGENTMARSHAL_VERDICT_BEGIN"
 _VERDICT_END = "AGENTMARSHAL_VERDICT_END"
@@ -64,9 +80,16 @@ _VERDICT_END = "AGENTMARSHAL_VERDICT_END"
 # alone, so the prompt never carries trailing whitespace.
 _ARTIFACT_CONTENT_PREFIX = "|"
 _VERDICT_REQUIRED = {"reviewed_commit", "verdict", "findings"}
-# advisory_findings is in the record schema and create_review_record accepts it;
-# accepting it here is what makes it reachable through the protocol at all.
-_VERDICT_OPTIONAL = {"advisory_findings"}
+# advisory_findings is in the record schema and create_review_record accepts
+# it; accepting it here is what makes it reachable through the protocol at all.
+# classes is the same kind of key, except the parser must not judge its value:
+# a malformed classes is dropped with a warning, never refused, because the
+# verdict is a paid run's output (ADR-0016 decision 3).
+_VERDICT_OPTIONAL = {"advisory_findings", "classes"}
+# An absent `classes` and a `classes` whose value is null are not the same
+# verdict: the first records nothing, the second is a malformed value the
+# launcher drops with a warning. The sentinel keeps them apart.
+_NO_CLASSES = object()
 _DRY_RUN_COMMIT = "0" * 40
 _DRY_RUN_CONTRACT = (
     "# Example task\n\nThis synthetic contract exercises the reviewer command."
@@ -193,8 +216,15 @@ def _prose_instruction() -> str:
     )
 
 
-def _verdict_protocol(subject_field: str, subject_description: str) -> str:
-    """Render the shared machine-verdict protocol for one review binding."""
+def _verdict_protocol(
+    subject_field: str, subject_description: str, vocabulary: tuple[str, ...]
+) -> str:
+    """Render the shared machine-verdict protocol for one review binding.
+
+    ``vocabulary`` is the project's finding-class vocabulary: the prompt
+    lists it so a class the reviewer names lands the way the launcher
+    records it — a class outside it reads as ``other`` there.
+    """
 
     verdicts = ", ".join(sorted(REVIEW_VERDICTS))
     return (
@@ -208,7 +238,11 @@ def _verdict_protocol(subject_field: str, subject_description: str) -> str:
         "  and non-empty for every other verdict\n"
         "and may additionally contain:\n"
         "- advisory_findings: an array of unique non-blocking finding-id strings,\n"
-        '  disjoint from findings; allowed with any verdict, including "approved"'
+        '  disjoint from findings; allowed with any verdict, including "approved"\n'
+        "- classes: an object naming the class of each finding id you report —\n"
+        "  one class per id, blocking or advisory — from this vocabulary:\n"
+        f"  {', '.join(vocabulary)};\n"
+        '  a class outside the vocabulary is recorded as "other"'
     )
 
 
@@ -264,6 +298,7 @@ def _review_prompt(
     contract: str,
     diff: str,
     commit: str,
+    vocabulary: tuple[str, ...],
     *,
     decisions: tuple[str, ...] = (),
     documents: tuple[str, ...] = (),
@@ -273,6 +308,8 @@ def _review_prompt(
 ) -> str:
     """Build the reviewer prompt with its required machine-verdict protocol.
 
+    ``vocabulary`` is the project's finding-class vocabulary, listed by the
+    protocol so a named class lands as it will be recorded.
     ``undecodable_files`` names the diff sections the per-file decode could
     not fully read: the reviewer still sees what decoded — U+FFFD marks the
     content bytes that did not — but is told, so the marked spans are not
@@ -301,7 +338,7 @@ def _review_prompt(
         ),
         prose_instruction=_prose_instruction(),
         verdict_protocol=_verdict_protocol(
-            "reviewed_commit", "the exact reviewed commit SHA"
+            "reviewed_commit", "the exact reviewed commit SHA", vocabulary
         ),
         contract=contract_material,
         diff_note=diff_note,
@@ -315,6 +352,7 @@ def _finding_review_prompt(
     summary: str,
     artifacts: tuple[_VerifiedArtifact, ...],
     unresolved_references: tuple[str, ...],
+    vocabulary: tuple[str, ...],
     *,
     decisions: tuple[str, ...] = (),
     documents: tuple[str, ...] = (),
@@ -385,7 +423,7 @@ def _finding_review_prompt(
         ),
         prose_instruction=_prose_instruction(),
         verdict_protocol=_verdict_protocol(
-            "reviewed_finding", "the exact reviewed finding id"
+            "reviewed_finding", "the exact reviewed finding id", vocabulary
         ),
         contract=append_amendment_history(contract, amendment_history),
         artifacts="\n\n".join(artifact_sections),
@@ -402,10 +440,10 @@ def _names_model(template: str) -> bool:
     return "model" in fields
 
 
-def _dry_run_prompt() -> str:
+def _dry_run_prompt(vocabulary: tuple[str, ...]) -> str:
     """Build the real reviewer prompt around a fixed, synthetic example."""
 
-    return _review_prompt(_DRY_RUN_CONTRACT, _DRY_RUN_DIFF, _DRY_RUN_COMMIT)
+    return _review_prompt(_DRY_RUN_CONTRACT, _DRY_RUN_DIFF, _DRY_RUN_COMMIT, vocabulary)
 
 
 def _unsupported_placeholder(template: str, known: set[str]) -> str | None:
@@ -753,13 +791,16 @@ def _parse_verdict(
     subject_fields: frozenset[str] = frozenset({"reviewed_commit"}),
     expected_field: str | None = None,
     preserve_output: bool = True,
-) -> tuple[str, str, str, list[str], list[str]]:
+) -> tuple[str, str, str, list[str], list[str], object]:
     """Parse a verdict for one of the accepted review-subject field sets.
 
     ``subject_fields`` is what the parser will read; ``expected_field`` is what
     the caller asked the reviewer for. A finding launch reads both shapes so a
     commit-shaped verdict can be named in the refusal, and must not invite one:
-    the refusal names the field the prompt asked for.
+    the refusal names the field the prompt asked for. The last element is the
+    verdict's raw ``classes`` value — ``_NO_CLASSES`` when the key is absent —
+    handed over unvalidated: what the launcher cannot keep warns and drops,
+    never refuses, because the verdict is a paid run's output.
     """
 
     def reject(reason: str) -> ReviewLaunchError:
@@ -823,7 +864,73 @@ def _parse_verdict(
         verdict,
         cast(list[str], findings),
         cast(list[str], advisory),
+        verdict_data.get("classes", _NO_CLASSES),
     )
+
+
+def _verdict_classes(
+    classes: object, named_ids: frozenset[str], vocabulary: tuple[str, ...]
+) -> tuple[dict[str, str] | None, list[str]]:
+    """Reduce a verdict's ``classes`` to the entries the record carries.
+
+    A verdict is a paid run's output and the class is reference markup a
+    decision could cite but never rests on, so no shape of ``classes``
+    refuses it (ADR-0016 decision 3): a value that is not an object, or an
+    object holding a value that is no usable class string, drops the whole
+    ``classes`` with a warning before the record layer could refuse it; an
+    entry naming an id the verdict itself does not carry drops alone; a
+    class outside the vocabulary records as ``other`` with a warning naming
+    the id and the class given. Every reduction returns a note — the markup
+    can be wrong, never silent. ``_NO_CLASSES`` — an absent key — is no
+    note and no field, and an empty mapping is the same with a note.
+    """
+
+    if classes is _NO_CLASSES:
+        return None, []
+    if not isinstance(classes, dict):
+        return None, [
+            "note: the verdict's 'classes' is not an object mapping finding "
+            "ids to class strings; the value is dropped and the verdict stands"
+        ]
+    if not classes:
+        return None, [
+            "note: the verdict's 'classes' is an empty object; no classes are recorded"
+        ]
+    unusable = [
+        key
+        for key, value in classes.items()
+        if not isinstance(value, str)
+        or not value.strip()
+        or forges_rendered_text(value)
+    ]
+    if unusable:
+        return None, [
+            "note: the verdict's 'classes' holds a value that is not a usable "
+            "class string ("
+            + ", ".join(escape_for_display(str(key)) for key in unusable)
+            + "); the object is dropped and the verdict stands"
+        ]
+    recorded: dict[str, str] = {}
+    notes: list[str] = []
+    for finding_id, finding_class in cast(dict[str, str], classes).items():
+        if finding_id not in named_ids:
+            notes.append(
+                "note: the verdict's 'classes' entry for "
+                f"{escape_for_display(finding_id)} names no finding the "
+                "verdict carries; the entry "
+                f"({escape_for_display(finding_class)}) is dropped"
+            )
+            continue
+        if finding_class not in vocabulary:
+            notes.append(
+                f"note: class {escape_for_display(finding_class)} named for "
+                f"finding {escape_for_display(finding_id)} is not in the "
+                "project's finding-class vocabulary; recorded as 'other'"
+            )
+            recorded[finding_id] = "other"
+            continue
+        recorded[finding_id] = finding_class
+    return (recorded or None), notes
 
 
 def _extract_snapshot(project_root: Path, commit: str, snapshot: Path) -> None:
@@ -892,11 +999,24 @@ def dry_run_review(
         raise ReviewLaunchError(
             "the configured reviewer command names a model, so a dry run needs --model"
         )
+    # The diagnostics belong to the journal repository's log like a
+    # recorded run's, and the journal resolves the way a recorded run
+    # resolves one its caller does not name — under the project the
+    # command runs against, never the working directory. A caller
+    # holding a resolved placement passes the journal root itself, so a
+    # sidecar's diagnostics land in the sidecar's log and the host is
+    # never consulted. The dry run's prompt reads the same repository's
+    # finding-class vocabulary so it asks for what a recorded launch would.
+    journal_root = journal_root or project_root / ".agentmarshal" / "journal"
+    try:
+        vocabulary = finding_classes(journal_root.parents[1])
+    except (OSError, ValueError) as error:
+        raise ReviewLaunchError(str(error)) from error
     with tempfile.TemporaryDirectory(prefix="agentmarshal-review-dry-run-") as name:
         temporary_root = Path(name)
         snapshot = temporary_root / "snapshot"
         prompt_file = temporary_root / "review-prompt.txt"
-        prompt = _dry_run_prompt()
+        prompt = _dry_run_prompt(vocabulary)
         prompt_file.write_text(prompt, encoding="utf-8")
         # A project initialised in a repository with no commit has no tree to
         # copy. The command is still worth exercising; only a relative path in
@@ -918,14 +1038,6 @@ def dry_run_review(
         raw_output, raw_diagnostics = _run_reviewer(
             _reviewer_command(reviewer_model or "", prompt_file), snapshot, prompt
         )
-        # The diagnostics belong to the journal repository's log like a
-        # recorded run's, and the journal resolves the way a recorded run
-        # resolves one its caller does not name — under the project the
-        # command runs against, never the working directory. A caller
-        # holding a resolved placement passes the journal root itself, so a
-        # sidecar's diagnostics land in the sidecar's log and the host is
-        # never consulted.
-        journal_root = journal_root or project_root / ".agentmarshal" / "journal"
         diagnostics_note = _keep_diagnostics(
             raw_diagnostics, journal_project_root=journal_root.parents[1]
         )
@@ -937,6 +1049,7 @@ def dry_run_review(
                 _verdict,
                 _findings,
                 _advisory,
+                _classes,
             ) = _parse_verdict(output, preserve_output=False)
         except ReviewLaunchError as error:
             # The operator is debugging this command; the output is the evidence.
@@ -1047,6 +1160,88 @@ def _extract_finding_snapshot(
             ) from error
 
 
+def _record_launched_review(
+    journal_root: Path,
+    task_id: str,
+    reviewed_commit: str | None,
+    verdict: str,
+    reviewer_role: str,
+    reviewer_vendor: str,
+    reviewer_model: str,
+    reviewer_email: str,
+    findings: list[str],
+    advisory_findings: list[str] | None = None,
+    *,
+    reviewed_finding: str | None = None,
+    reviewed_contract: str | None = None,
+    prose: bytes | None = None,
+    previous_review: str | None = None,
+    classes: dict[str, str] | None = None,
+    reviewer_actor: str | None = None,
+) -> SubmittedReview:
+    """Write a launched review's record — submit_review's sequence plus two fields.
+
+    ``submit_review``'s parameters are the human path's contract, which a
+    launch must not grow, so the launcher writes its record itself through
+    the same load-check-record-write sequence ``submit_review`` runs. It
+    differs only in what a launch alone can name: ``previous_review`` — the
+    link read before the reviewer ran — and ``classes`` — the normalized
+    verdict markup. Errors leave as ``ReviewSubmitError`` so the tail's
+    refusal handling, which keeps the paid run's output, applies unchanged.
+    """
+
+    if reviewer_actor is not None:
+        refusal = reviewer_actor_refusal(reviewer_actor)
+        if refusal is not None:
+            raise ReviewSubmitError(refusal)
+    try:
+        load_task_for_record(journal_root, task_id, "review")
+        record = create_review_record(
+            task_id,
+            __version__,
+            reviewed_commit,
+            verdict,
+            reviewer_role,
+            reviewer_vendor,
+            reviewer_model,
+            reviewer_email,
+            findings,
+            reviewed_finding=reviewed_finding,
+            reviewed_contract=reviewed_contract,
+            advisory_findings=advisory_findings,
+            previous_review=previous_review,
+            classes=classes,
+            reviewer_actor=reviewer_actor,
+        )
+        actor_note = (
+            reviewer_actor_note(journal_root, reviewer_actor)
+            if reviewer_actor is not None
+            else None
+        )
+        if prose is None:
+            return SubmittedReview(
+                write_record(journal_root, task_id, record), actor_note=actor_note
+            )
+        record_id = generate_ulid()
+        validate_record_for_write(journal_root, task_id, record, record_id=record_id)
+        pin = write_artifact(journal_root, task_id, f"{record_id}-review.md", prose)
+        record["artifacts"] = [pin]
+        try:
+            record_path = write_record(
+                journal_root, task_id, record, record_id=record_id
+            )
+        except (JournalRecordError, OSError, ValueError) as error:
+            raise ReviewSubmitError(
+                f"{error}; reviewer prose artifact left at {pin['ref']}",
+                artifact_ref=pin["ref"],
+            ) from error
+        return SubmittedReview(
+            record_path, artifact_ref=pin["ref"], actor_note=actor_note
+        )
+    except (JournalRecordError, TaskStatusError, OSError, ValueError) as error:
+        raise ReviewSubmitError(str(error)) from error
+
+
 def _launch_review_tail(
     journal_root: Path,
     task_id: str,
@@ -1064,6 +1259,8 @@ def _launch_review_tail(
     reviewed_commit: str | None = None,
     reviewed_finding: str | None = None,
     prose_capture_level: CaptureLevel,
+    vocabulary: tuple[str, ...],
+    previous_review: str | None = None,
     operator_note: str | None = None,
     reviewer_actor: str | None = None,
 ) -> LaunchedReview:
@@ -1072,7 +1269,11 @@ def _launch_review_tail(
     ``operator_note`` is something the launch already knows the operator
     should read — the diff decode naming files it could not fully read. It
     rides the diagnostics channel so it survives both a recorded review and
-    every later rejection.
+    every later rejection; the ``classes`` reductions land there too, a
+    warning being a note rather than a refusal. ``previous_review`` is the
+    link the caller captured before the reviewer ran; ``vocabulary`` is the
+    project's finding-class vocabulary the verdict's ``classes`` normalize
+    against.
     """
 
     raw_output = b""
@@ -1118,6 +1319,7 @@ def _launch_review_tail(
                 verdict,
                 findings,
                 advisory,
+                classes_data,
             ) = _parse_verdict(
                 reviewer_output,
                 subject_fields=subject_fields,
@@ -1135,8 +1337,15 @@ def _launch_review_tail(
                 ),
                 diagnostics_note,
             )
+        classes, classes_notes = _verdict_classes(
+            classes_data, frozenset([*findings, *advisory]), vocabulary
+        )
+        for note in classes_notes:
+            diagnostics_note = (
+                f"{diagnostics_note}\n{note}" if diagnostics_note is not None else note
+            )
     try:
-        submitted = submit_review(
+        submitted = _record_launched_review(
             journal_root,
             task_id,
             reviewed_commit,
@@ -1152,6 +1361,8 @@ def _launch_review_tail(
             reviewed_contract=contract_sha256(
                 contract.encode("utf-8"), f"task {task_id} contract"
             ),
+            previous_review=previous_review,
+            classes=classes,
             reviewer_actor=reviewer_actor,
         )
     except ReviewSubmitError as error:
@@ -1190,6 +1401,7 @@ def _launch_finding_review(
     reviewer_model: str,
     reviewer_email: str,
     prose_capture_level: CaptureLevel,
+    vocabulary: tuple[str, ...],
     *,
     reviewer_actor: str | None = None,
 ) -> LaunchedReview:
@@ -1199,6 +1411,13 @@ def _launch_finding_review(
         task = load_task_for_record(journal_root, task_id, "review")
     except (OSError, TaskStatusError, ValueError) as error:
         raise ReviewLaunchError(str(error)) from error
+    # The link is read from the task's records as loaded now — before the
+    # reviewer runs — so a record landing mid-run becomes this review's
+    # successor, never the predecessor it is about to name.
+    task_reviews = [
+        record for record in task.records if record["record_type"] == "review"
+    ]
+    previous_review = cast(str, task_reviews[-1]["id"]) if task_reviews else None
     task_findings = [
         record for record in task.records if record["record_type"] == "finding"
     ]
@@ -1260,6 +1479,7 @@ def _launch_finding_review(
         cast(str, finding["summary"]),
         verified,
         unresolved,
+        vocabulary,
         decisions=header.decisions,
         documents=tuple(dict.fromkeys(documents)),
         absent_extensions=tuple(absent),
@@ -1284,6 +1504,8 @@ def _launch_finding_review(
         ),
         reviewed_finding=reviewed_finding,
         prose_capture_level=prose_capture_level,
+        vocabulary=vocabulary,
+        previous_review=previous_review,
         reviewer_actor=reviewer_actor,
     )
 
@@ -1318,6 +1540,11 @@ def launch_review(
     journal_root = journal_root or project_root / ".agentmarshal" / "journal"
     try:
         prose_capture_level = review_capture_level_from_journal(journal_root)
+        # The vocabulary the prompt lists and the verdict's classes normalize
+        # against is the journal repository's — a sidecar's own — the same
+        # file the actor legibility check reads. A malformed one refuses
+        # before the reviewer runs, the prompt being unbuildable without it.
+        vocabulary = finding_classes(journal_root.parents[1])
     except (CaptureError, OSError, ValueError) as error:
         raise ReviewLaunchError(str(error)) from error
     if reviewed_finding is not None and (commit is not None or base is not None):
@@ -1346,6 +1573,7 @@ def launch_review(
             reviewer_model,
             reviewer_email,
             prose_capture_level,
+            vocabulary,
             reviewer_actor=reviewer_actor,
         )
     if commit is None or base is None:
@@ -1354,6 +1582,14 @@ def launch_review(
         task = load_task_for_record(journal_root, task_id, "review")
     except (OSError, TaskStatusError, ValueError) as error:
         raise ReviewLaunchError(str(error)) from error
+    # The link is read from the task's records as loaded now — before the
+    # reviewer runs — so a record landing mid-run becomes this review's
+    # successor, never the predecessor it is about to name. The latest
+    # review is the predecessor whatever it bound to.
+    task_reviews = [
+        record for record in task.records if record["record_type"] == "review"
+    ]
+    previous_review = cast(str, task_reviews[-1]["id"]) if task_reviews else None
     resolved_commit = _resolve_commit(project_root, commit)
     merge_base = _run_git(project_root, ["merge-base", base, resolved_commit]).strip()
     # The diff is bytes decoded one file section at a time by the helper the
@@ -1446,6 +1682,7 @@ def launch_review(
             contract,
             diff,
             resolved_commit,
+            vocabulary,
             decisions=header.decisions,
             documents=tuple(dict.fromkeys(documents)),
             absent_extensions=tuple(absent),
@@ -1473,6 +1710,8 @@ def launch_review(
         ),
         reviewed_commit=resolved_commit,
         prose_capture_level=prose_capture_level,
+        vocabulary=vocabulary,
+        previous_review=previous_review,
         operator_note=diff_note,
         reviewer_actor=reviewer_actor,
     )

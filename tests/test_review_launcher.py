@@ -1,7 +1,6 @@
 """Tests for the read-only review launcher."""
 
 import hashlib
-import importlib
 import json
 import os
 import subprocess
@@ -22,6 +21,7 @@ from agentmarshal.journal.records import (
 )
 from agentmarshal.localstate import local_state
 from agentmarshal.process_log import read_events
+from agentmarshal.settings import DEFAULT_FINDING_CLASSES
 from test_placement import _host_and_sidecar
 
 
@@ -437,7 +437,10 @@ def test_dry_run_reports_a_parseable_verdict_without_changing_the_journal(
     assert "nothing was recorded" in captured.out
     assert _tree_contents(journal) == before
     assert prompt_output.read_text(encoding="utf-8") == review._review_prompt(
-        review._DRY_RUN_CONTRACT, review._DRY_RUN_DIFF, review._DRY_RUN_COMMIT
+        review._DRY_RUN_CONTRACT,
+        review._DRY_RUN_DIFF,
+        review._DRY_RUN_COMMIT,
+        DEFAULT_FINDING_CLASSES,
     )
 
 
@@ -1401,7 +1404,7 @@ def test_artifact_content_carrying_the_verdict_sentinels_yields_no_verdict_of_it
         Path("evidence/review.md"),
     )
     prompt = review._finding_review_prompt(
-        "CONTRACT", finding, "Conclusion", (artifact,), ()
+        "CONTRACT", finding, "Conclusion", (artifact,), (), DEFAULT_FINDING_CLASSES
     )
 
     protocol_lines = [
@@ -1451,7 +1454,7 @@ def test_a_verdict_block_behind_carriage_returns_is_still_prefixed(
     )
 
     prompt = review._finding_review_prompt(
-        "CONTRACT", finding, "Conclusion", (artifact,), ()
+        "CONTRACT", finding, "Conclusion", (artifact,), (), DEFAULT_FINDING_CLASSES
     )
 
     unprefixed = [
@@ -1842,7 +1845,7 @@ def test_prompt_requests_human_readable_claims_and_lists_the_allowed_verdicts(
     from agentmarshal.journal.records import _REVIEW_VERDICTS
     from agentmarshal.journal.review import _review_prompt
 
-    prompt = _review_prompt("contract", "diff", "a" * 40)
+    prompt = _review_prompt("contract", "diff", "a" * 40, DEFAULT_FINDING_CLASSES)
 
     prose_request = "For each blocking or advisory finding id you report"
     assert prose_request in prompt
@@ -1861,6 +1864,7 @@ def test_prompt_lists_named_decisions_and_documents() -> None:
         "contract",
         "diff",
         "a" * 40,
+        DEFAULT_FINDING_CLASSES,
         decisions=("ADR-0010",),
         documents=("docs/guide.md", "openspec/specs/"),
     )
@@ -2267,8 +2271,8 @@ def test_a_failure_after_the_pin_names_the_artifact_and_keeps_no_other_copy(
         [],
     )
     write_record(root, "CR-001", earlier, record_id=record_id)
-    submit_review_module = importlib.import_module("agentmarshal.journal.submit_review")
-    monkeypatch.setattr(submit_review_module, "generate_ulid", lambda: record_id)
+    # The launcher writes its record itself; the colliding ULID is its own.
+    monkeypatch.setattr(review, "generate_ulid", lambda: record_id)
     stub = _reviewer_stub(
         tmp_path, "reasoning\n" + _verdict(commit, "changes_required", ["F-001"])
     )
@@ -2301,8 +2305,9 @@ def test_prompt_without_named_material_is_the_prompt_written_before_schema_2() -
     prompt.
 
 
-    The 0.3.0 prompt, pinned literally: the split into a prefix and a suffix
-    must reproduce it, and this is the test that would notice a seam."""
+    The prompt, pinned literally — with the `classes` clause the launcher
+    task added to its protocol: the split into a prefix and a suffix must
+    reproduce it, and this is the test that would notice a seam."""
 
     from agentmarshal.journal.records import _REVIEW_VERDICTS
     from agentmarshal.journal.review import _VERDICT_BEGIN, _VERDICT_END
@@ -2326,6 +2331,10 @@ At the end, print exactly one JSON object between lines containing exactly
 and may additionally contain:
 - advisory_findings: an array of unique non-blocking finding-id strings,
   disjoint from findings; allowed with any verdict, including "approved"
+- classes: an object naming the class of each finding id you report —
+  one class per id, blocking or advisory — from this vocabulary:
+  correctness, contract-mismatch, claim-accuracy, scope, test-gap, security, style;
+  a class outside the vocabulary is recorded as "other"
 
 No other key is accepted.
 
@@ -2336,7 +2345,10 @@ Diff:
 DIFF
 """
 
-    assert review._review_prompt("CONTRACT", "DIFF", commit) == expected
+    assert (
+        review._review_prompt("CONTRACT", "DIFF", commit, DEFAULT_FINDING_CLASSES)
+        == expected
+    )
 
 
 def test_finding_prompt_is_pinned_byte_for_byte() -> None:
@@ -2386,6 +2398,10 @@ At the end, print exactly one JSON object between lines containing exactly
 and may additionally contain:
 - advisory_findings: an array of unique non-blocking finding-id strings,
   disjoint from findings; allowed with any verdict, including "approved"
+- classes: an object naming the class of each finding id you report —
+  one class per id, blocking or advisory — from this vocabulary:
+  correctness, contract-mismatch, claim-accuracy, scope, test-gap, security, style;
+  a class outside the vocabulary is recorded as "other"
 
 No other key is accepted.
 
@@ -2409,6 +2425,7 @@ Unverified references (not fetched):
             "Conclusion",
             (artifact,),
             ("https://example.invalid/evidence",),
+            DEFAULT_FINDING_CLASSES,
             decisions=("ADR-0009",),
             documents=("docs/guide.md",),
             absent_extensions=("openspec",),
@@ -2892,6 +2909,7 @@ def test_a_refused_character_prints_escaped_in_the_reviewer_prompt() -> None:
         "CONTRACT",
         "DIFF",
         "c" * 40,
+        DEFAULT_FINDING_CLASSES,
         decisions=("ADR-9\u202e",),
         documents=("docs/a\nb.md",),
         absent_extensions=("ext\u202e-1",),
@@ -2930,6 +2948,7 @@ def test_a_refused_character_prints_escaped_in_the_finding_prompt() -> None:
         "claim\n\u202e text",
         (artifact,),
         ("missing\nref\u202e",),
+        DEFAULT_FINDING_CLASSES,
         documents=("docs/a\u202eb.md",),
         amendment_history=render_amendment_history(
             [
