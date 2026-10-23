@@ -119,6 +119,8 @@ Clarification 2026-10-23 (CR-198): the gate's validation of the records a
 candidate adds — the `added records are valid` check — is the **write** side
 of decision 1, not the read side: an added record is input its author can
 still fix, so every current rule applies to it whatever schema it declares.
-Read by its own schema's rules instead, a forged record that stamped a
-lowered schema would pass — CR-145's first review showed exactly that on
-the read path (review round 1, finding `gate-rules-unreachable-on-read`).
+CR-145 first placed that check on the read side — its first review raised
+`gate-rules-unreachable-on-read` (review round 1: the schema-bound rules a
+read-side check would apply never fire there), and its second review showed
+`gate-admits-forged-low-schema-record` (review round 2: a forged record
+that stamped a lowered schema was admitted).
