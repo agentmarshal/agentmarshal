@@ -66,6 +66,16 @@ MINIMUM_GIT_VERSION_TEXT = ".".join(str(part) for part in MINIMUM_GIT_VERSION)
 #: playing no part.
 _GIT_VERSION_OUTPUT = re.compile(r"(\d+)\.(\d+)(?:\.(\d+))?")
 
+#: The longest a wrapped product's runtime may take to answer
+#: ``--version`` before ``doctor`` stops waiting: an answer that does
+#: not arrive promptly is the check's failure, not a hang.
+_RUNTIME_VERSION_TIMEOUT_SECONDS = 10
+
+#: The first run of numeric dot-separated components — the version —
+#: in a ``--version`` answer or a declared minimum, a leading ``v``
+#: ignored: ``v20.11.0`` reads as ``20.11.0``.
+_RUNTIME_VERSION_OUTPUT = re.compile(r"v?(\d+(?:\.\d+)*)")
+
 
 @dataclass(frozen=True)
 class DoctorCheck:
@@ -145,8 +155,37 @@ def _git_version(output: str) -> tuple[int, int, int] | None:
     )
 
 
-def _version_text(version: tuple[int, int, int]) -> str:
+def _version_text(version: tuple[int, ...]) -> str:
     return ".".join(str(part) for part in version)
+
+
+def _runtime_version(output: str) -> tuple[int, ...] | None:
+    """The leading dotted number *output* names, or ``None``.
+
+    The first run of numeric dot-separated components is the version —
+    ``v20.11.0`` reads as ``(20, 11, 0)``, the leading ``v`` ignored
+    and whatever follows the numeric run playing no part — and output
+    naming no number at all reports unreadable rather than guessed.
+    """
+
+    match = _RUNTIME_VERSION_OUTPUT.search(output)
+    if match is None:
+        return None
+    return tuple(int(part) for part in match.group(1).split("."))
+
+
+def _version_at_least(reported: tuple[int, ...], minimum: tuple[int, ...]) -> bool:
+    """Whether *reported* meets *minimum*, component by component.
+
+    Numeric, never lexicographic — ``9.11.0`` is below ``20`` — with a
+    missing trailing component reading as zero, so ``20`` meets
+    ``20.0``.
+    """
+
+    width = max(len(reported), len(minimum))
+    return reported + (0,) * (width - len(reported)) >= minimum + (0,) * (
+        width - len(minimum)
+    )
 
 
 def _check_git_repository(start: Path) -> tuple[bool, str]:
@@ -334,6 +373,89 @@ def _check_extension_manifest(start: Path, name: str) -> tuple[bool, str]:
     return True, f"{form} form, manifest schema {manifest.schema}"
 
 
+def _check_extension_runtime(
+    name: str, runtime: str, resolver: ExecutableResolver
+) -> tuple[bool, str]:
+    """Whether the runtime a wrapper extension declares is usable.
+
+    ADR-0013 decision 13 as amended names the one ``PATH`` exception:
+    the runtime a wrapped product needs, declared in ``[wraps].runtime``
+    as ``<name> >= <version>`` — a minimum. The declared name resolves
+    through *resolver* — ``shutil.which`` in a real run, a temporary
+    ``PATH``'s contents in a test; the resolved path runs ``--version``
+    as an argv call, never through a shell, under a short limit; and
+    the answer's first run of numeric dot-separated components is the
+    version, a leading ``v`` ignored — an answer naming none is
+    reported unreadable rather than guessed, and the output itself is
+    never echoed.
+    """
+
+    runtime_name, _, minimum_text = runtime.split()
+    requirement = escape_for_display(runtime)
+    if runtime_name in {".", ".."} or "/" in runtime_name or "\\" in runtime_name:
+        # ``which`` skips the PATH search for an argument carrying a
+        # directory component and probes the path directly — the one
+        # PATH exception is a bare program name, never a path.
+        return (
+            False,
+            f"the declared runtime name {escape_for_display(runtime_name)} "
+            "is not a bare program name and cannot be resolved on PATH",
+        )
+    minimum = _runtime_version(minimum_text)
+    if minimum is None:
+        return (
+            False,
+            f"the declared minimum {requirement} names no readable version",
+        )
+    executable = resolver(runtime_name)
+    if executable is None:
+        return (
+            False,
+            f"{escape_for_display(runtime_name)} was not found on PATH; "
+            f"{escape_for_display(name)} requires {requirement}",
+        )
+    shown_path = escape_for_display(executable)
+    try:
+        result = subprocess.run(
+            [executable, "--version"],
+            capture_output=True,
+            encoding="utf-8",
+            check=False,
+            timeout=_RUNTIME_VERSION_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        return (
+            False,
+            f"{shown_path} did not answer --version within "
+            f"{_RUNTIME_VERSION_TIMEOUT_SECONDS} seconds",
+        )
+    except UnicodeDecodeError:
+        return False, f"{shown_path} reports no readable version"
+    except OSError as error:
+        return (
+            False,
+            f"cannot run {shown_path} ({escape_for_display(str(error))})",
+        )
+    if result.returncode != 0:
+        return (
+            False,
+            f"{shown_path} --version failed (exit status {result.returncode})",
+        )
+    version = _runtime_version(result.stdout)
+    if version is None:
+        version = _runtime_version(result.stderr)
+    if version is None:
+        return False, f"{shown_path} reports no readable version"
+    reported = _version_text(version)
+    if not _version_at_least(version, minimum):
+        return (
+            False,
+            f"{shown_path} reports {reported}, below the declared "
+            f"minimum {requirement}",
+        )
+    return True, f"{shown_path} reports {reported}, meeting {requirement}"
+
+
 def _extension_names(managed: Path) -> list[str]:
     """The extension names under *managed*, in the entries' sorted order.
 
@@ -360,8 +482,8 @@ def _extension_names(managed: Path) -> list[str]:
     return names
 
 
-def _extension_checks(start: Path) -> list[DoctorCheck]:
-    """One ``extension manifest <name>`` check per shared extension found.
+def _extension_checks(start: Path, resolver: ExecutableResolver) -> list[DoctorCheck]:
+    """One check per shared extension found, plus one per declared runtime.
 
     Discovery shares ``extension list``'s managed directory, so a link
     at ``.agentmarshal`` or ``extensions/`` is refused the same way —
@@ -370,6 +492,15 @@ def _extension_checks(start: Path) -> list[DoctorCheck]:
     already saying why. The same goes when project discovery itself
     breaks: the checks that run it report it, and building the list of
     checks never raises out of ``doctor_checks``.
+
+    Each discovered name gains an ``extension manifest <name>`` check;
+    a manifest that parses and declares ``[wraps].runtime`` gains an
+    ``extension runtime <name>`` check beside it — the one ``PATH``
+    exception of ADR-0013 decision 13 as amended, resolved through
+    *resolver*. A manifest without ``[wraps]`` adds no runtime check,
+    and one that cannot be read adds none either — the manifest check
+    already reports the reason — so a project without wrappers keeps
+    today's checks.
     """
 
     try:
@@ -389,13 +520,30 @@ def _extension_checks(start: Path) -> list[DoctorCheck]:
 
         return [DoctorCheck("extension manifests", fail)]
 
-    def manifest_check(name: str) -> DoctorCheck:
-        def run() -> tuple[bool, str]:
+    checks: list[DoctorCheck] = []
+    for name in names:
+
+        def run_manifest(name: str = name) -> tuple[bool, str]:
             return _check_extension_manifest(start, name)
 
-        return DoctorCheck(f"extension manifest {escape_for_display(name)}", run)
+        checks.append(
+            DoctorCheck(f"extension manifest {escape_for_display(name)}", run_manifest)
+        )
+        try:
+            manifest = read_extension_manifest(project_root, name)
+        except Exception:
+            continue
+        if manifest.wraps is None:
+            continue
+        runtime = manifest.wraps.runtime
 
-    return [manifest_check(name) for name in names]
+        def run_runtime(name: str = name, runtime: str = runtime) -> tuple[bool, str]:
+            return _check_extension_runtime(name, runtime, resolver)
+
+        checks.append(
+            DoctorCheck(f"extension runtime {escape_for_display(name)}", run_runtime)
+        )
+    return checks
 
 
 def doctor_checks(
@@ -447,7 +595,7 @@ def doctor_checks(
             precondition=True,
         ),
     ]
-    return checks + _extension_checks(search_start)
+    return checks + _extension_checks(search_start, resolver)
 
 
 def _grant_state(
