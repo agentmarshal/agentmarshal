@@ -16,7 +16,7 @@ acceptance = [
   "a test of `accept --pause` and one of `accept --operational` in a sidecar placement show the commit resolved in the journal's repository: the sidecar's own head is accepted and recorded as its full id, and a commit only the host holds is refused with nothing written — the pattern of tests/test_record_ext.py's sidecar test",
   "no behaviour of any command changes; no OpenSpec change is needed, because no requirement changes; the suite passes in CI's conditions and the full CI sequence passes",
 ]
-documents = ["openspec/specs/operator-acceptance/", "openspec/specs/extension-records/"]
+documents = []
 decisions = ["ADR-0013", "ADR-0022"]
 +++
 
