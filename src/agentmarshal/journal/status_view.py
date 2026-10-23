@@ -21,9 +21,14 @@ from agentmarshal.journal.actors import _actor_git_identities
 from agentmarshal.journal.contracts import JournalContractError, contract_sha256
 from agentmarshal.journal.display import escape_for_display
 from agentmarshal.journal.records import _project_root_for
-from agentmarshal.journal.status import TaskStatus
+from agentmarshal.journal.status import (
+    TaskStatus,
+    TaskStatusError,
+    load_task_status,
+)
 from agentmarshal.localstate import LocalState
 from agentmarshal.project import project_file_path, read_project_file
+from agentmarshal.settings import changes_required_threshold
 from agentmarshal.steps import OpenStep, format_overdue
 
 #: A renderer takes what the line needs — the project root for the
@@ -495,6 +500,107 @@ def _agreement_line(journal_root: Path, task: TaskStatus) -> str | None:
     )
 
 
+def _changes_required_count_line(project_root: Path, task: TaskStatus) -> str | None:
+    """One line with the task's ``changes_required`` count, else ``None``.
+
+    ADR-0016 decision 4: the same count the gate's line carries since
+    CR-168 — every review of the task's candidates, whatever commit it
+    names; a review bound to a research finding (``reviewed_finding``,
+    ADR-0009) is not a candidate's return and is not counted — computed
+    over ``task.records`` with exactly the gate's definition (the counting
+    block at the end of ``run_gate`` in ``gate.py``). The threshold is the
+    project's ``review.changes_required_threshold`` through the same
+    settings reader, and an unreadable one is named on the line rather
+    than refused. The line reports; it blocks nothing — and a task with
+    no such verdict gets no line at all.
+    """
+
+    count = sum(
+        1
+        for record in task.records
+        if record.get("record_type") == "review"
+        and record.get("verdict") == "changes_required"
+        and record.get("reviewed_finding") is None
+    )
+    if count == 0:
+        return None
+    try:
+        threshold = changes_required_threshold(project_root)
+    except (OSError, ValueError) as error:
+        return (
+            f"changes_required verdicts for {task.task_id}: {count} "
+            f"(threshold unreadable: {error})"
+        )
+    if count >= threshold:
+        return (
+            f"changes_required verdicts for {task.task_id}: {count} "
+            f"(threshold {threshold} reached — stop and revisit the "
+            "contract)"
+        )
+    return (
+        f"changes_required verdicts for {task.task_id}: {count} (threshold {threshold})"
+    )
+
+
+def _follow_up_state(journal_root: Path, task_id: str) -> str:
+    """The follow-up task's state, or that the journal does not hold it.
+
+    ``load_task_status`` raises for a task the journal does not hold —
+    that is an ordinary answer here, not an error.
+    """
+
+    try:
+        follow_up = load_task_status(journal_root, task_id)
+    except (OSError, TaskStatusError, ValueError):
+        return "not held by the journal"
+    return f"state: {follow_up.state}"
+
+
+def _deferral_lines(journal_root: Path, task: TaskStatus) -> list[str]:
+    """The open deferrals carried by the task's ``completed`` records.
+
+    ADR-0016 decision 1: a deferral stays visible after the task closes.
+    Each ``deferred`` entry of ``advisory_dispositions`` gets a line of
+    its own naming the finding, its reason and — when present — the
+    follow-up task with its state when the journal holds it, or that the
+    journal does not hold it. ``fixed`` and ``rejected`` entries are
+    counted on one line, not listed.
+    """
+
+    deferred: list[tuple[str, dict[str, object]]] = []
+    fixed = 0
+    rejected = 0
+    for record in task.records:
+        if record.get("record_type") != "completed":
+            continue
+        dispositions = record.get("advisory_dispositions")
+        if not isinstance(dispositions, dict):
+            continue
+        for finding_id, entry in dispositions.items():
+            if not isinstance(entry, dict):
+                continue
+            disposition = entry.get("disposition")
+            if disposition == "deferred":
+                deferred.append((str(finding_id), entry))
+            elif disposition == "fixed":
+                fixed += 1
+            elif disposition == "rejected":
+                rejected += 1
+    if not deferred and not fixed and not rejected:
+        return []
+    lines = ["Deferrals:"]
+    for finding_id, entry in deferred:
+        line = f"- {finding_id}: reason={_shown_value(entry.get('reason'))}"
+        follow_up = entry.get("follow_up")
+        if isinstance(follow_up, str) and follow_up:
+            line += (
+                f" follow_up={follow_up} ({_follow_up_state(journal_root, follow_up)})"
+            )
+        lines.append(line)
+    lines.append(f"fixed={fixed} rejected={rejected}")
+    return lines
+
+
 def print_task_detail(project_root: Path, task: TaskStatus, journal_root: Path) -> None:
     """Print one task's detail view: header, acceptance trail, scope, records."""
 
@@ -565,6 +671,11 @@ def print_task_detail(project_root: Path, task: TaskStatus, journal_root: Path) 
     drift = _contract_drift_line(journal_root, task)
     if drift is not None:
         print(escape_for_display(drift))
+    for line in _deferral_lines(journal_root, task):
+        print(escape_for_display(line))
+    count_line = _changes_required_count_line(project_root, task)
+    if count_line is not None:
+        print(escape_for_display(count_line))
 
 
 def print_paths(
