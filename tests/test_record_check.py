@@ -1031,6 +1031,52 @@ def test_an_excerpt_the_scan_still_trips_is_withheld(
     assert len(_events(repo)) == 1
 
 
+def test_the_withheld_message_names_every_category_either_scan_found(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: an excerpt masking cannot make clean is withheld.
+
+    Regression for RC-MASK-05: the marker `aws` does not occur in the
+    content — only the AWS signature's span does — so the first scan
+    names `aws-access-key-id` alone, and the mask label it writes,
+    `[masked: aws-access-key-id]`, is what the rescan finds `aws` in.
+    The withheld message names the union of both scans' categories,
+    sorted — and no excerpt is recorded.
+    """
+
+    repo = _repo(tmp_path, monkeypatch, markers=("aws",))
+    monkeypatch.setenv("AGENTMARSHAL_ACTOR", "ci-runner")
+    _open()
+    secret = "AKIA" + "0" * 16
+    output = tmp_path / "out.log"
+    output.write_bytes(f"credentials {secret} leaked\n".encode())
+    capsys.readouterr()
+
+    assert (
+        _record_check(
+            "--commit",
+            "HEAD",
+            "--name",
+            "deploy",
+            "--result",
+            "failed",
+            "--output-file",
+            str(output),
+        )
+        == 0
+    )
+
+    record = _checks(repo)[0]
+    assert "excerpt" not in record
+    captured = capsys.readouterr()
+    assert "withheld" in captured.err
+    assert "aws-access-key-id" in captured.err
+    assert "private-marker" in captured.err
+    # The matched text is never echoed — to stderr or into the journal.
+    assert secret not in captured.out + captured.err
+    assert secret not in json.dumps(_records(repo))
+
+
 def test_the_standalone_scan_is_untouched(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -331,13 +331,17 @@ def run(args: argparse.Namespace, stderr: TextIO) -> int:
             # empty file, whitespace — carries none.
             if candidate.strip():
                 excerpt = candidate
-            if excerpt is not None and scan_for_leaks(excerpt, markers):
-                # A marker that occurs in the mask label itself still
-                # trips the scan after masking; the excerpt is withheld
-                # rather than written carrying the marker's value — the
-                # record and the result still land.
-                excerpt = None
-                withheld = True
+            if excerpt is not None:
+                remaining = scan_for_leaks(excerpt, markers)
+                if remaining:
+                    # A marker that occurs in the mask label itself still
+                    # trips the scan after masking; the excerpt is withheld
+                    # rather than written carrying the marker's value — the
+                    # record and the result still land, and the categories
+                    # named are everything either scan found.
+                    excerpt = None
+                    withheld = True
+                    categories = sorted(set(categories) | set(remaining))
         record = create_check_record(
             args.task,
             __version__,
