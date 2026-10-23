@@ -27,7 +27,9 @@ The record SHALL name its recorder in `recorded_by` with
 `recorded_by_source`, as `check`, `agreement` and `acknowledgement` do;
 a recorder that is not a declared actor is accepted. The record SHALL
 project to no task state and SHALL NOT be admitted after a terminal
-record — post-gate results go to the process log. Nothing reads the
+record — post-gate results go to the process log. `status` shows the
+record's envelope — `kind`, `commit`, `payload_sha256` and the recorder
+— on a line of its own, without opening the body. No command reads the
 body yet — the `record-ext` command, the leak scan of the payload at
 write, `validate`'s "addressee not found" warning, checking that a kind
 is declared by a manifest, and any reader of the body come with their
@@ -130,3 +132,35 @@ derivation — the record type itself needs it.
 #### Scenario: an ext record stamped below 7 is refused on read
 - **WHEN** the journal holds an `ext` record stamped below 7
 - **THEN** reading the task's records refuses it
+
+### Requirement: `status` shows an ext record on a line of its own
+
+`agentmarshal status <task>` SHALL print one line per `ext` record —
+after the record's id, type and time: the `kind`, the commit's short
+form and the payload hash's short form — and SHALL name the recorder. A
+recorder that is not a declared actor SHALL be shown as not a declared
+actor (ADR-0022 section 3). The record's `payload` SHALL NOT be shown —
+it is opaque to the core; the line names its hash only. Every value
+taken from the record SHALL be escaped on display as the other record
+lines' values are.
+
+#### Scenario: status shows an ext record's line
+- **WHEN** `agentmarshal status <task>` lists an `ext` record
+- **THEN** its line carries `kind`, the commit's short form,
+  `payload_sha256`'s short form and `recorded_by`, and none of the
+  payload's text
+
+#### Scenario: a recorder that is not a declared actor is shown as such
+- **WHEN** `agentmarshal status <task>` lists an `ext` record whose
+  `recorded_by` is not a declared actor
+- **THEN** the line names the recorder and says it is not a declared
+  actor
+
+#### Scenario: an ext record's values stay on their own line
+- **WHEN** `agentmarshal status <task>` lists an `ext` record whose
+  `kind`, `commit`, `payload_sha256` or `recorded_by` carries a
+  character that could add a line to rendered output or reorder it — a
+  value an older schema's journal can hold where today's read rules do
+  not reach
+- **THEN** each refused character prints as its escape and the record
+  stays on the one line
