@@ -16,10 +16,18 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
+# The module, not its names: agentmarshal.switches imports
+# agentmarshal.journal.contracts, whose package __init__ reaches this
+# module through review.py — a from-import would ask the partially
+# initialized switches module for its names and fail, while a module
+# import binds what sys.modules already holds and every attribute is
+# read at call time, after the module has finished initializing.
+import agentmarshal.switches as switches_module
 from agentmarshal.journal.actors import finding_reviewer_identity_refusal
 from agentmarshal.journal.artifacts import artifact_path as artifact_path
 from agentmarshal.journal.capture import (
@@ -32,6 +40,7 @@ from agentmarshal.journal.capture import (
     scan_diff_for_leaks,
 )
 from agentmarshal.journal.contracts import (
+    ContractHeader,
     JournalContractError,
     contract_sha256,
     parse_contract_text,
@@ -851,6 +860,218 @@ def _judge_independence_rule(
     )
 
 
+def _extension_names_at_tree(
+    project_root: Path, tree_ref: str
+) -> tuple[frozenset[str], frozenset[str]]:
+    """The shared extension names a tree declares: (every name, directory-form).
+
+    The enumeration half of ``stages.py``'s base read, living beside the
+    manifest-at-tree helpers it uses so the gate's operational lane can
+    name the shared extensions at the merge base without loading
+    manifests: a symlink at ``.agentmarshal``, at ``extensions/`` or at
+    an extension's ``<name>`` is refused as a link; a missing or
+    non-tree ``extensions/`` is simply no extensions; a ``<name>.toml``
+    blob is the file form — a shared extension that declares no
+    directory, though a switches entry may still name it.
+    """
+
+    agentmarshal_entry = _tree_entry(project_root, tree_ref, ".agentmarshal")
+    if agentmarshal_entry is not None and agentmarshal_entry[0] == "120000":
+        raise ExtensionManifestError(
+            f"refusing to read extensions through a symlink: {tree_ref}:.agentmarshal"
+        )
+    extensions_entry = _tree_entry(
+        project_root, tree_ref, _EXTENSIONS_PREFIX.removesuffix("/")
+    )
+    if extensions_entry is not None and extensions_entry[0] == "120000":
+        raise ExtensionManifestError(
+            "refusing to read extensions through a symlink: "
+            f"{tree_ref}:{_EXTENSIONS_PREFIX.removesuffix('/')}"
+        )
+    if agentmarshal_entry is None or agentmarshal_entry[1] != "tree":
+        return frozenset(), frozenset()
+    if extensions_entry is None or extensions_entry[1] != "tree":
+        return frozenset(), frozenset()
+    listing = _run_git_lossy(
+        project_root, ["ls-tree", "-z", tree_ref, "--", _EXTENSIONS_PREFIX]
+    )
+    names: set[str] = set()
+    directory_names: set[str] = set()
+    for item in listing.split("\0"):
+        if not item:
+            continue
+        meta, _, path = item.partition("\t")
+        fields = meta.split(" ")
+        mode, kind = fields[0], fields[1]
+        basename = path.rsplit("/", maxsplit=1)[-1]
+        if kind == "tree":
+            directory_names.add(basename)
+            names.add(basename)
+        elif mode == "120000":
+            raise ExtensionManifestError(
+                f"refusing to read extension {basename!r} through a symlink: "
+                f"{tree_ref}:{path}"
+            )
+        elif basename.endswith(".toml") and basename != ".toml":
+            names.add(basename.removesuffix(".toml"))
+    return frozenset(names), frozenset(directory_names)
+
+
+def _operational_contract(
+    project_root: Path, task_id: str, merge_base: str, resolved_commit: str
+) -> ContractHeader | None:
+    """The contract the operational lane is judged under, or ``None``.
+
+    Read from the merge-base tree when the task exists there; when the
+    candidate itself opens the task — no ``contract.md`` at the base —
+    from the candidate's tree, mirroring how the journal-only lane
+    treats an opening transaction. The lane bounds the diff either way,
+    so a contract the candidate publishes cannot widen what the lane
+    admits. An absent contract, a link or non-blob at its path, a blob
+    git cannot read, or text the contract parser refuses each return
+    ``None``: not operational, and the regular lane reports the same
+    contract's own refusal.
+    """
+
+    contract_path = f"{_JOURNAL_PREFIX}tasks/{task_id}/contract.md"
+    tree_ref = merge_base
+    entry = _tree_entry(project_root, merge_base, contract_path)
+    if entry is None:
+        tree_ref = resolved_commit
+        entry = _tree_entry(project_root, resolved_commit, contract_path)
+    if entry is None or entry[0] == "120000" or entry[1] != "blob":
+        return None
+    try:
+        text = _run_git(project_root, ["show", f"{tree_ref}:{contract_path}"])
+        return parse_contract_text(text, f"{tree_ref}:{contract_path}")
+    except (GateError, JournalContractError):
+        return None
+
+
+@dataclass(frozen=True)
+class OperationalCandidate:
+    """What the operational lane is judged under, once a candidate qualifies.
+
+    ``contract`` is the contract the lane's checks are read from;
+    ``extension_names`` the shared extension names the merge base
+    declares, which the candidate's file is parsed against;
+    ``base_raw`` the base's own switches file as ``tomllib`` reads it —
+    ``{"format": 1}`` when the base has none — the base a removed or
+    an unchanged entry is judged by.
+    """
+
+    contract: ContractHeader
+    extension_names: frozenset[str]
+    base_raw: dict[str, Any]
+
+
+def operational_candidate(
+    project_root: Path,
+    task_id: str,
+    merge_base: str,
+    resolved_commit: str,
+    changes_with_status: list[tuple[str, str]],
+) -> OperationalCandidate | None:
+    """The lane's judgement bundle for an operational candidate, or ``None``.
+
+    ADR-0013 decision 17 — the lane a change takes when it only switches
+    shared extensions: the diff carries ``.agentmarshal/switches.toml``
+    and otherwise nothing outside ``.agentmarshal/journal/tasks/<task>/``
+    — the task's own subtree, contract included — and the task's
+    contract declares ``scope`` exactly that file. Anything else — a
+    manifest, any configuration, code — is not operational and takes the
+    lane it takes today. Nor is a candidate whose merge base the lane
+    cannot judge: the base's own switches file must parse under the
+    shared parser against the base's shared extension names — an absent
+    file parses as no entries — because a removed or an unchanged entry
+    is judged against it, so a base the read or the parse refuses keeps
+    the candidate on the lane it takes today, where it needs a review.
+    ``run_gate`` asks this only in the embedded placement; in a sidecar
+    the lane is not offered. The candidate file's entries are not
+    inspected here: that judgement is the lane's own, so a malformed
+    candidate file fails on the lane itself with the file and entry
+    named.
+    """
+
+    task_prefix = f"{_JOURNAL_PREFIX}tasks/{task_id}/"
+    carries_file = False
+    for _status, path in changes_with_status:
+        if path == switches_module.SWITCHES_RELPATH:
+            carries_file = True
+        elif not path.startswith(task_prefix):
+            return None
+    if not carries_file:
+        return None
+    contract = _operational_contract(project_root, task_id, merge_base, resolved_commit)
+    if contract is None or contract.scope != (switches_module.SWITCHES_RELPATH,):
+        return None
+    try:
+        extension_names = _extension_names_at_tree(project_root, merge_base)[0]
+        base_raw = _switches_at_tree(project_root, merge_base, extension_names)
+    except (ExtensionManifestError, switches_module.SwitchesError, GateError):
+        # The base cannot be judged: its extension names cannot be
+        # enumerated, its file is not a file, its text the parser
+        # refuses, or git cannot show it — each keeps the lane closed.
+        return None
+    return OperationalCandidate(contract, extension_names, base_raw)
+
+
+def _switches_at_tree(
+    project_root: Path, tree_ref: str, names: frozenset[str]
+) -> dict[str, Any]:
+    """A tree's switches file as raw TOML; a missing file is ``format = 1``.
+
+    The tree read the operational lane makes of both the merge base and
+    the candidate, kept beside ``parse_switches``' caller so the file's
+    own ref names every refusal: a link or a non-blob at the file's path
+    is not a file — the same refusal ``stages.py``'s base read makes.
+    ``parse_switches`` runs over the blob text first — its refusals are
+    this function's — and what returns is the table ``tomllib`` reads
+    of the same text, not the parsed ``Switch`` entries, which drop the
+    keys an entry carries beyond ``state``, ``task`` and ``reason``: the
+    lane's comparisons are made on the raw tables, so a change the
+    parser does not keep is a change all the same. An absent file
+    returns ``{"format": 1}`` and nothing else — the table the lane's
+    top-level comparison counts a missing file as.
+    """
+
+    source = f"{tree_ref}:{switches_module.SWITCHES_RELPATH}"
+    entry = _tree_entry(project_root, tree_ref, switches_module.SWITCHES_RELPATH)
+    if entry is None:
+        return {"format": 1}
+    mode, kind = entry
+    if mode == "120000" or kind != "blob":
+        raise switches_module.SwitchesError(f"{source}: not a file")
+    data = _run_git_bytes(project_root, ["show", source])
+    switches_module.parse_switches(data, source, names)
+    return tomllib.loads(data.decode("utf-8"))
+
+
+def _toml_canonical(value: Any) -> tuple[str, Any]:
+    """A TOML value's canonical form: its exact type tag and normalized value.
+
+    The lane's "differs from the base" judgement is made on the raw
+    tables ``tomllib`` reads, and plain ``==`` is type-blind exactly
+    where TOML is not — ``1 == 1.0`` and ``True == 1`` — so a change
+    that only moves a value's type would pass unattributed. Each value
+    maps to a pair: a table to its items sorted by key, a list to its
+    items in order, and every scalar to its ``repr`` — which keeps
+    ``nan`` equal to itself, ``-0.0`` different from ``0.0`` and two
+    equal-instant datetimes with different offsets different, each a
+    difference of the file's content. Pairs compare by ``==``; a type
+    tag difference settles the answer before any value is reached.
+    """
+
+    if isinstance(value, dict):
+        return (
+            "dict",
+            tuple(sorted((key, _toml_canonical(item)) for key, item in value.items())),
+        )
+    if isinstance(value, list):
+        return ("list", [_toml_canonical(item) for item in value])
+    return (type(value).__name__, repr(value))
+
+
 def leak_scan_diff(
     project_root: Path, merge_base: str, commit: str
 ) -> tuple[str, list[str]]:
@@ -1035,6 +1256,17 @@ def run_gate(
         # journal of its own would otherwise reach the lane and skip scope,
         # review and independence on an unreviewed change.
         journal_only = False
+    # ADR-0013 decision 17's lane is offered only in the embedded placement: in
+    # a sidecar a host diff spelling the same paths is work like any other.
+    # A journal-only candidate cannot carry the switches file, so asking the
+    # predicate then would only spend git reads.
+    operational = (
+        operational_candidate(
+            project_root, task_id, merge_base, resolved_commit, changes_with_status
+        )
+        if not sidecar and not journal_only
+        else None
+    )
 
     # "Open" is decided from the base tree, never the candidate: opening,
     # implementation and completion candidates all merge onto a task that
@@ -1117,6 +1349,190 @@ def run_gate(
 
     if journal_only:
         say("PASS: journal-only transaction (deterministic lane; review not required)")
+    elif operational is not None:
+        contract = operational.contract
+        say("PASS: operational transaction (operational lane; review not required)")
+        # The regular lane's scope check is one the lane's own predicate
+        # has already made: the diff is the switches file plus the task's
+        # own records and the contract's scope is exactly that file, so
+        # the transcript says so in the check's place rather than leaving
+        # the lane silent where the diff lane reports.
+        check(
+            True,
+            "scope (operational lane: the diff is "
+            ".agentmarshal/switches.toml and the task's own records)",
+        )
+        # ADR-0013 decision 17's lane check: the candidate's file parses
+        # against the shared extension names the base declares, then is
+        # compared to the base's as raw TOML — the tables `tomllib`
+        # reads, not the parsed `Switch` entries, which drop the keys an
+        # entry carries beyond state, task and reason. The tables
+        # compare through `_toml_canonical`, a type-strict form: a
+        # change of a value's type alone — `1` to `1.0`, `true` to `1`
+        # — is a change all the same. Every top-level
+        # key outside `switches` must be identical — an absent file
+        # counts as format = 1 and nothing else — every entry the
+        # candidate adds or changes relative to the base names this
+        # task — switching one back on is an `on` entry naming it — and
+        # an entry the base held that the candidate drops refuses:
+        # removing is a change like any other, so it carries the task
+        # that made it or it does not happen. The base's own file
+        # reached the lane already parsed — the predicate keeps the
+        # lane closed when the base cannot be read — so `base_raw` is
+        # never a guessed base.
+        candidate_source = f"{resolved_commit}:{switches_module.SWITCHES_RELPATH}"
+        candidate_raw: dict[str, Any] | None
+        try:
+            candidate_raw = _switches_at_tree(
+                project_root, resolved_commit, operational.extension_names
+            )
+        except switches_module.SwitchesError as error:
+            check(False, str(error))
+            candidate_raw = None
+        if candidate_raw is not None:
+            base_top = {
+                key: value
+                for key, value in operational.base_raw.items()
+                if key != "switches"
+            }
+            candidate_top = {
+                key: value for key, value in candidate_raw.items() if key != "switches"
+            }
+            # TOML has no null, so a key only one side carries never
+            # equals a value the other holds: `.get` marks added,
+            # changed and dropped keys alike. Values compare by their
+            # canonical form rather than `==`, under which `1 == 1.0`
+            # and `True == 1` — a change of type alone is a change.
+            top_changed = sorted(
+                key
+                for key in base_top.keys() | candidate_top.keys()
+                if _toml_canonical(base_top.get(key))
+                != _toml_canonical(candidate_top.get(key))
+            )
+            base_entries = operational.base_raw.get("switches", {})
+            candidate_entries = candidate_raw.get("switches", {})
+            removed = sorted(
+                name for name in base_entries if name not in candidate_entries
+            )
+            misnamed = sorted(
+                name
+                for name, entry in candidate_entries.items()
+                if _toml_canonical(base_entries.get(name)) != _toml_canonical(entry)
+                and entry["task"] != task_id
+            )
+            check(
+                not top_changed,
+                "the switches file outside its entries matches the base"
+                if not top_changed
+                else f"{candidate_source}: top-level keys differ from "
+                "the base: " + ", ".join(f"{key!r}" for key in top_changed),
+            )
+            refusals: list[str] = []
+            if removed:
+                refusals.append(
+                    "switch entries removed: "
+                    + ", ".join(f"{name!r}" for name in removed)
+                )
+            if misnamed:
+                refusals.append(
+                    "switch entries naming another task: "
+                    + ", ".join(
+                        f"{name!r} (task {candidate_entries[name]['task']})"
+                        for name in misnamed
+                    )
+                )
+            check(
+                not refusals,
+                f"every added or changed switch entry names {task_id}"
+                if not refusals
+                else f"{candidate_source}: " + "; ".join(refusals),
+            )
+        say("NOT EXAMINED: agreement (the operational lane requires none)")
+        named_manifests: dict[str, ExtensionManifest] = {}
+        for name in dict.fromkeys(contract.extensions):
+            try:
+                # The trusted side, as on the regular lane: the merge-base
+                # tree the candidate cannot edit.
+                named_manifests[name] = _manifest_from_tree(
+                    project_root, merge_base, name
+                )
+            except ExtensionManifestError as error:
+                check(False, f"named extension {name!r} manifest unreadable: {error}")
+        named_documents = list(contract.documents)
+        for name in contract.extensions:
+            named_manifest = named_manifests.get(name)
+            if named_manifest is not None:
+                named_documents.extend(named_manifest.documents)
+        named_documents = list(dict.fromkeys(named_documents))
+        if named_documents:
+            named = tuple(named_documents)
+            touched_documents = sorted(
+                {
+                    path
+                    for _status, path in changes_with_status
+                    if scope_covers(named, path)
+                }
+            )
+            check(
+                bool(touched_documents),
+                "named documents touched (" + ", ".join(touched_documents) + ")"
+                if touched_documents
+                else "named documents untouched: " + ", ".join(named_documents),
+            )
+        say("NOT EXAMINED: latest review (the operational lane requires none)")
+        say("NOT EXAMINED: reviewer independence (the operational lane requires none)")
+        for rule in contract.independence:
+            if rule != "reviewer-not-writer":
+                say(
+                    f"NOT EXAMINED: independence rule {rule!r} "
+                    "(the operational lane requires no review)"
+                )
+        if contract.reviewers:
+            say(
+                "NOT EXAMINED: declared reviewers "
+                "(the operational lane requires no review)"
+            )
+        # The declared implementers check is not review-bound, so the lane
+        # still runs it — the same in-range session rule and the same lines
+        # as on the regular lane.
+        if contract.implementers:
+            records = read_records(journal_root, task_id)
+            candidate_range = _range_commits(project_root, merge_base, resolved_commit)
+            lane_sessions = [
+                record
+                for record in records
+                if record.get("record_type") == "session"
+                and record.get("commit") in candidate_range
+            ]
+            if not lane_sessions:
+                say(
+                    "NOT CHECKED: declared implementers (no implementer "
+                    "session carries a commit in the candidate's range)"
+                )
+            else:
+                nonmember_sessions = [
+                    session
+                    for session in lane_sessions
+                    if session.get("actor") not in contract.implementers
+                ]
+                if nonmember_sessions:
+                    check(
+                        False,
+                        "in-range implementer session actors outside the "
+                        f"contract's declared implementers "
+                        f"({', '.join(contract.implementers)}): "
+                        + ", ".join(
+                            f"{session.get('actor')!r} (implementer session "
+                            f"{session.get('id')})"
+                            for session in nonmember_sessions
+                        ),
+                    )
+                else:
+                    check(
+                        True,
+                        "every in-range implementer session's actor is in "
+                        "the contract's declared implementers",
+                    )
     else:
         # The contract is read from the merge-base tree: the trusted
         # side, so the candidate cannot widen its own scope.
@@ -1765,7 +2181,7 @@ def run_gate(
                 )
             )
 
-    if not journal_only:
+    if not journal_only and operational is None:
         # ADR-0016 decision 4: the count of changes_required verdicts over
         # the whole task — every review of the task's candidates, whatever
         # commit it names; a review bound to a research finding (ADR-0009)
@@ -1773,7 +2189,8 @@ def run_gate(
         # stop and revisit the contract. It closes the transcript and
         # reports; it is never a check, so it cannot add a violation,
         # change the exit status or refuse a merge. The journal-only lane
-        # carries no work to review and prints nothing.
+        # carries no work to review and prints nothing; the operational
+        # lane has no review loop to signal and prints nothing either.
         count = sum(
             1
             for record in task.records

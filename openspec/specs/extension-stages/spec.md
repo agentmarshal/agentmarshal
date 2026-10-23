@@ -41,7 +41,15 @@ entry SHALL be refused as a link; an `extensions/` that is missing or
 not a tree SHALL mean no directory-form extensions. A `--phase
 pre-gate` invocation SHALL run each `[[stage]]` whose phase is
 `pre-gate-warn` or `pre-gate-stop`; a `--phase post-gate` invocation
-SHALL run each whose phase is `post-gate`. Extensions SHALL run in the
+SHALL run each whose phase is `post-gate`. One exception precedes the
+manifest read for `--phase pre-gate`: on a candidate the gate's own
+operational-lane predicate qualifies — decided by the same function
+the gate uses, imported rather than copied — the invocation SHALL
+print one line saying pre-gate stages do not run on an operational
+change and SHALL run no stage, reading no extension manifest and
+consulting no switch to decide one — no extension event, no pause —
+returning success (ADR-0013 decision 17: otherwise a broken extension
+blocks its own switching off). Extensions SHALL run in the
 sorted order of their names, each extension's matching stages in the
 order its manifest declares. A manifest the base-tree reader refuses
 SHALL fail the command naming the extension and its tree source. A
@@ -89,6 +97,14 @@ manifest is read.
 - **WHEN** `stage run` is given a `--task` value the record family
   would refuse
 - **THEN** it refuses naming the identifier and no stage is planned
+
+#### Scenario: pre-gate stages do not run on an operational change
+- **WHEN** `stage run --phase pre-gate` runs on a candidate the gate's
+  operational lane admits — a switches-only diff under a contract
+  scoping exactly `.agentmarshal/switches.toml`
+- **THEN** it prints one line saying pre-gate stages do not run on an
+  operational change, reads no extension manifest, runs no stage and
+  exits 0
 
 ### Requirement: the extension's code is the base's and the working directory the candidate's
 
@@ -443,7 +459,13 @@ switched-off stage SHALL neither pause a `pre-gate-stop` nor warn a
 one line on stderr naming the file and, where the parse reached one,
 the entry; no stage of an extension the file names SHALL run — each
 SHALL be `not run (shared switches file unreadable)` — and where the
-file's entries cannot be enumerated at all, every stage SHALL be.
+file's entries cannot be enumerated at all, every stage SHALL be. On a
+`--phase pre-gate` invocation the operational lane excepts, no stage is
+planned at all — the exception the invocation requirement states — so
+a switched-off extension's stage carries no `switched off` line there;
+the read of the merge base's file this requirement governs is still
+made, by the lane's own predicate, and never of the candidate's or the
+working tree's file.
 
 #### Scenario: a switched-off extension prints switched off (task, reason) and does not run
 - **WHEN** the base's switches file switches an extension off
@@ -486,6 +508,13 @@ file's entries cannot be enumerated at all, every stage SHALL be.
 - **WHEN** the base's switches file is not TOML at all
 - **THEN** the refusal is printed on one stderr line and every stage is
   `not run (shared switches file unreadable)`
+
+#### Scenario: an operational change reports no switched-off stage
+- **WHEN** `stage run --phase pre-gate` runs on a candidate the
+  operational lane admits while the base's file already switches an
+  extension off
+- **THEN** the command's one line is the operational skip — no stage of
+  the switched-off extension prints `switched off` — and it exits 0
 
 ### Requirement: `doctor` shows each switched-off shared extension
 
