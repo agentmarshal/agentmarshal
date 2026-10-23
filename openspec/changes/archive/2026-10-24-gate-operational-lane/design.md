@@ -184,7 +184,13 @@ gate names extensions without loading manifests:
   nothing else when absent. A base file the read or the parse refuses
   never reaches this comparison: the predicate has already kept the
   lane closed, so the comparison judges tables against tables, never
-  a guessed base. Two rules fall out of the raw comparison:
+  a guessed base. "Differs" is decided on a type-strict canonical
+  form — each TOML value compared as its exact type's tag plus a
+  normalized value: a table its items sorted by key, a list its items
+  in order, a scalar its `repr` — never by Python's `==`, under which
+  `1 == 1.0` and `True == 1` and a type-only change would pass
+  unattributed (review round 5). Two rules fall out of the raw
+  comparison:
   - Every top-level key other than `switches` must be identical
     between the base's file and the candidate's; a difference refuses
     naming the file. The rule closes the rest of the file the same

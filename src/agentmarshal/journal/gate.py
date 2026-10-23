@@ -1047,6 +1047,31 @@ def _switches_at_tree(
     return tomllib.loads(data.decode("utf-8"))
 
 
+def _toml_canonical(value: Any) -> tuple[str, Any]:
+    """A TOML value's canonical form: its exact type tag and normalized value.
+
+    The lane's "differs from the base" judgement is made on the raw
+    tables ``tomllib`` reads, and plain ``==`` is type-blind exactly
+    where TOML is not — ``1 == 1.0`` and ``True == 1`` — so a change
+    that only moves a value's type would pass unattributed. Each value
+    maps to a pair: a table to its items sorted by key, a list to its
+    items in order, and every scalar to its ``repr`` — which keeps
+    ``nan`` equal to itself, ``-0.0`` different from ``0.0`` and two
+    equal-instant datetimes with different offsets different, each a
+    difference of the file's content. Pairs compare by ``==``; a type
+    tag difference settles the answer before any value is reached.
+    """
+
+    if isinstance(value, dict):
+        return (
+            "dict",
+            tuple(sorted((key, _toml_canonical(item)) for key, item in value.items())),
+        )
+    if isinstance(value, list):
+        return ("list", [_toml_canonical(item) for item in value])
+    return (type(value).__name__, repr(value))
+
+
 def leak_scan_diff(
     project_root: Path, merge_base: str, commit: str
 ) -> tuple[str, list[str]]:
@@ -1341,7 +1366,10 @@ def run_gate(
         # against the shared extension names the base declares, then is
         # compared to the base's as raw TOML — the tables `tomllib`
         # reads, not the parsed `Switch` entries, which drop the keys an
-        # entry carries beyond state, task and reason. Every top-level
+        # entry carries beyond state, task and reason. The tables
+        # compare through `_toml_canonical`, a type-strict form: a
+        # change of a value's type alone — `1` to `1.0`, `true` to `1`
+        # — is a change all the same. Every top-level
         # key outside `switches` must be identical — an absent file
         # counts as format = 1 and nothing else — every entry the
         # candidate adds or changes relative to the base names this
@@ -1372,11 +1400,14 @@ def run_gate(
             }
             # TOML has no null, so a key only one side carries never
             # equals a value the other holds: `.get` marks added,
-            # changed and dropped keys alike.
+            # changed and dropped keys alike. Values compare by their
+            # canonical form rather than `==`, under which `1 == 1.0`
+            # and `True == 1` — a change of type alone is a change.
             top_changed = sorted(
                 key
                 for key in base_top.keys() | candidate_top.keys()
-                if base_top.get(key) != candidate_top.get(key)
+                if _toml_canonical(base_top.get(key))
+                != _toml_canonical(candidate_top.get(key))
             )
             base_entries = operational.base_raw.get("switches", {})
             candidate_entries = candidate_raw.get("switches", {})
@@ -1386,7 +1417,8 @@ def run_gate(
             misnamed = sorted(
                 name
                 for name, entry in candidate_entries.items()
-                if base_entries.get(name) != entry and entry["task"] != task_id
+                if _toml_canonical(base_entries.get(name)) != _toml_canonical(entry)
+                and entry["task"] != task_id
             )
             check(
                 not top_changed,

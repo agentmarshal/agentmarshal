@@ -529,6 +529,92 @@ def test_an_extra_key_on_an_entry_naming_this_task_is_not_refused(
     assert "PASS: every added or changed switch entry names CR-001" in output
 
 
+def test_a_type_only_change_in_another_tasks_entry_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A change of a value's type alone is a change all the same.
+
+    Python's ``==`` reads ``1 == 1.0`` and ``True == 1`` — bool is a
+    subclass of int — so a raw-table comparison by plain equality would
+    see no change where TOML saw one, and an entry staying under another
+    task's name would go unattributed. The lane compares a type-strict
+    canonical form instead: each type move below is a changed entry, and
+    an entry naming another task refuses naming the file and the entry;
+    the same move on a top-level key outside ``switches`` refuses naming
+    the file.
+    """
+
+    repo, base = _operational_repo(tmp_path, monkeypatch)
+    for old, new in (("1", "1.0"), ("true", "1")):
+        _write_switches(
+            repo,
+            'format = 1\n\n[switches.openspec]\nstate = "off"\n'
+            'task = "CR-214"\nreason = "switched off before"\n'
+            f"note = {old}\n",
+        )
+        base = _commit_all(repo, "switched off at base with a note")
+        _write_switches(
+            repo,
+            'format = 1\n\n[switches.openspec]\nstate = "off"\n'
+            'task = "CR-214"\nreason = "switched off before"\n'
+            f"note = {new}\n",
+        )
+        head = _commit_all(repo, "move the note's type")
+
+        passed, output = _run(repo, head, base, head)
+
+        assert not passed
+        assert (
+            f"FAIL: {head}:{_SWITCHES}: switch entries naming another task: "
+            "'openspec' (task CR-214)"
+        ) in output
+
+    _write_switches(repo, "format = 1\ncount = 1\n\n[switches]\n")
+    base = _commit_all(repo, "a top-level key at base")
+    _write_switches(repo, "format = 1\ncount = 1.0\n\n[switches]\n")
+    head = _commit_all(repo, "move the top-level key's type")
+
+    passed, output = _run(repo, head, base, head)
+
+    assert not passed
+    assert (
+        f"FAIL: {head}:{_SWITCHES}: top-level keys differ from the base: 'count'"
+    ) in output
+
+
+def test_a_type_only_change_in_this_tasks_entry_is_admitted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The same type-only changes are admitted when the entry names this task.
+
+    The canonical comparison marks the entry changed; a changed entry
+    naming this task in `task` is admitted, as every added or changed
+    entry is.
+    """
+
+    repo, base = _operational_repo(tmp_path, monkeypatch)
+    for old, new in (("1", "1.0"), ("true", "1")):
+        _write_switches(
+            repo,
+            'format = 1\n\n[switches.openspec]\nstate = "off"\n'
+            'task = "CR-001"\nreason = "switched off before"\n'
+            f"note = {old}\n",
+        )
+        base = _commit_all(repo, "switched off at base with a note")
+        _write_switches(
+            repo,
+            'format = 1\n\n[switches.openspec]\nstate = "off"\n'
+            'task = "CR-001"\nreason = "switched off before"\n'
+            f"note = {new}\n",
+        )
+        head = _commit_all(repo, "move the note's type under this task")
+
+        passed, output = _run(repo, head, base, head)
+
+        assert passed, output
+        assert "PASS: every added or changed switch entry names CR-001" in output
+
+
 def test_a_value_that_could_forge_a_line_is_escaped_on_display(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
