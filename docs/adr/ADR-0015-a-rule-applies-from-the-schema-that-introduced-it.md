@@ -112,3 +112,13 @@ How it works today:
 - **An exception list** — declined in
   [proposal 025](../proposals/025-validate-refused-records-an-earlier-release-wrote.md).
 - **Rewriting old records** — the journal is append-only.
+
+## Clarifications
+
+Clarification 2026-10-23 (CR-198): the gate's validation of the records a
+candidate adds — the `added records are valid` check — is the **write** side
+of decision 1, not the read side: an added record is input its author can
+still fix, so every current rule applies to it whatever schema it declares.
+Read by its own schema's rules instead, a forged record that stamped a
+lowered schema would pass — CR-145's first review showed exactly that on
+the read path (review round 1, finding `gate-rules-unreachable-on-read`).

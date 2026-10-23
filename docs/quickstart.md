@@ -548,6 +548,55 @@ event, the approved review bound to the commit SHA, the completion, and the
 session you recorded after it. Since 0.3.0 both `status` and `report` also print
 which placement produced the evidence — here `Placement: embedded` — on
 **stderr**, so their stdout stays exactly as anything parsing it expects.
+Since 0.5.0 three more lines print there once per `status` run: `journal:`,
+`process log:` and `local state:` name where the journal, the process log and
+the local state actually live — the last two marked `unavailable` with the
+reason when the local state cannot be resolved.
+
+The trail this loop prints is the minimum; a task's view on stdout has more
+parts, each of them reporting and none deciding anything:
+
+- A contract header declaring `implementers`, `reviewers` or `independence`
+  gets an `Assignment:` section between the scope and the records — the
+  declared lists in their order, `(not declared)` for one the header omits,
+  the independence line adding `reviewer-not-writer (always checked by the
+  gate)` when the header does not name it — then what ran: one line per
+  implementer session and one per review, showing `actor`, `vendor` and
+  `model` (`(absent)` for a field the record does not carry, `fallback_reason`
+  on a session line only when the record carries one), an actor outside its
+  declared list marked `(not declared for the role)`.
+- The record types new in 0.5.0 print lines of their own in place of the
+  generic `<id> <type> <time>` line: `check` (`name`, `result`, `commit`,
+  `failed_step` when present), `agreement` (the agreed hash under
+  `contract`), `acknowledgement` (`commit`, `file`, `signature` or `marker`,
+  `reason`, and a `self-acknowledged` or `self-acknowledgement not checked`
+  mark derived on display) and `ext` (`kind`, `commit`, `payload_sha256`) —
+  each naming `recorded_by=<actor>`, marked `(not a declared actor)` when
+  the recorder is not in the project's actors table.
+- One line after the records states the agreement state: `No agreement with
+  the contract is recorded` — what every task in this walkthrough prints —
+  or `Recorded agreement <hash> is for an earlier contract text (now
+  <hash>)` when the contract changed since the latest agreement; no line
+  prints when that agreement matches the contract's current text.
+- A `Deferrals:` section lists each `deferred` advisory disposition the
+  task's `completed` records carry — the finding id, its `reason`, and a
+  `follow_up` task with its state (or that the journal does not hold it)
+  when one was named — and counts the `fixed` and `rejected` dispositions
+  on one `fixed=N rejected=N` line.
+- `changes_required verdicts for <task>: N (threshold T)` — the same count
+  the gate's `INFO` line reports, over the task's `changes_required`
+  reviews of its candidates — prints only when the count is non-zero,
+  marked `threshold T reached — stop and revisit the contract` when it
+  reaches the project's `review.changes_required_threshold` (default 3),
+  and naming the error instead of a threshold when the setting cannot be
+  read.
+- A step still open past its deadline prints one `Overdue step (this
+  machine's process log):` line per such step after everything else,
+  naming the step id, the activity, the deadline and how long past it the
+  step is — the line names its source because the process log is this
+  machine's local state, not journal evidence; the bare `agentmarshal
+  status` list marks such a task `overdue-step`.
+
 `validate` checks the whole journal for integrity and is the check you run in
 CI.
 
