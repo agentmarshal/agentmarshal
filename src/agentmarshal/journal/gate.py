@@ -483,6 +483,18 @@ def _range_emails(project_root: Path, merge_base: str, commit: str) -> set[str]:
     return {line.strip() for line in output.splitlines() if line.strip()}
 
 
+def _range_commits(project_root: Path, merge_base: str, commit: str) -> set[str]:
+    """The full ids of the candidate range's commits.
+
+    The same ``merge-base..candidate`` enumeration the writer-emails
+    comparison uses — the independence rules ask which sessions produced
+    commits of this range, so the set is of ids rather than identities.
+    """
+
+    output = _run_git(project_root, ["log", "--format=%H", f"{merge_base}..{commit}"])
+    return {line.strip() for line in output.splitlines() if line.strip()}
+
+
 def _extension_name(path: str) -> str | None:
     """Return the name for a manifest at its one allowed lexical location."""
 
@@ -578,6 +590,164 @@ def markers_from_tree(project_root: Path, tree_ref: str) -> tuple[str, ...]:
     if not isinstance(data, dict):
         raise ValueError("project.json is not a JSON object")
     return private_markers_from_project(data)
+
+
+def _declared_actor_ids(
+    project_root: Path, journal_root: Path, merge_base: str, sidecar: bool
+) -> frozenset[str] | None:
+    """The actor ids the project's actors table declares, read trusted-side.
+
+    Declared-ness feeds a refusal, so the table is read where the candidate
+    cannot edit it — the merge-base tree in the embedded placement, the
+    sidecar repository's own working file in the other — the same split the
+    contract and the leak-scan markers take. An actor is a key of the
+    ``actors`` section, not a value of the identity mapping, so a key with
+    no ``git_identities`` counts as declared — the same test
+    ``reviewer_actor_note`` runs at submit time. ``None`` reports that the
+    table could not be read at all: a rule needing it then says so rather
+    than reading every actor as undeclared.
+    """
+
+    try:
+        if sidecar:
+            data = read_project_file(project_file_path(journal_root.parents[1]))
+        else:
+            # As markers_from_tree: `ls-tree` tells an absent config from a
+            # failure; only genuine absence reads as an empty table.
+            listing = _run_git(
+                project_root,
+                [
+                    "ls-tree",
+                    "--name-only",
+                    merge_base,
+                    "--",
+                    PROJECT_CONFIG_RELPATH,
+                ],
+            )
+            if not listing.strip():
+                return frozenset()
+            data = json.loads(
+                _run_git(
+                    project_root,
+                    ["show", f"{merge_base}:{PROJECT_CONFIG_RELPATH}"],
+                ).lstrip("\ufeff")
+            )
+    except (OSError, ValueError, GateError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    actors = data.get("actors")
+    if not isinstance(actors, dict):
+        return frozenset()
+    return frozenset(actor for actor in actors if isinstance(actor, str))
+
+
+# The reviewer field each declared independence rule compares, and the
+# session field it is compared against. `reviewer-not-writer` is absent:
+# it is the gate's existing identity check, run for every candidate whether
+# or not the header names it.
+_RULE_REVIEWER_FIELD = {
+    "distinct-vendor": "vendor",
+    "distinct-model": "model",
+    "distinct-actor": "actor",
+}
+_RULE_SESSION_FIELD = {
+    "distinct-vendor": "usage.provider",
+    "distinct-model": "model",
+    "distinct-actor": "actor",
+}
+
+
+def _session_independence_value(rule: str, session: dict[str, object]) -> str | None:
+    """The session value ``rule`` compares, or None where it is absent."""
+
+    if rule == "distinct-vendor":
+        usage = session.get("usage")
+        value = usage.get("provider") if isinstance(usage, dict) else None
+    else:
+        value = session.get(_RULE_SESSION_FIELD[rule])
+    return value if isinstance(value, str) and value.strip() else None
+
+
+def _judge_independence_rule(
+    rule: str,
+    reviewer: object,
+    sessions: list[dict[str, object]],
+    declared_actors: frozenset[str] | None,
+) -> tuple[bool | None, str]:
+    """Judge one declared independence rule against the in-range sessions.
+
+    Returns ``(None, reason)`` where the rule cannot be judged — no
+    implementer session carries a commit in the range, a compared field is
+    absent on the review or on a session, or an actor is not declared — the
+    caller prints the reason on a NOT CHECKED line. Otherwise it returns
+    ``(verdict, message)``. A rule holds only when it holds against every
+    session; one equal pair fails it, and a demonstrated failure outranks an
+    unjudgeable session — reporting it is never the overclaim that passing
+    over an unseen session would be.
+    """
+
+    if not sessions:
+        return (
+            None,
+            "no implementer session carries a commit in the candidate's range",
+        )
+    reviewer_field = _RULE_REVIEWER_FIELD[rule]
+    reviewer_value = (
+        reviewer.get(reviewer_field) if isinstance(reviewer, dict) else None
+    )
+    if not isinstance(reviewer_value, str) or not reviewer_value.strip():
+        return None, f"the latest review carries no 'reviewer.{reviewer_field}'"
+    declared: frozenset[str] | None = None
+    if rule == "distinct-actor":
+        if declared_actors is None:
+            return None, "the project's actors table could not be read"
+        # Both labels must be declared for the comparison to say anything:
+        # an actor is a declared label, and a pass or fail over a label no
+        # actors table vouches for would be a claim the journal cannot
+        # stand behind (ADR-0006, ADR-0022 section 3).
+        if reviewer_value not in declared_actors:
+            return (
+                None,
+                f"the latest review's actor {reviewer_value!r} is not a declared actor",
+            )
+        declared = declared_actors
+    session_field = _RULE_SESSION_FIELD[rule]
+    label = reviewer_field
+    first_gap: str | None = None
+    for session in sessions:
+        session_id = session.get("id")
+        session_label = (
+            f"implementer session {session_id}"
+            if isinstance(session_id, str)
+            else "an implementer session"
+        )
+        session_value = _session_independence_value(rule, session)
+        if session_value is None:
+            if first_gap is None:
+                first_gap = f"{session_label} carries no '{session_field}'"
+            continue
+        if declared is not None and session_value not in declared:
+            if first_gap is None:
+                first_gap = (
+                    f"{session_label}'s actor {session_value!r} is not a declared actor"
+                )
+            continue
+        # The identity check's normalisation: a reviewer controls its own
+        # string and must not evade the comparison through casing.
+        if session_value.strip().casefold() == reviewer_value.strip().casefold():
+            return (
+                False,
+                f"declared reviewer {label} {reviewer_value!r} equals "
+                f"{session_label}'s declared {label} {session_value!r}",
+            )
+    if first_gap is not None:
+        return None, first_gap
+    return (
+        True,
+        f"declared reviewer {label} {reviewer_value!r} differs from every "
+        f"in-range implementer session's declared {label}",
+    )
 
 
 def leak_scan_diff(
@@ -1065,6 +1235,15 @@ def run_gate(
                 "NOT EXAMINED: reviewer independence (no review record to "
                 "compare against the candidate's writers)"
             )
+            # The declared rules are review-bound too: with no review to
+            # judge them against, each reports not examined the same way.
+            for rule in contract.independence:
+                if rule != "reviewer-not-writer":
+                    say(
+                        f"NOT EXAMINED: independence rule {rule!r} (no "
+                        "review record to compare against the implementer "
+                        "sessions)"
+                    )
         else:
             check(
                 approved,
@@ -1095,6 +1274,42 @@ def run_gate(
                 "declared reviewer identity differs from the candidate's "
                 "declared writers",
             )
+
+            # The contract's declared independence rules (ADR-0018
+            # decision 3, ADR-0022 section 5): one line per declared rule
+            # other than `reviewer-not-writer`, which is the check above —
+            # the header naming it adds no second line. A rule the run
+            # cannot judge reports NOT CHECKED rather than passing or
+            # failing on nothing.
+            declared_rules = [
+                rule for rule in contract.independence if rule != "reviewer-not-writer"
+            ]
+            if declared_rules:
+                range_commits = _range_commits(
+                    project_root, merge_base, resolved_commit
+                )
+                # An implementer session is a session record whose `commit`
+                # names a commit of the candidate's range — the field
+                # records the commit the implementer run produced.
+                implementer_sessions = [
+                    record
+                    for record in records
+                    if record.get("record_type") == "session"
+                    and record.get("commit") in range_commits
+                ]
+                actors = (
+                    _declared_actor_ids(project_root, journal_root, merge_base, sidecar)
+                    if "distinct-actor" in declared_rules
+                    else None
+                )
+                for rule in declared_rules:
+                    judged, detail = _judge_independence_rule(
+                        rule, reviewer, implementer_sessions, actors
+                    )
+                    if judged is None:
+                        say(f"NOT CHECKED: independence rule {rule!r} ({detail})")
+                    else:
+                        check(judged, f"independence rule {rule!r} ({detail})")
 
     if attestation == "ci-required":
         say(
