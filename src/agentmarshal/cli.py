@@ -28,6 +28,7 @@ from agentmarshal.journal.complete import (
     abandon_task,
     complete_findings_task,
     complete_task,
+    record_commit_completion,
 )
 from agentmarshal.journal.contracts import contract_sha256
 from agentmarshal.journal.display import escape_for_display
@@ -58,7 +59,6 @@ from agentmarshal.journal.records import (
     _SESSION_ACTIVITIES,
     JournalRecordError,
     create_amendment_record,
-    create_completed_record,
     create_finding_record,
     create_reopened_record,
     write_record,
@@ -292,6 +292,23 @@ def _build_parser() -> argparse.ArgumentParser:
         "--findings",
         action="store_true",
         help="complete against the latest finding without a candidate",
+    )
+    complete_parser.add_argument(
+        "--disposition",
+        action="append",
+        default=[],
+        metavar="ID=DISPOSITION[:REASON]",
+        help="disposition for an advisory finding of the review the gate "
+        "passed on: fixed, deferred:<reason> or rejected:<reason> — the "
+        "reason is everything after the first colon (repeatable; every "
+        "advisory finding of that review takes one)",
+    )
+    complete_parser.add_argument(
+        "--follow-up",
+        action="append",
+        default=[],
+        metavar="ID=TASK",
+        help="follow-up task for a deferred advisory finding (repeatable)",
     )
     complete_parser.add_argument(
         "--pipeline-sha",
@@ -871,6 +888,9 @@ def _run_complete(args: argparse.Namespace, stderr: TextIO) -> int:
             "complete: --commit and --base are required without --findings", file=stderr
         )
         return 1
+    if args.findings and (args.disposition or args.follow_up):
+        print("complete: --findings takes no dispositions", file=stderr)
+        return 1
     placement = _placement("complete", stderr, require_host=not args.findings)
     if placement is None:
         return 1
@@ -896,10 +916,13 @@ def _run_complete(args: argparse.Namespace, stderr: TextIO) -> int:
             )
             record_path = None
             if report.passed:
-                record = create_completed_record(
-                    args.task, __version__, report.resolved_commit
+                record_path = record_commit_completion(
+                    placement.journal_root,
+                    args.task,
+                    report.resolved_commit,
+                    dispositions=args.disposition,
+                    follow_ups=args.follow_up,
                 )
-                record_path = write_record(placement.journal_root, args.task, record)
         else:
             result = complete_task(
                 placement.project_root,
@@ -907,6 +930,8 @@ def _run_complete(args: argparse.Namespace, stderr: TextIO) -> int:
                 args.commit,
                 args.base,
                 pipeline_sha,
+                dispositions=args.disposition,
+                follow_ups=args.follow_up,
             )
             report = result.report
             record_path = result.record_path
@@ -919,7 +944,11 @@ def _run_complete(args: argparse.Namespace, stderr: TextIO) -> int:
         ValueError,
     ) as error:
         print(error, file=stderr)
-        if placement.is_sidecar and not args.findings:
+        if (
+            placement.is_sidecar
+            and not args.findings
+            and not isinstance(error, LifecycleError)
+        ):
             print(
                 "complete: the sidecar could not evaluate this candidate — check "
                 "that the commit and base exist in the configured host",

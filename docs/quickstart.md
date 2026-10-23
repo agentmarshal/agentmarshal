@@ -474,6 +474,18 @@ AGENTMARSHAL_PIPELINE_OK_SHA="$IMPL" \
 git add .agentmarshal && git commit -m "complete CR-001"
 ```
 
+When the review the gate passed on carried advisory findings, `complete`
+asks for a recorded disposition for each of them before it writes the
+record — an approval is never a silence about known defects. Pass one
+`--disposition` per advisory finding — `--disposition F-001=fixed`,
+`--disposition F-002=deferred:<reason>` or
+`--disposition F-003=rejected:<reason>` (the reason is everything after the
+first colon, so it may contain colons) — and a `deferred` finding may name
+a follow-up task with `--follow-up F-002=<task>`. An advisory finding left
+unanswered refuses the completion, naming every finding still missing one.
+The review recorded in step 4 carried none, so the command above needs no
+flag.
+
 ### 7. Record what the task consumed
 
 Now, not earlier: what a task consumed is known when it ends. AgentMarshal
