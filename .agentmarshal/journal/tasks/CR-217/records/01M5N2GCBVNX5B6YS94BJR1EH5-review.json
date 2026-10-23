@@ -1,0 +1,77 @@
+{
+  "artifacts": [
+    {
+      "hash": "b97fabbb21197f309535b78110dd893043897046ab899c7468c439fbcee25efb",
+      "ref": ".agentmarshal/journal/tasks/CR-217/artifacts/01M5N2GCBVNX5B6YS94BJR1EH5-review.md"
+    }
+  ],
+  "classes": {
+    "CR217-F1": "contract-mismatch",
+    "CR217-F2": "correctness"
+  },
+  "created_at": "2026-10-23T19:06:21.435065Z",
+  "evidence": {
+    "CR217-F1": "src/agentmarshal/switches.py:99-110 defaults a missing switches key to {}; the direct parser probe returned {}; openspec/specs/extension-stages/spec.md:381-395 requires the table.",
+    "CR217-F2": "src/agentmarshal/stages.py:752-756 continues when grants_unreadable before reaching blocked_names at lines 757-761; openspec/specs/extension-stages/spec.md:442-446 requires every affected stage to report not run."
+  },
+  "findings": [
+    "CR217-F1",
+    "CR217-F2"
+  ],
+  "previous_review": "01M5N1JGZ5838CFRHN9GE2ZJTA",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "07db3a3bcc6def6d65b7ecde47d3896b72e8ae6d",
+  "reviewed_contract": "0c1ea4e060db0a88f27a7e3440ec395d3673d4fc4909530c56528585668240eb",
+  "reviewer": {
+    "email": "auto-review-openai@agent.example.invalid",
+    "model": "gpt-5.6-sol",
+    "role": "code-reviewer",
+    "vendor": "openai"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-217",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "Returned {}, confirming that an existing file without the required [switches] table is accepted.",
+        "what": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3 -c \"from agentmarshal.switches import parse_switches; print(parse_switches(b'format = 1\\n', 'switches.toml', {'openspec'}))\""
+      },
+      {
+        "result": "20 scenarios found; missing_docstrings was empty.",
+        "what": "AST comparison of archived delta-spec scenario headings with tests/test_switches.py docstrings"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "Full CI sequence",
+        "why": "uv and pytest are unavailable in the read-only snapshot; the coordinator reports that the sequence passed on the reviewed commit."
+      },
+      {
+        "what": "Git commit/diff verification",
+        "why": "The supplied snapshot has no Git metadata and reports 'not a git repository'."
+      },
+      {
+        "what": "Dynamic combined malformed-switches/malformed-trust integration probe",
+        "why": "The read-only environment exposes no writable temporary directory; the defect is established by the branch ordering at stages.py:752-761."
+      }
+    ],
+    "read": [
+      ".agentmarshal/journal/tasks/CR-217/contract.md",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md",
+      "docs/adr/ADR-0014-where-things-live.md",
+      "docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md",
+      "docs/threat-model.md",
+      "openspec/changes/archive/2026-10-24-shared-extension-switches/",
+      "openspec/specs/extension-stages/spec.md",
+      "src/agentmarshal/switches.py",
+      "src/agentmarshal/stages.py",
+      "src/agentmarshal/doctor.py",
+      "tests/test_switches.py"
+    ]
+  }
+}
