@@ -97,18 +97,22 @@ have the switch's own key/value lines inside that entry's
 `[switches.<name>]` table replaced by the off entry's — the header,
 every other key the entry carries and the file's other content kept —
 and any other extension SHALL gain a new `[switches.<name>]` table
-appended after the file's existing content. An `on` entry whose table
-the command cannot bound on its own lines — a multi-line value inside
-it holding a line that reads as a table header — SHALL be refused
-before any task is opened, on one line naming the file and saying the
-extension is switched off by editing the file in an operational task;
-nothing is written. The `reason` SHALL be written as a TOML basic
-string with every character that needs escaping escaped. The whole new
-text SHALL be parsed by the shared parser before the file is replaced —
-a text the parse refuses writes nothing — and the file SHALL be
-replaced atomically: a temporary file in `.agentmarshal/` renamed over
-it. A failure after the task is opened SHALL be reported on one line
-naming the opened task and SHALL exit non-zero.
+appended after the file's existing content. An `on` entry the command
+cannot locate and bound on its own lines — a header or key spelled
+with escapes or in any form other than a plain bare, basic or literal
+key, a header-less form such as an inline table or dotted keys, a
+multi-line value inside it holding a line that reads as a table
+header — SHALL be refused before any task is opened, on one line
+naming the file and saying the entry cannot be rewritten by this
+command and must be switched off by editing the file in an
+operational task; nothing is written. The `reason` SHALL be written
+as a TOML basic string with every character that needs escaping
+escaped. The whole new text SHALL be parsed by the shared parser
+before the file is replaced — a text the parse refuses writes
+nothing — and the file SHALL be replaced atomically: a temporary file
+in `.agentmarshal/` renamed over it. A failure after the task is
+opened SHALL be reported on one line naming the opened task and SHALL
+exit non-zero.
 
 #### Scenario: an existing on entry's table is replaced and the file's other content is kept
 - **WHEN** the file switches the extension `on` and carries other
@@ -123,13 +127,16 @@ naming the opened task and SHALL exit non-zero.
 - **THEN** the off entry is written inside the table and the other
   key's value is as it was
 
-#### Scenario: an on entry the command cannot bound on its own lines is refused before any task is opened
-- **WHEN** a multi-line value inside the `on` entry holds a line that
-  reads as a table header — a last array element `["x"]` on its own
-  line
-- **THEN** the command refuses naming the file and saying to switch
-  the extension off by editing the file in an operational task, no
-  task is opened and nothing is written
+#### Scenario: an on entry the command cannot locate and bound on its own lines is refused before any task is opened
+- **WHEN** an `on` entry is carried in a form the command cannot
+  locate and bound on its own lines — a header or key spelled with
+  escapes, a header-less form, or a multi-line value inside it
+  holding a line that reads as a table header, like a last array
+  element `["x"]` on its own line
+- **THEN** the command refuses naming the file and saying the entry
+  cannot be rewritten by this command and must be switched off by
+  editing the file in an operational task, no task is opened and
+  nothing is written
 
 #### Scenario: a new entry is appended after the file's existing content
 - **WHEN** the file switches another extension `on` and names this one

@@ -201,6 +201,26 @@ def test_a_malformed_switches_file_is_refused_naming_it_and_nothing_is_written(
     assert _switches_file(repo).read_text(encoding="utf-8") == "this is not = toml ["
 
 
+def test_a_switches_file_that_is_not_utf8_is_refused_naming_it_and_nothing_is_written(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a malformed switches file is refused naming it and nothing is written."""  # noqa: E501
+    repo = stage_helpers._project(tmp_path, monkeypatch)
+    _extension(repo)
+    # Bytes that are not UTF-8 at all are a malformed switches file like
+    # any other: the parse's refusal, naming the file, not a crash.
+    original = b"\xffformat = 1\n"
+    _switches_file(repo).write_bytes(original)
+
+    assert _switch_off() == 1
+
+    captured = capsys.readouterr()
+    assert "switches.toml" in captured.err
+    assert "malformed" in captured.err
+    assert _task_dirs(repo) == []
+    assert _switches_file(repo).read_bytes() == original
+
+
 def test_an_extension_already_switched_off_is_refused_naming_the_task_that_switched_it_off(  # noqa: E501
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -403,10 +423,10 @@ def test_an_on_entrys_other_keys_are_kept_through_the_rewrite(
     assert entry["extra"] == [["nested", "array"], ["lines"]]
 
 
-def test_an_on_entry_the_command_cannot_bound_on_its_own_lines_is_refused_before_any_task_is_opened(  # noqa: E501
+def test_an_on_entry_the_command_cannot_locate_and_bound_on_its_own_lines_is_refused_before_any_task_is_opened(  # noqa: E501
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Scenario: an on entry the command cannot bound on its own lines is refused before any task is opened."""  # noqa: E501
+    """Scenario: an on entry the command cannot locate and bound on its own lines is refused before any task is opened."""  # noqa: E501
     repo = stage_helpers._project(tmp_path, monkeypatch)
     _extension(repo)
     # A last array element `["x"]` on its own line reads as a table
@@ -428,9 +448,41 @@ def test_an_on_entry_the_command_cannot_bound_on_its_own_lines_is_refused_before
 
     captured = capsys.readouterr()
     assert "switches.toml" in captured.err
+    assert "cannot be rewritten by this command" in captured.err
     assert "editing the file in an operational task" in captured.err
     assert _task_dirs(repo) == []
     assert _switches_file(repo).read_text(encoding="utf-8") == original
+
+
+def test_an_on_entry_spelled_with_escapes_or_headerless_is_refused_before_any_task_is_opened(  # noqa: E501
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: an on entry the command cannot locate and bound on its own lines is refused before any task is opened."""  # noqa: E501
+    repo = stage_helpers._project(tmp_path, monkeypatch)
+    _extension(repo)
+    # Each of these parses to a valid `on` entry — the shared parser
+    # accepts them all — but no line is the table's header or the
+    # switch's pair in a spelling the rewrite locates: an escaped key
+    # in the header, an escaped `state` or `task` key, or a header-less
+    # dotted-key form. Each is refused before any task is opened.
+    variants = [
+        'format = 1\n\n["switch\\u0065s".openspec]\nstate = "on"\ntask = "CR-1"\n',
+        'format = 1\n\n[switches.openspec]\n"st\\u0061te" = "on"\ntask = "CR-1"\n',
+        'format = 1\n\n[switches.openspec]\nstate = "on"\n"t\\u0061sk" = "CR-1"\n',
+        'format = 1\n\n[switches]\nopenspec.state = "on"\nopenspec.task = "CR-1"\n',
+    ]
+    for text in variants:
+        _switches_file(repo).write_text(text, encoding="utf-8")
+
+        assert _switch_off() == 1, text
+
+        captured = capsys.readouterr()
+        assert "switches.toml" in captured.err, text
+        assert "openspec" in captured.err, text
+        assert "cannot be rewritten by this command" in captured.err, text
+        assert "editing the file in an operational task" in captured.err, text
+        assert _task_dirs(repo) == [], text
+        assert _switches_file(repo).read_text(encoding="utf-8") == text, text
 
 
 def test_a_new_entry_is_appended_after_the_files_existing_content(

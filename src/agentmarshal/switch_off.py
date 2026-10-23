@@ -20,14 +20,15 @@ key and line kept, or a new table is appended; the new text is
 verified before the task exists — it must parse to the old text
 everywhere but the one switch, under a placeholder task id — and
 verified again under the opened task's real id before the file is
-swapped in atomically. An ``on`` entry whose table the command cannot
-bound on its own lines — a multi-line value inside it holding a line
-that reads as a table header — is refused before any task is opened;
-switching it off is then an edit of the file in an operational task,
-by hand. A failure once the task is opened is reported on one line
-naming it. In a sidecar the command refuses: an operational CR's
-force is the gate lane that admits its diff, and a sidecar gate
-decides no merge.
+swapped in atomically. An ``on`` entry the rewrite cannot locate and
+bound on its own lines — a header or key spelled with escapes or in
+any form other than a plain bare, basic or literal key, a header-less
+form, a multi-line value holding a line that reads as a table
+header — is refused before any task is opened; switching it off is
+then an edit of the file in an operational task, by hand. A failure
+once the task is opened is reported on one line naming it. In a
+sidecar the command refuses: an operational CR's force is the gate
+lane that admits its diff, and a sidecar gate decides no merge.
 """
 
 from __future__ import annotations
@@ -580,8 +581,9 @@ def _read_existing(
         raise SwitchesError(
             f"{switches_file}: cannot read the switches file: {error.strerror or error}"
         ) from error
+    switches = parse_switches(data, switches_file, names)
     # The parse decoded these same bytes, so the decode cannot fail.
-    return data.decode("utf-8"), parse_switches(data, switches_file, names)
+    return data.decode("utf-8"), switches
 
 
 def _run_off(args: argparse.Namespace, stderr: TextIO) -> int:
@@ -662,8 +664,8 @@ def _run_off(args: argparse.Namespace, stderr: TextIO) -> int:
         span = _entry_span(text.split("\n"), _entry_header(args.name))
     # The rewrite is produced and verified before the task exists, under
     # a placeholder task id of the valid form: a file whose text the
-    # command cannot carry the switch through — an `on` entry whose
-    # table it cannot bound on its own lines, a mis-detected span — is
+    # command cannot carry the switch through — an `on` entry it cannot
+    # locate and bound on its own lines, a mis-detected span — is
     # refused here, so nothing is written and no task is opened;
     # switching it off is then an edit of the file in an operational
     # task, by hand.
@@ -688,8 +690,9 @@ def _run_off(args: argparse.Namespace, stderr: TextIO) -> int:
     if refusal is not None:
         print(
             f"{_COMMAND}: {escape_for_display(str(switches_file))}: the "
-            f"entry for '{escape_for_display(args.name)}' must be "
-            "switched off by editing the file in an operational task — "
+            f"entry for '{escape_for_display(args.name)}' cannot be "
+            "rewritten by this command and must be switched off by "
+            "editing the file in an operational task — "
             f"{escape_for_display(refusal)}",
             file=stderr,
         )

@@ -100,12 +100,15 @@ command resolves its journal placement with.
   located by key spelling, each bounded by the smallest prefix of its
   lines that parses, and replaced in place — `state = "off"`, `task`
   with the opened task's id, `reason` added after it — while every
-  other key and line of the entry stays. An entry that cannot be
-  bounded — a header-shaped line inside a multi-line value, an `on`
-  entry carried in a form with no table header, a `state` or `task`
-  that is not exactly one pair — is refused before the task is opened,
-  saying the extension is switched off by editing the file in an
-  operational task. Any other extension gains a `[switches.<name>]`
+  other key and line of the entry stays. An entry the rewrite cannot
+  locate and bound on its own lines — a header or key spelled with
+  escapes or in any form other than a plain bare, basic or literal
+  key, an `on` entry carried in a form with no table header, a `state`
+  or `task` that is not exactly one pair, a header-shaped line inside
+  a multi-line value — is refused before the task is opened, saying
+  the entry cannot be rewritten by this command and must be switched
+  off by editing the file in an operational task. Any other extension
+  gains a `[switches.<name>]`
   table appended after the file's existing content; a missing file is
   created as `format = 1`, a `[switches]` table and the entry.
   `reason` is quoted by `_toml_string` — every character a TOML basic
@@ -123,8 +126,9 @@ command resolves its journal placement with.
   the rewrite dropped shows there — and where `parse_switches` reads
   the entry back as `off` with the placeholder task and the reason.
   Any mismatch refuses before the task is opened, on one line naming
-  the file and saying the entry must be switched off by editing the
-  file in an operational task, writing nothing. After the open, only
+  the file and saying the entry cannot be rewritten by this command
+  and must be switched off by editing the file in an operational
+  task, writing nothing. After the open, only
   the `task` value's string changes to the real id and the same check
   runs again before the replace; a failure there is reported like any
   other post-open failure.
