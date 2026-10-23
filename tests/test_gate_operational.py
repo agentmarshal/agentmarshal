@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -75,6 +76,7 @@ def test_the_operational_lane_admits_a_switches_only_candidate(
     assert output == (
         "PASS: task CR-001 is not closed at base\n"
         "PASS: operational transaction (operational lane; review not required)\n"
+        "PASS: the switches file outside its entries matches the base\n"
         "PASS: every added or changed switch entry names CR-001\n"
         "NOT EXAMINED: agreement (the operational lane requires none)\n"
         "NOT EXAMINED: latest review (the operational lane requires none)\n"
@@ -444,6 +446,87 @@ def test_an_unchanged_entry_naming_another_task_is_not_refused(
     assert "every added or changed switch entry names CR-001" in output
 
 
+def test_a_change_outside_the_parsed_fields_is_still_a_change(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a change outside the parsed fields is still a change.
+
+    The base's file switches openspec off under CR-214 carrying an
+    extra key the parser keeps but does not read; the candidate edits
+    only that key — the parsed `Switch` is identical — and is refused
+    naming the file and the entry, because the lane compares the raw
+    TOML tables. A candidate that instead edits a top-level key outside
+    `switches` is refused naming the file.
+    """
+
+    repo, base = _operational_repo(tmp_path, monkeypatch)
+    _write_switches(
+        repo,
+        'format = 1\n\n[switches.openspec]\nstate = "off"\n'
+        'task = "CR-214"\nreason = "switched off before"\nnote = "first"\n',
+    )
+    base = _commit_all(repo, "switched off at base with a note")
+    _write_switches(
+        repo,
+        'format = 1\n\n[switches.openspec]\nstate = "off"\n'
+        'task = "CR-214"\nreason = "switched off before"\nnote = "second"\n',
+    )
+    head = _commit_all(repo, "edit only the extra key")
+
+    passed, output = _run(repo, head, base, head)
+
+    assert not passed
+    assert (
+        f"FAIL: {head}:{_SWITCHES}: switch entries naming another task: "
+        "'openspec' (task CR-214)"
+    ) in output
+
+    _write_switches(
+        repo,
+        'format = 1\ncomment = "a top-level key"\n\n[switches.openspec]\n'
+        'state = "off"\ntask = "CR-214"\nreason = "switched off before"\n'
+        'note = "first"\n',
+    )
+    head = _commit_all(repo, "add a top-level key")
+
+    passed, output = _run(repo, head, base, head)
+
+    assert not passed
+    assert (
+        f"FAIL: {head}:{_SWITCHES}: top-level keys differ from the base: 'comment'"
+    ) in output
+
+
+def test_an_extra_key_on_an_entry_naming_this_task_is_not_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An extra-key change on this task's own entry passes.
+
+    The raw-table rule cuts the other way as well: the candidate edits
+    the extra key the base's entry carries and names this task — a
+    changed entry like any other, admitted.
+    """
+
+    repo, base = _operational_repo(tmp_path, monkeypatch)
+    _write_switches(
+        repo,
+        'format = 1\n\n[switches.openspec]\nstate = "off"\n'
+        'task = "CR-214"\nreason = "switched off before"\nnote = "first"\n',
+    )
+    base = _commit_all(repo, "switched off at base with a note")
+    _write_switches(
+        repo,
+        'format = 1\n\n[switches.openspec]\nstate = "off"\n'
+        'task = "CR-001"\nreason = "switched off before"\nnote = "second"\n',
+    )
+    head = _commit_all(repo, "edit the extra key under this task")
+
+    passed, output = _run(repo, head, base, head)
+
+    assert passed, output
+    assert "PASS: every added or changed switch entry names CR-001" in output
+
+
 def test_a_value_that_could_forge_a_line_is_escaped_on_display(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -701,3 +784,24 @@ def test_the_count_line_stays_silent_on_the_lane(
 
     assert passed, output
     assert "changes_required verdicts" not in output
+
+
+def test_the_switches_module_imports_in_either_order() -> None:
+    """`import agentmarshal.switches` alone must not hit the import cycle.
+
+    gate.py's former `from agentmarshal.switches import ...` asked a
+    partially initialized module for its names: switches imports
+    journal.contracts, whose package __init__ reaches gate through
+    review.py. gate.py now binds the module itself and reads its
+    attributes at call time, so either module imports first. Exercised
+    in a subprocess under -I, the way the advisory reproduced it.
+    """
+
+    for module in ("agentmarshal.switches", "agentmarshal.journal.gate"):
+        result = subprocess.run(
+            [sys.executable, "-I", "-c", f"import {module}"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr

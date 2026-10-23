@@ -166,14 +166,26 @@ gate names extensions without loading manifests:
   is `FAIL` with the parser's own message, which names
   `<commit>:.agentmarshal/switches.toml` and, where the parse reached
   one, the entry.
-- A parsed file is compared entry by entry against the base's file —
-  parsed the same way when the base has one, treated as no entries when
-  the base file is absent. A base file the read or the parse refuses
+- A parsed file is compared against the base's **as raw TOML** — the
+  tables `tomllib` reads of the same blob text `parse_switches` read,
+  not the parsed `Switch` entries, which drop the keys an entry
+  carries beyond `state`, `task` and `reason` (review round 3: a
+  `Switch` cannot see a change to those keys, so the comparison that
+  decides "changed" must not be made on it). The base file is parsed
+  the same way when the base has one — treated as `format = 1` and
+  nothing else when absent. A base file the read or the parse refuses
   never reaches this comparison: the predicate has already kept the
-  lane closed, so the comparison judges entries against entries, never
-  a guessed base. Every entry the candidate adds or changes relative to
-  the base must carry `task` equal to this task; one naming another
-  task refuses naming the file and the entry.
+  lane closed, so the comparison judges tables against tables, never
+  a guessed base. Two rules fall out of the raw comparison:
+  - Every top-level key other than `switches` must be identical
+    between the base's file and the candidate's; a difference refuses
+    naming the file. The rule closes the rest of the file the same
+    way the entry rule closes each entry — a top-level key the parser
+    ignores is still the file's content.
+  - For each entry name, when the candidate's raw entry table differs
+    from the base's — every key, so editing a key the parser does not
+    read is a change — the candidate's entry must name this task in
+    `task`; one naming another refuses naming the file and the entry.
 
 **A removal refuses.** An entry the base held and the candidate drops
 refuses the candidate naming the file and the entry — and a candidate
@@ -194,6 +206,22 @@ claim.
 
 Every value the checks print — the ref, the file, entry names, tasks —
 goes through the transcript's escaping, as every other line does.
+
+### `gate.py` imports `agentmarshal.switches` as a module
+
+`agentmarshal.switches` imports `agentmarshal.journal.contracts`, whose
+package `__init__` reaches `review.py`, which imports `gate.py`: a
+`from agentmarshal.switches import ...` at gate's top asks the
+partially initialized switches module for its names whenever switches
+is imported first, and `import agentmarshal.switches` fails with a
+circular-import `ImportError` (review round 3's advisory — the CLI's
+own import order masked it). The alternative — importing inside the
+functions that need it — spreads one import across four use sites;
+the module import `import agentmarshal.switches as switches_module`
+binds what `sys.modules` already holds, succeeds under a partially
+initialized module, and every attribute is read at call time, after
+the module has finished initializing. gate.py takes that form; a
+subprocess test runs both import orders under `-I`.
 
 ### `stage run --phase pre-gate` skips before reading anything extension-side
 

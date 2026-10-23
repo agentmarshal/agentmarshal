@@ -26,13 +26,16 @@ transaction that retires it.
   shared extension names the base declares, and marks the review,
   verdict, independence and agreement checks NOT EXAMINED — the
   operational change requires none of them — while every check that
-  does not depend on a review runs as it does today. Every entry the
-  candidate adds or changes must name this task; an entry the base held
-  and the candidate drops refuses the candidate naming the file and the
-  entry, and switching an extension back on is a `state = "on"` entry
-  naming this task — every change carries the task that made it. The
-  lane also requires the base's own switches file to parse: a base the
-  read or the parse refuses keeps the candidate off the lane and
+  does not depend on a review runs as it does today. The file is
+  compared to the base's as raw TOML — every top-level key outside
+  `switches` identical, and an entry's raw table deciding "changed",
+  so a key the parser does not read cannot hide a change. Every entry
+  the candidate adds or changes must name this task; an entry the base
+  held and the candidate drops refuses the candidate naming the file
+  and the entry, and switching an extension back on is a `state = "on"`
+  entry naming this task — every change carries the task that made it.
+  The lane also requires the base's own switches file to parse: a base
+  the read or the parse refuses keeps the candidate off the lane and
   needing a review, since removals and unchanged entries cannot be
   judged against it. In a sidecar the operational lane is not offered.
 - `stage run --phase pre-gate` on a candidate the gate's own predicate

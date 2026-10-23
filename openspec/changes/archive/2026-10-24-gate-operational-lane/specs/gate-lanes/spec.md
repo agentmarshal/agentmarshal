@@ -89,18 +89,27 @@ an absent file parses as no entries — and a base file the read or the
 parse refuses keeps the candidate off the operational lane: the
 candidate takes the lane it takes today and needs a review, because a
 removal or an unchanged entry cannot be judged against a base that
-cannot be read. Every entry the candidate adds or changes
-relative to the base SHALL name the transaction's task in `task`; one
-naming another task SHALL refuse the candidate naming the file and the
-entry. An entry the base holds and the candidate drops SHALL refuse
+cannot be read. The candidate's file SHALL be compared to the base's
+as raw TOML — the tables `tomllib` reads of the same blob text the
+parser read, not the parsed `Switch` entries, which drop the keys an
+entry carries beyond `state`, `task` and `reason`. Every top-level
+key other than `switches` SHALL be identical between the base's file
+and the candidate's — an absent file counting as `format = 1` and
+nothing else — or the candidate SHALL be refused naming the file.
+For each entry name, when the candidate's raw entry table differs
+from the base's — every key compared, so a key the parser does not
+read marks the entry changed all the same — the candidate's entry
+SHALL name the transaction's task in `task`; one naming another task
+SHALL refuse the candidate naming the file and the entry. An entry
+the base holds and the candidate drops SHALL refuse
 the candidate naming the file and the entry — and a candidate that
 deletes the file while the base held entries drops every one, refused
 the same way. Switching an extension back on is not a removal but a
 changed entry: `state = "on"` naming the transaction's task, so every
 change the file carries names the task that made it. An entry the file
-carries unchanged from the base is not the candidate's claim: its
-`task` is not consulted. Every value from the file SHALL be escaped
-on display.
+carries unchanged from the base — the whole raw table — is not the
+candidate's claim: its `task` is not consulted. Every value from the
+file SHALL be escaped on display.
 
 #### Scenario: a malformed switches file at the candidate refuses naming the file
 
@@ -151,6 +160,16 @@ on display.
   different task, beside an entry this task adds or changes
 - **THEN** the unchanged entry is not refused: the file carries it
   unchanged from a change that was already admitted
+
+#### Scenario: a change outside the parsed fields is still a change
+
+- **WHEN** the candidate's file differs from the base's only where the
+  parsed `Switch` drops it — an extra key on an entry that still names
+  another task, or a top-level key outside `switches`
+- **THEN** the gate refuses the candidate naming the file — and the
+  entry when an entry's table differs — because the lane compares the
+  raw TOML, so a difference the parser does not keep is a difference
+  all the same
 
 #### Scenario: a value that could forge a line is escaped on display
 

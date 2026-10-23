@@ -16,10 +16,18 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
+# The module, not its names: agentmarshal.switches imports
+# agentmarshal.journal.contracts, whose package __init__ reaches this
+# module through review.py — a from-import would ask the partially
+# initialized switches module for its names and fail, while a module
+# import binds what sys.modules already holds and every attribute is
+# read at call time, after the module has finished initializing.
+import agentmarshal.switches as switches_module
 from agentmarshal.journal.actors import finding_reviewer_identity_refusal
 from agentmarshal.journal.artifacts import artifact_path as artifact_path
 from agentmarshal.journal.capture import (
@@ -65,12 +73,6 @@ from agentmarshal.project import (
     read_project_file,
 )
 from agentmarshal.settings import changes_required_threshold, require_agreement
-from agentmarshal.switches import (
-    SWITCHES_RELPATH,
-    Switch,
-    SwitchesError,
-    parse_switches,
-)
 
 _JOURNAL_PREFIX = ".agentmarshal/journal/"
 _EXTENSIONS_PREFIX = ".agentmarshal/extensions/"
@@ -952,14 +954,15 @@ class OperationalCandidate:
 
     ``contract`` is the contract the lane's checks are read from;
     ``extension_names`` the shared extension names the merge base
-    declares, which both files' entries are parsed against;
-    ``base_switches`` the entries the base's own switches file declares —
-    the base a removed or an unchanged entry is judged by.
+    declares, which the candidate's file is parsed against;
+    ``base_raw`` the base's own switches file as ``tomllib`` reads it —
+    ``{"format": 1}`` when the base has none — the base a removed or
+    an unchanged entry is judged by.
     """
 
     contract: ContractHeader
     extension_names: frozenset[str]
-    base_switches: dict[str, Switch]
+    base_raw: dict[str, Any]
 
 
 def operational_candidate(
@@ -993,46 +996,55 @@ def operational_candidate(
     task_prefix = f"{_JOURNAL_PREFIX}tasks/{task_id}/"
     carries_file = False
     for _status, path in changes_with_status:
-        if path == SWITCHES_RELPATH:
+        if path == switches_module.SWITCHES_RELPATH:
             carries_file = True
         elif not path.startswith(task_prefix):
             return None
     if not carries_file:
         return None
     contract = _operational_contract(project_root, task_id, merge_base, resolved_commit)
-    if contract is None or contract.scope != (SWITCHES_RELPATH,):
+    if contract is None or contract.scope != (switches_module.SWITCHES_RELPATH,):
         return None
     try:
         extension_names = _extension_names_at_tree(project_root, merge_base)[0]
-        base_switches = _switches_at_tree(project_root, merge_base, extension_names)
-    except (ExtensionManifestError, SwitchesError, GateError):
+        base_raw = _switches_at_tree(project_root, merge_base, extension_names)
+    except (ExtensionManifestError, switches_module.SwitchesError, GateError):
         # The base cannot be judged: its extension names cannot be
         # enumerated, its file is not a file, its text the parser
         # refuses, or git cannot show it — each keeps the lane closed.
         return None
-    return OperationalCandidate(contract, extension_names, base_switches)
+    return OperationalCandidate(contract, extension_names, base_raw)
 
 
 def _switches_at_tree(
     project_root: Path, tree_ref: str, names: frozenset[str]
-) -> dict[str, Switch]:
-    """The switches a tree declares; a missing file is all-on.
+) -> dict[str, Any]:
+    """A tree's switches file as raw TOML; a missing file is ``format = 1``.
 
     The tree read the operational lane makes of both the merge base and
     the candidate, kept beside ``parse_switches``' caller so the file's
     own ref names every refusal: a link or a non-blob at the file's path
     is not a file — the same refusal ``stages.py``'s base read makes.
+    ``parse_switches`` runs over the blob text first — its refusals are
+    this function's — and what returns is the table ``tomllib`` reads
+    of the same text, not the parsed ``Switch`` entries, which drop the
+    keys an entry carries beyond ``state``, ``task`` and ``reason``: the
+    lane's comparisons are made on the raw tables, so a change the
+    parser does not keep is a change all the same. An absent file
+    returns ``{"format": 1}`` and nothing else — the table the lane's
+    top-level comparison counts a missing file as.
     """
 
-    source = f"{tree_ref}:{SWITCHES_RELPATH}"
-    entry = _tree_entry(project_root, tree_ref, SWITCHES_RELPATH)
+    source = f"{tree_ref}:{switches_module.SWITCHES_RELPATH}"
+    entry = _tree_entry(project_root, tree_ref, switches_module.SWITCHES_RELPATH)
     if entry is None:
-        return {}
+        return {"format": 1}
     mode, kind = entry
     if mode == "120000" or kind != "blob":
-        raise SwitchesError(f"{source}: not a file")
+        raise switches_module.SwitchesError(f"{source}: not a file")
     data = _run_git_bytes(project_root, ["show", source])
-    return parse_switches(data, source, names)
+    switches_module.parse_switches(data, source, names)
+    return tomllib.loads(data.decode("utf-8"))
 
 
 def leak_scan_diff(
@@ -1316,34 +1328,62 @@ def run_gate(
         contract = operational.contract
         say("PASS: operational transaction (operational lane; review not required)")
         # ADR-0013 decision 17's lane check: the candidate's file parses
-        # against the shared extension names the base declares; every
-        # entry it adds or changes relative to the base names this task —
-        # switching one back on is an `on` entry naming it — and an entry
-        # the base held that the candidate drops refuses: removing is a
-        # change like any other, so it carries the task that made it or
-        # it does not happen. The base's own file reached the lane already
-        # parsed — the predicate keeps the lane closed when the base
-        # cannot be read — so `base_switches` is never a guessed base.
-        candidate_source = f"{resolved_commit}:{SWITCHES_RELPATH}"
-        candidate_switches: dict[str, Switch] | None
+        # against the shared extension names the base declares, then is
+        # compared to the base's as raw TOML — the tables `tomllib`
+        # reads, not the parsed `Switch` entries, which drop the keys an
+        # entry carries beyond state, task and reason. Every top-level
+        # key outside `switches` must be identical — an absent file
+        # counts as format = 1 and nothing else — every entry the
+        # candidate adds or changes relative to the base names this
+        # task — switching one back on is an `on` entry naming it — and
+        # an entry the base held that the candidate drops refuses:
+        # removing is a change like any other, so it carries the task
+        # that made it or it does not happen. The base's own file
+        # reached the lane already parsed — the predicate keeps the
+        # lane closed when the base cannot be read — so `base_raw` is
+        # never a guessed base.
+        candidate_source = f"{resolved_commit}:{switches_module.SWITCHES_RELPATH}"
+        candidate_raw: dict[str, Any] | None
         try:
-            candidate_switches = _switches_at_tree(
+            candidate_raw = _switches_at_tree(
                 project_root, resolved_commit, operational.extension_names
             )
-        except SwitchesError as error:
+        except switches_module.SwitchesError as error:
             check(False, str(error))
-            candidate_switches = None
-        if candidate_switches is not None:
+            candidate_raw = None
+        if candidate_raw is not None:
+            base_top = {
+                key: value
+                for key, value in operational.base_raw.items()
+                if key != "switches"
+            }
+            candidate_top = {
+                key: value for key, value in candidate_raw.items() if key != "switches"
+            }
+            # TOML has no null, so a key only one side carries never
+            # equals a value the other holds: `.get` marks added,
+            # changed and dropped keys alike.
+            top_changed = sorted(
+                key
+                for key in base_top.keys() | candidate_top.keys()
+                if base_top.get(key) != candidate_top.get(key)
+            )
+            base_entries = operational.base_raw.get("switches", {})
+            candidate_entries = candidate_raw.get("switches", {})
             removed = sorted(
-                name
-                for name in operational.base_switches
-                if name not in candidate_switches
+                name for name in base_entries if name not in candidate_entries
             )
             misnamed = sorted(
                 name
-                for name, switch in candidate_switches.items()
-                if switch.task != task_id
-                and operational.base_switches.get(name) != switch
+                for name, entry in candidate_entries.items()
+                if base_entries.get(name) != entry and entry["task"] != task_id
+            )
+            check(
+                not top_changed,
+                "the switches file outside its entries matches the base"
+                if not top_changed
+                else f"{candidate_source}: top-level keys differ from "
+                "the base: " + ", ".join(f"{key!r}" for key in top_changed),
             )
             refusals: list[str] = []
             if removed:
@@ -1355,7 +1395,7 @@ def run_gate(
                 refusals.append(
                     "switch entries naming another task: "
                     + ", ".join(
-                        f"{name!r} (task {candidate_switches[name].task})"
+                        f"{name!r} (task {candidate_entries[name]['task']})"
                         for name in misnamed
                     )
                 )
