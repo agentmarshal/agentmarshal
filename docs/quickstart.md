@@ -90,8 +90,20 @@ finding-id strings (empty only for `approved`, non-empty for every other
 verdict). For a finding review, use `reviewed_finding` in place of
 `reviewed_commit`: it must name the finding under review. Optionally
 `advisory_findings`: non-blocking finding ids, disjoint from `findings`, allowed
-with any verdict including `approved`. Everything else about the verdict
-contract is unchanged.
+with any verdict including `approved`; and `classes`: an object naming the class
+of each finding id you report — one class per id — from the project's vocabulary
+(`review.finding_classes`, or `correctness`, `contract-mismatch`,
+`claim-accuracy`, `scope`, `test-gap`, `security`, `style` when unset). A class
+outside the vocabulary is recorded as `other` and named in a warning on stderr;
+an id you report that `classes` omits is recorded as `other` and named in a
+warning; an entry for an id the verdict does not carry is dropped with a
+warning; a malformed `classes` is dropped as a whole — a verdict is never
+refused over a class.
+
+A review record the launcher writes carries `previous_review` — the id of the
+task's latest review when the run began, whatever it bound to — so a task's
+reviews form a chain. A task's first review carries no link, and `submit-review`
+writes none.
 
 Any other key is refused, and the error names it. The prompt AgentMarshal builds
 states all of this, so a reviewer does not have to guess. It also asks for one
