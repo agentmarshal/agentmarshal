@@ -1,0 +1,21 @@
+{
+  "advisory_dispositions": {
+    "resolve-commit-duplicated": {
+      "disposition": "deferred",
+      "reason": "the duplicated commit resolution is folded into one helper in the 0.6.0 tails task."
+    },
+    "sidecar-placement-untested": {
+      "disposition": "deferred",
+      "reason": "a sidecar-placement test for accept --pause/--operational goes into the 0.6.0 tails task."
+    }
+  },
+  "completed_commit": "bce1e53e1d518634917e36a95fbe5b6e3e015baa",
+  "created_at": "2026-10-23T17:44:02.855004Z",
+  "record_type": "completed",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "schema": 7,
+  "source": "live",
+  "task": "CR-215",
+  "tool_version": "0.6.0.dev0"
+}
