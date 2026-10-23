@@ -19,6 +19,7 @@ from agentmarshal.journal.capture import (
     CaptureError,
     CaptureLevel,
     LeakHit,
+    mask_leaks,
     render_leak_hits,
     render_undecodable_files,
     review_capture_level_from_journal,
@@ -1318,7 +1319,9 @@ def _acknowledgement_identification(record: Mapping[str, object]) -> str | None:
 
 
 def _acknowledgement_mark(
-    hit: LeakHit, acknowledgements: Sequence[Mapping[str, object]]
+    hit: LeakHit,
+    acknowledgements: Sequence[Mapping[str, object]],
+    private_markers: tuple[str, ...],
 ) -> str | None:
     """The mark an acknowledged hit's entry carries, or ``None``.
 
@@ -1330,8 +1333,10 @@ def _acknowledgement_mark(
     other matching: no path normalisation, no case folding, so a new
     commit or a renumbered marker shows the hit unacknowledged again.
     The earliest record in journal order marks the hit. Who acknowledged
-    and the reason are record values, so each is escaped on display the
-    way every displayed record value is.
+    and the reason are record values — a recorder's name is the
+    operator's own text and can itself be the string the scan caught —
+    so the whole mark passes the leak mask before it is escaped on
+    display the way every displayed record value is.
     """
 
     for record in acknowledgements:
@@ -1339,12 +1344,14 @@ def _acknowledgement_mark(
             continue
         if _acknowledgement_identification(record) != hit.identification:
             continue
-        return (
+        masked, _ = mask_leaks(
             "acknowledged by "
-            + escape_for_display(str(record["recorded_by"]))
+            + str(record["recorded_by"])
             + ": "
-            + escape_for_display(str(record["reason"]))
+            + str(record["reason"]),
+            private_markers,
         )
+        return escape_for_display(masked)
     return None
 
 
@@ -1479,7 +1486,7 @@ def _run_leak_scan(args: argparse.Namespace, stderr: TextIO) -> int:
             file=stderr,
         )
     if hits:
-        marks = [_acknowledgement_mark(hit, acknowledgements) for hit in hits]
+        marks = [_acknowledgement_mark(hit, acknowledgements, markers) for hit in hits]
         print(
             "leak-scan: possible leaks in added content "
             "(file: what matched): " + render_leak_hits(hits, limit=None, marks=marks)

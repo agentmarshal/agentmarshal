@@ -671,6 +671,37 @@ def test_the_matched_text_is_never_printed(
     assert _MARKER not in captured.err
 
 
+def test_the_mark_masks_a_recorder_named_the_secret(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: the matched text is never printed.
+
+    A recorder's name is the operator's own text: an actor named
+    exactly the configured marker is a valid `recorded_by`, and the
+    mark masks it the way every printed name is masked — the marker's
+    value appears on neither stream.
+    """
+
+    repo = _repo(tmp_path, monkeypatch, markers=(_MARKER,))
+    base = _head(repo)
+    head = _add_file(repo, "host.py", f"HOST = '{_MARKER}'\n")
+    _open()
+    monkeypatch.setenv("AGENTMARSHAL_ACTOR", _MARKER)
+    assert _acknowledge(base, head, file="host.py", marker=1) == 0
+    capsys.readouterr()
+
+    assert main(["leak-scan", "--base", base, "--commit", head]) == 0
+
+    captured = capsys.readouterr()
+    assert _MARKER not in captured.out
+    assert _MARKER not in captured.err
+    assert (
+        "host.py: private-marker #1 "
+        "(acknowledged by [masked: private-marker]: reviewed, not a leak)"
+        in captured.out
+    )
+
+
 def test_every_hit_acknowledged_exits_0(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
