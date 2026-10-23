@@ -6,7 +6,7 @@ import argparse
 import os
 import subprocess
 import sys
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TextIO
@@ -18,6 +18,7 @@ from agentmarshal.journal.brief import build_brief
 from agentmarshal.journal.capture import (
     CaptureError,
     CaptureLevel,
+    LeakHit,
     render_leak_hits,
     render_undecodable_files,
     review_capture_level_from_journal,
@@ -422,6 +423,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     leak_scan_parser.add_argument(
         "--commit", required=True, help="candidate head ref to scan"
+    )
+    leak_scan_parser.add_argument(
+        "--task",
+        help="task identifier to read acknowledgements from "
+        "(default: every task of the journal)",
     )
     outbox.register(subparsers)
     steps.register(subparsers)
@@ -1276,6 +1282,72 @@ def _leak_scan_git(cwd: Path, arguments: list[str]) -> str:
         raise _LeakScanGitError(f"non-UTF-8 git output: {error}") from error
 
 
+def _leak_scan_acknowledgements(
+    journal_root: Path, commit: str, task_id: str | None
+) -> list[dict[str, object]]:
+    """The journal's ``acknowledgement`` records bound to *commit*.
+
+    Read where the gate reads records — every task, or the one ``--task``
+    names — through the status loaders the other commands use, so a task
+    whose records cannot be projected is a task whose records cannot be
+    read: the caller reports why and acknowledges nothing.
+    """
+
+    tasks = (
+        [load_task_status(journal_root, task_id)]
+        if task_id is not None
+        else list_task_statuses(journal_root)
+    )
+    return [
+        record
+        for task in tasks
+        for record in task.records
+        if record.get("record_type") == "acknowledgement"
+        and record.get("commit") == commit
+    ]
+
+
+def _acknowledgement_identification(record: Mapping[str, object]) -> str | None:
+    """The hit identification an ``acknowledgement`` binds, as the scan prints it."""
+
+    signature = record.get("signature")
+    if isinstance(signature, str):
+        return signature
+    marker = record.get("marker")
+    return f"private-marker #{marker}" if type(marker) is int else None
+
+
+def _acknowledgement_mark(
+    hit: LeakHit, acknowledgements: Sequence[Mapping[str, object]]
+) -> str | None:
+    """The mark an acknowledged hit's entry carries, or ``None``.
+
+    ADR-0021 decision 2's binding: the record's commit matched the
+    candidate's when the caller gathered the records, and here the file
+    must equal ``hit.path`` — already masked, exactly as the scan prints
+    it — and the record's identification must equal
+    ``hit.identification`` — a signature id or ``private-marker #N``. No
+    other matching: no path normalisation, no case folding, so a new
+    commit or a renumbered marker shows the hit unacknowledged again.
+    The earliest record in journal order marks the hit. Who acknowledged
+    and the reason are record values, so each is escaped on display the
+    way every displayed record value is.
+    """
+
+    for record in acknowledgements:
+        if record.get("file") != hit.path:
+            continue
+        if _acknowledgement_identification(record) != hit.identification:
+            continue
+        return (
+            "acknowledged by "
+            + escape_for_display(str(record["recorded_by"]))
+            + ": "
+            + escape_for_display(str(record["reason"]))
+        )
+    return None
+
+
 def _run_leak_scan(args: argparse.Namespace, stderr: TextIO) -> int:
     # leak-scan is provider-neutral and works in any git repository. Bind to
     # the CURRENT checkout: find_git_root gives this repo's top level, and
@@ -1302,6 +1374,7 @@ def _run_leak_scan(args: argparse.Namespace, stderr: TextIO) -> int:
         return 1
     project_root = find_project_root(Path.cwd(), stop_at=git_root)
     sidecar_config: Path | None = None
+    placement: Placement | None = None
     if project_root is None:
         scan_root = git_root
     else:
@@ -1360,6 +1433,41 @@ def _run_leak_scan(args: argparse.Namespace, stderr: TextIO) -> int:
         markers,
         config_path="" if sidecar_config is not None else PROJECT_CONFIG_RELPATH,
     )
+    # ADR-0021 decisions 2 and 3: an acknowledgement bound to the
+    # candidate's commit, the file exactly as the scan prints it and the
+    # hit's identification marks the hit — acknowledged, by whom and why —
+    # and an acknowledged hit no longer fails the run, while one nobody
+    # acknowledged still does. The records are read where the gate reads
+    # them — the journal the placement resolves, every task of it or the
+    # one --task names. A repository carrying no journal has no records to
+    # find and reads nothing; a read that fails acknowledges nothing and
+    # says why — the failure direction is the exit 1 today already gave.
+    acknowledgements: list[dict[str, object]] = []
+    if placement is not None:
+        try:
+            resolved_commit = _leak_scan_git(
+                scan_root,
+                ["rev-parse", "--verify", f"{args.commit}^{{commit}}"],
+            ).strip()
+            if len(resolved_commit) != 40:
+                raise _LeakScanGitError(f"{args.commit} did not resolve to a commit")
+            acknowledgements = _leak_scan_acknowledgements(
+                placement.journal_root, resolved_commit, args.task
+            )
+        except (_LeakScanGitError, OSError, ValueError) as error:
+            # The message can carry a path or a record field the tool did
+            # not write — escaped the way every transcript value is.
+            print(
+                "leak-scan: cannot read acknowledgements: "
+                + escape_for_display(str(error)),
+                file=stderr,
+            )
+    elif args.task is not None:
+        print(
+            "leak-scan: cannot read acknowledgements: this repository "
+            "has no AgentMarshal journal",
+            file=stderr,
+        )
     # Files that did not decode are a caveat about the scan, printed beside
     # the best-effort note rather than as hits: their bytes were still
     # searched, and an ordinary binary file must not fail the run on its own.
@@ -1371,16 +1479,17 @@ def _run_leak_scan(args: argparse.Namespace, stderr: TextIO) -> int:
             file=stderr,
         )
     if hits:
+        marks = [_acknowledgement_mark(hit, acknowledgements) for hit in hits]
         print(
             "leak-scan: possible leaks in added content "
-            "(file: what matched): " + render_leak_hits(hits, limit=None)
+            "(file: what matched): " + render_leak_hits(hits, limit=None, marks=marks)
         )
         print(
             "(best-effort: a hit is not proof of a leak and a clean run is not "
             "proof of safety — see ADR-0005)",
             file=stderr,
         )
-        return 1
+        return 0 if all(mark is not None for mark in marks) else 1
     print("leak-scan: no known leak signatures in added content")
     return 0
 

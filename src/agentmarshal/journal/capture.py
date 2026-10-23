@@ -32,7 +32,7 @@ This module is pure policy: it writes nothing and stores nothing.
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -334,7 +334,11 @@ def safe_path(path: str, private_markers: tuple[str, ...]) -> str:
 # A caller may render hits into a bounded document (the merge transcript) or
 # use them as its whole output (the standalone command). The caller owns that
 # choice; this renderer owns only the common, location-safe hit shape.
-def render_leak_hits(hits: list[LeakHit], limit: int | None) -> str:
+def render_leak_hits(
+    hits: list[LeakHit],
+    limit: int | None,
+    marks: Sequence[str | None] | None = None,
+) -> str:
     """Render hit records without exposing matched content.
 
     The standalone command and merge gate both use this one renderer: warning
@@ -343,10 +347,23 @@ def render_leak_hits(hits: list[LeakHit], limit: int | None) -> str:
     ``limit`` is the caller's: a caller rendering one line of a document passes
     its bound and the rendering says how many hits it left out, while a caller
     whose whole output is the list of places to look passes ``None``.
+
+    ``marks`` is the caller's too: an entry parallel to ``hits`` whose text is
+    appended to the hit's own entry in parentheses — the mark an
+    acknowledgement adds, which names who acknowledged and why, never what
+    matched. A caller without it gets the unmarked rendering byte for byte.
     """
 
     shown = hits if limit is None else hits[:limit]
-    rendered = ", ".join(f"{hit.path}: {hit.identification}" for hit in shown)
+    rendered = ", ".join(
+        f"{hit.path}: {hit.identification}"
+        + (
+            f" ({marks[index]})"
+            if marks is not None and index < len(marks) and marks[index]
+            else ""
+        )
+        for index, hit in enumerate(shown)
+    )
     remaining = len(hits) - len(shown)
     if remaining > 0:
         return f"{rendered}, and {remaining} more not shown"

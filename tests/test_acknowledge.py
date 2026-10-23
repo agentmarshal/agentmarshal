@@ -733,14 +733,15 @@ def test_the_standalone_commands_output_and_exit_are_unchanged(
 ) -> None:
     """Scenario: the standalone command's output and exit are unchanged.
 
-    After an acknowledgement lands, `leak-scan` over the same range
-    prints the hit exactly as before and still exits 1 — the
-    acknowledgement is not yet honoured on the hit's surfaces.
+    An acknowledgement bound to `head` names nothing on `head2`'s
+    candidate — the record binds the exact commit — so `leak-scan` over
+    `base..head2` reports the same hit, prints it exactly as before,
+    unmarked, and still exits 1.
     """
 
     from agentmarshal.cli import main
 
-    _, base, head = _repo_with_hit(tmp_path, monkeypatch)
+    repo, base, head = _repo_with_hit(tmp_path, monkeypatch)
     monkeypatch.setenv("AGENTMARSHAL_ACTOR", "an-operator")
     capsys.readouterr()
 
@@ -748,9 +749,10 @@ def test_the_standalone_commands_output_and_exit_are_unchanged(
     before_out = capsys.readouterr().out
 
     assert _acknowledge(*_hit_args(base, head)) == 0
+    head2 = _add_file(repo, "module.py", "def add(a, b):\n    return a + b\n")
     capsys.readouterr()
 
-    assert main(["leak-scan", "--base", base, "--commit", head]) == 1
+    assert main(["leak-scan", "--base", base, "--commit", head2]) == 1
     captured = capsys.readouterr()
     assert captured.out == before_out
     assert "secret.py: github-token" in captured.out
