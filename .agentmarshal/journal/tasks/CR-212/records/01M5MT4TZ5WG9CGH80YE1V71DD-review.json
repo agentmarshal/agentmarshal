@@ -1,0 +1,61 @@
+{
+  "artifacts": [
+    {
+      "hash": "135188572b8a6d0a1af3ddd7f198ab3eec222c837d3b003e3cc70fcffb6c4e55",
+      "ref": ".agentmarshal/journal/tasks/CR-212/artifacts/01M5MT4TZ5WG9CGH80YE1V71DD-review.md"
+    }
+  ],
+  "created_at": "2026-10-23T16:40:14.565499Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "1046f088bd1459b7ac46b8bd0a0d30a66f695ccd",
+  "reviewed_contract": "62cc2536f563d682e33846c65d7678a66600ef2a4887c2d7cd40ce1906f92f30",
+  "reviewer": {
+    "email": "auto-review-openai@agent.example.invalid",
+    "model": "gpt-5.6-sol",
+    "role": "code-reviewer",
+    "vendor": "openai"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-212",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "All 39 scenarios matched tests in tests/test_record_ext.py or tests/test_ext.py",
+        "what": "Python AST audit matching every archived delta-spec Scenario heading to a test docstring"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "Targeted pytest and full CI sequence",
+        "why": "The extracted review environment lacks uv and pytest; the coordinator states the full sequence passed on the exact reviewed commit"
+      },
+      {
+        "what": "Git commit/diff verification",
+        "why": "The supplied snapshot contains no .git metadata; review used the supplied candidate tree and diff"
+      }
+    ],
+    "read": [
+      ".agentmarshal/journal/tasks/CR-212/contract.md",
+      "src/agentmarshal/record_ext.py",
+      "src/agentmarshal/cli.py",
+      "src/agentmarshal/journal/capture.py",
+      "src/agentmarshal/journal/extensions.py",
+      "src/agentmarshal/journal/records.py",
+      "src/agentmarshal/journal/status.py",
+      "src/agentmarshal/journal/actors.py",
+      "tests/test_record_ext.py",
+      "tests/test_ext.py",
+      "openspec/changes/archive/2026-10-24-record-ext-command/",
+      "openspec/specs/extension-records/spec.md",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md",
+      "docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md",
+      "docs/threat-model.md"
+    ]
+  }
+}
