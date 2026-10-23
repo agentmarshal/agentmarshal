@@ -321,13 +321,27 @@ to fill in and pins that.)
 
 Commit the opening so the contract is in history before any work builds on it.
 The gate always reads the contract from the committed base, never from the
-candidate, so a task can never widen its own scope:
+candidate, so a task can never widen its own scope. A journal transaction
+stages the one task's directory and nothing else under the journal — with
+several tasks in flight, a wider `git add` would take every task's
+uncommitted records into this one's commit. `.agentmarshal/project.json`
+and the outbox are not journal evidence; they land in your own housekeeping
+commit, not in a task's transaction:
 
 ```sh
-git add .agentmarshal
+git add .agentmarshal/journal/tasks/CR-001
 git commit -m "open CR-001: add a greeting helper"
 BASE=$(git rev-parse HEAD)   # the base the work is gated against
 ```
+
+When your base branch refuses direct commits, each of these journal
+transactions travels on its own branch through a pull request instead — the
+branch name carries the task id, which is how the provider gate job finds it.
+`templates/journal-transaction.sh` in this repository is the worked example:
+from a clean checkout of the default branch it stages exactly the directory
+above, commits it on a branch named for the task, pushes to the remote, and
+leaves the pull request to your provider's tooling — copy it and adapt the
+marked line.
 
 If an open task's contract needs correction, edit it, and `status` will say
 the contract drifted from its last pin — one line naming the pinned and the
@@ -339,7 +353,7 @@ printf '\nGreetings are also remembered across calls.\n' \
   >> .agentmarshal/journal/tasks/CR-001/contract.md
 agentmarshal status "CR-001"
 agentmarshal amend --task CR-001 --reason "Clarify the greeting behaviour"
-git add .agentmarshal && git commit -m "amend CR-001 contract"
+git add .agentmarshal/journal/tasks/CR-001 && git commit -m "amend CR-001 contract"
 BASE=$(git rev-parse HEAD)
 ```
 
@@ -494,7 +508,7 @@ Completion re-runs the gate and, on a pass, writes the `completed` record.
 ```sh
 AGENTMARSHAL_PIPELINE_OK_SHA="$IMPL" \
   agentmarshal complete --task CR-001 --commit "$IMPL" --base "$BASE"
-git add .agentmarshal && git commit -m "complete CR-001"
+git add .agentmarshal/journal/tasks/CR-001 && git commit -m "complete CR-001"
 ```
 
 When the review the gate passed on carried advisory findings, `complete`
@@ -547,7 +561,7 @@ projects say the same thing the same way.
 Then commit it, like every other record:
 
 ```sh
-git add .agentmarshal && git commit -m "record CR-001 economics"
+git add .agentmarshal/journal/tasks/CR-001 && git commit -m "record CR-001 economics"
 ```
 
 That commit is a **journal-only additive candidate**, which the gate accepts

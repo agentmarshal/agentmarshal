@@ -17,7 +17,9 @@ def test_outbox_readme_excludes_non_evidence_from_journal_staging(
     assert error is None
     readme = (outbox / "README.md").read_text(encoding="utf-8")
     assert "not journal evidence" in readme
-    assert "git add .agentmarshal/journal" in readme
+    assert "git add .agentmarshal/journal/tasks/<task-id>" in readme, (
+        "the recipe stages one task's journal directory, not the whole journal"
+    )
     assert "git add .agentmarshal ':(exclude).agentmarshal/upstream/**'" in readme, (
         "the pathspec is given as a runnable command: its parentheses need quoting"
     )
