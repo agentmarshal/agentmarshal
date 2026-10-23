@@ -40,6 +40,7 @@ from typing import TextIO
 
 from agentmarshal import __version__
 from agentmarshal.agree import _declared_actor
+from agentmarshal.commits import CommitResolutionError, resolve_commit
 from agentmarshal.journal.actors import resolve_recorded_by
 from agentmarshal.journal.capture import (
     CaptureError,
@@ -136,40 +137,6 @@ def _placement(stderr: TextIO) -> Placement | None:
         return None
 
 
-def _resolve_commit(scan_root: Path, reference: str) -> str:
-    """Resolve *reference* to its full commit id in the scanned repository.
-
-    ``rev-parse --verify <rev>^{commit}`` answers both halves of the rule
-    at once: what resolves is the full id the record's hex rule already
-    requires, and what does not — a rev the repository does not hold, or
-    one naming no commit — fails here rather than reaching the record
-    with a name it cannot take.
-    """
-
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--verify", f"{reference}^{{commit}}"],
-            cwd=scan_root,
-            capture_output=True,
-            check=False,
-        )
-    except OSError as error:
-        raise AcknowledgeError(f"cannot run git: {error}") from error
-    resolved = result.stdout.decode("utf-8", errors="replace").strip()
-    if result.returncode != 0 or len(resolved) != 40:
-        detail = result.stderr.decode("utf-8", errors="replace").strip()
-        message = (
-            f"--commit {escape_for_display(reference)} does not resolve to "
-            "a commit in the scanned repository"
-        )
-        if detail:
-            # git's error text is a value the tool did not write — escaped
-            # like every displayed string it does not control.
-            message += f": {escape_for_display(detail)}"
-        raise AcknowledgeError(message)
-    return resolved
-
-
 def _merge_base(scan_root: Path, base: str, commit: str) -> str:
     """The merge base of *base* and *commit* in the scanned repository.
 
@@ -220,7 +187,12 @@ def run(args: argparse.Namespace, stderr: TextIO) -> int:
     sidecar_config = placement.project_root if placement.is_sidecar else None
     try:
         load_task_for_record(journal_root, args.task, "acknowledgement")
-        resolved = _resolve_commit(scan_root, args.commit)
+        try:
+            resolved = resolve_commit(
+                scan_root, args.commit, repository="the scanned repository"
+            )
+        except CommitResolutionError as error:
+            raise AcknowledgeError(str(error)) from error
         merge_base = _merge_base(scan_root, args.base, args.commit)
         # The record requires its recorder, so the resolution the record
         # rules would refuse on is decided here, before anything is

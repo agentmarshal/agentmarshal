@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 from typing import cast
 
 from agentmarshal import __version__
+from agentmarshal.commits import CommitResolutionError, resolve_commit
 from agentmarshal.journal.display import escape_for_display
 from agentmarshal.journal.extensions import (
     ExtensionManifestError,
@@ -102,39 +102,6 @@ def accept_findings(
         raise AcceptanceError(str(error)) from error
 
 
-def _resolve_commit(project_root: Path, reference: str) -> str:
-    """Resolve *reference* to its full commit id in the journal's repository.
-
-    ``rev-parse --verify <rev>^{commit}`` answers both halves of the rule
-    at once: what resolves is the full id, and what does not — a rev the
-    repository does not hold, or one naming no commit — fails here rather
-    than reaching the record's hex rule with a name it cannot take.
-    """
-
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--verify", f"{reference}^{{commit}}"],
-            cwd=project_root,
-            capture_output=True,
-            check=False,
-        )
-    except OSError as error:
-        raise AcceptanceError(f"cannot run git: {error}") from error
-    resolved = result.stdout.decode("utf-8", errors="replace").strip()
-    if result.returncode != 0 or len(resolved) != 40:
-        detail = result.stderr.decode("utf-8", errors="replace").strip()
-        message = (
-            f"--commit {escape_for_display(reference)} does not resolve to "
-            "a commit in the journal's repository"
-        )
-        if detail:
-            # git's error text is a value the tool did not write — escaped
-            # like every displayed string it does not control.
-            message += f": {escape_for_display(detail)}"
-        raise AcceptanceError(message)
-    return resolved
-
-
 def accept_pause_or_operational(
     journal_root: Path,
     project_root: Path,
@@ -169,7 +136,12 @@ def accept_pause_or_operational(
                     f"--pause {escape_for_display(accepted_pause)}: "
                     f"{escape_for_display(str(error))}"
                 ) from error
-        resolved = _resolve_commit(project_root, commit)
+        try:
+            resolved = resolve_commit(
+                project_root, commit, repository="the journal's repository"
+            )
+        except CommitResolutionError as error:
+            raise AcceptanceError(str(error)) from error
         record = create_acceptance_record(
             task_id,
             __version__,

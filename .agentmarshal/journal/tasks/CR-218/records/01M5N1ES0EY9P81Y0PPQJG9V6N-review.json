@@ -1,0 +1,58 @@
+{
+  "artifacts": [
+    {
+      "hash": "5fcbc15d72f22165787b07f7d33a3b4d55711641b38283d1f24b358f981fbf8e",
+      "ref": ".agentmarshal/journal/tasks/CR-218/artifacts/01M5N1ES0EY9P81Y0PPQJG9V6N-review.md"
+    }
+  ],
+  "created_at": "2026-10-23T18:48:00.270691Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "882d5c5eed1ec150e7134e26a23f2acd64110cbc",
+  "reviewed_contract": "79474b6185ad1935834b54a9454db734230706035cb4bfe06b521bb6316f1a96",
+  "reviewer": {
+    "email": "auto-review-openai@agent.example.invalid",
+    "model": "gpt-5.6-sol",
+    "role": "code-reviewer",
+    "vendor": "openai"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-218",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "Passed: verified exact argv without a shell, caller-selected repository wording, escaped stderr/reference text, 40-character enforcement, and cannot-run-git message.",
+        "what": "In-memory mocked probe of agentmarshal.commits.resolve_commit"
+      },
+      {
+        "result": "Passed for all seven files.",
+        "what": "AST parse of the five changed source modules and two changed test files"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "Focused pytest suites and local full CI sequence",
+        "why": "The review image has no uv executable; the attempted command could not start. The coordinator independently reports the full sequence passed on the exact reviewed commit."
+      },
+      {
+        "what": "Git parent comparison",
+        "why": "The supplied snapshot contains no Git metadata; review used the supplied diff and candidate files."
+      }
+    ],
+    "read": [
+      ".agentmarshal/journal/tasks/CR-218/contract.md and amendment record",
+      "Supplied diff for commit 882d5c5eed1ec150e7134e26a23f2acd64110cbc",
+      "src/agentmarshal/commits.py and all four scoped callers",
+      "tests/test_commits.py and relevant command/sidecar tests",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md",
+      "docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md",
+      "docs/threat-model.md",
+      "Coordinator note reporting the full CI sequence passed on the reviewed commit"
+    ]
+  }
+}
