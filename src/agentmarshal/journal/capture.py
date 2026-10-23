@@ -391,6 +391,58 @@ def render_undecodable_files(
     return rendered
 
 
+def _acknowledgement_identification(record: Mapping[str, object]) -> str | None:
+    """The hit identification an ``acknowledgement`` binds, as the scan prints it."""
+
+    signature = record.get("signature")
+    if isinstance(signature, str):
+        return signature
+    marker = record.get("marker")
+    return f"private-marker #{marker}" if type(marker) is int else None
+
+
+def _acknowledgement_mark(
+    hit: LeakHit,
+    acknowledgements: Sequence[Mapping[str, object]],
+    private_markers: tuple[str, ...],
+) -> str | None:
+    """The mark an acknowledged hit's entry carries, or ``None``.
+
+    ADR-0021 decision 2's binding: the record's commit matched the
+    candidate's when the caller gathered the records, and here the file
+    must equal ``hit.path`` — already masked, exactly as the scan prints
+    it — and the record's identification must equal
+    ``hit.identification`` — a signature id or ``private-marker #N``. No
+    other matching: no path normalisation, no case folding, so a new
+    commit or a renumbered marker shows the hit unacknowledged again.
+    The earliest record in journal order marks the hit. Who acknowledged
+    and the reason are record values — a recorder's name is the
+    operator's own text and can itself be the string the scan caught —
+    so the whole mark passes the leak mask before it is escaped on
+    display the way every displayed record value is.
+    """
+
+    # Imported where it runs rather than copied: display.py stands on
+    # this module through records.py, so a module-level import back
+    # would cycle.
+    from agentmarshal.journal.display import escape_for_display
+
+    for record in acknowledgements:
+        if record.get("file") != hit.path:
+            continue
+        if _acknowledgement_identification(record) != hit.identification:
+            continue
+        masked, _ = mask_leaks(
+            "acknowledged by "
+            + str(record["recorded_by"])
+            + ": "
+            + str(record["reason"]),
+            private_markers,
+        )
+        return escape_for_display(masked)
+    return None
+
+
 def scan_for_leaks(text: str, private_markers: tuple[str, ...] = ()) -> list[str]:
     """Return the sorted leak categories found in *text*.
 

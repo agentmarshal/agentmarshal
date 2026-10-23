@@ -804,9 +804,10 @@ def test_the_merge_boundarys_line_carries_no_mark_yet(
 ) -> None:
     """Scenario: the merge boundary's line carries no mark yet.
 
-    The same acknowledged hit, seen by the gate: its line is the file
-    and identification the standalone command gives, with no mark —
-    marking the boundary is a later task.
+    The gate's line reports a hit no acknowledgement of the task
+    names — the record bound to the candidate names another file —
+    and the hit prints the file and identification the standalone
+    command gives, with no mark.
     """
 
     from test_gate import _approve, _gate_repo, _implement, _run
@@ -815,16 +816,7 @@ def test_the_merge_boundarys_line_carries_no_mark_yet(
     head = _implement(repo, "src/module.py", f"key = '{_AWS_KEY}'\n")
     _approve(repo, head)
     monkeypatch.setenv("AGENTMARSHAL_ACTOR", "an-operator")
-    assert (
-        _acknowledge(
-            base,
-            head,
-            task="CR-001",
-            file="src/module.py",
-            signature="aws-access-key-id",
-        )
-        == 0
-    )
+    _write_acknowledgement(repo, "CR-001", head, "src/other.py", "names no hit here")
 
     passed, output = _run(repo, head, base, head)
 

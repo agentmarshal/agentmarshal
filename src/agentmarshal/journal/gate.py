@@ -24,6 +24,7 @@ from agentmarshal.journal.actors import finding_reviewer_identity_refusal
 from agentmarshal.journal.artifacts import artifact_path as artifact_path
 from agentmarshal.journal.capture import (
     CaptureError,
+    _acknowledgement_mark,
     decode_diff_per_file,
     private_markers_from_project,
     render_leak_hits,
@@ -1456,10 +1457,28 @@ def run_gate(
         say(f"WARN: leak-scan skipped ({error})")
     else:
         if leak_hits:
+            # ADR-0021 decisions 2 and 3: the task's `acknowledgement`
+            # records bound to this commit mark the hits they name —
+            # acknowledged, by whom and why — the same mark `leak-scan`
+            # builds for the same hit through the same helper. The mark
+            # rides the hit's own entry inside the bound the line
+            # already had: an acknowledgement neither removes a hit nor
+            # changes which are shown or their order, and one bound to
+            # another commit marks nothing.
+            acknowledgements = [
+                record
+                for record in task.records
+                if record.get("record_type") == "acknowledgement"
+                and record.get("commit") == resolved_commit
+            ]
+            marks = [
+                _acknowledgement_mark(hit, acknowledgements, markers)
+                for hit in leak_hits
+            ]
             say(
                 "WARN: possible leak in candidate additions "
                 "(advisory, not blocking): "
-                f"{render_leak_hits(leak_hits, limit=_LEAK_HIT_RENDER_LIMIT)}"
+                + render_leak_hits(leak_hits, limit=_LEAK_HIT_RENDER_LIMIT, marks=marks)
             )
         if undecodable:
             say(
