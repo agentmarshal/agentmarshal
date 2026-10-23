@@ -234,9 +234,11 @@ _OUTBOX_README = """# Upstream outbox
 Findings about **AgentMarshal itself** go here — one file per finding — and are
 sent upstream as a batch.
 
-This outbox is **not journal evidence**. Stage journal evidence with
-`git add .agentmarshal/journal`; if staging `.agentmarshal`, exclude this
-outbox: `git add .agentmarshal ':(exclude).agentmarshal/upstream/**'`. The
+This outbox is **not journal evidence**. Stage journal evidence one task
+at a time — `git add .agentmarshal/journal/tasks/<task-id>` — so records
+of other tasks in flight never ride in a task's transaction. If staging
+`.agentmarshal` itself, exclude this outbox:
+`git add .agentmarshal ':(exclude).agentmarshal/upstream/**'`. The
 quotes are part of the command — the parentheses are shell metacharacters.
 
 An adopter on a pinned release never patches the tool locally, so everything

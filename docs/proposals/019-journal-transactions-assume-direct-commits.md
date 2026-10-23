@@ -57,3 +57,14 @@ named in proposal 017.
 0.4.0 does not carry this. Neither the documented pattern nor the script under
 the templates directory shipped in it; the disposition above stands, and the
 release that carries them will say so in its changelog.
+
+## Where
+
+- 2026-10-24: the pattern is now the per-task staging recipe the
+  quickstart's journal transactions, the sidecar guide and the outbox
+  README `init` writes all show — one task's directory per transaction —
+  and the script is `templates/journal-transaction.sh`, a provider-neutral
+  helper that branches (the name carries the task id, per proposal 017),
+  stages `.agentmarshal/journal/tasks/<task-id>/` by a literal pathspec,
+  commits, pushes to `AM_REMOTE` (default `origin`) and names the pull
+  request as the adopter's next step.
