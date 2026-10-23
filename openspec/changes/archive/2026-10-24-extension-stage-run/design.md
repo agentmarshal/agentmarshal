@@ -114,6 +114,12 @@ materializes a commit as a clean directory via `git archive`;
   materialized from) and `AGENTMARSHAL_SNAPSHOT` (the working
   directory). Written last, a declared name colliding with one cannot
   override the run's own values.
+- *Correction 2026-10-24 (CR-211):* the bullet above misstates the
+  environment. `PATH` is a fixed `/usr/bin:/bin` the core always sets,
+  not `os.defpath`, and a manifest naming `PATH` in `isolation.env`
+  is not passed the caller's — the contract amendment of the same date
+  made the minimal `PATH` always the core's, and the run notes the
+  refused pass-through once in its output.
 - **The limit is `min(timeout_seconds, 600)`.** The manifest declares
   `timeout_seconds`; the core's limit is a module-level constant of 600
   seconds — the cap the contract fixes — and on expiry the process

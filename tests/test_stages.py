@@ -757,7 +757,7 @@ def test_only_the_environment_variables_the_manifest_names_are_passed(
 def test_a_path_named_in_isolation_env_is_not_passed_through(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Scenario: the environment carries the protocol variables and a minimal PATH."""
+    """Scenario: a PATH named in isolation.env is not passed through."""
     repo = _project(tmp_path, monkeypatch)
     for name in ("alpha", "beta"):
         _extension(

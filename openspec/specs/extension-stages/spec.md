@@ -151,11 +151,14 @@ Each stage's `command` SHALL run as the argv list `[<the Python
 interpreter the core runs under>, <the path under bin/>]` — never
 through a shell and never through `PATH` lookup — with its working
 directory the candidate snapshot and an environment of a minimal
-`PATH`, each `isolation.env` name the caller holds, and the five
-protocol variables `AGENTMARSHAL_PHASE`, `AGENTMARSHAL_TASK`,
+`PATH` of `/usr/bin:/bin` that the core always sets, each
+`isolation.env` name the caller holds, and the five protocol
+variables `AGENTMARSHAL_PHASE`, `AGENTMARSHAL_TASK`,
 `AGENTMARSHAL_COMMIT`, `AGENTMARSHAL_BASE` and `AGENTMARSHAL_SNAPSHOT`
 written last so a declared name colliding with one cannot override the
-run's own values. A `command` path that does not exist or is a
+run's own values. A `PATH` named in `isolation.env` SHALL NOT be
+passed through — the core's minimal `PATH` stands — and the run's
+output SHALL say so. A `command` path that does not exist or is a
 symbolic link SHALL be `not run` naming why; a process that cannot be
 started SHALL be `not run` naming why. Exit status 0 SHALL decide
 `checked`; any other exit status SHALL decide `failed`.
@@ -178,6 +181,12 @@ started SHALL be `not run` naming why. Exit status 0 SHALL decide
   holds and the caller holds another the manifest does not name
 - **THEN** the named variable reaches the stage and the unnamed one
   does not
+
+#### Scenario: a PATH named in isolation.env is not passed through
+- **WHEN** a manifest's `isolation.env` names `PATH` and the caller
+  holds it
+- **THEN** the stage sees the core's minimal `PATH` — not the
+  caller's — and the run's output says so
 
 #### Scenario: a protocol variable cannot be overridden by a declared name
 - **WHEN** a manifest's `isolation.env` names an `AGENTMARSHAL_*`
