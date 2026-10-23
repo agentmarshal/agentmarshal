@@ -26,8 +26,9 @@ Every refusal — an unknown or terminal task, a commit or base that does
 not resolve, both or neither of ``--signature`` and ``--marker``, a
 value the record rules refuse, a ``--reason`` that trips the scan, a
 hit the scan does not report — is decided before any write: no record.
-An acknowledgement is not yet honoured anywhere: ``leak-scan``'s output
-and exit are unchanged.
+A written record is honoured on the hit's surfaces (ADR-0021 decision
+3): ``leak-scan`` prints the hit marked and no longer fails on its
+account, and the gate's advisory line carries the same mark.
 """
 
 from __future__ import annotations

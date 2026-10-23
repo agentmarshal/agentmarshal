@@ -134,3 +134,11 @@ caller that already knows which task the verification belongs to.
 
 - None — ADR-0021 decided the binding, the mark's content and the
   surfaces; ADR-0022 section 3 fixed the record's fields.
+
+Correction 2026-10-23 (CR-195): this design is wrong where it says the
+matched text is in neither the record nor the hit, so in neither mark
+nor output — `recorded_by` and `reason` are the operator's own text
+and can carry the very string the scan matches. The mark in fact
+passes `mask_leaks` before `escape_for_display`, and that masking —
+not the absence this design claims — is what keeps the value out of
+the output.

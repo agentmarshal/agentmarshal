@@ -118,3 +118,11 @@ and `render_leak_hits` already knows how to carry a per-hit mark.
 
 - None — ADR-0021 decided the binding, the mark's content and the
   surfaces; ADR-0022 section 3 fixed the record's fields.
+
+Correction 2026-10-23 (CR-195): this design's claim that the gate and
+the command share the mark-builder — that the mark "cannot drift from
+the command's" and the gate calls "the very function `leak-scan`
+calls" — did not hold as written: `cli.py` kept its private copies of
+both helpers until CR-195 replaced them with the `capture.py`
+implementation, so the mark is built in one place only from that task
+on.
