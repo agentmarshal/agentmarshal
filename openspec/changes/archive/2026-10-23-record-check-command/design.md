@@ -74,19 +74,25 @@ leak scan's signature table and the project's `private_markers` in
   missing identity costs no kept file. A recorder who is not a
   declared actor is accepted with a stderr note saying so — the same
   wording `agree` gives, through the same `_declared_actor` test.
-- **The excerpt is the tail, masked, escaped, and bounded twice.** The
-  cut is the content's last 4 KiB at most, moved forward to a
-  character boundary so no multi-byte character is halved, decoded
-  with undecodable bytes replaced — the failing end of a log is the
-  part worth keeping. The text then passes through `mask_leaks`, then
-  `escape_for_display` — the record's forgeable-text rule refuses
-  newlines outright, and a check output's tail is exactly the lines
-  that failed — and is cut once more to 4 KiB of UTF-8 after masking,
-  again from the front and on a boundary: a `[masked: …]` token can be
-  longer than the span it replaces, so the bound is measured after the
-  masking, not assumed from the first cut. An excerpt that comes out
-  empty or all whitespace is omitted — the record admits `excerpt`
-  only non-empty.
+- **The excerpt is the tail, masked, escaped, and bounded on
+  characters.** The output decodes whole with `errors="replace"` —
+  every undecodable byte lands as the replacement character under
+  Python's own decoder, so no hand-rolled byte logic ever halves a
+  character or misreads an invalid sequence — and the failing end of a
+  log is the part worth keeping. The text then passes through
+  `mask_leaks`, then `escape_for_display` — the record's
+  forgeable-text rule refuses newlines outright, and a check output's
+  tail is exactly the lines that failed — and is kept to the longest
+  suffix of whole characters encoding to at most 4 KiB of UTF-8: a
+  `[masked: …]` token or an escape can be longer than the span it
+  replaces, so the bound is measured after the masking, the excess
+  dropping from the front. An excerpt that comes out empty or all
+  whitespace is omitted — the record admits `excerpt` only non-empty.
+- **An excerpt masking cannot make clean is withheld.** A marker that
+  occurs in the mask label itself still trips the scan after masking;
+  the record then carries no `excerpt` — never the marker's value —
+  the command says the excerpt was withheld, and stderr still names
+  the categories found.
 - **Mask first, escape second, both after the decode.** Masking sees
   the text in its true form — a private marker that itself carries a
   newline still matches — and the escapes produced afterwards are
@@ -137,12 +143,13 @@ leak scan's signature table and the project's `private_markers` in
 ## Risks
 
 - [A mask token longer than its span pushes the excerpt past 4 KiB] →
-  the excerpt is bounded again after masking, from the front and on a
-  character boundary, so the record's byte rule always holds and the
-  failing end survives.
+  the excerpt is bounded after masking to the longest character suffix
+  within 4 KiB, so the record's byte rule always holds and the failing
+  end survives.
 - [A multi-byte character straddling the tail cut decodes as a false
-  replacement char] → the cut is moved forward to the next boundary,
-  so a valid character is either whole or absent.
+  replacement char] → the whole output decodes through Python's own
+  `errors="replace"` and the suffix counts whole characters, so a
+  character is either whole or absent.
 - [A private marker containing a refused character would never match
   post-escape text] → masking runs on the decoded text before
   escaping, so the marker's literal form is what is matched.

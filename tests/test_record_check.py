@@ -667,16 +667,17 @@ def test_the_tail_is_cut_on_a_character_boundary(
 ) -> None:
     """Scenario: the tail is cut on a character boundary.
 
-    The byte cut is moved forward past a split character: the multi-byte
-    character at the boundary is absent — never half-carried into a
-    false replacement char — and the content's end still survives.
+    The multi-byte character at the boundary is absent — never
+    half-carried into a false replacement char — and the content's end
+    still survives.
     """
 
     repo = _repo(tmp_path, monkeypatch)
     monkeypatch.setenv("AGENTMARSHAL_ACTOR", "ci-runner")
     _open()
-    # Position 'é' (2 bytes) so its second byte is the tail's first:
-    # index 903 holds 0xC3, index 904 — the cut — holds 0xA9.
+    # 'é' encodes to two bytes: after the 4095 trailing 'b' characters it
+    # no longer fits the 4 KiB bound, so the suffix opens at the next
+    # character and the two-byte one is dropped whole.
     content = b"a" * 903 + "é".encode() + b"b" * 4095
     assert len(content) == 5000
     output = tmp_path / "out.log"
@@ -755,11 +756,10 @@ def test_undecodable_bytes_are_replaced(
     )
     assert _checks(repo)[1]["excerpt"] == "\ufffdfailed\\n"
 
-    # A cut drops only the one character it split: the lead byte 0xE2
-    # sits just before the cut, its two continuations open the tail and
-    # are dropped whole — but the third continuation byte is an orphan,
-    # not part of any character, and decodes to the replacement
-    # character rather than being dropped with them.
+    # The decode is Python's own: 0xE2 0x82 0x80 is a whole character
+    # (U+2080), the continuation byte after it is an orphan and lands as
+    # the replacement character — and U+2080 no longer fits the 4 KiB
+    # bound after it, so the excerpt opens with the replacement.
     spanning = tmp_path / "spanning.log"
     spanning.write_bytes(b"a" * 900 + b"\xe2" + b"\x82\x80\x80" + b"b" * 4093)
     assert (
@@ -982,14 +982,15 @@ def test_a_hit_does_not_refuse_the_record(
 def test_an_excerpt_the_scan_still_trips_is_withheld(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """A marker occurring in the mask label itself is withheld, not written.
+    """Scenario: an excerpt masking cannot make clean is withheld.
 
     `masked` is configured as a private marker, so the masked excerpt —
     which literally says `[masked: private-marker]` — still trips the
     scan after masking. The record is written with no excerpt rather
     than carrying the marker's value, stderr says the excerpt was
-    withheld because masking could not make it clean, and the command
-    still exits zero: the record and the result land.
+    withheld because masking could not make it clean and still names
+    the categories found, and the command still exits zero: the record
+    and the result land.
     """
 
     marker = "masked"
@@ -1019,6 +1020,9 @@ def test_an_excerpt_the_scan_still_trips_is_withheld(
     captured = capsys.readouterr()
     assert "withheld" in captured.err
     assert "masking could not make it clean" in captured.err
+    # The categories are named even when the excerpt is withheld; the
+    # marker's value never is.
+    assert "private-marker" in captured.err
     assert marker not in captured.out + captured.err
     assert marker not in json.dumps(_records(repo))
     # The full output is still kept and announced — only the record's

@@ -117,14 +117,14 @@ and the record SHALL still be written.
 ### Requirement: the excerpt is the output's tail — bounded, masked, and safe to render
 
 With `--output-file` the record's `excerpt` SHALL be derived from the
-content as: the last 4 KiB at most of its bytes, the cut moved forward
-to a UTF-8 character boundary so no character is halved, undecodable
-bytes replaced; that text leak-masked; every character the
-forgeable-text rule refuses escaped; and the result bounded once more
-to at most 4 KiB of UTF-8 — a mask can be longer than the span it
-replaces, so the bound is measured after masking — cut from the front
-on a character boundary so the content's end always survives. An
-excerpt that comes out empty or all whitespace SHALL be omitted.
+content as: the content decoded as UTF-8 with every undecodable byte
+replaced; that text leak-masked; every character the
+forgeable-text rule refuses escaped; and the longest suffix of whole
+characters whose UTF-8 encoding is at most 4 KiB kept — a mask can be
+longer than the span it replaces, so the bound is measured after
+masking — so the excerpt's end is always the content's end and no
+character is ever halved. An excerpt that comes out empty or all
+whitespace SHALL be omitted.
 
 #### Scenario: the excerpt is the content's last 4 KiB at most
 - **WHEN** the output file is larger than 4 KiB
@@ -162,8 +162,12 @@ own name — and the command SHALL name the matched categories on
 stderr, never the matched text and never a marker's value. A hit
 SHALL NOT refuse the record: the check's result is the fact being
 recorded, and refusing it would lose the fact with no path to record
-it. The masking SHALL live beside the scan in `capture.py`, and
-`agentmarshal leak-scan` SHALL be unchanged in behaviour and output.
+it. When the masked excerpt still trips the scan — a private marker
+that occurs in the mask label itself — the record SHALL carry no
+`excerpt`, and the command SHALL say the excerpt was withheld and
+SHALL still name the categories found. The masking SHALL live beside
+the scan in `capture.py`, and `agentmarshal leak-scan` SHALL be
+unchanged in behaviour and output.
 
 #### Scenario: a signature hit is masked and its category named
 - **WHEN** the excerpt trips a built-in signature
@@ -181,6 +185,13 @@ it. The masking SHALL live beside the scan in `capture.py`, and
 - **WHEN** the excerpt trips the leak scan
 - **THEN** the `check` record is written with the masked excerpt, and
   the command exits zero
+
+#### Scenario: an excerpt masking cannot make clean is withheld
+- **WHEN** the masked excerpt still trips the scan — a private marker
+  that occurs in the mask label itself
+- **THEN** the record carries no `excerpt`, the command says the
+  excerpt was withheld and names the categories found, and the
+  check's result still lands
 
 #### Scenario: the standalone scan is untouched
 - **WHEN** `agentmarshal leak-scan` runs

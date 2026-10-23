@@ -12,17 +12,18 @@ the host's.
 ``--output-file`` keeps the file's full bytes — unmasked, the masking is
 the excerpt's — under the journal repository's local state and announces
 them with a ``check-output`` event, the mechanism the review launcher
-keeps review prose with. The excerpt is the content's tail: at most the
-last 4 KiB, cut on a UTF-8 character boundary with undecodable bytes
-replaced — the failing end is the part worth keeping — masked span by
-span with ``[masked: <category>]``, escaped for the forgeable-text rule,
-and bounded once more to 4 KiB after masking, since a mask can be longer
-than what it replaces. A hit is masked, never refused: the check's
-result is the fact being recorded, and refusing it over a token printed
-in a log would lose the fact with no path to record it. The masked
-excerpt is scanned once more: a marker occurring in the mask label
-itself still trips the scan, and then the excerpt is withheld — the
-record and the result land without it.
+keeps review prose with. The excerpt is the content's tail: the output
+decoded whole with every undecodable byte replaced — the failing end is
+the part worth keeping — masked span by span with
+``[masked: <category>]``, escaped for the forgeable-text rule, and kept
+to the longest suffix of whole characters encoding to at most 4 KiB,
+measured after masking since a mask can be longer than what it
+replaces. A hit is masked, never refused: the check's result is the
+fact being recorded, and refusing it over a token printed in a log
+would lose the fact with no path to record it. The masked excerpt is
+scanned once more: a marker occurring in the mask label itself still
+trips the scan, and then the excerpt is withheld — the record and the
+result land without it, the categories still named.
 
 Every refusal — an unknown task, a commit that does not resolve, a
 result outside the vocabulary, a value the record rules refuse, an
@@ -166,48 +167,44 @@ def _resolve_commit(journal_project_root: Path, reference: str) -> str:
     return resolved
 
 
-def _bounded_tail(data: bytes) -> str:
-    """Decode the last at-most-4-KiB of *data* on a character boundary.
+def _bounded_tail(text: str) -> str:
+    """The longest suffix of *text* encoding to at most 4 KiB of UTF-8.
 
-    Every undecodable byte decodes to the replacement character — the
-    same ``errors="replace"`` the diff decoder applies to content that
-    cannot be read — whether a cut happened or not. The only bytes
-    dropped are those of the one character a 4 KiB cut can split: the
-    partial character goes whole, so no character is halved.
+    Whole characters only: the budget is spent character by character
+    from the end, so a character that no longer fits is dropped whole —
+    the suffix never opens with half a character — and the content's end
+    always survives. The only byte arithmetic is the encoding's own
+    length.
     """
 
-    if len(data) <= _CHECK_EXCERPT_BYTE_LIMIT:
-        return data.decode("utf-8", errors="replace")
-    tail = data[-_CHECK_EXCERPT_BYTE_LIMIT:]
-    cut = len(data) - len(tail)
-    # The cut may have split one multi-byte character. Its lead byte is
-    # within three bytes before the cut — a character is at most four
-    # bytes — and the tail bytes completing it are dropped whole.
-    lead = cut - 1
-    while lead >= 0 and cut - lead <= 3 and data[lead] & 0xC0 == 0x80:
-        lead -= 1
-    if lead >= 0 and cut - lead <= 3 and 0xC2 <= data[lead] <= 0xF4:
-        width = 2 if data[lead] < 0xE0 else 3 if data[lead] < 0xF0 else 4
-        drop = lead + width - cut
-        if drop > 0 and all(byte & 0xC0 == 0x80 for byte in tail[:drop]):
-            tail = tail[drop:]
-    return tail.decode("utf-8", errors="replace")
+    budget = _CHECK_EXCERPT_BYTE_LIMIT
+    start = len(text)
+    while start > 0:
+        width = len(text[start - 1].encode("utf-8"))
+        if width > budget:
+            break
+        budget -= width
+        start -= 1
+    return text[start:]
 
 
 def _excerpt(content: bytes, markers: tuple[str, ...]) -> tuple[str, list[str]]:
     """The record's excerpt: the content's masked tail, bounded after masking.
 
-    Masking runs on the text in its true form — a private marker that
-    itself carries a newline still matches — and escaping after it
-    produces plain ASCII no signature or marker can recompose into. The
-    second bound is needed because a ``[masked: …]`` token or an escape
-    can be longer than the span it replaces; the excess is dropped from
-    the front, so the content's end always survives.
+    The output decodes whole — ``errors="replace"`` lands every
+    undecodable byte as the replacement character, the same decoding the
+    diff decoder gives content that cannot be read — so the boundary
+    work is the decoder's, not hand-rolled byte logic. Masking runs on
+    the text in its true form — a private marker that itself carries a
+    newline still matches — and escaping after it produces plain ASCII
+    no signature or marker can recompose into. The bound comes last
+    because a ``[masked: …]`` token or an escape can be longer than the
+    span it replaces; the excess is dropped from the front, so the
+    content's end always survives.
     """
 
-    masked, categories = mask_leaks(_bounded_tail(content), markers)
-    escaped = escape_for_display(masked)
-    return _bounded_tail(escaped.encode("utf-8")), categories
+    masked, categories = mask_leaks(content.decode("utf-8", errors="replace"), markers)
+    return _bounded_tail(escape_for_display(masked)), categories
 
 
 def _preserve_output(content: bytes) -> Path:
@@ -381,8 +378,9 @@ def run(args: argparse.Namespace, stderr: TextIO) -> int:
     print(f"result {args.result}")
     print(f"recorded by {escape_for_display(recorder)}")
     if withheld:
+        named = f" ({', '.join(categories)})" if categories else ""
         print(
-            "record-check: excerpt withheld: masking could not make it clean",
+            f"record-check: excerpt withheld: masking could not make it clean{named}",
             file=stderr,
         )
     elif categories:
