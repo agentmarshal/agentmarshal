@@ -36,10 +36,12 @@ value rather than failing or guessing.
 ### The contract is pinned and can name who may work on it (CR-147, CR-163, CR-171, CR-177, CR-180, CR-182, CR-186, CR-191, CR-200, CR-202, CR-203)
 
 An `opened` or `amendment` record written on 0.5.0 carries the sha256 of the
-contract text it establishes, so the measure the work is judged against is auditable
-end to end: `open` and `amend` pin it, `migrate` pins each contract it
-writes, `open --contract-file` opens a task from a contract already written,
-and `status` says when a contract has drifted from its last pin. Contract
+contract text it establishes — the record names the exact contract text by
+its hash, and `status` and the gate compare against it: `open` and `amend`
+pin it, `migrate` pins each contract it writes, `open --contract-file` opens
+a task from a contract already written, `status` says when a contract has
+drifted from its last pin, and the gate holds an agreement the project
+requires to the hash of the contract it judges. Contract
 header schema 3 declares `implementers` and `reviewers` — ordered lists of
 actor ids, in fallback order — and the `independence` rules in
 force: `reviewer-not-writer` (the existing check), `distinct-actor`,
@@ -88,10 +90,10 @@ carry `verification` — what the reviewer executed, read and could not run —
 and `evidence` for its findings, and the reviewer's prompt asks for both
 and for each criterion's place in the diff; a
 finding about an external fact the reviewer could not check lands as
-advisory. An `acknowledgement` records that an operator verified a reported
-leak-scan hit, bound to the commit, the file as the scan prints it and the
-hit's identification — a new commit or a renumbered marker list fails
-visible. `agentmarshal acknowledge` writes it only against a hit the scan
+advisory. An `acknowledgement` is a recorded statement that an operator
+verified a reported leak-scan hit, bound to the commit, the file as the scan
+prints it and the hit's identification — a new commit or a renumbered marker
+list fails visible. `agentmarshal acknowledge` writes it only against a hit the scan
 reports. The hit stays printed, marked with who acknowledged and why: on
 `leak-scan`, which now exits 1 only on a hit nobody acknowledged; on
 `status`; and on the gate's advisory line within its existing bound.
