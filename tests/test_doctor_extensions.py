@@ -22,6 +22,7 @@ import agentmarshal.doctor as doctor
 from agentmarshal.cli import main
 from agentmarshal.journal.placement import Placement
 from agentmarshal.localstate import LocalState, LocalStateError
+from agentmarshal.switches import shared_extension_names
 
 
 @pytest.fixture(autouse=True)
@@ -594,7 +595,9 @@ def test_the_extension_names_helper_keeps_links_and_skips_strays(
     Not a spec scenario — the helper's own seam: a link at ``<name>``
     or ``<name>.toml`` is found under its name so the reader's refusal
     reports it, and an entry that is neither a directory nor a manifest
-    path is not an extension at all.
+    path is not an extension at all. The helper is
+    ``switches.shared_extension_names`` — the one function every reader
+    enumerates through.
     """
 
     managed = tmp_path / "extensions"
@@ -608,4 +611,4 @@ def test_the_extension_names_helper_keeps_links_and_skips_strays(
 
     # `linked` and `linked.toml` are one name; `plain` and `stray.txt`
     # are no extension's manifest path.
-    assert doctor._extension_names(managed) == ["filed", "linked", "real"]
+    assert sorted(shared_extension_names(managed)) == ["filed", "linked", "real"]
