@@ -3209,9 +3209,17 @@ def test_schema_1_manifest_in_the_base_directory_form_is_refused(
 
 
 def test_named_file_form_manifest_reads_exactly_as_before(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Scenario: a named file-form manifest reads exactly as before."""
+    """Scenario: a named file-form manifest reads exactly as before.
+
+    The transcript is pinned whole, the way the fixture cases pin it:
+    the normalisation substitutes only what varies by run — the commit
+    ids and the temporary repository's path — so a line the file-form
+    read adds, drops or rewords fails byte for byte.
+    """
 
     repo, _ = _gate_repo(tmp_path, monkeypatch, ["src/"])
     _write_schema2_contract(repo, ["src/"], extensions=["openspec"])
@@ -3220,11 +3228,27 @@ def test_named_file_form_manifest_reads_exactly_as_before(
     head = _implement(repo, "openspec/change.md")
     _approve(repo, head)
 
-    passed, output = _run(repo, head, base, head)
+    capsys.readouterr()
+    code = main(_gate_arguments(base, head))
+    transcript = capsys.readouterr()
+    run_values = _run_values(base, head, {repo: "<repo>", tmp_path: "<tmp-root>"})
 
-    assert passed
-    assert "PASS: diff within contract scope (extensions: openspec)" in output
-    assert "manifest unreadable" not in output
+    assert code == 0
+    assert transcript.err == ""
+    assert _normalize_transcript(transcript.out, run_values) == (
+        "PASS: task CR-001 is not closed at base\n"
+        "PASS: diff within contract scope (extensions: openspec)\n"
+        "PASS: latest review of <head-sha-12> is approved\n"
+        "PASS: declared reviewer identity differs from the candidate's "
+        "declared writers\n"
+        "PASS: pipeline attested for <head-sha-12>\n"
+        "PASS: evidence records are append-only\n"
+        "PASS: added records are valid\n"
+        "PASS: no record-path collisions with the base tree\n"
+        "PASS: task lifecycle records are consistent\n"
+        "INFO: changes_required verdicts for CR-001: 0 (threshold 3)\n"
+        "gate: passed\n"
+    )
 
 
 @pytest.mark.parametrize("leave_footprint", [False, True])
