@@ -31,9 +31,9 @@ record — post-gate results go to the process log. `status` shows the
 record's envelope — `kind`, `commit`, `payload_sha256` and the recorder
 — on a line of its own, without opening the body. `record-ext` is the
 command that writes the record — the kind checked against the declaring
-manifest's `[records].kinds`, the payload leak-scanned at write; no
-command reads the body yet — `validate`'s "addressee not found" warning
-and any reader of the body come with their own tasks.
+manifest's `[records].kinds`, the payload leak-scanned at write, and
+`validate` warns "addressee not found" on a kind no manifest declares;
+no command reads the body yet — a reader of it comes with its own task.
 
 #### Scenario: an ext record is written and read back
 - **WHEN** an `ext` record carries `kind`, `commit`, `payload` and
@@ -379,3 +379,72 @@ journal still validates.
   a non-finite number — so the canonical form the record rules require
   does not exist
 - **THEN** the command is refused, and no record is written
+
+### Requirement: `validate` warns "addressee not found" on an ext record whose kind no manifest declares
+
+`agentmarshal validate` SHALL check every `ext` record's `kind` against
+the `[records].kinds` the shared extensions' manifests declare in the
+journal repository's working tree: the `<name>` segment of the kind
+names the extension, whose manifest validate SHALL read through
+`read_extension_manifest` — `.agentmarshal/extensions/<name>.toml` or
+`.agentmarshal/extensions/<name>/manifest.toml`, the file form or the
+directory form — and a `kind` no manifest declares SHALL draw one
+`WARN` line naming the task, the record id and the kind, worded
+"addressee not found" (ADR-0013 decision 18). The warning is not a
+refusal — a record can outlive the manifest that declared its kind —
+and SHALL NOT change validate's passed/failed verdict or its exit
+status. A manifest that cannot be read SHALL be named once on a `WARN`
+line of its own, however many records name the extension, and its
+kinds SHALL count as undeclared; a manifest that is missing SHALL draw
+no line of its own — the addressee warning is its report. A journal
+holding no `ext` record SHALL read no manifest and SHALL print exactly
+what validate printed before the check. Every value a record or a
+manifest contributes to a warning line SHALL be escaped on display as
+validate's other lines are. No other command SHALL read the warning.
+
+#### Scenario: an ext record whose kind no manifest declares draws an addressee warning
+- **WHEN** a task carries an `ext` record whose `kind` names an
+  extension with no manifest in the journal repository's working tree
+- **THEN** validate prints one WARN line naming the task, the record id
+  and the kind, worded "addressee not found"
+
+#### Scenario: a kind the manifest does not declare draws an addressee warning
+- **WHEN** the `<name>` segment's manifest parses but its
+  `[records].kinds` does not declare the record's `kind`
+- **THEN** validate prints one WARN line naming the task, the record id
+  and the kind, worded "addressee not found"
+
+#### Scenario: a kind declared in the file form draws no warning
+- **WHEN** the `<name>` segment's manifest lives at
+  `.agentmarshal/extensions/<name>.toml` — the file form — and declares
+  the record's `kind`
+- **THEN** validate prints no WARN line for the record
+
+#### Scenario: a kind declared in the directory form draws no warning
+- **WHEN** `<name>`'s manifest lives at `<name>/manifest.toml` — the
+  directory form — and declares the record's `kind`
+- **THEN** validate prints no WARN line for the record
+
+#### Scenario: a manifest that cannot be read is named once and declares nothing
+- **WHEN** the `<name>` segment's manifest exists but cannot be read,
+  and `ext` records on more than one task name the extension
+- **THEN** validate names the manifest on one WARN line, prints one
+  addressee warning per record — the manifest's kinds count as
+  undeclared — and the verdict still passes
+
+#### Scenario: the warning changes neither verdict nor exit status
+- **WHEN** validate prints an addressee warning for an `ext` record
+- **THEN** the report still passes and `agentmarshal validate` still
+  exits 0
+
+#### Scenario: a journal with no ext records reads no manifests
+- **WHEN** the journal holds no `ext` record
+- **THEN** validate reads no manifest and prints byte for byte what it
+  printed before the check existed
+
+#### Scenario: a value on a warning line is escaped
+- **WHEN** a value a record or a manifest contributes to a warning
+  carries a character that could add a line to rendered output or
+  reorder it
+- **THEN** the character prints as its escape and the warning stays on
+  its own line

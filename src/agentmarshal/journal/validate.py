@@ -5,7 +5,10 @@ validators (contract parsing, record schema validation, status
 projection) across every task and reports every violation rather than
 stopping at the first, so a governance CI job can assert the whole
 journal is well-formed on each push. It adds no new policy of its own
-beyond checking that record ids do not collide across tasks.
+beyond checking that record ids do not collide across tasks — and the
+one warning it emits, an ``ext`` record's kind no manifest declares
+("addressee not found", ADR-0013 decision 18), changes no verdict: a
+record can outlive the manifest that declared its kind.
 """
 
 from __future__ import annotations
@@ -16,6 +19,12 @@ from pathlib import Path, PurePosixPath
 from typing import cast
 
 from agentmarshal.journal.contracts import JournalContractError
+from agentmarshal.journal.display import escape_for_display
+from agentmarshal.journal.extensions import (
+    ExtensionManifestError,
+    ExtensionManifestMissing,
+    read_extension_manifest,
+)
 from agentmarshal.journal.open_task import journal_root
 from agentmarshal.journal.records import (
     JournalRecordError,
@@ -129,6 +138,60 @@ def _review_artifact_failures(
     return failures
 
 
+def _addressee_warnings(
+    project_root: Path,
+    task_id: str,
+    records: tuple[dict[str, object], ...],
+    declared: dict[str, tuple[str, ...] | None],
+) -> list[str]:
+    """One WARN line per ``ext`` record whose kind no shared manifest declares.
+
+    A record can outlive the manifest that declared its kind (ADR-0013
+    decision 18): the warning — "addressee not found" — is not a refusal
+    and changes no verdict. ``<name>``, the kind's first segment, names
+    the extension whose manifest is read from the journal repository's
+    working tree through ``read_extension_manifest``, in the file form or
+    the directory form — the same lookup ``record-ext`` makes. The read
+    is lazy and *declared* caches it, so a journal holding no ``ext``
+    record reads no manifest and each manifest is resolved once however
+    many records name the extension. A manifest that is missing leaves
+    the kind undeclared silently — the addressee line is its report —
+    while one that cannot be read is named once on a WARN line of its
+    own and still declares nothing. Every value the line carries is
+    escaped as validate's other values are.
+    """
+
+    warnings: list[str] = []
+    for record in records:
+        if record.get("record_type") != "ext":
+            continue
+        record_id = record.get("id")
+        kind = record.get("kind")
+        if not isinstance(record_id, str) or not isinstance(kind, str):
+            continue
+        name = kind.split("/", 1)[0]
+        if name not in declared:
+            try:
+                declared[name] = read_extension_manifest(
+                    project_root, name
+                ).record_kinds
+            except ExtensionManifestMissing:
+                declared[name] = None
+            except ExtensionManifestError as error:
+                declared[name] = None
+                warnings.append(
+                    f"WARN: extension manifest {escape_for_display(name)!r} "
+                    f"cannot be read: {escape_for_display(str(error))}"
+                )
+        kinds = declared[name]
+        if kinds is None or kind not in kinds:
+            warnings.append(
+                f"WARN: {task_id}: ext record {escape_for_display(record_id)} "
+                f"kind {escape_for_display(kind)!r}: addressee not found"
+            )
+    return warnings
+
+
 def validate_journal(project_root: Path) -> ValidationReport:
     """Validate every task in the journal, reporting each violation."""
 
@@ -179,6 +242,7 @@ def validate_journal(project_root: Path) -> ValidationReport:
         task_ids.append(entry.name)
 
     seen_record_ids: dict[str, str] = {}
+    declared: dict[str, tuple[str, ...] | None] = {}
     for task_id in sorted(task_ids, key=_task_sort_key):
         try:
             status = load_task_status(root, task_id)
@@ -210,5 +274,8 @@ def validate_journal(project_root: Path) -> ValidationReport:
             lines.append(
                 f"OK: {task_id} ({status.state}, {len(status.records)} records)"
             )
+        lines.extend(
+            _addressee_warnings(project_root, task_id, status.records, declared)
+        )
 
     return ValidationReport(passed, lines)
