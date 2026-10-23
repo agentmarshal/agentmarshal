@@ -684,6 +684,47 @@ def test_the_sidecar_lane_takes_and_requires_dispositions(
     assert completed["advisory_dispositions"] == {"A-1": {"disposition": "fixed"}}
 
 
+def test_a_sidecar_appended_review_cannot_change_which_advisory_findings_are_owed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a review appended after the gate ran cannot change
+    which advisory findings are owed — on the sidecar lane, whose
+    `complete` hands the gate's resolved review to the write."""
+
+    host = tmp_path / "host"
+    host.mkdir()
+    _git(host, "init", "--quiet", "-b", "master")
+    (host / "app.txt").write_text("one\n", encoding="utf-8")
+    base = _commit_all(host, "base")
+    (host / "app.txt").write_text("two\n", encoding="utf-8")
+    head = _commit_all(host, "work")
+    sidecar = tmp_path / "sidecar"
+    sidecar.mkdir()
+    _git(sidecar, "init", "--quiet", "-b", "master")
+    monkeypatch.chdir(sidecar)
+    assert main(["init", "--host", str(host)]) == 0
+    assert main(["open", "--title", "Sidecar gate", "--scope", "app.txt"]) == 0
+    _review(head, advisory=("A-1",))
+
+    # A concurrent process of the same user appends a newer review of
+    # the same commit — carrying no advisory findings — between the
+    # gate's verdict check and the disposition check `complete` runs
+    # after it.
+    def gate_then_append(*args: Any, **kwargs: Any) -> GateReport:
+        report = run_gate(*args, **kwargs)
+        _review(head)
+        return report
+
+    monkeypatch.setattr("agentmarshal.cli.run_gate", gate_then_append)
+    capsys.readouterr()
+
+    assert _complete(head, base) == 1
+
+    error = capsys.readouterr().err
+    assert "A-1" in error
+    assert _no_completed_record(sidecar)
+
+
 def test_an_advisory_finding_id_carrying_an_equals_sign_is_answered(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

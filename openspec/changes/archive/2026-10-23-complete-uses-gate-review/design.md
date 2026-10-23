@@ -58,17 +58,24 @@ left, deferred with this task as its follow-up.
   unknown-id refusal. A missing pinned record — impossible under
   append-only, so only through tampering — refuses rather than
   silently owing nothing.
-- **`resolved_review=None` keeps the pre-field derivation.** The
-  sidecar `complete` calls `record_commit_completion` from `cli.py`
-  with `report.resolved_commit` and no report field, a call this
-  task's scope cannot change; without the parameter the review is
-  derived exactly as before — the latest review of the resolved
-  commit — which is the review the gate judged whenever nothing was
-  appended in between. On the sidecar lane the gate always judges a
-  review before `complete` writes (the deterministic lane does not
-  exist there), so the two derivations agree outside the concurrent-
-  append window; threading the report's field through `cli.py` is the
-  follow-up that closes the lane's remaining window.
+- **`resolved_review=None` is the gate's own "no review judged".**
+  Every caller passes the report's field — `complete_task` in
+  `complete.py`, and the sidecar `complete` in `cli.py` — so no path
+  re-selects the latest review after the gate. `None` is what the
+  verdict check left on the paths that judge no review — the
+  journal-only lane, a run asked to judge without one — and owes no
+  advisory dispositions; it is never re-derived into the latest
+  review of the resolved commit, which is itself a selection a
+  post-gate append could swap.
+- *Correction 2026-10-23:* the bullet above first read
+  "`resolved_review=None` keeps the pre-field derivation" — the
+  sidecar `complete` called `record_commit_completion` from `cli.py`
+  with no report field, a call this task's scope could not then
+  change, so the latest review of the resolved commit was derived
+  again and the sidecar lane kept the concurrent-append window.
+  The contract amendment of the same date admitted `cli.py` to the
+  scope; the sidecar call now passes `report.resolved_review` and
+  the derivation is removed, not kept.
 
 ## Alternatives considered
 
@@ -82,5 +89,8 @@ id.** Any derivation that does not know which records existed at gate
 time cannot tell the judged review from a later append — that is the
 defect being fixed.
 
-**Change `cli.py` to thread the report through.** It is outside this
-task's scope; it is named as the follow-up instead of changed.
+**Change `cli.py` to thread the report through.** Outside this
+task's original scope, so it was first named as a follow-up — then
+taken in this change after all: the 2026-10-23 contract amendment
+admitted `cli.py`, and the alternative stopped being an
+alternative.
