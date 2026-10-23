@@ -153,15 +153,18 @@ def run(args: argparse.Namespace, stderr: TextIO) -> int:
         contract_path = journal_root / "tasks" / args.task / "contract.md"
         current = contract_sha256(contract_path.read_bytes(), str(contract_path))
         pinned = _latest_pin(task.records)
-        if pinned is not None and current != pinned:
-            raise AgreeError(
-                f"the contract drifted from its pin {pinned[:7]} "
-                f"(now {current[:7]}); record the edit with amend first"
-            )
+        # A `--contract` that is not the current hash names what the actor
+        # read against what stands — the refusal owes it both, so it is
+        # decided before drift, whose refusal names the pin instead.
         if given is not None and given != current:
             raise AgreeError(
                 f"--contract {given} does not equal the contract's "
                 f"current hash {current}"
+            )
+        if pinned is not None and current != pinned:
+            raise AgreeError(
+                f"the contract drifted from its pin {pinned[:7]} "
+                f"(now {current[:7]}); record the edit with amend first"
             )
         # The agreement requires its recorder, so the resolution the
         # record rules would refuse on is decided here, before anything

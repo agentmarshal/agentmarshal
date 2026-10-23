@@ -393,6 +393,38 @@ def test_contract_argument_differing_is_refused_naming_both_hashes(
     assert _snapshot(_journal(repo)) == before
 
 
+def test_contract_argument_differing_on_a_drifted_contract_names_both(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: --contract differing is refused naming both hashes.
+
+    Drift does not change what the `--contract` refusal names: when the
+    pin, the current hash and the hash given are three different values,
+    the refusal still names the given and the current hashes — the pair
+    the actor must reconcile — not the pin.
+    """
+
+    repo = _repo(tmp_path, monkeypatch)
+    monkeypatch.setenv("AGENTMARSHAL_ACTOR", "ops-lead")
+    _open()
+    pinned = _current_hash(repo)
+    contract = _journal(repo) / "tasks" / "CR-001" / "contract.md"
+    contract.write_text(
+        contract.read_text(encoding="utf-8") + "\n- one more thing\n",
+        encoding="utf-8",
+    )
+    current = _current_hash(repo)
+    other = "0" * 63 + "1"
+    assert current != pinned
+    assert other != current
+    before = _snapshot(_journal(repo))
+    assert _agree("--contract", other) == 1
+    err = capsys.readouterr().err
+    assert other in err
+    assert current in err
+    assert _snapshot(_journal(repo)) == before
+
+
 @pytest.mark.parametrize(
     "bad",
     [
