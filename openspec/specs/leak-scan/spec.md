@@ -585,6 +585,14 @@ stderr.
 - **THEN** it prints and exits exactly as a run finding no
   acknowledgements does
 
+#### Scenario: a sidecar's records are read in the journal repository
+- **WHEN** `leak-scan` runs in a checkout whose placement is a sidecar
+  and an `acknowledgement` record bound to the candidate sits on a task
+  of the journal repository
+- **THEN** the record is read from the journal repository's working
+  tree while the candidate is resolved and scanned in the host, and
+  the hit it names counts as acknowledged
+
 ### Requirement: `leak-scan` acknowledges a hit under the scan's own naming only
 
 A record SHALL acknowledge a hit only on the three bindings ADR-0021
@@ -634,15 +642,17 @@ several records match one hit, the earliest in journal order marks it.
 Every hit the scan reports SHALL still be printed, in the order and
 form it prints today, and an acknowledged hit's entry SHALL
 additionally carry a mark naming who acknowledged it — the record's
-`recorded_by` — and the `reason`, each escaped on display as the other
-displayed record values are. Nothing is removed, and the matched text
-is never printed. The command SHALL exit 0 when the scan finds hits
-and every one is acknowledged, SHALL exit 1 when any hit is
-unacknowledged, and SHALL print and exit exactly as today when the
-scan finds nothing or finds no acknowledgement. The mark the command
-prints is the mark the merge boundary shows on the hits its bound
-lets its line show — the same mark over the same naming (ADR-0021
-decision 3).
+`recorded_by` — and the `reason`, each masked by the scan — record
+values are the operator's own text and can themselves carry the string
+the scan matches — and each escaped on display as the other displayed
+record values are. Nothing is removed, and the matched text is never
+printed. The command SHALL exit 0 when the scan finds hits and every
+one is acknowledged, SHALL exit 1 when any hit is unacknowledged, and
+SHALL print and exit exactly as today when the scan finds nothing or
+finds no acknowledgement. The mark the command prints is the mark the
+merge boundary shows on the hits its bound lets its line show — the
+same mark over the same naming, the one mark-builder the two surfaces
+share (ADR-0021 decision 3).
 
 #### Scenario: an acknowledged hit prints marked
 - **WHEN** a hit is acknowledged
@@ -654,6 +664,11 @@ decision 3).
   some are not
 - **THEN** every hit appears in the order and form it prints today, the
   acknowledged entries carrying the mark
+
+#### Scenario: a recorder named the secret is masked in the mark
+- **WHEN** the acknowledging record's `recorded_by` or `reason`
+  carries a string the scan matches
+- **THEN** the mark prints it masked, the way every printed name is
 
 #### Scenario: the mark is escaped where it could forge a line
 - **WHEN** the acknowledging record's `recorded_by` carries a character
@@ -699,19 +714,21 @@ to the hit's file exactly as the scan prints it, and its
 identification equal to the hit's, where the record's `signature`
 equals a signature hit's identification and `private-marker #<n>`
 equals a marker hit's for the record's `marker` <n> — with the same
-mark `leak-scan` prints on the hit: acknowledged, who acknowledged it
-(the record's `recorded_by`) and the `reason`, masked with the scan's
-markers and escaped on display the same way (ADR-0021 decisions 2 and
-3). There is no other matching: an acknowledgement bound to another
-commit, carried on another task, spelled differently in `file`, or
-naming another identification marks nothing, and where several
-records of the task match one hit the earliest in journal order marks
-it. A hit the line's bound does not show carries no mark: the bound
-is unchanged — at most twenty hits, then "and N more not shown" — and
-an acknowledgement neither removes a hit from the line nor changes
-which hits are shown or their order. The line stays a warning: a
-marked hit adds no violation. A candidate whose task holds no
-acknowledgement bound to its commit produces the line byte for byte
+mark `leak-scan` prints on the hit — one mark-builder produces it for
+the command and for the line, so the mark's wording, masking and
+escaping cannot drift between the surfaces: acknowledged, who
+acknowledged it (the record's `recorded_by`) and the `reason`, masked
+with the scan's markers and escaped on display the same way (ADR-0021
+decisions 2 and 3). There is no other matching: an acknowledgement
+bound to another commit, carried on another task, spelled differently
+in `file`, or naming another identification marks nothing, and where
+several records of the task match one hit the earliest in journal
+order marks it. A hit the line's bound does not show carries no mark:
+the bound is unchanged — at most twenty hits, then "and N more not
+shown" — and an acknowledgement neither removes a hit from the line
+nor changes which hits are shown or their order. The line stays a
+warning: a marked hit adds no violation. A candidate whose task holds
+no acknowledgement bound to its commit produces the line byte for byte
 as without the record.
 
 #### Scenario: an acknowledged hit is marked on the gate's line

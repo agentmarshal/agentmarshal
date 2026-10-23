@@ -6,7 +6,7 @@ import argparse
 import os
 import subprocess
 import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TextIO
@@ -18,8 +18,7 @@ from agentmarshal.journal.brief import build_brief
 from agentmarshal.journal.capture import (
     CaptureError,
     CaptureLevel,
-    LeakHit,
-    mask_leaks,
+    _acknowledgement_mark,
     render_leak_hits,
     render_undecodable_files,
     review_capture_level_from_journal,
@@ -1337,53 +1336,6 @@ def _leak_scan_acknowledgements(
     ]
 
 
-def _acknowledgement_identification(record: Mapping[str, object]) -> str | None:
-    """The hit identification an ``acknowledgement`` binds, as the scan prints it."""
-
-    signature = record.get("signature")
-    if isinstance(signature, str):
-        return signature
-    marker = record.get("marker")
-    return f"private-marker #{marker}" if type(marker) is int else None
-
-
-def _acknowledgement_mark(
-    hit: LeakHit,
-    acknowledgements: Sequence[Mapping[str, object]],
-    private_markers: tuple[str, ...],
-) -> str | None:
-    """The mark an acknowledged hit's entry carries, or ``None``.
-
-    ADR-0021 decision 2's binding: the record's commit matched the
-    candidate's when the caller gathered the records, and here the file
-    must equal ``hit.path`` — already masked, exactly as the scan prints
-    it — and the record's identification must equal
-    ``hit.identification`` — a signature id or ``private-marker #N``. No
-    other matching: no path normalisation, no case folding, so a new
-    commit or a renumbered marker shows the hit unacknowledged again.
-    The earliest record in journal order marks the hit. Who acknowledged
-    and the reason are record values — a recorder's name is the
-    operator's own text and can itself be the string the scan caught —
-    so the whole mark passes the leak mask before it is escaped on
-    display the way every displayed record value is.
-    """
-
-    for record in acknowledgements:
-        if record.get("file") != hit.path:
-            continue
-        if _acknowledgement_identification(record) != hit.identification:
-            continue
-        masked, _ = mask_leaks(
-            "acknowledged by "
-            + str(record["recorded_by"])
-            + ": "
-            + str(record["reason"]),
-            private_markers,
-        )
-        return escape_for_display(masked)
-    return None
-
-
 def _run_leak_scan(args: argparse.Namespace, stderr: TextIO) -> int:
     # leak-scan is provider-neutral and works in any git repository. Bind to
     # the CURRENT checkout: find_git_root gives this repo's top level, and
@@ -1515,6 +1467,9 @@ def _run_leak_scan(args: argparse.Namespace, stderr: TextIO) -> int:
             file=stderr,
         )
     if hits:
+        # The mark is capture.py's, the one the gate's advisory line
+        # builds its marks with — one implementation, so the two
+        # surfaces cannot drift on wording, masking or escaping.
         marks = [_acknowledgement_mark(hit, acknowledgements, markers) for hit in hits]
         print(
             "leak-scan: possible leaks in added content "

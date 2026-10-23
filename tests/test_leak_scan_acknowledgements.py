@@ -364,6 +364,64 @@ def test_a_repository_with_no_journal_behaves_as_without_acknowledgements(
     )
 
 
+def test_a_sidecars_records_are_read_in_the_journal_repository(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a sidecar's records are read in the journal repository.
+
+    In a sidecar the two roots part: the candidate's commits live in
+    the host, so the resolution and the diff run there, while the
+    records live in the journal repository — the sidecar's own working
+    tree. An acknowledgement written there marks the host's hit.
+    """
+
+    host = tmp_path / "host"
+    host.mkdir()
+    _git(host, "init", "--quiet", "-b", "master")
+    (host / "readme.md").write_text("host\n", encoding="utf-8")
+    base = _commit_all(host, "base")
+    (host / "host.py").write_text(f"HOST = '{_MARKER}'\n", encoding="utf-8")
+    head = _commit_all(host, "add host.py")
+
+    sidecar = tmp_path / "sidecar"
+    sidecar.mkdir()
+    _git(sidecar, "init", "--quiet", "-b", "master")
+    monkeypatch.chdir(sidecar)
+    assert main(["init", "--host", str(host)]) == 0
+    # The private markers come from the sidecar's own configuration —
+    # the trusted side — as `acknowledge` reads them.
+    project_file = sidecar / ".agentmarshal" / "project.json"
+    data = json.loads(project_file.read_text(encoding="utf-8"))
+    data["leak_scan"] = {"private_markers": [_MARKER]}
+    project_file.write_text(json.dumps(data) + "\n", encoding="utf-8")
+    _open()
+    monkeypatch.setenv("AGENTMARSHAL_ACTOR", "an-operator")
+    _write_acknowledgement(
+        sidecar, "CR-001", head, "host.py", "internal host", marker=1
+    )
+    capsys.readouterr()
+
+    assert main(["leak-scan", "--base", base, "--commit", head]) == 0
+
+    captured = capsys.readouterr()
+    assert (
+        "host.py: private-marker #1 (acknowledged by an-operator: internal host)"
+        in captured.out
+    )
+    assert _MARKER not in captured.out
+    assert _MARKER not in captured.err
+
+
+def test_leak_scan_help_lists_task(capsys: pytest.CaptureFixture[str]) -> None:
+    """`leak-scan --help` lists `--task` — the verification CR-190's
+    task list claimed."""
+
+    with pytest.raises(SystemExit) as exited:
+        main(["leak-scan", "--help"])
+    assert exited.value.code == 0
+    assert "--task" in capsys.readouterr().out
+
+
 # -- the match is the scan's own naming ---------------------------------------
 
 
@@ -674,7 +732,7 @@ def test_the_matched_text_is_never_printed(
 def test_the_mark_masks_a_recorder_named_the_secret(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Scenario: the matched text is never printed.
+    """Scenario: a recorder named the secret is masked in the mark.
 
     A recorder's name is the operator's own text: an actor named
     exactly the configured marker is a valid `recorded_by`, and the
