@@ -3,18 +3,23 @@
 `previous_review` and `classes` are top-level fields of the schema-7
 review family (ADR-0016 decisions 2 and 3); `actor` is a key of the
 `reviewer` object (ADR-0018 decision 3), admitted by the record's own
-schema.
+schema. The second half exercises the launcher writing the first two —
+the link read before the reviewer runs, and the classes normalized
+against the project's vocabulary.
 """
 
 from __future__ import annotations
 
 import json
+import tempfile
 from pathlib import Path
 from typing import Any, cast
 
 import pytest
 
+from agentmarshal.cli import main
 from agentmarshal.journal import records as records_module
+from agentmarshal.journal import review
 from agentmarshal.journal.records import (
     JournalRecordError,
     create_review_record,
@@ -22,6 +27,16 @@ from agentmarshal.journal.records import (
     read_records,
     validate_record_content,
     write_record,
+)
+from agentmarshal.settings import DEFAULT_FINDING_CLASSES
+from test_review_launcher import (
+    _finding_args,
+    _finding_verdict,
+    _record_finding,
+    _review_repo,
+    _reviewer_stub,
+    _run_review,
+    _verdict,
 )
 
 _COMMIT = "a" * 40
@@ -447,3 +462,528 @@ def test_the_gate_path_refuses_a_review_below_7_carrying_a_field() -> None:
     filename = f"{generate_ulid()}-review.json"
     with pytest.raises(JournalRecordError, match="unsupported fields"):
         validate_record_content(filename, json.dumps(record))
+
+
+@pytest.fixture(autouse=True)
+def _isolated_temp_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Give the launcher's kept outputs an isolated temp dir to land in."""
+
+    system_temp = Path(tempfile.gettempdir())
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+    monkeypatch.setattr(tempfile, "tempdir", None)
+    return system_temp
+
+
+def _reviews(repo: Path) -> list[dict[str, object]]:
+    """The task's review records in journal order."""
+
+    return [
+        record
+        for record in read_records(repo / ".agentmarshal" / "journal", "CR-001")
+        if record["record_type"] == "review"
+    ]
+
+
+def _verdict_with_classes(
+    commit: str,
+    verdict: str,
+    findings: list[str],
+    classes: object,
+    advisory_findings: list[str] | None = None,
+) -> str:
+    """A commit verdict whose ``classes`` may be deliberately malformed."""
+
+    data: dict[str, object] = {
+        "reviewed_commit": commit,
+        "verdict": verdict,
+        "findings": findings,
+        "classes": classes,
+    }
+    if advisory_findings is not None:
+        data["advisory_findings"] = advisory_findings
+    return f"AGENTMARSHAL_VERDICT_BEGIN\n{json.dumps(data)}\nAGENTMARSHAL_VERDICT_END\n"
+
+
+def _finding_verdict_with_classes(
+    finding: str, verdict: str, findings: list[str], classes: object
+) -> str:
+    data: dict[str, object] = {
+        "reviewed_finding": finding,
+        "verdict": verdict,
+        "findings": findings,
+        "classes": classes,
+    }
+    return f"AGENTMARSHAL_VERDICT_BEGIN\n{json.dumps(data)}\nAGENTMARSHAL_VERDICT_END\n"
+
+
+def _submit_review_args() -> list[str]:
+    return [
+        "submit-review",
+        "--task",
+        "CR-001",
+        "--commit",
+        "b" * 40,
+        "--verdict",
+        "approved",
+        "--role",
+        "reviewer",
+        "--vendor",
+        "human",
+        "--model",
+        "none",
+        "--email",
+        "reviewer@test.invalid",
+    ]
+
+
+def test_a_second_launched_review_links_the_first(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a second launched review links the first."""
+
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    stub = _reviewer_stub(tmp_path, _verdict(commit, "approved", []))
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+    assert _run_review(commit) == 0
+    stub = _reviewer_stub(tmp_path, _verdict(commit, "changes_required", ["F-1"]))
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert _run_review(commit) == 0
+
+    first, second = _reviews(repo)
+    assert second["previous_review"] == first["id"]
+    assert second["schema"] == 7
+
+
+def test_the_first_launched_review_carries_no_link(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: the first launched review carries no link."""
+
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    stub = _reviewer_stub(tmp_path, _verdict(commit, "approved", []))
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert _run_review(commit) == 0
+
+    (record,) = _reviews(repo)
+    assert "previous_review" not in record
+
+
+def test_a_launched_finding_review_links_the_same_way(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a launched finding review links the same way.
+
+    The earlier review here binds to a commit — the link names whatever
+    the latest review bound to.
+    """
+
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    stub = _reviewer_stub(tmp_path, _verdict(commit, "approved", []))
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+    assert _run_review(commit) == 0
+    finding = _record_finding(repo, [("evidence/log.txt", b"conclusion\n")])
+    stub = _reviewer_stub(
+        tmp_path,
+        _finding_verdict(finding, "approved", []),
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert main(_finding_args(finding)) == 0
+
+    first, second = _reviews(repo)
+    assert second["reviewed_finding"] == finding
+    assert second["previous_review"] == first["id"]
+
+
+def test_submit_review_writes_no_link(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: submit-review writes no link."""
+
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    stub = _reviewer_stub(tmp_path, _verdict(commit, "approved", []))
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+    assert _run_review(commit) == 0
+
+    assert main(_submit_review_args()) == 0
+
+    _launched, submitted = _reviews(repo)
+    assert "previous_review" not in submitted
+    assert "classes" not in submitted
+
+
+def test_the_link_is_the_latest_review_at_launch_time(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: the link names the latest review at launch time.
+
+    A record landing while the reviewer runs is read at record time by
+    the writers — but this record's link was fixed at launch, so a
+    concurrent review becomes the new review's successor's predecessor,
+    never its own.
+    """
+
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    journal_root = repo / ".agentmarshal" / "journal"
+    stub = _reviewer_stub(tmp_path, _verdict(commit, "approved", []))
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+    assert _run_review(commit) == 0
+    earlier = _reviews(repo)[0]
+
+    real_run_reviewer = review._run_reviewer
+    concurrent = create_review_record(
+        "CR-001", "test", "b" * 40, "approved", *_REVIEWER, []
+    )
+
+    def record_then_run(
+        command: list[str], cwd: Path, prompt: str
+    ) -> tuple[bytes, bytes]:
+        write_record(journal_root, "CR-001", concurrent)
+        return real_run_reviewer(command, cwd, prompt)
+
+    monkeypatch.setattr(review, "_run_reviewer", record_then_run)
+
+    assert _run_review(commit) == 0
+
+    _first, concurrent_record, launched = _reviews(repo)
+    assert launched["previous_review"] == earlier["id"]
+    assert launched["previous_review"] != concurrent_record["id"]
+    assert launched["previous_review"] != launched["id"]
+
+
+def test_the_prompt_lists_the_default_vocabulary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: the prompt lists the default vocabulary."""
+
+    _repo, commit = _review_repo(tmp_path, monkeypatch)
+    prompt_output = tmp_path / "prompt.txt"
+    stub = _reviewer_stub(
+        tmp_path,
+        _verdict(commit, "approved", []),
+        prompt_output=prompt_output,
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert _run_review(commit) == 0
+
+    prompt = prompt_output.read_text(encoding="utf-8")
+    assert "one class per id" in prompt
+    for finding_class in DEFAULT_FINDING_CLASSES:
+        assert finding_class in prompt
+
+
+def test_the_prompt_lists_the_projects_configured_vocabulary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: the prompt lists the project's configured vocabulary."""
+
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    project_path = repo / ".agentmarshal" / "project.json"
+    project = json.loads(project_path.read_text(encoding="utf-8"))
+    project["review"] = {"finding_classes": ["bug", "nit"]}
+    project_path.write_text(json.dumps(project), encoding="utf-8")
+    prompt_output = tmp_path / "prompt.txt"
+    stub = _reviewer_stub(
+        tmp_path,
+        _verdict(commit, "approved", []),
+        prompt_output=prompt_output,
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert _run_review(commit) == 0
+
+    prompt = prompt_output.read_text(encoding="utf-8")
+    assert "bug, nit" in prompt
+    assert "correctness" not in prompt
+
+
+def test_a_classes_object_is_admitted_by_the_protocol() -> None:
+    """Scenario: a classes object is admitted by the protocol."""
+
+    output = _verdict_with_classes(
+        "a" * 40, "changes_required", ["F-1"], {"F-1": "correctness"}
+    )
+
+    parsed = review._parse_verdict(output, preserve_output=False)
+
+    assert parsed[5] == {"F-1": "correctness"}
+
+
+def test_classes_for_the_verdicts_ids_are_recorded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: classes for the verdict's ids are recorded."""
+
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    stub = _reviewer_stub(
+        tmp_path,
+        _verdict_with_classes(
+            commit,
+            "changes_required",
+            ["F-1"],
+            {"F-1": "correctness", "A-1": "style"},
+            advisory_findings=["A-1"],
+        ),
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert _run_review(commit) == 0
+
+    (record,) = _reviews(repo)
+    assert record["classes"] == {"F-1": "correctness", "A-1": "style"}
+    assert record["schema"] == 7
+    assert "note:" not in capsys.readouterr().err
+
+
+def test_classes_for_the_verdicts_ids_are_recorded_on_a_finding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: classes for the verdict's ids are recorded — the
+    finding-binding form."""
+
+    repo, _commit = _review_repo(tmp_path, monkeypatch)
+    finding = _record_finding(repo, [("evidence/log.txt", b"conclusion\n")])
+    stub = _reviewer_stub(
+        tmp_path,
+        _finding_verdict_with_classes(
+            finding, "changes_required", ["F-1"], {"F-1": "security"}
+        ),
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert main(_finding_args(finding)) == 0
+
+    (record,) = _reviews(repo)
+    assert record["classes"] == {"F-1": "security"}
+
+
+def test_a_class_outside_the_vocabulary_records_as_other_with_a_warning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a class outside the vocabulary records as other with a
+    warning."""
+
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    stub = _reviewer_stub(
+        tmp_path,
+        _verdict_with_classes(
+            commit, "changes_required", ["F-1"], {"F-1": "bogus-class"}
+        ),
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert _run_review(commit) == 0
+
+    (record,) = _reviews(repo)
+    assert record["classes"] == {"F-1": "other"}
+    captured = capsys.readouterr()
+    assert "F-1" in captured.err
+    assert "bogus-class" in captured.err
+    assert "other" in captured.err
+    # The warning rides the diagnostics channel; stdout stays the record path.
+    assert captured.out.strip().endswith(".json")
+
+
+def test_an_entry_for_an_id_the_verdict_does_not_carry_is_dropped_with_a_warning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: an entry for an id the verdict does not carry is dropped
+    with a warning."""
+
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    stub = _reviewer_stub(
+        tmp_path,
+        _verdict_with_classes(
+            commit,
+            "changes_required",
+            ["F-1"],
+            {"F-1": "correctness", "G-9": "style"},
+        ),
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert _run_review(commit) == 0
+
+    (record,) = _reviews(repo)
+    assert record["classes"] == {"F-1": "correctness"}
+    captured = capsys.readouterr()
+    assert "G-9" in captured.err
+    assert "style" in captured.err
+
+
+def test_a_classes_omitting_a_reported_id_records_other_with_a_warning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A usable ``classes`` object covers every id the verdict reports: an
+    id the object names no class for records ``other`` and is named in a
+    warning — the record never keeps a partial mapping in silence."""
+
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    stub = _reviewer_stub(
+        tmp_path,
+        _verdict_with_classes(
+            commit,
+            "changes_required",
+            ["F-1", "F-2"],
+            {"F-1": "correctness"},
+            advisory_findings=["A-1"],
+        ),
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert _run_review(commit) == 0
+
+    (record,) = _reviews(repo)
+    assert record["classes"] == {
+        "F-1": "correctness",
+        "F-2": "other",
+        "A-1": "other",
+    }
+    captured = capsys.readouterr()
+    assert "F-2" in captured.err
+    assert "A-1" in captured.err
+    assert "other" in captured.err
+
+
+def test_a_classes_naming_only_unnamed_ids_still_classes_the_verdicts_ids(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: an entry for an id the verdict does not carry is dropped
+    with a warning — and each reported id the object leaves unclassed
+    still records ``other`` with a warning."""
+
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    stub = _reviewer_stub(
+        tmp_path,
+        _verdict_with_classes(commit, "changes_required", ["F-1"], {"G-9": "style"}),
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert _run_review(commit) == 0
+
+    (record,) = _reviews(repo)
+    assert record["classes"] == {"F-1": "other"}
+    captured = capsys.readouterr()
+    assert "G-9" in captured.err
+    assert "style" in captured.err
+    assert "F-1" in captured.err
+    assert "other" in captured.err
+
+
+def test_a_classes_on_an_approving_verdict_with_no_findings_lands_no_field(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An approving verdict reports no ids, so a ``classes`` it carries has
+    only entries to drop — each warns, and no ``classes`` field lands."""
+
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    stub = _reviewer_stub(
+        tmp_path,
+        _verdict_with_classes(commit, "approved", [], {"G-9": "style"}),
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert _run_review(commit) == 0
+
+    (record,) = _reviews(repo)
+    assert "classes" not in record
+    assert "G-9" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("classes", ["correctness", ["F-1"], 5, None])
+def test_a_classes_that_is_not_an_object_is_dropped_whole_with_a_warning(
+    classes: object,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a classes that is not an object is dropped whole with a
+    warning — the paid verdict is still recorded."""
+
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    stub = _reviewer_stub(
+        tmp_path,
+        _verdict_with_classes(commit, "changes_required", ["F-1"], classes),
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert _run_review(commit) == 0
+
+    (record,) = _reviews(repo)
+    assert "classes" not in record
+    assert "is not an object" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("value", [5, " ", "ok\nforged"])
+def test_a_classes_holding_a_value_that_is_no_class_string_is_dropped_whole(
+    value: object,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a classes holding a value that is no class string is
+    dropped whole — the verdict is never refused over a class."""
+
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    stub = _reviewer_stub(
+        tmp_path,
+        _verdict_with_classes(
+            commit,
+            "changes_required",
+            ["F-1"],
+            {"F-1": "correctness", "F-2": value},
+        ),
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert _run_review(commit) == 0
+
+    (record,) = _reviews(repo)
+    assert "classes" not in record
+    assert "not a usable class string" in capsys.readouterr().err
+
+
+def test_a_verdict_without_classes_records_exactly_as_before(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a verdict without classes records exactly as before —
+    no ``classes`` field, the schema stamp rising only for
+    ``previous_review``."""
+
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    stub = _reviewer_stub(tmp_path, _verdict(commit, "approved", []))
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+    assert _run_review(commit) == 0
+    stub = _reviewer_stub(tmp_path, _verdict(commit, "changes_required", ["F-1"]))
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert _run_review(commit) == 0
+
+    first, second = _reviews(repo)
+    assert "classes" not in first
+    assert "classes" not in second
+    assert second["previous_review"] == first["id"]
+    assert second["schema"] == 7
+
+
+def test_an_empty_classes_object_warns_and_records_no_field(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An empty `classes` object is a present-but-empty markup — dropped
+    with a note, the way the dropped-whole scenarios read."""
+
+    repo, commit = _review_repo(tmp_path, monkeypatch)
+    stub = _reviewer_stub(
+        tmp_path,
+        _verdict_with_classes(commit, "changes_required", ["F-1"], {}),
+    )
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert _run_review(commit) == 0
+
+    (record,) = _reviews(repo)
+    assert "classes" not in record
+    assert "empty object" in capsys.readouterr().err

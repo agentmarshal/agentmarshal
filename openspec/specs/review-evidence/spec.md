@@ -772,3 +772,223 @@ and name the kept file, the way a left artifact is named.
 - **WHEN** the output is kept and the record write itself fails
 - **THEN** the command reports the failure and names the kept file's
   path
+
+### Requirement: Both review paths take the reviewer's declared actor
+`agentmarshal submit-review` and `agentmarshal review` — the launcher in
+its commit form and its finding-review form — SHALL take an optional
+`--actor <id>` naming the declared reviewer actor (ADR-0018 decision 3,
+ADR-0022 section 2). When given, the review record's `reviewer` object
+SHALL carry `actor` with that value, passed through
+`create_review_record`'s `reviewer_actor` parameter, and the record
+SHALL stamp schema 7 through the minimum-schema derivation. The value
+SHALL be the flag's own: it SHALL NOT be derived from the environment or
+the git identity — the process that launches a reviewer is usually not
+the reviewer — and it SHALL stay independent of `recorded_by`, which
+says who wrote the record and stamps as before.
+
+#### Scenario: submit-review --actor records the reviewer actor
+- **WHEN** `submit-review` records a verdict given `--actor <id>`
+- **THEN** the review record's `reviewer` object carries `actor` with
+  that value and the record stamps schema 7
+
+#### Scenario: review --actor records the reviewer actor on a commit review
+- **WHEN** `review` records a commit verdict given `--actor <id>`
+- **THEN** the review record's `reviewer` object carries `actor` with
+  that value and the record stamps schema 7
+
+#### Scenario: review --actor records the reviewer actor on a finding review
+- **WHEN** `review --reviewed-finding` records a verdict given
+  `--actor <id>`
+- **THEN** the review record's `reviewer` object carries `actor` with
+  that value and the record stamps schema 7
+
+#### Scenario: the reviewer actor is not confused with recorded_by
+- **WHEN** a review is recorded given `--actor` by a recorder resolving
+  a different actor
+- **THEN** the record keeps both — `recorded_by` the writer,
+  `reviewer.actor` the declared reviewer actor
+
+### Requirement: Without --actor the review paths are unchanged
+
+Without `--actor` both paths SHALL write the same record, stamp the same
+schema and print the same lines as before the flag existed — apart from
+the `previous_review` link and the `classes` a launched review records of
+its own, which are the launcher's and not the flag's: the flag adds a
+capability, never an obligation.
+
+#### Scenario: a review written without --actor is byte-for-byte as before
+- **WHEN** `submit-review` or `review` records a verdict without
+  `--actor`
+- **THEN** the record — apart from its id and times — is byte-for-byte
+  the record the command wrote before the flag existed, less the
+  `previous_review` and `classes` a launched review records regardless of
+  the flag, and every line the command prints is unchanged
+
+### Requirement: A refused --actor costs nothing
+Each path SHALL check `--actor` against the record's own rule — a
+non-empty string carrying no character that could forge a line — before
+anything is written and, for the launcher, before the reviewer command
+starts; the refusal SHALL name `--actor`.
+
+#### Scenario: submit-review refuses a refused actor value before writing
+- **WHEN** `submit-review --actor` is empty, all whitespace or carries a
+  character that could forge a line
+- **THEN** the command refuses naming `--actor`, and nothing is written
+
+#### Scenario: the launcher refuses a refused actor value before the reviewer runs
+- **WHEN** `review --actor` is empty, all whitespace or carries a
+  character that could forge a line
+- **THEN** the command refuses naming `--actor` before the reviewer
+  command is invoked, and nothing is written
+
+#### Scenario: the dry run refuses a refused actor value before the reviewer runs
+- **WHEN** `review --dry-run --actor` is empty, all whitespace or carries
+  a character that could forge a line
+- **THEN** the command refuses naming `--actor` before the reviewer
+  command is invoked, and nothing is written
+
+### Requirement: An undeclared reviewer actor is accepted and noted
+An `--actor` id that is not in the project's actors table SHALL be
+accepted and recorded as given — the record stands, as an undeclared
+recorder does (ADR-0022 section 3) — and the command SHALL say the id is
+not a declared actor. Declared-ness SHALL be tested on the id against
+the `actors` keys of the project file of the repository holding the
+journal — the same project `recorded_by` resolves from.
+
+#### Scenario: an undeclared reviewer actor is accepted and noted
+- **WHEN** `--actor` names an id the project's actors table does not
+  declare
+- **THEN** the review is recorded with the actor as given, and the
+  command says the actor is not a declared actor
+
+#### Scenario: a declared reviewer actor is recorded with no note
+- **WHEN** `--actor` names an id the project's actors table declares
+- **THEN** the review is recorded and no not-declared note is printed
+
+### Requirement: --dry-run shows the actor it would record
+`--actor` SHALL be admitted beside `review --dry-run` — the one record
+flag the dry run accepts — and a dry run carrying it SHALL say which
+actor a recorded review would carry, with the same not-declared note a
+recorded run prints.
+
+#### Scenario: a dry run shows the actor it would record
+- **WHEN** `review --dry-run --actor <id>` runs
+- **THEN** the command's report of the dry run names the actor a
+  recorded review would carry
+
+#### Scenario: a dry run notes an undeclared actor as a recorded run does
+- **WHEN** `review --dry-run --actor` names an id the project's actors
+  table does not declare
+- **THEN** the command shows the actor it would record and notes the id
+  is not a declared actor
+
+### Requirement: A launched review links the task's previous review
+
+`agentmarshal review` — in its commit form and its finding-review form —
+SHALL write `previous_review` on the review record it writes: the id of
+the task's latest review record at launch time — the latest the task's
+records hold when the launch begins, read before the reviewer command
+runs so a concurrent write cannot make a review link to itself — whatever
+that review bound to. A task carrying no earlier review record SHALL
+yield a record with no `previous_review` field. `submit-review` SHALL NOT
+write the field.
+
+#### Scenario: a second launched review links the first
+- **WHEN** `agentmarshal review` records a verdict on a task that already
+  carries a review record
+- **THEN** the record's `previous_review` is the earlier review's id —
+  whatever it bound to — and the record stamps schema 7
+
+#### Scenario: the first launched review carries no link
+- **WHEN** `agentmarshal review` records a verdict on a task carrying no
+  review record
+- **THEN** the record carries no `previous_review` field
+
+#### Scenario: a launched finding review links the same way
+- **WHEN** `review --reviewed-finding` records a verdict on a task that
+  already carries a review record
+- **THEN** the record's `previous_review` is the earlier review's id
+
+#### Scenario: the link names the latest review at launch time
+- **WHEN** `review` launches on a task carrying a review and another
+  review record is written while the reviewer runs
+- **THEN** the launched record's `previous_review` is the review the
+  task carried when the launch began — never the concurrent one, and
+  never the launched record's own id
+
+#### Scenario: submit-review writes no link
+- **WHEN** `submit-review` records a verdict on a task that already
+  carries a review record
+- **THEN** the record carries no `previous_review` field
+
+### Requirement: The verdict may carry a class per finding id and the prompt says so
+
+The verdict protocol SHALL admit an optional `classes` object mapping
+finding ids to class strings — one class per finding id reported,
+blocking or advisory. The prompt the launcher builds, for either binding,
+SHALL list the project's finding-class vocabulary —
+`review.finding_classes`, the default when unset — and ask for one class
+per finding id.
+
+#### Scenario: the prompt lists the default vocabulary
+- **WHEN** the launcher builds the review prompt for a project that does
+  not set `review.finding_classes`
+- **THEN** the prompt names each default class and asks for one class per
+  finding id reported
+
+#### Scenario: the prompt lists the project's configured vocabulary
+- **WHEN** `review.finding_classes` is set in the journal repository's
+  project file
+- **THEN** the prompt lists that vocabulary instead
+
+#### Scenario: a classes object is admitted by the protocol
+- **WHEN** a verdict carries `classes` mapping finding ids to class
+  strings
+- **THEN** the verdict parses — `classes` is an optional key, never an
+  unknown one
+
+### Requirement: The launcher records the classes a verdict names, dropping what it cannot keep
+
+When a launched review's verdict carries `classes`, the record SHALL
+carry a `classes` entry for each id among the verdict's `findings` and
+`advisory_findings`: the class given when it is in the project's
+vocabulary, `other` when it is not — with a warning naming the id and
+the class given. An entry for an id the verdict does not carry SHALL be
+dropped with a warning, and a `classes` that is not an object — or holds
+a value that is not a usable class string — SHALL be dropped as a whole
+with a warning. A verdict SHALL NOT be refused over a class: the run is
+paid and the class is reference markup. A verdict carrying no `classes`
+SHALL be recorded exactly as before — no `classes` field.
+
+#### Scenario: classes for the verdict's ids are recorded
+- **WHEN** a verdict carries `classes` naming classes of the vocabulary
+  for ids among its `findings` and `advisory_findings`
+- **THEN** the record carries them, and the review stamps schema 7
+
+#### Scenario: a class outside the vocabulary records as other with a warning
+- **WHEN** a verdict's `classes` names, for a finding id it carries, a
+  class the vocabulary does not know
+- **THEN** the record carries `other` for the id and the command prints a
+  warning naming the id and the class given
+
+#### Scenario: an entry for an id the verdict does not carry is dropped with a warning
+- **WHEN** a verdict's `classes` names an id that is not among its
+  `findings` or `advisory_findings`
+- **THEN** that entry is dropped with a warning and the entries for the
+  verdict's ids are recorded
+
+#### Scenario: a classes that is not an object is dropped whole with a warning
+- **WHEN** a verdict's `classes` is not an object
+- **THEN** the verdict is recorded, no `classes` field lands and a
+  warning says the value was dropped
+
+#### Scenario: a classes holding a value that is no class string is dropped whole
+- **WHEN** a verdict's `classes` holds a value that is not a non-empty
+  string
+- **THEN** the whole object is dropped with a warning — the verdict is
+  never refused over a class — and the record carries no `classes`
+
+#### Scenario: a verdict without classes records exactly as before
+- **WHEN** a verdict carries no `classes`
+- **THEN** the record carries no `classes` field — and its schema stamp
+  rises only where `previous_review` asks it
