@@ -619,6 +619,58 @@ def _deferral_lines(journal_root: Path, task: TaskStatus) -> list[str]:
     return lines
 
 
+def _producing_session_line(task: TaskStatus) -> str | None:
+    """One line naming the session that produced the reviewed commit.
+
+    Proposal 036's read side: a reader of ``status`` can see whether the
+    commit under review came from a run that finished. The commit is the
+    task's latest review's ``reviewed_commit`` — the last review record
+    wins, the same rule the gate holds an acceptance to, never searching
+    backward for an older record that would justify a line; a review
+    bound to a finding judges no commit and produces none. The producing
+    session is an implementer session whose ``commit`` equals it — the
+    whole 40-hex id, as the gate's range check compares session commits —
+    the latest in stored order when several name it, the earlier ones
+    counted. A task with no review, or none an implementer session
+    names the commit of, gets no line: a candidate produced by a runner
+    that wrote no session is shown as before (the disposition).
+    """
+
+    reviews = [
+        record for record in task.records if record.get("record_type") == "review"
+    ]
+    if not reviews:
+        return None
+    commit = reviews[-1].get("reviewed_commit")
+    if not isinstance(commit, str):
+        return None
+    sessions = [
+        record
+        for record in task.records
+        if record.get("record_type") == "session"
+        and record.get("role") == "implementer"
+        and record.get("commit") == commit
+    ]
+    if not sessions:
+        return None
+    session = sessions[-1]
+    line = (
+        f"Reviewed commit {commit[:7]}: implementer session {session['id']} "
+        f"actor={_shown_value(session.get('actor'))} "
+        f"outcome={_shown_value(session.get('outcome'))}"
+    )
+    report_ready = session.get("report_ready")
+    if isinstance(report_ready, bool):
+        line += f" report_ready={'true' if report_ready else 'false'}"
+    if session.get("outcome") != "implemented":
+        line += " (did not end 'implemented')"
+    if len(sessions) > 1:
+        earlier = len(sessions) - 1
+        noun = "session" if earlier == 1 else "sessions"
+        line += f" (+{earlier} earlier implementer {noun})"
+    return line
+
+
 def print_task_detail(project_root: Path, task: TaskStatus, journal_root: Path) -> None:
     """Print one task's detail view: header, acceptance trail, scope, records."""
 
@@ -694,6 +746,12 @@ def print_task_detail(project_root: Path, task: TaskStatus, journal_root: Path) 
     count_line = _changes_required_count_line(journal_root, task)
     if count_line is not None:
         print(escape_for_display(count_line))
+    # The read side of proposal 036's session-commit link — appended
+    # last, as each derived line before it appended last: a candidate
+    # no implementer session names keeps the view it had.
+    producing = _producing_session_line(task)
+    if producing is not None:
+        print(escape_for_display(producing))
 
 
 def print_paths(
