@@ -25,8 +25,10 @@ from agentmarshal.journal.gate import (
 from agentmarshal.journal.records import (
     create_abandoned_record,
     create_acceptance_record,
+    create_amendment_record,
     create_check_record,
     create_completed_record,
+    create_opened_record,
     create_reopened_record,
     create_review_record,
     create_session_record,
@@ -790,6 +792,118 @@ def test_the_journal_only_lane_prints_no_count_line(
 
     assert passed, output
     assert "changes_required" not in output
+
+
+def test_a_candidate_adding_another_tasks_opened_record_warns(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a candidate adding another task's opened record warns.
+
+    Proposal 035's lesser option: the record stays valid evidence — the
+    gate refuses nothing over it; what was wrong is which transaction
+    carried it, and the WARN says so, naming the task and the kind.
+    """
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    write_record(
+        repo / ".agentmarshal" / "journal",
+        "CR-002",
+        create_opened_record("CR-002", "1.0"),
+    )
+    head = _commit_all(repo, "journal transaction")
+
+    passed, output = _run(repo, head, base, head)
+
+    assert passed, output
+    warnings = [
+        line for line in output.splitlines() if line.startswith("WARN: candidate adds")
+    ]
+    assert warnings == [
+        "WARN: candidate adds opened/amendment records of other tasks "
+        "(the records stay valid evidence): CR-002 (opened)"
+    ]
+
+
+def test_the_one_warn_line_names_each_such_task_and_the_record_kinds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: the one WARN line names each such task and the record kinds."""
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    journal = repo / ".agentmarshal" / "journal"
+    write_record(journal, "CR-003", create_opened_record("CR-003", "1.0"))
+    write_record(
+        journal, "CR-002", create_amendment_record("CR-002", "1.0", "scope fix")
+    )
+    write_record(journal, "CR-002", create_opened_record("CR-002", "1.0"))
+    head = _commit_all(repo, "journal transaction")
+
+    passed, output = _run(repo, head, base, head)
+
+    assert passed, output
+    warnings = [
+        line for line in output.splitlines() if line.startswith("WARN: candidate adds")
+    ]
+    assert warnings == [
+        "WARN: candidate adds opened/amendment records of other tasks "
+        "(the records stay valid evidence): "
+        "CR-002 (amendment, opened); CR-003 (opened)"
+    ]
+
+
+def test_records_of_other_kinds_do_not_warn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: records of other kinds do not warn.
+
+    Reviews and sessions riding the wrong transaction are the common case
+    of the proposal's measurements — noise, not the agreement events that
+    opened or amended a task under another task's transaction.
+    """
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    journal = repo / ".agentmarshal" / "journal"
+    write_record(
+        journal,
+        "CR-002",
+        create_session_record(
+            "CR-002", "1.0", "implementer", "impl", "implementation", "done", 1, 2, 3
+        ),
+    )
+    head = _commit_all(repo, "journal transaction")
+
+    passed, output = _run(repo, head, base, head)
+
+    assert passed, output
+    assert "records of other tasks" not in output
+
+
+def test_a_candidate_adding_no_such_record_produces_todays_transcript(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a candidate adding no such record produces today's transcript.
+
+    The committed fixtures pin it byte for byte for the candidates they
+    cover; this adds the adjacent case a fixture does not — a transaction
+    carrying the judged task's own records — where no warning fires
+    either.
+    """
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    journal = repo / ".agentmarshal" / "journal"
+    write_record(
+        journal,
+        "CR-001",
+        create_session_record(
+            "CR-001", "1.0", "implementer", "impl", "implementation", "done", 1, 2, 3
+        ),
+    )
+    head = _commit_all(repo, "journal transaction")
+
+    passed, output = _run(repo, head, base, head)
+
+    assert passed, output
+    assert "WARN:" not in output
 
 
 def test_a_default_run_prints_the_transcript_it_printed_before(

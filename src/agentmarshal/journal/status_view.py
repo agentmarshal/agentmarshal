@@ -27,7 +27,12 @@ from agentmarshal.journal.status import (
     load_task_status,
 )
 from agentmarshal.localstate import LocalState
-from agentmarshal.project import project_file_path, read_project_file
+from agentmarshal.project import (
+    GitNotAvailableError,
+    find_git_root,
+    project_file_path,
+    read_project_file,
+)
 from agentmarshal.settings import changes_required_threshold
 from agentmarshal.steps import OpenStep, format_overdue
 
@@ -669,6 +674,78 @@ def _producing_session_line(task: TaskStatus) -> str | None:
         noun = "session" if earlier == 1 else "sessions"
         line += f" (+{earlier} earlier implementer {noun})"
     return line
+
+
+def records_absent_from_ref(
+    journal_root: Path, task: TaskStatus, ref: str
+) -> list[dict[str, object]]:
+    """The task's records the working tree holds and ``ref`` does not.
+
+    ``status --base``'s listing (proposal 035's disposition): a record is
+    present at the ref when the ref's tree holds its path, so what prints
+    is the record not yet published — names, not content: a record
+    rewritten in place since still stands at the ref and is not listed.
+    The ref resolves in the journal's own repository — under a sidecar
+    placement the sidecar repository's ref, never the host's, because the
+    records live there. A ref that does not resolve to a commit, and a
+    repository that cannot answer, raise ``ValueError`` naming it.
+    """
+
+    try:
+        repository = find_git_root(journal_root)
+    except GitNotAvailableError as error:
+        raise ValueError(f"cannot locate the journal's repository: {error}") from error
+    if repository is None:
+        raise ValueError(
+            "the journal's repository is not a git worktree; "
+            f"cannot resolve base {escape_for_display(ref)}"
+        )
+    probe = subprocess.run(
+        ["git", "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"],
+        cwd=repository,
+        capture_output=True,
+        check=False,
+    )
+    if probe.returncode != 0:
+        raise ValueError(f"unknown base ref: {escape_for_display(ref)}")
+    prefix = (
+        (journal_root / "tasks" / task.task_id / "records")
+        .relative_to(repository)
+        .as_posix()
+    )
+    listing = subprocess.run(
+        [
+            "git",
+            "ls-tree",
+            "-r",
+            "--name-only",
+            "-z",
+            probe.stdout.decode("utf-8").strip(),
+            "--",
+            f":(literal){prefix}",
+        ],
+        cwd=repository,
+        capture_output=True,
+        check=False,
+    )
+    if listing.returncode != 0:
+        detail = listing.stderr.decode("utf-8", errors="replace").strip()
+        raise ValueError(
+            f"cannot list records at {escape_for_display(ref)} in the "
+            f"journal's repository: {escape_for_display(detail)}"
+        )
+    # NUL-separated, as the gate's listings are: a quoted name never equals
+    # the raw one the working tree holds.
+    present = {
+        name
+        for name in listing.stdout.decode("utf-8", errors="surrogateescape").split("\0")
+        if name
+    }
+    return [
+        record
+        for record in task.records
+        if f"{prefix}/{record['id']}-{record['record_type']}.json" not in present
+    ]
 
 
 def print_task_detail(project_root: Path, task: TaskStatus, journal_root: Path) -> None:
