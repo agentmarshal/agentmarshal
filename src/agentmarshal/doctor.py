@@ -58,6 +58,7 @@ from agentmarshal.switches import (
     Switch,
     SwitchesError,
     read_switches,
+    shared_extension_names,
 )
 
 ExecutableResolver = Callable[[str], str | None]
@@ -485,32 +486,6 @@ def _check_extension_runtime(
     return True, f"{shown_path} reports {reported}, meeting {requirement}"
 
 
-def _extension_names(managed: Path) -> list[str]:
-    """The extension names under *managed*, in the entries' sorted order.
-
-    A ``<name>.toml`` entry is the file form and a ``<name>/`` entry the
-    directory form (ADR-0013 decision 9); a symbolic-link entry is kept
-    under the name it carries, so the manifest reader's own refusal can
-    report it — a dangling link would otherwise list nothing at all. A
-    name in both forms is found once — the reader's refusal names both
-    paths — and an entry that is neither is not an extension.
-    """
-
-    names: list[str] = []
-    for entry in sorted(managed.iterdir()):
-        if entry.is_symlink():
-            name = entry.name.removesuffix(".toml")
-        elif entry.is_dir():
-            name = entry.name
-        elif entry.name.endswith(".toml"):
-            name = entry.name.removesuffix(".toml")
-        else:
-            continue
-        if name not in names:
-            names.append(name)
-    return names
-
-
 def _extension_checks(start: Path, resolver: ExecutableResolver) -> list[DoctorCheck]:
     """One check per shared extension found, plus one per declared runtime.
 
@@ -540,7 +515,7 @@ def _extension_checks(start: Path, resolver: ExecutableResolver) -> list[DoctorC
         return []
     try:
         managed = _managed_directory(project_root)
-        names = _extension_names(managed) if managed.is_dir() else []
+        names = sorted(shared_extension_names(managed))
     except Exception as error:
         detail = escape_for_display(str(error))
 
@@ -682,7 +657,7 @@ def _report_extensions(
 
     try:
         managed = _managed_directory(project_root)
-        names = _extension_names(managed) if managed.is_dir() else []
+        names = sorted(shared_extension_names(managed))
     except Exception as error:
         print(
             f"extensions: unavailable ({escape_for_display(str(error))})",
