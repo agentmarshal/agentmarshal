@@ -69,12 +69,15 @@ from agentmarshal.journal.extensions import (
 )
 from agentmarshal.journal.gate import (
     GateError,
+    _changed_with_status,
+    _extension_names_at_tree,
     _manifest_from_tree,
     _resolve_commit,
     _run_git,
     _run_git_bytes,
     _run_git_lossy,
     _tree_entry,
+    operational_candidate,
 )
 from agentmarshal.journal.placement import (
     Placement,
@@ -217,55 +220,20 @@ def _base_extensions(
 ) -> tuple[frozenset[str], dict[str, ExtensionManifest]]:
     """The base tree's shared extension names and directory-form manifests.
 
-    Discovery is the tree counterpart of the working-tree rule: a symlink
-    at ``.agentmarshal``, at ``extensions/`` or at an extension's ``<name>``
-    is refused as a link before existence is weighed, an ``extensions/``
-    that is missing or not a tree is simply no extensions, and a
-    ``<name>.toml`` entry is the file form — a shared extension that
-    declares no directory and so no stage, though a switches entry may
-    still name it. Each directory-form name's manifest is read with the
-    gate's own base-tree reader, so its file-and-directory-form, link and
-    schema refusals apply unchanged rather than being restated here.
+    The enumeration itself — the tree counterpart of the working-tree
+    rule, refusing a symlink before existence is weighed, treating a
+    missing or non-tree ``extensions/`` as no extensions and naming a
+    ``<name>.toml`` file form — lives beside the gate's manifest-at-tree
+    helpers as ``_extension_names_at_tree``, so the gate's operational
+    lane can name the base's shared extensions without loading
+    manifests. Each directory-form name's manifest is then read with
+    the gate's own base-tree reader, so its file-and-directory-form,
+    link and schema refusals apply unchanged rather than being restated
+    here.
     """
 
-    agentmarshal_entry = _tree_entry(project_root, merge_base, ".agentmarshal")
-    if agentmarshal_entry is not None and agentmarshal_entry[0] == "120000":
-        raise ExtensionManifestError(
-            f"refusing to read extensions through a symlink: {merge_base}:.agentmarshal"
-        )
-    extensions_entry = _tree_entry(project_root, merge_base, _EXTENSIONS_RELPATH)
-    if extensions_entry is not None and extensions_entry[0] == "120000":
-        raise ExtensionManifestError(
-            f"refusing to read extensions through a symlink: "
-            f"{merge_base}:{_EXTENSIONS_RELPATH}"
-        )
-    if agentmarshal_entry is None or agentmarshal_entry[1] != "tree":
-        return frozenset(), {}
-    if extensions_entry is None or extensions_entry[1] != "tree":
-        return frozenset(), {}
-    listing = _run_git_lossy(
-        project_root, ["ls-tree", "-z", merge_base, "--", f"{_EXTENSIONS_RELPATH}/"]
-    )
-    names: set[str] = set()
-    directory_names: list[str] = []
-    for item in listing.split("\0"):
-        if not item:
-            continue
-        meta, _, path = item.partition("\t")
-        fields = meta.split(" ")
-        mode, kind = fields[0], fields[1]
-        basename = path.rsplit("/", maxsplit=1)[-1]
-        if kind == "tree":
-            directory_names.append(basename)
-            names.add(basename)
-        elif mode == "120000":
-            raise ExtensionManifestError(
-                f"refusing to read extension {basename!r} through a symlink: "
-                f"{merge_base}:{path}"
-            )
-        elif basename.endswith(".toml") and basename != ".toml":
-            names.add(basename.removesuffix(".toml"))
-    return frozenset(names), {
+    names, directory_names = _extension_names_at_tree(project_root, merge_base)
+    return names, {
         name: _manifest_from_tree(project_root, merge_base, name)
         for name in sorted(directory_names)
     }
@@ -603,6 +571,23 @@ def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
         merge_base = _run_git(
             project_root, ["merge-base", base_commit, resolved_commit]
         ).strip()
+        if (
+            args.phase == "pre-gate"
+            and operational_candidate(
+                project_root,
+                args.task,
+                merge_base,
+                resolved_commit,
+                _changed_with_status(project_root, merge_base, resolved_commit),
+            )
+            is not None
+        ):
+            # ADR-0013 decision 17: a broken extension must not block the
+            # operational change that switches it off, so the gate's own
+            # predicate decides before any manifest or switch is read —
+            # and nothing extension-side has run at all.
+            print("stage run: pre-gate stages do not run on an operational change")
+            return 0
         extension_names, manifests = _base_extensions(project_root, merge_base)
     except (GateError, ExtensionManifestError) as error:
         print(f"stage run: {escape_for_display(str(error))}", file=stderr)
