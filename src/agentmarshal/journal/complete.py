@@ -70,6 +70,7 @@ def complete_task(
         journal_root,
         task_id,
         report.resolved_commit,
+        resolved_review=report.resolved_review,
         dispositions=dispositions,
         follow_ups=follow_ups,
     )
@@ -81,18 +82,26 @@ def record_commit_completion(
     task_id: str,
     resolved_commit: str,
     *,
+    resolved_review: str | None = None,
     dispositions: Iterable[str] = (),
     follow_ups: Iterable[str] = (),
 ) -> Path:
     """Write the ``completed`` record a passed gate earned for a commit.
 
-    The review the gate passed on — the latest review of the resolved
-    commit, the approving one or the non-approving one an acceptance
-    covered, the same one the gate's verdict check consults (gate.py) —
+    The review the gate passed on — the approving latest review of the
+    resolved commit, or the non-approving one an acceptance covered —
     decides the dispositions the record must carry (ADR-0016 decision
-    1): each of its advisory findings takes a repeatable
-    ``--disposition <id>=fixed``, ``--disposition <id>=deferred:<reason>``
-    or ``--disposition <id>=rejected:<reason>`` — the reason is
+    1). A caller holding the gate's report passes its
+    ``resolved_review``: the id the verdict check itself set, so the
+    advisory findings owed are read from the record of the review
+    actually judged, and a review appended after the gate ran names a
+    different id and cannot change which are owed. A caller that cannot
+    name it — the sidecar's ``complete``, whose call predates the field
+    — derives the review as the verdict check does: the latest review
+    of the resolved commit. Each of that review's advisory findings
+    takes a repeatable ``--disposition <id>=fixed``,
+    ``--disposition <id>=deferred:<reason>`` or
+    ``--disposition <id>=rejected:<reason>`` — the reason is
     everything after the first colon — and a deferred one may name a
     follow-up task through ``--follow-up <id>=<task>``. Every refusal —
     a malformed flag, an id that is no advisory finding of that review,
@@ -101,7 +110,7 @@ def record_commit_completion(
     """
 
     advisory_ids = _advisory_ids_of_the_review_the_gate_passed_on(
-        journal_root, task_id, resolved_commit
+        journal_root, task_id, resolved_commit, resolved_review
     )
     disposition_arguments = _split_flag_arguments(
         "--disposition", dispositions, advisory_ids
@@ -243,28 +252,52 @@ def _run_record_rules_over(
 
 
 def _advisory_ids_of_the_review_the_gate_passed_on(
-    journal_root: Path, task_id: str, resolved_commit: str
+    journal_root: Path,
+    task_id: str,
+    resolved_commit: str,
+    resolved_review: str | None,
 ) -> list[str]:
     """The advisory finding ids of the review the gate passed on.
 
-    That review is the latest review of the resolved commit — the
-    approving one or the non-approving one an acceptance covered, the
-    same ``reviews[-1]`` the gate's verdict check consults (gate.py).
+    With ``resolved_review`` — the id the gate's verdict check set into
+    its report — the review is the record carrying that id among the
+    records the gate evaluated: a review appended after the gate ran
+    carries a different id and cannot change which advisory findings
+    are owed. Without it — a caller predating the field — the review is
+    derived as the verdict check derives it: the latest review of the
+    resolved commit (``reviews[-1]``, gate.py).
     """
 
     try:
         records = read_records(journal_root, task_id)
     except (JournalRecordError, OSError, ValueError) as error:
         raise LifecycleError(str(error)) from error
-    reviews = [
-        record
-        for record in records
-        if record.get("record_type") == "review"
-        and record.get("reviewed_commit") == resolved_commit
-    ]
-    if not reviews:
+    if resolved_review is None:
+        reviews = [
+            record
+            for record in records
+            if record.get("record_type") == "review"
+            and record.get("reviewed_commit") == resolved_commit
+        ]
+        review = reviews[-1] if reviews else None
+    else:
+        review = next(
+            (
+                record
+                for record in records
+                if record.get("record_type") == "review"
+                and record.get("id") == resolved_review
+            ),
+            None,
+        )
+        if review is None:
+            raise LifecycleError(
+                "the review the gate passed on is not among the task's "
+                f"records: {escape_for_display(resolved_review)}"
+            )
+    if review is None:
         return []
-    advisory = reviews[-1].get("advisory_findings")
+    advisory = review.get("advisory_findings")
     if not isinstance(advisory, list):
         return []
     return [finding_id for finding_id in advisory if isinstance(finding_id, str)]

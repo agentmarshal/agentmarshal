@@ -104,6 +104,15 @@ class GateReport:
     # other lines this gate can report as not examined — a caller that needs
     # those reads the transcript, which names each one.
     review_not_examined: bool = False
+    # The id of the review the gate passed on — the approving latest review
+    # of the resolved commit, or the non-approving one an acceptance
+    # covered — set where the verdict check decides it, never recomputed;
+    # None when the gate passed on no review, and always None on the
+    # findings lane, which judges no commit's review. `complete` reads the
+    # advisory findings needing a disposition from the record carrying this
+    # id, so a review appended after the gate ran cannot change which are
+    # owed (ADR-0016 decision 1).
+    resolved_review: str | None = None
 
 
 def run_findings_gate(journal_root: Path, task_id: str) -> GateReport:
@@ -858,6 +867,7 @@ def run_gate(
         raise GateError(str(error)) from error
 
     review_not_examined = False
+    resolved_review: str | None = None
     resolved_commit = _resolve_commit(project_root, commit)
     base_commit = _resolve_commit(project_root, base)
     merge_base = _run_git(
@@ -1199,6 +1209,15 @@ def run_gate(
                     cast(str, acceptance["accepted_by"]),
                     acceptance_findings,
                 )
+        # The review the gate passed on is the one this verdict check just
+        # judged — the approving latest review, or the non-approving one a
+        # covering acceptance stood in for. The report carries its id so
+        # `complete` reads the advisory findings of the review actually
+        # judged: a review appended after the gate ran names a different id
+        # and cannot change which dispositions are owed (ADR-0016
+        # decision 1).
+        if latest is not None and (approved or valid_acceptance is not None):
+            resolved_review = cast(str, latest["id"])
         if valid_acceptance is not None:
             accepted_by, accepted_findings = valid_acceptance
             findings = ", ".join(accepted_findings)
@@ -1533,4 +1552,5 @@ def run_gate(
         lines=lines,
         resolved_commit=resolved_commit,
         review_not_examined=review_not_examined,
+        resolved_review=resolved_review,
     )
