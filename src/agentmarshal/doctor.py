@@ -53,6 +53,12 @@ from agentmarshal.steps import (
     read_process_events,
     step_events_by_task,
 )
+from agentmarshal.switches import (
+    SWITCHES_RELPATH,
+    Switch,
+    SwitchesError,
+    read_switches,
+)
 
 ExecutableResolver = Callable[[str], str | None]
 
@@ -493,10 +499,13 @@ def _report_extensions(
     naming it, its form, the manifest's declared schema, its stages'
     modes and its declared ``ext`` kinds; a real directory adds this
     clone's grant state, the state ``extension list`` computes — a
-    missing grant reading as information, never a failure. A manifest
-    that cannot be read is named with the reason on its one line and
-    stops nothing else; a link entry is named, never hashed through;
-    and nothing an extension declares is run. Every line is escaped
+    missing grant reading as information, never a failure — and an
+    extension the working tree's ``switches.toml`` switches off adds
+    ``switched off since <task> (<reason>)``, the shared switches an
+    operational CR set (ADR-0013 decision 17). A manifest that cannot
+    be read is named with the reason on its one line and stops nothing
+    else; a link entry is named, never hashed through; and nothing an
+    extension declares is run. Every line is escaped
     like other displayed text.
     """
 
@@ -509,8 +518,21 @@ def _report_extensions(
             file=stderr,
         )
         return
+    # The shared switches are the working tree's own file (ADR-0013
+    # decision 17's "doctor shows"), read against the names this tree
+    # knows. A file the parse refuses is named on one line, never a
+    # check — the way an unreadable grants file marks the grant
+    # position unavailable rather than failing.
+    switches: dict[str, Switch] = {}
+    switches_reason: str | None = None
+    try:
+        switches = read_switches(project_root / SWITCHES_RELPATH, names)
+    except SwitchesError as error:
+        switches_reason = escape_for_display(str(error))
     if not names:
         print("extensions: none", file=stderr)
+        if switches_reason is not None:
+            print(f"switches: unavailable ({switches_reason})", file=stderr)
         return
     grants: dict[str, Grant] | None = None
     grants_reason = "the clone's local state is unavailable"
@@ -530,12 +552,20 @@ def _report_extensions(
         grant: str | None = None
         if directory.is_dir() and not directory.is_symlink():
             grant = _grant_state(directory, grants, grants_reason)
+        switch = switches.get(name)
+        switch_text = (
+            f"switched off since {switch.task} ({switch.reason})"
+            if switch is not None and switch.state == "off"
+            else None
+        )
         try:
             manifest = read_extension_manifest(project_root, name)
         except ExtensionManifestError as error:
             line = f"extension {name}: {error}"
             if grant is not None:
                 line += f", grant: {grant}"
+            if switch_text is not None:
+                line += f", {switch_text}"
             print(escape_for_display(line), file=stderr)
             continue
         form = "directory" if manifest.directory is not None else "file"
@@ -547,10 +577,14 @@ def _report_extensions(
         ]
         if grant is not None:
             parts.append(f"grant: {grant}")
+        if switch_text is not None:
+            parts.append(switch_text)
         print(
             escape_for_display(f"extension {name}: {', '.join(parts)}"),
             file=stderr,
         )
+    if switches_reason is not None:
+        print(f"switches: unavailable ({switches_reason})", file=stderr)
 
 
 def _report_locations_and_steps(
