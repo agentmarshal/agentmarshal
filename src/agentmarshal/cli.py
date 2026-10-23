@@ -18,6 +18,7 @@ from agentmarshal import (
     extension_trust,
     outbox,
     record_check,
+    record_ext,
     steps,
 )
 from agentmarshal.doctor import run_doctor
@@ -480,6 +481,7 @@ def _build_parser() -> argparse.ArgumentParser:
     acknowledge.register(subparsers)
     agree.register(subparsers)
     record_check.register(subparsers)
+    record_ext.register(subparsers)
     return parser
 
 
@@ -1606,5 +1608,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return agree.run(args, sys.stderr)
     if args.command == "record-check":
         return record_check.run(args, sys.stderr)
+    if args.command == "record-ext":
+        return record_ext.run(args, sys.stderr)
 
     parser.error(f"unknown command: {args.command}")
