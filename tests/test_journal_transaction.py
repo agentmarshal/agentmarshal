@@ -224,3 +224,76 @@ def test_refusals_stage_nothing_and_name_the_reason(tmp_path: Path) -> None:
     _git(work, "add", f"{TASKS}/CR-004")
     _git(work, "commit", "--quiet", "-m", "seed CR-004")
     assert "no change" in refused("CR-004", "slug", str(message)).stderr
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the template is POSIX shell")
+def test_a_renamed_foreign_record_is_listed_and_its_old_side_not_taken(
+    tmp_path: Path,
+) -> None:
+    """CR-207: a foreign record renamed into this task's directory is
+    still listed — a rename's old path is checked against the task's
+    prefix too — and the deletion on the foreign side stays uncommitted,
+    for the other task's own transaction."""
+
+    work, _ = _repository(tmp_path)
+    old = _record(work, "CR-002")
+    _git(work, "add", f"{TASKS}/CR-002")
+    _git(work, "commit", "--quiet", "-m", "seed CR-002")
+    _record(work, "CR-001")
+    old_rel = f"{TASKS}/CR-002/records/{old.name}"
+    new_rel = f"{TASKS}/CR-001/records/taken.json"
+    _git(work, "mv", old_rel, new_rel)
+    message = _message_file(tmp_path)
+
+    result = _run(work, "CR-001", "txn", str(message))
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    # Both paths of the rename are reported — the old one is foreign.
+    assert "not taken" in result.stdout
+    assert old_rel in result.stdout
+    assert new_rel in result.stdout
+    # The task side was committed; the foreign deletion was not.
+    committed = _git_out(
+        work, "show", "--pretty=format:", "--name-only", "HEAD"
+    ).splitlines()
+    assert committed
+    assert all(path.startswith(f"{TASKS}/CR-001/") for path in committed)
+    assert old_rel not in committed
+    assert _git_out(work, "ls-tree", "--name-only", "HEAD", "--", old_rel) == old_rel
+    # The foreign deletion is left in the index, uncommitted.
+    assert (
+        _git_out(work, "status", "--porcelain", "--", f"{TASKS}/CR-002")
+        == f"D  {old_rel}"
+    )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the template is POSIX shell")
+def test_a_foreign_path_mentioning_the_task_deeper_is_still_listed(
+    tmp_path: Path,
+) -> None:
+    """CR-207: a foreign journal path that contains ``tasks/<task>/`` only
+    deeper down — not as its prefix — is not this task's own: it is
+    listed on the output and left untracked by the transaction."""
+
+    work, _ = _repository(tmp_path)
+    _record(work, "CR-001")
+    deep_rel = ".agentmarshal/journal/archive/tasks/CR-001/copy.json"
+    deep = work / deep_rel
+    deep.parent.mkdir(parents=True)
+    deep.write_text("{}\n", encoding="utf-8")
+    message = _message_file(tmp_path)
+
+    result = _run(work, "CR-001", "txn", str(message))
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert deep_rel in result.stdout
+    committed = _git_out(
+        work, "show", "--pretty=format:", "--name-only", "HEAD"
+    ).splitlines()
+    assert committed
+    assert all(path.startswith(f"{TASKS}/CR-001/") for path in committed)
+    assert deep_rel not in committed
+    assert (
+        _git_out(work, "status", "--porcelain", "-uall", "--", deep_rel)
+        == f"?? {deep_rel}"
+    )

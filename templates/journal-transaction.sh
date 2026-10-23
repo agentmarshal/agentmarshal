@@ -64,12 +64,58 @@ current=$(git branch --show-current)
 [ "$current" = "$default_branch" ] || die "not on the default branch: on '${current:-<detached HEAD>}', want '$default_branch'"
 
 task_dir=".agentmarshal/journal/tasks/$task"
+# Wherever the directory is named to git it is a literal pathspec: the
+# task id is data, not a pattern, and the spec can never match more or
+# less than this one directory.
+task_spec=":(literal)$task_dir/"
 [ -d "$task_dir" ] || die "task $task has no journal directory: $task_dir"
-git status --porcelain=v1 -uall -- "$task_dir" | grep -q . || die "nothing to commit: no change under $task_dir"
+git status --porcelain=v1 -uall -- "$task_spec" | grep -q . || die "nothing to commit: no change under $task_dir"
 
-# Report — do not take — everything else under the journal. Another
-# task's uncommitted records stay for that task's own transaction.
-others=$(git status --porcelain=v1 -uall -- .agentmarshal/journal/ | grep -v "tasks/$task/" || true)
+# Report — do not take — everything else under the journal; another
+# task's uncommitted records stay for that task's own transaction. The
+# NUL-terminated porcelain records are read one by one, and a path is
+# this task's own only when it starts with the exact tasks/<task>/
+# prefix — containing it deeper in the path does not count. A rename or
+# copy arrives as two records — the new path with the status, then the
+# old path — and is reported when either side is not the task's own.
+own_prefix="$task_dir/"
+others=$(
+    git status --porcelain=v1 -z -uall -- .agentmarshal/journal/ | tr '\0' '\n' | {
+        pair=
+        pair_to=
+        pair_to_own=
+        while IFS= read -r entry; do
+            if [ -n "$pair" ]; then
+                # A rename's second record — the old path — carries no status.
+                case $entry in
+                    "$own_prefix"*) from_own=1 ;;
+                    *) from_own= ;;
+                esac
+                if [ -z "$pair_to_own" ] || [ -z "$from_own" ]; then
+                    echo "$pair $entry -> $pair_to"
+                fi
+                pair=
+                continue
+            fi
+            case ${entry%"${entry#??}"} in
+                *R* | *C*)
+                    pair=${entry%"${entry#??}"}
+                    pair_to=${entry#???}
+                    case $pair_to in
+                        "$own_prefix"*) pair_to_own=1 ;;
+                        *) pair_to_own= ;;
+                    esac
+                    ;;
+                *)
+                    case ${entry#???} in
+                        "$own_prefix"*) ;;
+                        *) echo "$entry" ;;
+                    esac
+                    ;;
+            esac
+        done
+    }
+)
 if [ -n "$others" ]; then
     echo "journal-transaction: not taken, left as it is under .agentmarshal/journal/:"
     echo "$others"
@@ -77,11 +123,11 @@ fi
 
 branch="journal/$task-$slug"
 git switch -c "$branch"
-git add -- "$task_dir"
+git add -- "$task_spec"
 # A pathspec commit records only the task's directory even if the index
 # already held a foreign record staged by hand; `git commit <paths>`
 # needs the paths in the index, which the `git add` above did.
-git commit -F "$msg" -- "$task_dir"
+git commit -F "$msg" -- "$task_spec"
 git push --set-upstream "$remote" "$branch"
 
 echo "journal-transaction: $task committed on $branch and pushed to $remote."
