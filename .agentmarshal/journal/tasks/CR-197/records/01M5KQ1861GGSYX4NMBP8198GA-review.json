@@ -1,0 +1,59 @@
+{
+  "artifacts": [
+    {
+      "hash": "587cb56bfc38deded71eba60bc1921fc68e479bb69e4426080c5b9084bfa2acd",
+      "ref": ".agentmarshal/journal/tasks/CR-197/artifacts/01M5KQ1861GGSYX4NMBP8198GA-review.md"
+    }
+  ],
+  "created_at": "2026-10-23T06:26:36.865255Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "babacd6e91a54565801d5e0b49365de7137c16d1",
+  "reviewed_contract": "e1d1c556d2acb5a7d214c68c4656ae52a951f8da21833a2f64bf4786db090261",
+  "reviewer": {
+    "email": "auto-review-openai@agent.example.invalid",
+    "model": "gpt-5.6-sol",
+    "role": "code-reviewer",
+    "vendor": "openai"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-197",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "PASS; normalization assertions passed and all 20 archived scenarios had exact test-docstring matches",
+        "what": "dependency-free Python behavior and AST scenario/docstring probe"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "focused pytest suite",
+        "why": "the review container has no uv or pytest executable; the coordinator states the full CI sequence passed on the reviewed commit"
+      },
+      {
+        "what": "git commit and scope inspection",
+        "why": "the supplied snapshot contains no Git metadata"
+      }
+    ],
+    "read": [
+      ".agentmarshal/journal/tasks/CR-197/contract.md",
+      "docs/adr/ADR-0017-evidence-of-reviews-and-checks.md",
+      "docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md",
+      "docs/threat-model.md",
+      "src/agentmarshal/journal/review.py",
+      "src/agentmarshal/journal/records.py",
+      "docs/quickstart.md",
+      "openspec/changes/archive/2026-10-23-review-verification-launcher/",
+      "openspec/specs/review-evidence/spec.md",
+      "tests/test_review_verification_evidence_launcher.py",
+      "tests/test_review_launcher.py",
+      "tests/test_review_links_and_classes.py",
+      "tests/test_reviewer_actor.py"
+    ]
+  }
+}
