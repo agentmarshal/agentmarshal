@@ -584,8 +584,10 @@ parts, each of them reporting and none deciding anything:
   when one was named — and counts the `fixed` and `rejected` dispositions
   on one `fixed=N rejected=N` line.
 - `changes_required verdicts for <task>: N (threshold T)` — the same count
-  the gate's `INFO` line reports, over the task's `changes_required`
-  reviews of its candidates — prints only when the count is non-zero,
+  the gate reports on a line of its own (`INFO` below the threshold,
+  `WARN` when the threshold is reached or the threshold is unreadable),
+  over the task's `changes_required` reviews of its candidates — prints
+  only when the count is non-zero,
   marked `threshold T reached — stop and revisit the contract` when it
   reaches the project's `review.changes_required_threshold` (default 3),
   and naming the error instead of a threshold when the setting cannot be
