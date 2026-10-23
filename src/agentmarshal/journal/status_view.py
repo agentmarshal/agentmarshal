@@ -333,6 +333,119 @@ def _contract_drift_line(journal_root: Path, task: TaskStatus) -> str | None:
     )
 
 
+def _declared_list(entries: tuple[str, ...]) -> str:
+    """The declared entries in their order, or the not-declared mark.
+
+    An undeclared field is shown as not declared rather than omitted: the
+    absence is stated, the same honesty the agreement line buys by existing
+    — and the mark explains why the ran lines below carry no not-declared
+    note for the role.
+    """
+
+    return ", ".join(entries) if entries else "(not declared)"
+
+
+def _shown_value(value: object) -> str:
+    """The value as recorded, or the absent mark — never a guess.
+
+    ADR-0018 decision 3 shows what ran; a field the record does not carry is
+    shown as absent rather than derived from a neighbouring field — the
+    vendor is ``usage.provider`` or absent, never parsed out of an actor
+    string like ``openai/gpt-5``.
+    """
+
+    return value if isinstance(value, str) and value else "(absent)"
+
+
+def _role_mark(actor: object, declared: tuple[str, ...]) -> str:
+    """`` (not declared for the role)`` where the actor is outside the list.
+
+    An actor that ran but is not in the contract's declared list is shown,
+    not refused (ADR-0018 decision 3) — and only when the contract declares
+    that role's list at all: with no list there is nothing to be outside of.
+    The comparison applies the strip-and-casefold normalisation the gate's
+    comparisons use, so casing cannot move an actor out of the list. An
+    absent actor carries no mark: there is no name to check.
+    """
+
+    if not declared or not isinstance(actor, str) or not actor:
+        return ""
+    if actor.strip().casefold() in {entry.strip().casefold() for entry in declared}:
+        return ""
+    return " (not declared for the role)"
+
+
+def _implementer_session_line(
+    record: dict[str, object], declared: tuple[str, ...]
+) -> str:
+    """One ran line for an implementer session: actor, vendor, model, reason."""
+
+    usage = record.get("usage")
+    provider = usage.get("provider") if isinstance(usage, dict) else None
+    line = (
+        f"- implementer session {record['id']}: "
+        f"actor={_shown_value(record.get('actor'))} "
+        f"vendor={_shown_value(provider)} "
+        f"model={_shown_value(record.get('model'))}"
+    )
+    fallback_reason = record.get("fallback_reason")
+    if isinstance(fallback_reason, str) and fallback_reason:
+        # The reason a run moved down the fallback list is shown, never
+        # verified (ADR-0018 decision 3) — and only shown when the record
+        # carries one: a run with none recorded claims none.
+        line += f" fallback_reason={fallback_reason}"
+    return line + _role_mark(record.get("actor"), declared)
+
+
+def _review_ran_line(record: dict[str, object], declared: tuple[str, ...]) -> str:
+    """One ran line for a review: the reviewer's actor, vendor and model."""
+
+    reviewer = record.get("reviewer")
+    if not isinstance(reviewer, dict):
+        reviewer = {}
+    actor = reviewer.get("actor")
+    line = (
+        f"- review {record['id']}: "
+        f"actor={_shown_value(actor)} "
+        f"vendor={_shown_value(reviewer.get('vendor'))} "
+        f"model={_shown_value(reviewer.get('model'))}"
+    )
+    return line + _role_mark(actor, declared)
+
+
+def _assignment_lines(task: TaskStatus) -> list[str]:
+    """The assignment section's lines, or none when nothing is declared.
+
+    ADR-0018 decision 3 shows the declared assignment next to what actually
+    ran: the contract's `implementers` and `reviewers` in their declared
+    order — the order is the fallback order — and the `independence` rules
+    in force, then one line per implementer session (a session record whose
+    `role` is `implementer`) and one per review, in the order the records
+    stand. A contract declaring none of the three fields gets no section —
+    its detail view stays byte for byte what it was.
+    """
+
+    contract = task.contract
+    if not (contract.implementers or contract.reviewers or contract.independence):
+        return []
+    lines = [
+        "Assignment:",
+        f"- implementers: {_declared_list(contract.implementers)}",
+        f"- reviewers: {_declared_list(contract.reviewers)}",
+        f"- independence: {_declared_list(contract.independence)}",
+    ]
+    for record in task.records:
+        if (
+            record.get("record_type") == "session"
+            and record.get("role") == "implementer"
+        ):
+            lines.append(_implementer_session_line(record, contract.implementers))
+    for record in task.records:
+        if record.get("record_type") == "review":
+            lines.append(_review_ran_line(record, contract.reviewers))
+    return lines
+
+
 def _agreement_line(journal_root: Path, task: TaskStatus) -> str | None:
     """One line on the task's recorded agreement, else ``None``.
 
@@ -410,6 +523,13 @@ def print_task_detail(project_root: Path, task: TaskStatus, journal_root: Path) 
             print(f"- {escape_for_display(path)}")
     else:
         print("- (none)")
+    # The declared assignment is contract-declared like the scope, so it
+    # prints beside it — and `Records:` stays adjacent to the evidence it
+    # lists (ADR-0018 decision 3). Each line is escaped like the record
+    # lines: a value a later read rule does not reach can still carry a
+    # refused character (ADR-0015 decision 5).
+    for line in _assignment_lines(task):
+        print(escape_for_display(line))
     print("Records:")
     for record in task.records:
         renderer = _RECORD_RENDERERS.get(cast(str, record["record_type"]))
