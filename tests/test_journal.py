@@ -13,6 +13,7 @@ from typing import Any, cast
 
 import pytest
 
+from agentmarshal import __version__
 from agentmarshal.cli import main
 from agentmarshal.journal import (
     JournalContractError,
@@ -3186,3 +3187,618 @@ def test_an_unknown_revision_is_refused_naming_it(
     assert [record["record_type"] for record in read_records(root, "CR-001")] == [
         "opened"
     ]
+
+
+# --- record-session flags for the times, reset, cost and --if-missing ------
+
+_STARTED_AT = "2026-10-01T10:00:00Z"
+_ENDED_AT = "2026-10-01T11:30:00Z"
+_RESETS_AT = "2026-10-02T00:00:00Z"
+
+
+def _provider_limit_session_arguments() -> list[str]:
+    return [
+        "record-session",
+        "--task",
+        "CR-001",
+        "--role",
+        "implementer",
+        "--actor",
+        "agent",
+        "--activity",
+        "implementation",
+        "--outcome",
+        "provider-limit",
+    ]
+
+
+def _session_records(root: Path) -> list[dict[str, object]]:
+    return [
+        record
+        for record in read_records(root, "CR-001")
+        if record["record_type"] == "session"
+    ]
+
+
+def test_a_session_recorded_with_the_time_reset_and_cost_flags_carries_them(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a session recorded with the flags carries the fields."""
+
+    _repo, root = _open_session_task(tmp_path, monkeypatch)
+
+    assert (
+        main(
+            [
+                *_provider_limit_session_arguments(),
+                "--started-at",
+                _STARTED_AT,
+                "--ended-at",
+                _ENDED_AT,
+                "--resets-at",
+                _RESETS_AT,
+                "--cost-amount",
+                "0.42",
+                "--cost-currency",
+                "USD",
+                "--cost-source",
+                "reported",
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+
+    record = _session_records(root)[-1]
+    assert record["started_at"] == _STARTED_AT
+    assert record["ended_at"] == _ENDED_AT
+    assert record["resets_at"] == _RESETS_AT
+    assert record["cost"] == {
+        "amount": "0.42",
+        "currency": "USD",
+        "source": "reported",
+    }
+    assert main(["validate"]) == 0
+
+
+@pytest.mark.parametrize(
+    ("flag", "value", "missing"),
+    [
+        ("--started-at", _STARTED_AT, "--ended-at"),
+        ("--ended-at", _ENDED_AT, "--started-at"),
+    ],
+)
+def test_an_unpaired_time_flag_is_refused_naming_the_flag(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    flag: str,
+    value: str,
+    missing: str,
+) -> None:
+    """Scenario: an unpaired time flag is refused naming the flag."""
+
+    _repo, root = _open_session_task(tmp_path, monkeypatch)
+    capsys.readouterr()
+
+    assert main([*_SESSION_FLAG_ARGUMENTS, flag, value]) == 1
+    assert missing in capsys.readouterr().err
+    assert [record["record_type"] for record in read_records(root, "CR-001")] == [
+        "opened"
+    ]
+
+
+def test_an_end_earlier_than_the_start_is_refused_naming_the_flag(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: an end earlier than the start is refused naming the flag."""
+
+    _repo, root = _open_session_task(tmp_path, monkeypatch)
+    capsys.readouterr()
+
+    assert (
+        main(
+            [
+                *_SESSION_FLAG_ARGUMENTS,
+                "--started-at",
+                _ENDED_AT,
+                "--ended-at",
+                _STARTED_AT,
+            ]
+        )
+        == 1
+    )
+    assert "--ended-at" in capsys.readouterr().err
+    assert [record["record_type"] for record in read_records(root, "CR-001")] == [
+        "opened"
+    ]
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "not a time",
+        "2026-10-01T10:00:00",
+        "2026-10-01T10:00:00+02:00",
+    ],
+    ids=["malformed", "no offset", "non-UTC offset"],
+)
+@pytest.mark.parametrize("flag", ["--started-at", "--ended-at", "--resets-at"])
+def test_a_timestamp_that_is_not_a_utc_iso_8601_timestamp_is_refused_naming_the_flag(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    flag: str,
+    value: str,
+) -> None:
+    """Scenario: a timestamp that is not a UTC ISO-8601 timestamp is
+    refused naming the flag.
+
+    The pair is completed around a malformed start or end and the reset
+    sits on a `provider-limit` outcome, so only the timestamp under test
+    can fail.
+    """
+
+    _repo, root = _open_session_task(tmp_path, monkeypatch)
+    capsys.readouterr()
+    arguments = [
+        *_provider_limit_session_arguments(),
+        "--started-at",
+        _STARTED_AT,
+        "--ended-at",
+        _ENDED_AT,
+        "--resets-at",
+        _RESETS_AT,
+    ]
+    arguments[arguments.index(flag) + 1] = value
+
+    assert main(arguments) == 1
+    assert flag in capsys.readouterr().err
+    assert [record["record_type"] for record in read_records(root, "CR-001")] == [
+        "opened"
+    ]
+
+
+def test_a_reset_time_on_another_outcome_is_refused_naming_the_flag(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a reset time on another outcome is refused naming the
+    flag."""
+
+    _repo, root = _open_session_task(tmp_path, monkeypatch)
+    capsys.readouterr()
+
+    assert main([*_SESSION_FLAG_ARGUMENTS, "--resets-at", _RESETS_AT]) == 1
+    assert "--resets-at" in capsys.readouterr().err
+    assert [record["record_type"] for record in read_records(root, "CR-001")] == [
+        "opened"
+    ]
+
+
+@pytest.mark.parametrize(
+    "flags",
+    [
+        ["--cost-amount", "0.42"],
+        ["--cost-currency", "USD"],
+        ["--cost-source", "reported"],
+        ["--cost-amount", "0.42", "--cost-currency", "USD"],
+        ["--cost-amount", "0.42", "--cost-source", "reported"],
+        ["--cost-currency", "USD", "--cost-source", "reported"],
+    ],
+    ids=[
+        "amount alone",
+        "currency alone",
+        "source alone",
+        "amount and currency",
+        "amount and source",
+        "currency and source",
+    ],
+)
+def test_an_incomplete_cost_group_is_refused_naming_the_flags(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    flags: list[str],
+) -> None:
+    """Scenario: an incomplete cost group is refused naming the flags."""
+
+    _repo, root = _open_session_task(tmp_path, monkeypatch)
+    capsys.readouterr()
+
+    assert main([*_SESSION_FLAG_ARGUMENTS, *flags]) == 1
+    error = capsys.readouterr().err
+    for flag in ("--cost-amount", "--cost-currency", "--cost-source"):
+        assert flag in error
+    assert [record["record_type"] for record in read_records(root, "CR-001")] == [
+        "opened"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("flag", "value"),
+    [
+        ("--cost-amount", "abc"),
+        ("--cost-amount", "-1"),
+        ("--cost-amount", "1e3"),
+        ("--cost-amount", ".5"),
+        ("--cost-amount", "1."),
+        ("--cost-currency", "usd"),
+        ("--cost-currency", "USDT"),
+        ("--cost-currency", "US"),
+    ],
+)
+def test_a_malformed_cost_value_is_refused_naming_the_flag(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    flag: str,
+    value: str,
+) -> None:
+    """Scenario: a malformed cost value is refused naming the flag."""
+
+    _repo, root = _open_session_task(tmp_path, monkeypatch)
+    capsys.readouterr()
+    arguments = [
+        *_SESSION_FLAG_ARGUMENTS,
+        "--cost-amount",
+        "0.42",
+        "--cost-currency",
+        "USD",
+        "--cost-source",
+        "reported",
+    ]
+    arguments[arguments.index(flag) + 1] = value
+
+    assert main(arguments) == 1
+    assert flag in capsys.readouterr().err
+    assert [record["record_type"] for record in read_records(root, "CR-001")] == [
+        "opened"
+    ]
+
+
+def test_a_cost_source_outside_the_vocabulary_is_refused_naming_the_flag(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a malformed cost value is refused naming the flag.
+
+    `--cost-source` carries `choices` like `--usage-method`, so argparse
+    names the flag on a word outside `reported` and `estimated` before
+    the command layer runs.
+    """
+
+    _repo, root = _open_session_task(tmp_path, monkeypatch)
+    capsys.readouterr()
+
+    with pytest.raises(SystemExit):
+        main(
+            [
+                *_SESSION_FLAG_ARGUMENTS,
+                "--cost-amount",
+                "0.42",
+                "--cost-currency",
+                "USD",
+                "--cost-source",
+                "actual",
+            ]
+        )
+
+    assert "--cost-source" in capsys.readouterr().err
+    assert [record["record_type"] for record in read_records(root, "CR-001")] == [
+        "opened"
+    ]
+
+
+@pytest.mark.parametrize(
+    "flags",
+    [
+        ["--started-at", _STARTED_AT, "--ended-at", _ENDED_AT],
+        ["--resets-at", _RESETS_AT],
+        [
+            "--cost-amount",
+            "0.42",
+            "--cost-currency",
+            "USD",
+            "--cost-source",
+            "reported",
+        ],
+    ],
+    ids=["times", "reset", "cost"],
+)
+def test_a_session_recorded_with_the_new_flags_is_stamped_schema_7(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    flags: list[str],
+) -> None:
+    """Scenario: a session recorded with the flags is stamped schema 7."""
+
+    _repo, root = _open_session_task(tmp_path, monkeypatch)
+
+    assert main([*_provider_limit_session_arguments(), *flags]) == 0
+
+    assert _session_records(root)[-1]["schema"] == 7
+
+
+def test_a_repeat_under_the_same_task_role_actor_and_activity_is_a_no_op(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a repeat under the same task, role, actor and activity is
+    a no-op naming the existing record."""
+
+    _repo, root = _open_session_task(tmp_path, monkeypatch)
+    assert main(_SESSION_FLAG_ARGUMENTS) == 0
+    existing_id = _session_records(root)[-1]["id"]
+    capsys.readouterr()
+
+    assert main([*_SESSION_FLAG_ARGUMENTS, "--if-missing"]) == 0
+
+    captured = capsys.readouterr()
+    assert captured.out == f"already recorded: {existing_id}\n"
+    assert len(_session_records(root)) == 1
+    assert main(["validate"]) == 0
+
+
+def test_a_repeat_on_a_completed_task_is_a_no_op(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a repeat under the same task, role, actor and activity is
+    a no-op naming the existing record.
+
+    ADR-0019 decision 6 exists for the accounting step after completion:
+    the session is recorded on a done task, and the retry is the no-op.
+    """
+
+    _repo, root = _terminal_task(tmp_path, monkeypatch)
+    assert main(_SESSION_FLAG_ARGUMENTS) == 0
+    existing_id = _session_records(root)[-1]["id"]
+    capsys.readouterr()
+
+    assert (
+        main(
+            [
+                *_SESSION_FLAG_ARGUMENTS,
+                "--cost-amount",
+                "0.42",
+                "--cost-currency",
+                "USD",
+                "--cost-source",
+                "reported",
+                "--if-missing",
+            ]
+        )
+        == 0
+    )
+
+    assert capsys.readouterr().out == f"already recorded: {existing_id}\n"
+    assert len(_session_records(root)) == 1
+
+
+@pytest.mark.parametrize(
+    ("flag", "value"),
+    [
+        ("--role", "reviewer"),
+        ("--actor", "other-agent"),
+        ("--activity", "review"),
+    ],
+)
+def test_a_session_under_a_different_role_actor_or_activity_is_written(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    flag: str,
+    value: str,
+) -> None:
+    """Scenario: a session under a different role, actor or activity is
+    written."""
+
+    _repo, root = _open_session_task(tmp_path, monkeypatch)
+    assert main(_SESSION_FLAG_ARGUMENTS) == 0
+    capsys.readouterr()
+    arguments = list(_SESSION_FLAG_ARGUMENTS)
+    arguments[arguments.index(flag) + 1] = value
+
+    assert main([*arguments, "--if-missing"]) == 0
+
+    sessions = _session_records(root)
+    assert len(sessions) == 2
+    assert sessions[-1][flag.removeprefix("--")] == value
+
+
+def test_the_match_ignores_every_other_field(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: the match ignores every other field."""
+
+    _repo, root = _open_session_task(tmp_path, monkeypatch)
+    assert main(_SESSION_FLAG_ARGUMENTS) == 0
+    existing_id = _session_records(root)[-1]["id"]
+    capsys.readouterr()
+
+    assert (
+        main(
+            [
+                "record-session",
+                "--task",
+                "CR-001",
+                "--role",
+                "implementer",
+                "--actor",
+                "agent",
+                "--activity",
+                "implementation",
+                "--outcome",
+                "failed",
+                "--input-tokens",
+                "9",
+                "--started-at",
+                _STARTED_AT,
+                "--ended-at",
+                _ENDED_AT,
+                "--cost-amount",
+                "0.42",
+                "--cost-currency",
+                "USD",
+                "--cost-source",
+                "estimated",
+                "--if-missing",
+            ]
+        )
+        == 0
+    )
+
+    assert capsys.readouterr().out == f"already recorded: {existing_id}\n"
+    assert len(_session_records(root)) == 1
+
+
+def test_the_if_missing_match_is_bound_to_the_task(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: the match is bound to the task."""
+
+    _repo, root = _open_session_task(tmp_path, monkeypatch)
+    assert main(_SESSION_FLAG_ARGUMENTS) == 0
+    assert main(["open", "--title", "Other", "--scope", "src/"]) == 0
+    capsys.readouterr()
+
+    assert (
+        main(
+            [
+                "record-session",
+                "--task",
+                "CR-002",
+                "--role",
+                "implementer",
+                "--actor",
+                "agent",
+                "--activity",
+                "implementation",
+                "--outcome",
+                "done",
+                "--if-missing",
+            ]
+        )
+        == 0
+    )
+
+    sessions = [
+        record
+        for record in read_records(root, "CR-002")
+        if record["record_type"] == "session"
+    ]
+    assert len(sessions) == 1
+    assert main(["validate"]) == 0
+
+
+def test_without_a_matching_session_the_write_happens_as_usual(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: without a matching session the write happens as usual."""
+
+    _repo, root = _open_session_task(tmp_path, monkeypatch)
+    capsys.readouterr()
+
+    assert main([*_SESSION_FLAG_ARGUMENTS, "--if-missing"]) == 0
+
+    records_dir = root / "tasks" / "CR-001" / "records"
+    sessions = sorted(records_dir.glob("*-session.json"))
+    assert len(sessions) == 1
+    assert capsys.readouterr().out == f"{sessions[0]}\n"
+
+
+def test_a_session_written_with_todays_flags_is_the_record_the_previous_release_wrote(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a session written with today's flags is the record the
+    previous release wrote.
+
+    The pin is literal — the bytes of the record file, every flag the
+    command already had — so a field added or a line changed by the new
+    flags' presence cannot hide behind a shape check.
+    """
+
+    repo, root = _open_session_task(tmp_path, monkeypatch)
+    monkeypatch.setenv("AGENTMARSHAL_ACTOR", "operator")
+    head = _commit_file(repo, "work.txt", "work\n")
+    capsys.readouterr()
+
+    assert (
+        main(
+            [
+                *_SESSION_FLAG_ARGUMENTS,
+                "--input-tokens",
+                "10",
+                "--output-tokens",
+                "20",
+                "--cache-tokens",
+                "30",
+                "--usage-provider",
+                "example-provider",
+                "--usage-method",
+                "measured",
+                "--commit",
+                head,
+                "--model",
+                "swe-2",
+                "--trace",
+                "https://trace.example/run-1",
+                "--cli-session",
+                "cli-123",
+                "--report-ready",
+                "--fallback-reason",
+                "provider limit",
+            ]
+        )
+        == 0
+    )
+
+    records_dir = root / "tasks" / "CR-001" / "records"
+    sessions = sorted(records_dir.glob("*-session.json"))
+    assert len(sessions) == 1
+    record = json.loads(sessions[0].read_text(encoding="utf-8"))
+    expected = {
+        "record_type": "session",
+        "task": "CR-001",
+        "created_at": record["created_at"],
+        "tool_version": __version__,
+        "role": "implementer",
+        "actor": "agent",
+        "activity": "implementation",
+        "outcome": "done",
+        "tokens": {"input": 10, "output": 20, "cache": 30},
+        "source": "live",
+        "usage": {"provider": "example-provider", "method": "measured"},
+        "commit": head,
+        "model": "swe-2",
+        "trace": "https://trace.example/run-1",
+        "cli_session": "cli-123",
+        "report_ready": True,
+        "fallback_reason": "provider limit",
+        "schema": 7,
+        "recorded_by": "operator",
+        "recorded_by_source": "override",
+    }
+    assert sessions[0].read_text(encoding="utf-8") == (
+        json.dumps(expected, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+    )
+    captured = capsys.readouterr()
+    assert captured.out == f"{sessions[0]}\n"
+    assert captured.err == ""
