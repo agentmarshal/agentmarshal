@@ -706,7 +706,16 @@ def test_a_malformed_trust_toml_refuses_every_subcommand_naming_the_file(
     assert str(_trust_file(repo)) in err
 
 
-@pytest.mark.parametrize("content", ["format = 2\n", 'format = "one"\n', "[grants]\n"])
+@pytest.mark.parametrize(
+    "content",
+    [
+        "format = 2\n",
+        'format = "one"\n',
+        "format = true\n",
+        "format = 1.0\n",
+        "[grants]\n",
+    ],
+)
 @pytest.mark.parametrize("subcommand", ["trust", "untrust", "list"])
 def test_an_unknown_format_trust_toml_refuses_every_subcommand_naming_the_file(
     tmp_path: Path,

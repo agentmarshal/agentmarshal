@@ -279,7 +279,10 @@ def _read_grants(trust_file: Path) -> dict[str, Grant]:
     version = data.get("format")
     if version is None:
         raise ExtensionTrustError(f"{trust_file}: missing 'format'")
-    if version != TRUST_FORMAT:
+    # `type` and equality both: bool is a subclass of int, so `True` and
+    # `1.0` each compare equal to `1` — only an exact int 1 is the known
+    # format.
+    if not (type(version) is int and version == TRUST_FORMAT):
         raise ExtensionTrustError(f"{trust_file}: unknown format {version!r}")
     grants_table = data.get("grants", {})
     if not isinstance(grants_table, dict):
