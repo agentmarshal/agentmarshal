@@ -1272,16 +1272,28 @@ def _print_switched_off(project_root: Path, stderr: TextIO) -> None:
     reads, through the same ``read_switches``, against the names
     ``shared_extension_names`` enumerates for the working tree's
     ``.agentmarshal/extensions/``, in the enumeration's sorted order.
-    Every value the file carries is escaped for display. A missing file
-    is every extension on; a file the parse refuses, or a names
-    enumeration that itself fails, is named on one
+    Every value the file carries is escaped for display. Absence is
+    decided before the names are enumerated: no entry at the file's
+    path — asked by ``lstat``, so a dangling link is an entry and takes
+    the file's own read the way ``doctor``'s read reports it — is every
+    extension on and prints nothing. A file the read refuses, or a
+    names enumeration that itself fails, is named on one
     ``switches: unavailable (<reason>)`` line — a report beside the
     paths, never a failure, and stdout is untouched.
     """
 
+    switches_path = project_root / SWITCHES_RELPATH
+    try:
+        switches_path.lstat()
+    except FileNotFoundError:
+        return
+    except OSError:
+        # An entry that cannot be lstat'ed is not absent; the file's
+        # own read names the trouble the way doctor's read does.
+        pass
     try:
         names = shared_extension_names(_managed_directory(project_root))
-        switches = read_switches(project_root / SWITCHES_RELPATH, names)
+        switches = read_switches(switches_path, names)
     except Exception as error:
         print(
             f"switches: unavailable ({escape_for_display(str(error))})",

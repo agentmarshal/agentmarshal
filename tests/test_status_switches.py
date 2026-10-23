@@ -136,6 +136,36 @@ def test_a_project_without_the_file_prints_nothing_new(
         assert captured.err == _stderr(repo)
 
 
+def test_a_missing_file_prints_nothing_where_the_names_cannot_be_enumerated(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """No file where the names cannot be enumerated still prints nothing new.
+
+    Absence is decided before the names are enumerated, so a managed
+    path the enumeration refuses — here a symbolic link, the refusal
+    ``_managed_directory`` gives — cannot produce a
+    ``switches: unavailable`` line where there is no file at all.
+    """
+    repo = _project(tmp_path, monkeypatch, None)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (repo / ".agentmarshal" / "extensions").symlink_to(
+        elsewhere, target_is_directory=True
+    )
+    status_helpers._task(repo, "CR-001")
+
+    assert main(["status"]) == 0
+    listed = capsys.readouterr()
+    assert main(["status", "CR-001"]) == 0
+    detailed = capsys.readouterr()
+
+    for captured in (listed, detailed):
+        assert captured.err == _stderr(repo)
+        assert "switches" not in captured.err
+    assert listed.out == "CR-001\topen\tTask\n"
+    assert detailed.out.startswith("ID: CR-001\n")
+
+
 def test_an_extension_switched_on_or_with_no_entry_prints_nothing_new(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
