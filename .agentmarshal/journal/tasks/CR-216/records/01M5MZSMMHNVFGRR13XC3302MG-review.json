@@ -1,0 +1,73 @@
+{
+  "artifacts": [
+    {
+      "hash": "c5ab5172c396b67308c8f45d4896b71d010d23f6de49d079f8f09145f9200c70",
+      "ref": ".agentmarshal/journal/tasks/CR-216/artifacts/01M5MZSMMHNVFGRR13XC3302MG-review.md"
+    }
+  ],
+  "classes": {
+    "B1": "contract-mismatch"
+  },
+  "created_at": "2026-10-23T18:18:59.089803Z",
+  "evidence": {
+    "B1": "src/agentmarshal/doctor.py:400-417 rejects '.', '..', '/', and '\\\\' but accepts 'C:tool'; /usr/lib/python3.13/shutil.py:1515-1520 bypasses PATH whenever os.path.split finds a directory component; probe output: ntpath.split('C:tool') = ('C:', 'tool'), candidate guard rejects = False."
+  },
+  "findings": [
+    "B1"
+  ],
+  "previous_review": "01M5MZ98CZHBVGDY5QKVJP9440",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "dd619211e2cadb34352ef7b519e9b63f5b0a07e7",
+  "reviewed_contract": "efb1d9b29e8f04b8c4b4a00e36a1bdf12cb58638fe97413c95eaa6ea9e25bce7",
+  "reviewer": {
+    "email": "auto-review-openai@agent.example.invalid",
+    "model": "gpt-5.6-sol",
+    "role": "code-reviewer",
+    "vendor": "openai"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-216",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "All 13 archived delta-spec scenarios have exact test docstrings.",
+        "what": "Scenario-heading to test-docstring comparison"
+      },
+      {
+        "result": "ntpath.split returned ('C:', 'tool'); the candidate guard returned false.",
+        "what": "/usr/bin/python3.13 -B probe of ntpath.split('C:tool') and the candidate guard"
+      },
+      {
+        "result": "Requirements matched apart from an initial blank line.",
+        "what": "Archived delta versus main extension-manifest specification comparison"
+      },
+      {
+        "result": "Could not run meaningfully because the supplied snapshot contains no Git metadata.",
+        "what": "git rev-parse HEAD"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "Full CI sequence and pytest",
+        "why": "uv and pytest are unavailable in the review snapshot; the coordinator reports the full sequence passed on the reviewed commit."
+      }
+    ],
+    "read": [
+      ".agentmarshal/journal/tasks/CR-216/contract.md",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md",
+      "docs/threat-model.md",
+      "src/agentmarshal/doctor.py",
+      "src/agentmarshal/journal/extensions.py",
+      "tests/test_doctor_wrapper_runtime.py",
+      "openspec/changes/archive/2026-10-24-doctor-wrapper-runtime/",
+      "openspec/specs/extension-manifest/spec.md",
+      "/usr/lib/python3.13/shutil.py",
+      "/usr/lib/python3.13/ntpath.py"
+    ]
+  }
+}
