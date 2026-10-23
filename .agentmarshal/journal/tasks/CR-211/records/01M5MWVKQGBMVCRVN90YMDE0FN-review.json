@@ -1,0 +1,115 @@
+{
+  "advisory_findings": [
+    "stage-minimal-path-defpath",
+    "stage-timeout-unbounded-wait",
+    "spec-per-stage-materialization-unspecified",
+    "changed-after-approval-spelling"
+  ],
+  "artifacts": [
+    {
+      "hash": "8ae08f49e46950ce2c16d347979e0b6e4f9f000730c1294283e7285e5a2c9e40",
+      "ref": ".agentmarshal/journal/tasks/CR-211/artifacts/01M5MWVKQGBMVCRVN90YMDE0FN-review.md"
+    }
+  ],
+  "classes": {
+    "changed-after-approval-spelling": "contract-mismatch",
+    "spec-per-stage-materialization-unspecified": "test-gap",
+    "stage-command-symlink-component": "security",
+    "stage-minimal-path-defpath": "security",
+    "stage-timeout-unbounded-wait": "correctness"
+  },
+  "created_at": "2026-10-23T17:27:37.968026Z",
+  "evidence": {
+    "changed-after-approval-spelling": "code emits the kind suffix at src/agentmarshal/stages.py:310-312; the normative spelling without it is openspec/specs/extension-stages/spec.md:240-249 (and the archived delta), while design.md records the suffix",
+    "spec-per-stage-materialization-unspecified": "implementation src/agentmarshal/stages.py:555-578; no requirement or scenario for per-stage freshness in openspec/specs/extension-stages/spec.md:93-139; the only test is tests/test_stages.py:516-556, whose docstring at :519 duplicates the scenario named at tests/test_stages.py:378",
+    "stage-command-symlink-component": "src/agentmarshal/stages.py:387-391 checks only command.is_symlink() on the final component and then command.is_file(), which follows an intermediate link materialized by src/agentmarshal/stages.py:265-266; the grant check that would catch it is skipped in CI at src/agentmarshal/stages.py:298-299; the project's own rule for the same paths is src/agentmarshal/journal/extensions.py:525-561 applied at :632, and the stated invariant is docs/threat-model.md:156-162",
+    "stage-minimal-path-defpath": "src/agentmarshal/stages.py:340 ({\"PATH\": os.defpath}) with cwd set to the candidate snapshot at src/agentmarshal/stages.py:404-405; the test that would pin the value compares against the same constant at tests/test_stages.py:626; unconfirmed — check with python3 -c \"import os; print(repr(os.defpath))\"",
+    "stage-timeout-unbounded-wait": "src/agentmarshal/stages.py:420-425 — process.communicate() after _kill_process_group carries no timeout, against the bound required by openspec/specs/extension-stages/spec.md:218-232"
+  },
+  "findings": [
+    "stage-command-symlink-component"
+  ],
+  "previous_review": "01M5MTAV62XS32DQV43JGX0ZCV",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "5304bd4973106f74a7f4d2bd9ea7a34eaf392b09",
+  "reviewed_contract": "e68e61aa84c14df51ce3ec3d38232a9e1950e1ab156db4ba8d19ad1ebc8649f0",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-211",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "42 scenario headings, 43 test docstrings; the extra one is tests/test_stages.py:519 duplicating tests/test_stages.py:378",
+        "what": "grep -c '^#### Scenario: ' openspec/specs/extension-stages/spec.md; grep -c '\"\"\"Scenario: ' tests/test_stages.py"
+      },
+      {
+        "result": "only three touched lines: 22 (import), 481 (stages.register), 1608 (stages.run dispatch)",
+        "what": "grep -n 'stages' src/agentmarshal/cli.py"
+      },
+      {
+        "result": "only src/agentmarshal/stages.py — this change is the first writer of the event kind",
+        "what": "grep -rn 'extension-event' src/"
+      },
+      {
+        "result": "src/agentmarshal/stages.py:340 sets {\"PATH\": os.defpath}; tests/test_stages.py:626 asserts env[\"PATH\"] == os.defpath",
+        "what": "grep -rn 'defpath|\"PATH\"' src/ tests/"
+      },
+      {
+        "result": "defined at 525, applied at 632 for every stage command of a directory-form manifest read from the working tree — the per-component symlink rule stage run does not apply",
+        "what": "grep -n '_require_existing_directory_file' src/agentmarshal/journal/extensions.py"
+      },
+      {
+        "result": "only src/agentmarshal/stages.py:600 — exit 3 collides with no existing command's status",
+        "what": "grep -rn 'return 3' src/agentmarshal/"
+      },
+      {
+        "result": "changes/ holds only archive/; archive/ holds 2026-10-24-extension-stage-run — the change is archived",
+        "what": "ls openspec/changes/ and ls openspec/changes/archive/"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "the snapshot is not a git repository and command execution is sandboxed here; the coordinator's note records the full CI sequence as passing on this commit, and no finding above claims otherwise"
+      },
+      {
+        "what": "python3 -c \"import os; print(repr(os.defpath))\"",
+        "why": "running python and reading the stdlib outside the working directory are both refused in this sandbox — hence stage-minimal-path-defpath is advisory and marked unconfirmed"
+      },
+      {
+        "what": "a reproduction of the intermediate-symlink command and of the escaped-process timeout hang",
+        "why": "no git and no interpreter available to build a fixture repository; both findings rest on the code paths and line numbers cited in the evidence"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/stages.py (whole file)",
+      "src/agentmarshal/cli.py (lines 19-25, 475-485, 1600-1612 via grep)",
+      "tests/test_stages.py (scenario docstrings; lines 505-565 in full)",
+      "src/agentmarshal/journal/gate.py:279-335, 525-636, 1120-1200",
+      "src/agentmarshal/journal/extensions.py:170-243, 515-641",
+      "src/agentmarshal/extension_trust.py:112-139, 193-233, 258-295, 377-420, 560-579",
+      "src/agentmarshal/journal/review.py:1151-1184 (_extract_snapshot)",
+      "src/agentmarshal/process_log.py:1-140, 199-219",
+      "src/agentmarshal/journal/placement.py:16-46",
+      "src/agentmarshal/journal/contracts.py:112-134",
+      "src/agentmarshal/steps.py:69-119 (register/run convention)",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md (sections A-D, decisions 1-15)",
+      "docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md (section 7, extension-event)",
+      "docs/threat-model.md:144-174",
+      "openspec/specs/extension-stages/spec.md",
+      "openspec/changes/archive/2026-10-24-extension-stage-run/{proposal.md,design.md,tasks.md,specs/extension-stages/spec.md}",
+      "openspec/specs/extension-trust/spec.md (Purpose and first requirement)",
+      "pyproject.toml (ruff/mypy/pytest configuration)"
+    ]
+  }
+}

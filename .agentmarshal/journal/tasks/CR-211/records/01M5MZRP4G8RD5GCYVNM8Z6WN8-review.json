@@ -1,0 +1,68 @@
+{
+  "advisory_findings": [
+    "ADV-CLAIM-001"
+  ],
+  "artifacts": [
+    {
+      "hash": "f55a7fd0033e3a511f04b20e219af0761bc9e7e41fc3201e7d3f75a4f9025cfd",
+      "ref": ".agentmarshal/journal/tasks/CR-211/artifacts/01M5MZRP4G8RD5GCYVNM8Z6WN8-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-CLAIM-001": "claim-accuracy"
+  },
+  "created_at": "2026-10-23T18:18:27.856796Z",
+  "evidence": {
+    "ADV-CLAIM-001": "docs/threat-model.md:167-168 and 199-204 versus src/agentmarshal/stages.py:527-703 and src/agentmarshal/cli.py:511,1682-1683"
+  },
+  "findings": [],
+  "previous_review": "01M5MYXYF9FESA6DXCPFK6T79W",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "4066970d68a0b0e9762b24ceee777c45afc0095f",
+  "reviewed_contract": "5e32523b70b5f4765002990a3c20774c843cc0585ec38a902090f6aa6fccb2ee",
+  "reviewer": {
+    "email": "auto-review-openai@agent.example.invalid",
+    "model": "gpt-5.6-sol",
+    "role": "code-reviewer",
+    "vendor": "openai"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-211",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "44 specification scenarios; zero missing matching docstrings",
+        "what": "Compared all published extension-stages scenario headings with tests/test_stages.py Scenario docstrings"
+      },
+      {
+        "result": "Implementation matches the five acceptance criteria; no blocking defect found",
+        "what": "Inspected stage registration, discovery, materialization, environment, grant, result, event and exit paths"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "Full CI sequence",
+        "why": "The coordinator states it passed on the reviewed commit; this review was read-only and the supplied snapshot has no .git directory."
+      }
+    ],
+    "read": [
+      "src/agentmarshal/stages.py",
+      "src/agentmarshal/cli.py",
+      "tests/test_stages.py",
+      "openspec/specs/extension-stages/spec.md",
+      "openspec/changes/archive/2026-10-24-extension-stage-run/",
+      "openspec/changes/archive/2026-10-24-extension-stage-run-fresh-copy/",
+      "openspec/changes/archive/2026-10-24-extension-stage-run-minimal-path/",
+      "docs/adr/ADR-0010-process-extensions.md",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md",
+      "docs/adr/ADR-0014-where-things-live.md",
+      "docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md",
+      "docs/threat-model.md"
+    ]
+  }
+}
