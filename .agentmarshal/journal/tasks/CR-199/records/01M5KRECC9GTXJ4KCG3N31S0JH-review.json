@@ -1,0 +1,69 @@
+{
+  "artifacts": [
+    {
+      "hash": "a8a89f23d4646ae35ad3de2df7798ca10b499b515fb03af760deb6f75c706fda",
+      "ref": ".agentmarshal/journal/tasks/CR-199/artifacts/01M5KRECC9GTXJ4KCG3N31S0JH-review.md"
+    }
+  ],
+  "classes": {
+    "CR199-DECIMAL-PRECISION": "correctness"
+  },
+  "created_at": "2026-10-23T06:51:15.721149Z",
+  "evidence": {
+    "CR199-DECIMAL-PRECISION": "src/agentmarshal/journal/report.py:320 and src/agentmarshal/journal/records.py:912; focused Python reproduction printed reported=123456789012345678901234567900 for the mathematically exact sum 123456789012345678901234567891."
+  },
+  "findings": [
+    "CR199-DECIMAL-PRECISION"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "68c12ad4b54fc78c11cd68b6a813c5f6ac46399b",
+  "reviewed_contract": "1f41aa6dba6fcd2b61707b5d8cedcf8b56a1070303e5b53e3097a94f4d1ed03d",
+  "reviewer": {
+    "email": "auto-review-openai@agent.example.invalid",
+    "model": "gpt-5.6-sol",
+    "role": "code-reviewer",
+    "vendor": "openai"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-199",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "Printed Cost\\tUSD\\treported=123456789012345678901234567900; the exact sum ends in 891.",
+        "what": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3 invoking _cost_sums and _cost_lines with costs 123456789012345678901234567890 and 1"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "Focused pytest and the full CI sequence",
+        "why": "The review environment has no uv command; the coordinator states the full sequence passed on the reviewed commit."
+      },
+      {
+        "what": "Independent git commit/diff verification",
+        "why": "The supplied snapshot contains no discoverable Git metadata."
+      }
+    ],
+    "read": [
+      ".agentmarshal/journal/tasks/CR-199/contract.md",
+      "docs/adr/ADR-0016-the-lifecycle-of-review-findings.md",
+      "docs/adr/ADR-0017-evidence-of-reviews-and-checks.md",
+      "docs/adr/ADR-0019-accounting-time-quota-resets-money.md",
+      "docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md",
+      "docs/threat-model.md",
+      "src/agentmarshal/journal/report.py",
+      "src/agentmarshal/cli.py",
+      "src/agentmarshal/journal/records.py",
+      "src/agentmarshal/journal/status.py",
+      "openspec/changes/archive/2026-10-23-report-cost-checks-findings/",
+      "openspec/specs/session-activity/spec.md",
+      "openspec/specs/finding-lifecycle/spec.md",
+      "tests/test_report_cost_checks_findings.py",
+      "modified report and display tests shown in the supplied diff"
+    ]
+  }
+}
