@@ -1,0 +1,73 @@
+{
+  "artifacts": [
+    {
+      "hash": "660a764c34acaab27a1ca9fc100f67dd68230658101cc6baf9d1271fdda160dd",
+      "ref": ".agentmarshal/journal/tasks/CR-219/artifacts/01M5N76AHW3AW6GGTW48NQN4Z8-review.md"
+    }
+  ],
+  "classes": {
+    "CR219-001": "correctness"
+  },
+  "created_at": "2026-10-23T20:28:14.780374Z",
+  "evidence": {
+    "CR219-001": "src/agentmarshal/journal/gate.py:1297 — any SwitchesError reading the base assigns base_switches = {}; src/agentmarshal/journal/gate.py:1311 then computes removed only from that emptied mapping, contrary to contract.md acceptance criterion 2."
+  },
+  "findings": [
+    "CR219-001"
+  ],
+  "previous_review": "01M5N64GSRTBDMSYF9VT8AA712",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "42641d859dceb06a5693fd8f2ac4b0cfca464fda",
+  "reviewed_contract": "f7d1c3cd6978cb47ba9953688163d25db6f445d1e9ade6c9b3cb8a438e488f6a",
+  "reviewer": {
+    "email": "auto-review-openai@agent.example.invalid",
+    "model": "gpt-5.6-sol",
+    "role": "code-reviewer",
+    "vendor": "openai"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-219",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "blocked",
+  "verification": {
+    "executed": [
+      {
+        "result": "Confirmed the base SwitchesError handler replaces the complete base map with an empty map before removal comparison; confirmed no test covers a partially valid but globally refused base file.",
+        "what": "Direct source and specification inspection with rg and sed"
+      },
+      {
+        "result": "Unavailable because the supplied snapshot has no .git directory.",
+        "what": "git rev-parse/show for reviewed commit"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "Full CI sequence",
+        "why": "The coordinator established that it passed on the reviewed commit; this snapshot also lacks the uv executable."
+      },
+      {
+        "what": "Dynamic temporary-repository reproduction",
+        "why": "The read-only environment provides no writable temporary directory; the failing path is directly evident from the inspected control flow."
+      }
+    ],
+    "read": [
+      ".agentmarshal/journal/tasks/CR-219/contract.md",
+      "src/agentmarshal/journal/gate.py",
+      "src/agentmarshal/stages.py",
+      "src/agentmarshal/switches.py",
+      "tests/test_gate_operational.py",
+      "tests/test_gate.py",
+      "openspec/changes/archive/2026-10-24-gate-operational-lane/",
+      "openspec/specs/gate-lanes/spec.md",
+      "openspec/specs/extension-stages/spec.md",
+      "docs/adr/ADR-0010-process-extensions.md",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md",
+      "docs/adr/ADR-0014-where-things-live.md",
+      "docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md",
+      "docs/threat-model.md"
+    ]
+  }
+}

@@ -1,0 +1,74 @@
+{
+  "artifacts": [
+    {
+      "hash": "3e0cf9c269a93798c6db399e1c4f55a68f3e4e8d4a111b04fdcc417404697dd8",
+      "ref": ".agentmarshal/journal/tasks/CR-219/artifacts/01M5NFW6MFVVYZ6J67NQMERNGJ-review.md"
+    }
+  ],
+  "classes": {
+    "CR219-RAW-EQUALITY": "correctness"
+  },
+  "created_at": "2026-10-23T23:00:00.271447Z",
+  "evidence": {
+    "CR219-RAW-EQUALITY": "src/agentmarshal/journal/gate.py:1376 and src/agentmarshal/journal/gate.py:1386; python3 reproduction output: int 1 versus float 1.0 produced entry equality True and gate misnamed predicate False"
+  },
+  "findings": [
+    "CR219-RAW-EQUALITY"
+  ],
+  "previous_review": "01M5NA77HQ9AVBKHEQPAEJJGKR",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "c212ed966298b0996693a60e63167e6da4a95797",
+  "reviewed_contract": "588c3d58225ef8227bb968385a62f8483210bb1030728b94b0f49c8428a476ca",
+  "reviewer": {
+    "email": "auto-review-openai@agent.example.invalid",
+    "model": "gpt-5.6-sol",
+    "role": "code-reviewer",
+    "vendor": "openai"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-219",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "blocked",
+  "verification": {
+    "executed": [
+      {
+        "result": "34 scenarios found; all 34 had an exact matching Scenario docstring",
+        "what": "AST comparison of archived delta-spec scenario headings against test docstrings"
+      },
+      {
+        "result": "base note: 1 int; candidate note: 1.0 float; entry equality: True; gate misnamed predicate: False",
+        "what": "python3 tomllib reproduction of the gate's entry comparison"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "Full CI sequence",
+        "why": "The supplied snapshot has no Git metadata and uv is unavailable; the coordinator reports the complete sequence passed on the reviewed commit."
+      },
+      {
+        "what": "End-to-end temporary-repository reproduction",
+        "why": "The read-only environment provides no writable temporary directory; the exact parsed-value comparison was reproduced directly."
+      }
+    ],
+    "read": [
+      ".agentmarshal/journal/tasks/CR-219/contract.md",
+      "docs/threat-model.md",
+      "docs/adr/ADR-0010-process-extensions.md",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md",
+      "docs/adr/ADR-0014-where-things-live.md",
+      "docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md",
+      "openspec/changes/archive/2026-10-24-gate-operational-lane/",
+      "openspec/specs/gate-lanes/spec.md",
+      "openspec/specs/extension-stages/spec.md",
+      "src/agentmarshal/journal/gate.py",
+      "src/agentmarshal/stages.py",
+      "src/agentmarshal/switches.py",
+      "tests/test_gate_operational.py",
+      "tests/test_gate.py",
+      "tests/test_stages.py"
+    ]
+  }
+}
