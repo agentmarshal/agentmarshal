@@ -48,8 +48,11 @@ As in the header.
 
 - `switch on` (switching back on is an edit of the file in an operational
   task; a command for it is a later task), personal switches, `--skip-ext`.
-- Rewriting an `on` entry whose table the command cannot bound on its own
-  lines — a multi-line value holding a line that reads as a table header.
+- Rewriting an `on` entry the command cannot locate and bound on its own
+  lines, whatever the reason — a header or key spelled with escapes or in
+  any form other than a plain bare, basic or literal key, a header-less
+  form (inline table, dotted keys), a multi-line value holding a line that
+  reads as a table header.
   Such an entry is refused before any task is opened, naming the file and
   saying to switch the extension off by editing the file in an operational
   task; nothing is written.
