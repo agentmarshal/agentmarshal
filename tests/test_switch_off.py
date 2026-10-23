@@ -237,6 +237,84 @@ def test_a_file_form_extension_is_a_shared_extension_the_command_switches_off(
     assert _switches(repo)["openspec"]["state"] == "off"
 
 
+def test_a_symlinked_extension_directory_is_refused_before_anything_is_written(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A linked extension directory is not a declared shared extension.
+
+    Whether the name is a shared extension the working tree declares is
+    the manifest reader's call, and the reader refuses to read through
+    a symlink — so the command refuses naming the extension and the
+    reader's message, before any task is opened, writing nothing.
+    """
+    repo = stage_helpers._project(tmp_path, monkeypatch)
+    target = _extension(tmp_path / "elsewhere")
+    managed = repo / ".agentmarshal" / "extensions"
+    managed.mkdir(parents=True)
+    (managed / "openspec").symlink_to(target, target_is_directory=True)
+
+    assert _switch_off() == 1
+
+    captured = capsys.readouterr()
+    assert "openspec" in captured.err
+    assert "symlink" in captured.err
+    assert _task_dirs(repo) == []
+    assert not _switches_file(repo).exists()
+
+
+def test_a_symlinked_extension_manifest_is_refused_before_anything_is_written(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A linked ``<name>.toml`` is not a declared shared extension either.
+
+    The same rule as for the directory form: the manifest reader
+    refuses to read through the link, and the refusal names the
+    extension and the reader's message before any task is opened.
+    """
+    repo = stage_helpers._project(tmp_path, monkeypatch)
+    target = _file_form_extension(tmp_path / "elsewhere")
+    managed = repo / ".agentmarshal" / "extensions"
+    managed.mkdir(parents=True)
+    (managed / "openspec.toml").symlink_to(target)
+
+    assert _switch_off() == 1
+
+    captured = capsys.readouterr()
+    assert "openspec" in captured.err
+    assert "symlink" in captured.err
+    assert _task_dirs(repo) == []
+    assert not _switches_file(repo).exists()
+
+
+def test_a_switch_naming_a_symlinked_extension_is_refused_naming_the_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A linked entry counts for nothing, so a switch naming it fails the parse.
+
+    The names the existing file is parsed against follow the same
+    reader rule: a symlinked entry under `.agentmarshal/extensions/` is
+    no shared extension, so an entry naming it is refused naming the
+    file and the entry — before any task is opened, writing nothing.
+    """
+    repo = stage_helpers._project(tmp_path, monkeypatch)
+    _extension(repo)
+    target = _file_form_extension(tmp_path / "elsewhere", name="ghost")
+    managed = repo / ".agentmarshal" / "extensions"
+    (managed / "ghost.toml").symlink_to(target)
+    original = (
+        'format = 1\n\n[switches]\n\n[switches.ghost]\nstate = "on"\ntask = "CR-1"\n'
+    )
+    _switches_file(repo).write_text(original, encoding="utf-8")
+
+    assert _switch_off() == 1
+
+    captured = capsys.readouterr()
+    assert "switches.toml" in captured.err
+    assert "ghost" in captured.err
+    assert _task_dirs(repo) == []
+    assert _switches_file(repo).read_text(encoding="utf-8") == original
+
+
 # -- the file keeps its text and is replaced atomically -------------------------
 
 

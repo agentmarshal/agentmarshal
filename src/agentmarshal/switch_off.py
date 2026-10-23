@@ -9,10 +9,11 @@ opens the task through the journal's own ``open_task`` — a generated
 contract whose scope is exactly the switches file — and writes the
 ``off`` entry for the task it opened.
 
-The name must be a shared extension the working tree declares — a
-``<name>.toml`` entry or a ``<name>/`` directory — and the reason must
-pass the parser's own rule, each checked with the existing file before
-the task is opened, so an early refusal writes nothing. The rewrite is
+The name must be a shared extension the working tree declares — the
+manifest reader's call, so a linked or unreadable manifest is refused
+with the reader's own message — and the reason must pass the parser's
+own rule, each checked with the existing file before the task is
+opened, so an early refusal writes nothing. The rewrite is
 textual — there is no TOML writer to add — an ``on`` entry has the
 switch's own key/value lines inside its table replaced, every other
 key and line kept, or a new table is appended; the new text is
@@ -52,7 +53,9 @@ from agentmarshal.journal.contracts import (
 from agentmarshal.journal.display import escape_for_display
 from agentmarshal.journal.extensions import (
     ExtensionManifestError,
+    ExtensionManifestMissing,
     _validate_name,
+    read_extension_manifest,
 )
 from agentmarshal.journal.open_task import (
     OpenedTask,
@@ -140,27 +143,36 @@ def _placement(stderr: TextIO) -> Placement | None:
         return None
 
 
-def _shared_extension_names(managed: Path) -> frozenset[str]:
-    """The extension names under *managed*, in both forms.
+def _shared_extension_names(project_root: Path, managed: Path) -> frozenset[str]:
+    """The shared extension names the working tree declares, in both forms.
 
-    The working-tree enumeration the manifest readers share — a
-    ``<name>.toml`` entry is the file form and a ``<name>/`` entry the
-    directory form, and a symbolic-link entry is kept under the name it
-    carries — so a name this check admits is one the switches parser
-    admits too, in either form. A ``managed`` that is not a directory
-    is simply no extensions.
+    The candidates are *managed*'s entries — a ``<name>.toml`` entry or
+    a ``<name>/`` directory, a symbolic-link entry under the name it
+    carries — and a candidate is declared only when the manifest
+    reader accepts it: a linked manifest or extension directory, a
+    name claimed in both forms and a manifest that cannot be read each
+    fail the reader, so they are no shared extension the file may
+    name. The reader is the one rule — ``read_extension_manifest``
+    decides here exactly as it decides for the name being switched
+    off. A *managed* that is not a directory is simply no extensions.
     """
 
+    candidates: set[str] = set()
+    if managed.is_dir():
+        for entry in sorted(managed.iterdir()):
+            if entry.is_symlink():
+                candidates.add(entry.name.removesuffix(".toml"))
+            elif entry.is_dir():
+                candidates.add(entry.name)
+            elif entry.name.endswith(".toml"):
+                candidates.add(entry.name.removesuffix(".toml"))
     names: set[str] = set()
-    if not managed.is_dir():
-        return frozenset(names)
-    for entry in sorted(managed.iterdir()):
-        if entry.is_symlink():
-            names.add(entry.name.removesuffix(".toml"))
-        elif entry.is_dir():
-            names.add(entry.name)
-        elif entry.name.endswith(".toml"):
-            names.add(entry.name.removesuffix(".toml"))
+    for name in sorted(candidates):
+        try:
+            read_extension_manifest(project_root, name)
+        except ExtensionManifestError:
+            continue
+        names.add(name)
     return frozenset(names)
 
 
@@ -593,14 +605,29 @@ def _run_off(args: argparse.Namespace, stderr: TextIO) -> int:
     # that is to land in it — so an early refusal leaves nothing
     # behind: no task, no file.
     try:
-        names = _shared_extension_names(_managed_directory(project_root))
+        names = _shared_extension_names(project_root, _managed_directory(project_root))
     except (ExtensionTrustError, OSError) as error:
         print(f"{_COMMAND}: {escape_for_display(str(error))}", file=stderr)
         return 1
-    if args.name not in names:
+    # Whether the name is a shared extension the working tree declares
+    # is the manifest reader's call — not a second copy of its rules: a
+    # missing manifest is "not declared", and any other refusal — a
+    # linked manifest or extension directory, a manifest in both forms,
+    # one that cannot be read — is reported with the reader's own
+    # message, before anything is written.
+    try:
+        read_extension_manifest(project_root, args.name)
+    except ExtensionManifestMissing:
         print(
             f"{_COMMAND}: '{escape_for_display(args.name)}' is not a shared "
             "extension the working tree declares",
+            file=stderr,
+        )
+        return 1
+    except ExtensionManifestError as error:
+        print(
+            f"{_COMMAND}: '{escape_for_display(args.name)}': "
+            f"{escape_for_display(str(error))}",
             file=stderr,
         )
         return 1

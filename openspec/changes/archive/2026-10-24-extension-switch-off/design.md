@@ -63,10 +63,17 @@ command resolves its journal placement with.
   the file may legitimately not exist yet — the warning exists for
   scopes a human writes.
 - **Name, reason and the existing file are checked before the task is
-  opened.** The name passes `_validate_name` and must then be a shared
-  extension the working tree declares — the enumeration the manifest
-  readers share: a `<name>.toml` entry or a `<name>/` directory under
-  `.agentmarshal/extensions/`, a link kept under the name it carries.
+  opened.** The name passes `_validate_name` and is a shared extension
+  the working tree declares exactly when `read_extension_manifest`
+  accepts it — the one rule, not a second copy of it:
+  `ExtensionManifestMissing` is "not declared", and any other reader
+  refusal — a linked manifest or extension directory, a name claimed
+  in both forms, a manifest that cannot be read — is refused naming
+  the extension with the reader's own message, escaped. The names the
+  existing file's parse is checked against follow the same rule: the
+  `.agentmarshal/extensions/` entries are the candidates, and a
+  candidate counts only when the reader accepts it — a linked entry
+  is not counted.
   The reason is checked against the parser's own rule — non-empty, at
   most `REASON_CHAR_LIMIT` characters, `reject_control_characters` — so
   the file the command writes can never contain a reason the parser
