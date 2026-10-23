@@ -300,6 +300,7 @@ def test_status_task_detail_output_is_pinned(
         "- 00000000000000000000000015 abandoned 2026-01-15T00:00:00Z "
         "reason=superseded\n"
         "- 00000000000000000000000016 session 2026-01-16T00:00:00Z\n"
+        "No agreement with the contract is recorded\n"
     )
     # CR-162: the paths print once on stderr, after the placement line —
     # the stdout pin does not move (ADR-0014 decision 13).
