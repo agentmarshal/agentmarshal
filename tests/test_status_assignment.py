@@ -453,10 +453,10 @@ def test_an_actor_not_in_the_declared_list_is_marked(
 def test_an_actor_in_the_declared_list_carries_no_mark(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Scenario: an actor in the declared list carries no mark — casing
-    cannot move one out of it, the same normalisation the gate applies."""
+    """Scenario: an actor in the declared list carries no mark — the
+    session's actor is one of the declared implementers."""
 
-    repo = _repo(tmp_path, monkeypatch, _contract3(implementers=["Devin", "codex"]))
+    repo = _repo(tmp_path, monkeypatch, _contract3(implementers=["devin", "codex"]))
     _open(repo)
     _session(repo, "00000000000000000000000002", "2026-01-02T00:00:00Z")
 
@@ -467,6 +467,25 @@ def test_an_actor_in_the_declared_list_carries_no_mark(
     )
     assert "actor=devin" in line
     assert "not declared for the role" not in line
+
+
+def test_an_actor_differing_only_in_case_is_marked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: an actor not in the declared list is marked — actor ids
+    are exact labels compared by exact string equality, so `devin` is not
+    the declared `Devin`."""
+
+    repo = _repo(tmp_path, monkeypatch, _contract3(implementers=["Devin"]))
+    _open(repo)
+    _session(repo, "00000000000000000000000002", "2026-01-02T00:00:00Z")
+
+    assert main(["status", "CR-001"]) == 0
+    out = capsys.readouterr().out
+    assert (
+        "- implementer session 00000000000000000000000002: actor=devin "
+        "vendor=devin-vendor model=devin-model (not declared for the role)\n"
+    ) in out
 
 
 def test_the_mark_appears_only_when_implementers_is_declared(

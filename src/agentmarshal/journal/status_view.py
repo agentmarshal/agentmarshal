@@ -363,14 +363,16 @@ def _role_mark(actor: object, declared: tuple[str, ...]) -> str:
     An actor that ran but is not in the contract's declared list is shown,
     not refused (ADR-0018 decision 3) — and only when the contract declares
     that role's list at all: with no list there is nothing to be outside of.
-    The comparison applies the strip-and-casefold normalisation the gate's
-    comparisons use, so casing cannot move an actor out of the list. An
-    absent actor carries no mark: there is no name to check.
+    Actor ids are exact labels — the actors table keys them exactly and the
+    recorder check above compares exactly — so membership is exact string
+    equality: an actor differing from every declared entry only in case or
+    surrounding whitespace is not declared. An absent actor carries no
+    mark: there is no name to check.
     """
 
     if not declared or not isinstance(actor, str) or not actor:
         return ""
-    if actor.strip().casefold() in {entry.strip().casefold() for entry in declared}:
+    if actor in declared:
         return ""
     return " (not declared for the role)"
 
