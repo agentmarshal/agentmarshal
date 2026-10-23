@@ -1,0 +1,73 @@
+{
+  "advisory_findings": [
+    "ADV-001"
+  ],
+  "artifacts": [
+    {
+      "hash": "27ab392789cd408593127e4bbf979a47aad030abea49ef3b8061de14a21f573a",
+      "ref": ".agentmarshal/journal/tasks/CR-201/artifacts/01M5KWBGV4TDPWREDWY6F9T47C-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-001": "claim-accuracy"
+  },
+  "created_at": "2026-10-23T07:59:36.292584Z",
+  "evidence": {
+    "ADV-001": "openspec/changes/archive/2026-10-23-complete-uses-gate-review/proposal.md:24-26,38-40 and tasks.md:9-13 contradict src/agentmarshal/cli.py:937-942 and src/agentmarshal/journal/complete.py:80-86."
+  },
+  "findings": [],
+  "previous_review": "01M5KVEBSTY7GJM1A93ENPN6PX",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "41a1aaa48c4c0b66e7493291f6415742c85521d7",
+  "reviewed_contract": "e6d54ef76bcda8df342600eb0d7ae8a1f0ad9a8515b8ae9fe5d4007c68749fc4",
+  "reviewer": {
+    "email": "auto-review-openai@agent.example.invalid",
+    "model": "gpt-5.6-sol",
+    "role": "code-reviewer",
+    "vendor": "openai"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-201",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "All 12 scenarios matched at least one test docstring.",
+        "what": "Static AST comparison of archived delta scenario titles against test docstrings"
+      },
+      {
+        "result": "Could not start because uv is unavailable in the review environment.",
+        "what": "uv run pytest -q tests/test_complete_dispositions.py"
+      },
+      {
+        "result": "Could not inspect repository metadata because the supplied snapshot contains no Git worktree metadata.",
+        "what": "git rev-parse HEAD"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "Full CI sequence",
+        "why": "uv is not installed in this read-only snapshot environment; the coordinator states the full sequence passed on the reviewed commit."
+      }
+    ],
+    "read": [
+      "Task CR-201 contract and amendment",
+      "supplied diff",
+      "docs/adr/ADR-0007-operator-acceptance.md",
+      "docs/adr/ADR-0016-the-lifecycle-of-review-findings.md",
+      "docs/threat-model.md",
+      "src/agentmarshal/journal/gate.py",
+      "src/agentmarshal/journal/complete.py",
+      "src/agentmarshal/cli.py",
+      "tests/test_complete_dispositions.py",
+      "tests/test_gate.py",
+      "archived OpenSpec proposal, design, tasks, and delta",
+      "openspec/specs/finding-lifecycle/spec.md",
+      "coordinator's CI result for the reviewed commit"
+    ]
+  }
+}
