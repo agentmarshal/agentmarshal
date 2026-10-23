@@ -1,0 +1,78 @@
+{
+  "advisory_findings": [
+    "IMP-001"
+  ],
+  "artifacts": [
+    {
+      "hash": "1c7b1c3a1f86fbd3932110111cd24a30432a7f5f21aedb4fae59c8ac13a5b665",
+      "ref": ".agentmarshal/journal/tasks/CR-219/artifacts/01M5N8G6DJFTT4EK8G937AQK7H-review.md"
+    }
+  ],
+  "classes": {
+    "IMP-001": "correctness",
+    "OPL-001": "contract-mismatch"
+  },
+  "created_at": "2026-10-23T20:51:06.802702Z",
+  "evidence": {
+    "IMP-001": "Direct-import command failed through src/agentmarshal/journal/gate.py:68 with a partially initialized agentmarshal.switches ImportError",
+    "OPL-001": "src/agentmarshal/switches.py:90 and :159 discard accepted extra entry keys, while src/agentmarshal/journal/gate.py:1342 compares only the resulting Switch objects; reproduction output: parsed_equal: True, misnamed_predicate: False"
+  },
+  "findings": [
+    "OPL-001"
+  ],
+  "previous_review": "01M5N76AHW3AW6GGTW48NQN4Z8",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "efe51da6dca396aacffa408d7045d26b508a0d60",
+  "reviewed_contract": "0bf6173d5af546a66938098174570855cb02399c2426bc32df067ed7969c2b7b",
+  "reviewer": {
+    "email": "auto-review-openai@agent.example.invalid",
+    "model": "gpt-5.6-sol",
+    "role": "code-reviewer",
+    "vendor": "openai"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-219",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "parsed_equal: True; misnamed_predicate: False",
+        "what": "Parsed base and candidate switch entries differing only in an accepted extra field, then evaluated the gate's misnamed-entry predicate"
+      },
+      {
+        "result": "ImportError: cannot import name 'SWITCHES_RELPATH' from partially initialized module 'agentmarshal.switches'",
+        "what": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3 -c 'from agentmarshal.switches import parse_switches'"
+      },
+      {
+        "result": "All 16 scenario names are represented",
+        "what": "Compared archived delta-spec scenario headings with tests/test_gate_operational.py docstrings"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "Full CI sequence",
+        "why": "The supplied snapshot has no Git metadata and uv is unavailable locally; the coordinator states the full sequence passed on the reviewed commit."
+      }
+    ],
+    "read": [
+      ".agentmarshal/journal/tasks/CR-219/contract.md",
+      "docs/threat-model.md",
+      "docs/adr/ADR-0010-process-extensions.md",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md",
+      "docs/adr/ADR-0014-where-things-live.md",
+      "docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md",
+      "openspec/changes/archive/2026-10-24-gate-operational-lane/",
+      "openspec/specs/gate-lanes/spec.md",
+      "src/agentmarshal/journal/gate.py",
+      "src/agentmarshal/stages.py",
+      "src/agentmarshal/switches.py",
+      "tests/test_gate_operational.py",
+      "tests/test_gate.py",
+      "tests/test_switches.py"
+    ]
+  }
+}

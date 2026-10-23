@@ -1,0 +1,110 @@
+{
+  "advisory_findings": [
+    "OP-2",
+    "OP-3"
+  ],
+  "artifacts": [
+    {
+      "hash": "0eda2412680055e7c62de39474608c2d1ad1f22399185aedbd016b1b7b5ad54d",
+      "ref": ".agentmarshal/journal/tasks/CR-219/artifacts/01M5NA77HQ9AVBKHEQPAEJJGKR-review.md"
+    }
+  ],
+  "classes": {
+    "OP-1": "contract-mismatch",
+    "OP-2": "claim-accuracy",
+    "OP-3": "claim-accuracy"
+  },
+  "created_at": "2026-10-23T21:21:10.199421Z",
+  "evidence": {
+    "OP-1": "openspec/specs/extension-stages/spec.md:30-52 ('A --phase pre-gate invocation SHALL run each [[stage]] whose phase is pre-gate-warn or pre-gate-stop'; 'A manifest the base-tree reader refuses SHALL fail the command naming the extension and its tree source') and :74-78 (scenario 'a manifest the base cannot parse fails the run naming the extension'), versus tests/test_gate_operational.py::test_a_broken_extension_cannot_block_the_operational_change, which asserts _stage_run(...) == 0 and the operational line with manifest='not a manifest [[[' at the base; also openspec/specs/extension-stages/spec.md:429-445 (base switches read and the switched-off result line) versus src/agentmarshal/stages.py:573-593, which returns before _base_extensions and _base_switches. No MODIFIED delta exists for extension-stages: openspec/changes/archive/2026-10-24-gate-operational-lane/specs/ holds only gate-lanes, the proposal lists 'modified: gate-lanes' alone, and the contract's scope names only openspec/specs/gate-lanes/ while AGENTS.md:18-21 requires the affected capability's spec directory to be in scope to archive.",
+    "OP-2": "openspec/specs/gate-lanes/spec.md:179-181 'every check that does not depend on a review SHALL run as on the diff lane', versus src/agentmarshal/journal/gate.py:1327 (the operational branch, which prints no scope line) and the complete expected transcript in tests/test_gate_operational.py::test_the_operational_lane_admits_a_switches_only_candidate, which contains no scope line. Unmeetable as written because gate.py:1556 scope-checks every changed path with no journal exemption while the lane requires contract.scope == ('.agentmarshal/switches.toml',) (gate.py:1013).",
+    "OP-3": "docs/threat-model.md:443-452 'The operational lane — decided, not yet implemented — admits a diff touching only .agentmarshal/switches.toml and the task's own records, requires no review, and skips the extensions' pre-gate stages'; docs/threat-model.md:410-415 'No published statement covers a symlink inside .agentmarshal/journal/ ... or at .agentmarshal/switches.toml', now covered by openspec/specs/gate-lanes/spec.md:244-246."
+  },
+  "findings": [
+    "OP-1"
+  ],
+  "previous_review": "01M5N8G6DJFTT4EK8G937AQK7H",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "357cddc772694b2a3592ccc6215c5d412d5a7b72",
+  "reviewed_contract": "0bf6173d5af546a66938098174570855cb02399c2426bc32df067ed7969c2b7b",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "code-reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-219",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "8 requirements; the three new ones at :170, :235, :338, each present once",
+        "what": "grep -n '### Requirement:' openspec/specs/gate-lanes/spec.md"
+      },
+      {
+        "result": "only 'archive' under changes/; the archived change holds design.md, proposal.md, tasks.md, specs/gate-lanes/spec.md",
+        "what": "ls openspec/changes/ and ls -R openspec/changes/archive/2026-10-24-gate-operational-lane/"
+      },
+      {
+        "result": "':30 stage run invokes the declared stages of the base shared extensions' states 'A --phase pre-gate invocation SHALL run each [[stage]] whose phase is pre-gate-warn or pre-gate-stop' and 'A manifest the base-tree reader refuses SHALL fail the command'; ':429' requires the base switches read and the switched-off result line — neither carries an operational exception (OP-1)",
+        "what": "grep -n '### Requirement:' openspec/specs/extension-stages/spec.md and sed -n 30,95p / 429,492p"
+      },
+      {
+        "result": "gate.py:78 _EXTENSIONS_PREFIX = '.agentmarshal/extensions/'; stages.py:118 _EXTENSIONS_RELPATH = '.agentmarshal/extensions' — the extracted helper's pathspec and refusal texts match the code it replaced byte for byte",
+        "what": "grep -n '_EXTENSIONS_PREFIX|_JOURNAL_PREFIX =|_EXTENSIONS_RELPATH' over gate.py and stages.py"
+      },
+      {
+        "result": "all four still used (lines 237, 256, 286, 594) — the kept imports are not dead",
+        "what": "grep -n '_run_git_lossy|_tree_entry|_manifest_from_tree|ExtensionManifestError' src/agentmarshal/stages.py"
+      },
+      {
+        "result": "resolved_review is None owes no advisory dispositions (complete.py:275) and review_not_examined stays False, so the operational lane prints 'gate: passed' like the journal-only lane (cli.py:986)",
+        "what": "grep -n 'resolved_review|review_not_examined' across src/ and sed -n 255,300p journal/complete.py"
+      },
+      {
+        "result": "gate.py:1711-1718 filters acceptances on '\"findings\" in record', so accept --operational is not read — criterion 5 holds",
+        "what": "grep for an operational acceptance read in the gate"
+      },
+      {
+        "result": "decision 17 as quoted by the contract; the implementation's lane shape, mandatory reason and pre-gate skip agree with it",
+        "what": "grep -n '17' docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md and sed -n 276,287p"
+      },
+      {
+        "result": "entry 5 still reads 'The operational lane — decided, not yet implemented'; entry 2 still says no published statement covers a symlink at .agentmarshal/switches.toml (OP-3)",
+        "what": "sed -n 405,460p docs/threat-model.md"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "the sandbox denied every python3/pytest invocation in this snapshot (no venv, no uv); the passing CI sequence is taken from the coordinator's note and no finding here claims a tool failure"
+      },
+      {
+        "what": "executing tests/test_gate_operational.py to confirm the byte-exact transcript assertion",
+        "why": "same execution restriction; the transcript was instead reconstructed line by line from run_gate's say/check order"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/journal/gate.py (lines 77-130, 528-570, 860-1050, 1100-1960, 2120-2188)",
+      "src/agentmarshal/stages.py (lines 60-120, 217-300, 540-700)",
+      "src/agentmarshal/switches.py",
+      "src/agentmarshal/journal/contracts.py (scope_covers, parse_contract_text)",
+      "src/agentmarshal/journal/complete.py (lines 255-300)",
+      "src/agentmarshal/cli.py (lines 960-1000)",
+      "tests/test_gate_operational.py",
+      "tests/test_gate.py (_run, _commit_all, _write_extension_manifest, fixture machinery)",
+      "tests/test_stages.py (_project, _manifest, _extension, _stage_run, _ci, _events)",
+      "openspec/specs/gate-lanes/spec.md",
+      "openspec/specs/extension-stages/spec.md",
+      "openspec/changes/archive/2026-10-24-gate-operational-lane/ (all four files)",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md (decisions 16-17)",
+      "docs/threat-model.md",
+      "AGENTS.md (OpenSpec archive rule)"
+    ]
+  }
+}
