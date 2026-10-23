@@ -14,11 +14,13 @@ decisions 16 and 17): a stage of a switched-off extension reports
 ``switched off (<task>, <reason>)`` and does not run — no pause, no
 warning — and a switches file that cannot be read blocks the stages of
 the extensions it names, its refusal named even where the requested
-phase declares no stage. The switched-off line is owed even where the
-clone's trust file cannot be read — a switched-off stage is never
-grant-checked — though that failure still ends the command at 1 once
-the owed lines are printed. Each result is appended to the process log as an
-``extension-event`` (ADR-0022 section 7); nothing is written to the
+phase declares no stage. The switched-off line — and the ``not run``
+line a refused switches file owes the extensions it names — is owed
+even where the clone's trust file cannot be read: neither stage was
+going to be grant-checked, though that failure still ends the command
+at 1 once the owed lines are printed. Each result is appended to the
+process log as an ``extension-event`` (ADR-0022 section 7); nothing is
+written to the
 journal. A ``pre-gate-stop`` stage that failed, did not finish or did not
 run pauses the process before the gate — the command exits 3 — while a
 ``pre-gate-warn`` stage's failure is a loud warning and a ``post-gate``
@@ -658,9 +660,10 @@ def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
         except ExtensionTrustError as error:
             # The file's refusal still fails the command on its one
             # line — but a switched-off stage is never grant-checked,
-            # so its result line is owed even now: the loop reports the
-            # switched-off outcomes and their events and runs nothing
-            # else, then the command exits 1.
+            # and nor is a stage a refused switches file names, so
+            # their result lines are owed even now: the loop reports
+            # those outcomes and their events and runs nothing else,
+            # then the command exits 1.
             print(f"stage run: {escape_for_display(str(error))}", file=stderr)
             grants_unreadable = True
     writer: ProcessLogWriter | None = None
@@ -749,16 +752,20 @@ def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
                 f"{escape_for_display(switch.reason or '')}",
                 b"",
             )
-        elif grants_unreadable:
-            # The trust file's refusal already fails the command, and
-            # only the switched-off outcomes — never grant-checked —
-            # are still owed a line: nothing else reports or runs.
-            continue
         elif blocked_names is not None and name in blocked_names:
             # The switches file names this extension and cannot be read:
             # its switch state is unknown, so the stage does not run —
             # a pre-gate-stop one pauses like any other not-run stage.
+            # The line is owed even where the trust file also cannot be
+            # read: this stage was never going to be grant-checked.
             outcome = _Outcome("not-run", "shared switches file unreadable", b"")
+        elif grants_unreadable:
+            # The trust file's refusal already fails the command, and
+            # only the outcomes never grant-checked — the switched-off
+            # stages and the stages a refused switches file names, both
+            # handled above — are still owed a line: nothing else
+            # reports or runs.
+            continue
         else:
             # Each stage gets its own temporary directory: a stage runs its
             # extension's code with the materialized copy in reach of

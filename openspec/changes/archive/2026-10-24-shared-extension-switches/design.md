@@ -90,10 +90,12 @@ per-stage refusal into a `not run (<reason>)` result line, an
   skipped before materialization or the grant check begins: nothing
   executes, nothing is trusted beyond the file itself. The switched-off
   line is therefore owed even where the workstation's `trust.toml`
-  cannot be read — the stage was never going to be grant-checked:
-  that refusal still fails the command on its one line, but only after
-  every switched-off outcome in the plan has been reported; no stage
-  that would be grant-checked runs, and the exit is 1. This is the
+  cannot be read — the stage was never going to be grant-checked —
+  and so is the `not run` line a refused switches file owes the
+  extensions it names: the trust refusal still fails the command on
+  its one line, but only after those owed outcomes in the plan have
+  been reported; no stage that would be grant-checked runs or reports,
+  and the exit is 1. This is the
   reading of "a switched-off pre-gate-stop extension does not pause":
   an operational CR silences the check it names — the file's
   visibility, not the pause, is the audit.

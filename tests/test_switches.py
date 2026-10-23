@@ -126,6 +126,22 @@ def test_an_unknown_or_missing_format_is_refused_naming_the_file() -> None:
         assert "format" in str(error.value)
 
 
+def test_a_file_without_a_switches_table_is_refused_naming_it() -> None:
+    """A file carrying no `[switches]` table is refused; an empty one is all-on."""
+    for text in (
+        "format = 1\n",
+        "format = 1\n\n[grants.openspec]\nfiles = {}\n",
+    ):
+        with pytest.raises(SwitchesError) as error:
+            parse_switches(text.encode("utf-8"), "the-file", {"openspec"})
+        assert "the-file: missing 'switches'" in str(error.value)
+        # No table, no keys to enumerate: the file could have named
+        # anything, so no entry names are declared.
+        assert error.value.names is None
+
+    assert parse_switches(b"format = 1\n\n[switches]\n", "the-file", {"openspec"}) == {}
+
+
 def test_an_entry_naming_no_shared_extension_is_refused_naming_the_file_and_the_entry() -> (  # noqa: E501
     None
 ):
@@ -449,6 +465,65 @@ def test_a_malformed_trust_file_still_reports_the_switched_off_line(
     assert event["extension"] == "openspec"
     assert event["decision"] == "switched-off"
     assert event["reason"] == "CR-214, hangs on empty repositories"
+
+
+def test_a_malformed_switches_file_and_trust_file_still_report_the_named_stages(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Both files unreadable: the switches-blocked lines are still owed.
+
+    With the base's switches file and the clone's trust file each
+    unreadable, a stage of an extension the switches file names prints
+    its `not run (shared switches file unreadable)` line — it was never
+    going to be grant-checked — while a stage the file does not name,
+    which would have needed a grant, is skipped silently; each refusal
+    keeps its one stderr line and the exit is 1.
+    """
+    repo = stage_helpers._project(tmp_path, monkeypatch)
+    stage_helpers._extension(repo, name="openspec")
+    stage_helpers._extension(
+        repo,
+        name="zeta",
+        manifest=stage_helpers._manifest(name="zeta"),
+        files={"bin/check.py": "print('z')\n"},
+    )
+    # openspec's entry is outside its shape but the TOML parses, so the
+    # file's names enumerate — to openspec alone.
+    (repo / ".agentmarshal" / "switches.toml").write_text(
+        'format = 1\n\n[switches.openspec]\nstate = "sideways"\ntask = "CR-1"\n',
+        encoding="utf-8",
+    )
+    stage_helpers._commit_all(repo, "base")
+    stage_helpers._git(repo, "checkout", "--quiet", "-b", "candidate")
+    (repo / "x.txt").write_text("x\n", encoding="utf-8")
+    stage_helpers._commit_all(repo, "candidate")
+    trust_file = repo / ".git" / "agentmarshal" / "trust.toml"
+    trust_file.parent.mkdir(parents=True, exist_ok=True)
+    trust_file.write_text("this is not toml [", encoding="utf-8")
+    stage_helpers._workstation(monkeypatch)
+    capsys.readouterr()
+
+    assert stage_helpers._stage_run(commit="candidate", base="master") == 1
+
+    captured = capsys.readouterr()
+    trust = [line for line in captured.err.splitlines() if "trust.toml" in line]
+    assert len(trust) == 1
+    switches = [line for line in captured.err.splitlines() if "switches.toml" in line]
+    assert len(switches) == 1
+    assert "'openspec'" in switches[0]
+    assert "openspec: not run (shared switches file unreadable)" in captured.out
+    # The extension the file does not name would have needed a grant:
+    # skipped silently — no result line, no output frame, no event.
+    assert "zeta" not in captured.out
+    events = [
+        event
+        for event in stage_helpers._events(repo)
+        if event["event"] == "extension-event"
+    ]
+    (event,) = events
+    assert event["extension"] == "openspec"
+    assert event["decision"] == "not-run"
+    assert event["reason"] == "shared switches file unreadable"
 
 
 def test_a_malformed_switches_file_is_reported_even_with_no_stage_in_the_phase(

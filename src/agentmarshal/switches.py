@@ -81,11 +81,11 @@ def parse_switches(
     the shared extensions the caller knows: an entry naming anything
     else is refused, so a stale entry cannot stand where the file's own
     reader would not recognise it. Byte text that is not UTF-8 TOML, a
-    missing or unknown ``format``, a ``switches`` that is not a table,
-    an entry that is not a table, an entry naming no known extension,
-    a ``state`` outside ``on``/``off``, a ``task`` that is not
-    ``CR-<n>``, an ``off`` without a ``reason``, an ``on`` carrying one,
-    or a ``reason`` over the character limit or holding a forgeable
+    missing or unknown ``format``, a missing ``switches`` or one that is
+    not a table, an entry that is not a table, an entry naming no known
+    extension, a ``state`` outside ``on``/``off``, a ``task`` that is
+    not ``CR-<n>``, an ``off`` without a ``reason``, an ``on`` carrying
+    one, or a ``reason`` over the character limit or holding a forgeable
     character is each refused naming the file and, where one exists,
     the entry. Keys an entry carries beyond ``state``, ``task`` and
     ``reason`` pass unread — a newer local format may add them.
@@ -96,7 +96,7 @@ def parse_switches(
         parsed = tomllib.loads(data.decode("utf-8"))
     except (tomllib.TOMLDecodeError, UnicodeDecodeError) as error:
         raise SwitchesError(f"{shown}: malformed: {error}") from error
-    table = parsed.get("switches", {})
+    table = parsed.get("switches")
     declared = frozenset(table) if isinstance(table, dict) else None
     version = parsed.get("format")
     if version is None:
@@ -106,6 +106,10 @@ def parse_switches(
     # format.
     if not (type(version) is int and version == SWITCHES_FORMAT):
         raise SwitchesError(f"{shown}: unknown format {version!r}", names=declared)
+    if table is None:
+        # No table, no keys to enumerate: like a non-table `switches`,
+        # the file could have named anything, so no names are declared.
+        raise SwitchesError(f"{shown}: missing 'switches'")
     if not isinstance(table, dict):
         raise SwitchesError(f"{shown}: malformed: 'switches' is not a table")
     switches: dict[str, Switch] = {}
