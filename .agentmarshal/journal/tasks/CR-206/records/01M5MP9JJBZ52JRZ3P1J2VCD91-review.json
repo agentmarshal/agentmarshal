@@ -1,0 +1,73 @@
+{
+  "artifacts": [
+    {
+      "hash": "7114d221d936b8d113b9b605823eb749896716a6859ab3b2d26505747cb4eea9",
+      "ref": ".agentmarshal/journal/tasks/CR-206/artifacts/01M5MP9JJBZ52JRZ3P1J2VCD91-review.md"
+    }
+  ],
+  "classes": {
+    "CR206-TEST-001": "test-gap"
+  },
+  "created_at": "2026-10-23T15:32:55.499505Z",
+  "evidence": {
+    "CR206-TEST-001": "tests/test_gate.py:3211-3227 asserts only passed status, one scope-line substring, and absence of 'manifest unreadable', while openspec/changes/archive/2026-10-24-gate-reads-directory-form/specs/extension-manifest/spec.md:58-64 requires the transcript byte-for-byte."
+  },
+  "findings": [
+    "CR206-TEST-001"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "3859a5593b0f8c88fbf360a0ef7aed602eb6f889",
+  "reviewed_contract": "2d9846d29a76c6a8c252ec5e725501159a334a031f93d913294254f588230d1c",
+  "reviewer": {
+    "email": "auto-review-openai@agent.example.invalid",
+    "model": "gpt-5.6-sol",
+    "role": "code-reviewer",
+    "vendor": "openai"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-206",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "No differences",
+        "what": "Compared the archived extension-manifest delta with the corresponding added main-spec section using diff -u"
+      },
+      {
+        "result": "All ten scenario names are present in tests/test_gate.py",
+        "what": "Enumerated delta-spec scenario headings and matching test docstrings with rg"
+      },
+      {
+        "result": "Could not start: uv is not installed in the review environment",
+        "what": "Attempted targeted CR-206 pytest selection"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "Targeted and full test suites locally",
+        "why": "The snapshot has no uv executable; the coordinator supplied a passing full-CI result"
+      },
+      {
+        "what": "Git commit/tree verification",
+        "why": "The supplied snapshot contains no Git repository metadata"
+      }
+    ],
+    "read": [
+      ".agentmarshal/journal/tasks/CR-206/contract.md",
+      "docs/threat-model.md",
+      "docs/adr/ADR-0010-process-extensions.md",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md",
+      "docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md",
+      "src/agentmarshal/journal/gate.py",
+      "src/agentmarshal/journal/extensions.py",
+      "tests/test_gate.py",
+      "openspec/changes/archive/2026-10-24-gate-reads-directory-form/",
+      "openspec/specs/extension-manifest/spec.md",
+      "Coordinator's statement that the full CI sequence passed on the reviewed commit"
+    ]
+  }
+}
