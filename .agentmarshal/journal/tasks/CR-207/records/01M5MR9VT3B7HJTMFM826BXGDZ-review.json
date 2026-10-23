@@ -1,0 +1,80 @@
+{
+  "artifacts": [
+    {
+      "hash": "8b38f7c69a111c4e3ae172f33587ae96ffb344a815ac1f3454f54e35da57ce03",
+      "ref": ".agentmarshal/journal/tasks/CR-207/artifacts/01M5MR9VT3B7HJTMFM826BXGDZ-review.md"
+    }
+  ],
+  "classes": {
+    "CR207-F1": "contract-mismatch"
+  },
+  "created_at": "2026-10-23T16:08:02.115982Z",
+  "evidence": {
+    "CR207-F1": "templates/journal-transaction.sh has mode 0644; direct execution exited 126, while tests/test_journal_transaction.py:103 invokes it as ['sh', str(SCRIPT), *arguments]"
+  },
+  "findings": [
+    "CR207-F1"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "06b69b0ad05e03587ea13030f13564511dc21ecc",
+  "reviewed_contract": "bad9be013154b6da0abfcf047ebf07a880ea27df73a03318fbf432cf245bdf26",
+  "reviewer": {
+    "email": "auto-review-openai@agent.example.invalid",
+    "model": "gpt-5.6-sol",
+    "role": "code-reviewer",
+    "vendor": "openai"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-207",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "-rw-r--r-- 644 templates/journal-transaction.sh",
+        "what": "stat -c '%A %a %n' templates/journal-transaction.sh"
+      },
+      {
+        "result": "Direct invocation failed with exit status 126",
+        "what": "./templates/journal-transaction.sh CR-001 slug message.txt"
+      },
+      {
+        "result": "Passed",
+        "what": "sh -n templates/journal-transaction.sh"
+      },
+      {
+        "result": "Per-task recipes are present; no outbox requirement pins the replaced README text",
+        "what": "Static searches of documented staging recipes and OpenSpec requirements"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "Full repository CI sequence",
+        "why": "The coordinator established that it passed on the exact reviewed commit; this snapshot has no uv or Python executable"
+      },
+      {
+        "what": "Independent commit and parent-diff inspection",
+        "why": "The supplied snapshot contains no Git metadata"
+      }
+    ],
+    "read": [
+      "CR-207 contract and supplied diff",
+      "templates/journal-transaction.sh",
+      "tests/test_journal_transaction.py",
+      "tests/test_project.py",
+      "tests/test_quickstart.py",
+      "src/agentmarshal/project.py",
+      "docs/quickstart.md",
+      "docs/sidecar.md",
+      "docs/proposals/019-journal-transactions-assume-direct-commits.md",
+      "docs/proposals/035-journal-transactions-sweep-records-of-other-tasks.md",
+      "docs/adr/ADR-0012-what-the-tool-does-and-what-it-supplies.md",
+      "docs/threat-model.md",
+      "openspec/specs/outbox/spec.md",
+      "coordinator's passing full-CI report for commit 06b69b0ad05e03587ea13030f13564511dc21ecc"
+    ]
+  }
+}
