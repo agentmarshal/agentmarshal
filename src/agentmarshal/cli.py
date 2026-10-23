@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TextIO
 
-from agentmarshal import __version__, outbox, steps
+from agentmarshal import __version__, agree, outbox, steps
 from agentmarshal.doctor import run_doctor
 from agentmarshal.journal.acceptance import AcceptanceError, accept_findings
 from agentmarshal.journal.brief import build_brief
@@ -376,6 +376,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     outbox.register(subparsers)
     steps.register(subparsers)
+    agree.register(subparsers)
     return parser
 
 
@@ -1359,5 +1360,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return outbox.run(args, sys.stderr)
     if args.command == "step":
         return steps.run(args, sys.stderr)
+    if args.command == "agree":
+        return agree.run(args, sys.stderr)
 
     parser.error(f"unknown command: {args.command}")
