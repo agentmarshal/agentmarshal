@@ -23,7 +23,8 @@ the rule that configuration is reviewed.
   that exists to serve a review the lane requires none of.
 - Fail-closed refusal where it matters: a file the parser refuses, an
   entry naming another task, an entry naming no shared extension the
-  base declares — each refuses naming the file and the entry.
+  base declares, an entry the base held and the candidate drops — each
+  refuses naming the file and the entry.
 - Every other lane's transcript byte for byte.
 
 ## Non-Goals
@@ -156,18 +157,25 @@ gate names extensions without loading manifests:
   one, the entry.
 - A parsed file is compared entry by entry against the base's file —
   parsed the same way when the base has one, treated as no entries when
-  the base file is absent or unparsable (a removal is allowed anyway,
-  so the base's entries change nothing). Every entry the candidate adds
-  or changes relative to the base must carry `task` equal to this task;
-  one naming another task refuses naming the file and the entry.
+  the base file is absent or unparsable (its entries cannot be
+  enumerated, so nothing can be shown dropped; the candidate's own
+  entries still face the parser and the task rule). Every entry the
+  candidate adds or changes relative to the base must carry `task`
+  equal to this task; one naming another task refuses naming the file
+  and the entry.
 
-**A removal is allowed — recommended, even.** An entry the base held
-and the candidate drops is judged by the candidate having no entry: the
-switch is gone and the extension is simply on. Switching back on is as
-operational as switching off — a recovery needs no review more than the
-outage did — and an entry that no longer exists cannot be made to carry
-this task's name, so requiring it would make a removal unadmittable.
-The entry's `task` at the base is not consulted.
+**A removal refuses.** An entry the base held and the candidate drops
+refuses the candidate naming the file and the entry — and a candidate
+that deletes the file while the base held entries drops every one,
+refused the same way. Removing is a change like any other: it carries
+the task that made it or it does not happen, so a dropped entry that
+can no longer name a task is refused rather than waved through — a
+bare drop is indistinguishable from forgetting to carry an entry
+forward, and refusing makes the silent shape of that mistake a loud
+one. The intended recovery is not a drop but a change: an entry with
+`state = "on"` naming this task, which the added-or-changed rule
+already admits. The dropped entry's `task` at the base is not
+consulted — it is the absence that refuses.
 
 An unchanged entry's `task` is likewise not consulted: the candidate
 carries it from a change already admitted; it is not the candidate's

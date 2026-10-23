@@ -27,9 +27,11 @@ transaction that retires it.
   verdict, independence and agreement checks NOT EXAMINED — the
   operational change requires none of them — while every check that
   does not depend on a review runs as it does today. Every entry the
-  candidate adds or changes must name this task; a removed entry is
-  allowed, because switching an extension back on is as operational as
-  switching it off. In a sidecar the operational lane is not offered.
+  candidate adds or changes must name this task; an entry the base held
+  and the candidate drops refuses the candidate naming the file and the
+  entry, and switching an extension back on is a `state = "on"` entry
+  naming this task — every change carries the task that made it. In a
+  sidecar the operational lane is not offered.
 - `stage run --phase pre-gate` on a candidate the gate's own predicate
   qualifies for the lane prints one line saying pre-gate stages do not
   run on an operational change, runs no stage and exits 0, decided by

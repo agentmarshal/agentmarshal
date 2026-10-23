@@ -244,11 +244,14 @@ parse reached one, the entry; a link or a non-blob at the file's path
 refuses as not a file. Every entry the candidate adds or changes
 relative to the base SHALL name the transaction's task in `task`; one
 naming another task SHALL refuse the candidate naming the file and the
-entry. An entry the base held and the candidate drops SHALL be allowed
-— a removal is judged by the candidate having no entry, and switching
-an extension back on is as operational as switching it off. An entry
-the file carries unchanged from the base is not the candidate's claim:
-its `task` is not consulted. Every value from the file SHALL be escaped
+entry. An entry the base holds and the candidate drops SHALL refuse
+the candidate naming the file and the entry — and a candidate that
+deletes the file while the base held entries drops every one, refused
+the same way. Switching an extension back on is not a removal but a
+changed entry: `state = "on"` naming the transaction's task, so every
+change the file carries names the task that made it. An entry the file
+carries unchanged from the base is not the candidate's claim: its
+`task` is not consulted. Every value from the file SHALL be escaped
 on display.
 
 #### Scenario: a malformed switches file at the candidate refuses naming the file
@@ -270,11 +273,19 @@ on display.
   this transaction's task
 - **THEN** the gate refuses naming the file and the entry
 
-#### Scenario: a removed entry is allowed
+#### Scenario: a removed entry is refused naming the file and the entry
 
 - **WHEN** the base's file holds an entry the candidate's file drops —
-  or the candidate deletes the file
-- **THEN** the candidate is not refused over the removal
+  or the candidate deletes the file, dropping every entry it held
+- **THEN** the gate refuses naming the file and each dropped entry
+
+#### Scenario: switching an extension back on names this task
+
+- **WHEN** the base's file holds an `off` entry for an extension and
+  the candidate's file changes it to `state = "on"` with `task` naming
+  this task
+- **THEN** the candidate is not refused over the entry: switching back
+  on is a changed entry like any other, naming the task that made it
 
 #### Scenario: an unchanged entry naming another task is not refused
 

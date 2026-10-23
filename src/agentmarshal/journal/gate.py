@@ -1286,12 +1286,13 @@ def run_gate(
         contract = operational_contract
         say("PASS: operational transaction (operational lane; review not required)")
         # ADR-0013 decision 17's lane check: the candidate's file parses
-        # against the shared extension names the base declares, and every
-        # entry it adds or changes relative to the base names this task.
-        # A removal is judged by the candidate having no entry — switching
-        # an extension back on is as operational as switching it off — so
-        # the base's entries decide nothing and a base file that cannot be
-        # parsed is simply no entries.
+        # against the shared extension names the base declares; every
+        # entry it adds or changes relative to the base names this task —
+        # switching one back on is an `on` entry naming it — and an entry
+        # the base held that the candidate drops refuses: removing is a
+        # change like any other, so it carries the task that made it or
+        # it does not happen. A base file that cannot be parsed is simply
+        # no entries to remove or compare.
         extension_names = _extension_names_at_tree(project_root, merge_base)[0]
         try:
             base_switches = _switches_at_tree(project_root, merge_base, extension_names)
@@ -1307,27 +1308,33 @@ def run_gate(
             check(False, str(error))
             candidate_switches = None
         if candidate_switches is not None:
+            removed = sorted(
+                name for name in base_switches if name not in candidate_switches
+            )
             misnamed = sorted(
                 name
                 for name, switch in candidate_switches.items()
                 if switch.task != task_id and base_switches.get(name) != switch
             )
-            removed = [name for name in base_switches if name not in candidate_switches]
-            detail = f"every added or changed switch entry names {task_id}"
+            refusals: list[str] = []
             if removed:
-                detail += (
-                    f"; {len(removed)} removed "
-                    f"{'entry' if len(removed) == 1 else 'entries'} allowed"
+                refusals.append(
+                    "switch entries removed: "
+                    + ", ".join(f"{name!r}" for name in removed)
+                )
+            if misnamed:
+                refusals.append(
+                    "switch entries naming another task: "
+                    + ", ".join(
+                        f"{name!r} (task {candidate_switches[name].task})"
+                        for name in misnamed
+                    )
                 )
             check(
-                not misnamed,
-                detail
-                if not misnamed
-                else f"{candidate_source}: switch entries naming another task: "
-                + ", ".join(
-                    f"{name!r} (task {candidate_switches[name].task})"
-                    for name in misnamed
-                ),
+                not refusals,
+                f"every added or changed switch entry names {task_id}"
+                if not refusals
+                else f"{candidate_source}: " + "; ".join(refusals),
             )
         say("NOT EXAMINED: agreement (the operational lane requires none)")
         named_manifests: dict[str, ExtensionManifest] = {}

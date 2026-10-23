@@ -298,15 +298,16 @@ def test_an_entry_naming_another_task_is_refused(
     ) in output
 
 
-def test_a_removed_entry_is_allowed(
+def test_a_removed_entry_is_refused_naming_the_file_and_the_entry(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Scenario: a removed entry is allowed.
+    """Scenario: a removed entry is refused naming the file and the entry.
 
     The base's file switches openspec off under CR-214; the candidate
-    drops the entry — and, in a second run, deletes the file — each an
-    operational change: switching back on needs no review more than
-    switching off did.
+    drops the entry — and, in a second run, deletes the file, dropping
+    every entry the base held — and each is refused naming the file and
+    the entry: removing is a change like any other, so it carries the
+    task that made it or it does not happen.
     """
 
     repo, base = _operational_repo(tmp_path, monkeypatch)
@@ -322,15 +323,46 @@ def test_a_removed_entry_is_allowed(
 
     passed, output = _run(repo, head, base, head)
 
-    assert passed, output
-    assert "removed entry allowed" in output.replace("entries", "entry")
+    assert not passed
+    assert f"FAIL: {head}:{_SWITCHES}: switch entries removed: 'openspec'" in output
 
     _write_switches(repo, None)
     head = _commit_all(repo, "delete the file")
 
     passed, output = _run(repo, head, base, head)
 
+    assert not passed
+    assert f"FAIL: {head}:{_SWITCHES}: switch entries removed: 'openspec'" in output
+
+
+def test_switching_an_extension_back_on_names_this_task(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: switching an extension back on names this task.
+
+    The base's file switches openspec off under CR-214; the candidate
+    turns it back on — `state = "on"` carrying this task — and is
+    admitted: an `on` entry is an added-or-changed entry like any
+    other, naming the task that made it.
+    """
+
+    repo, base = _operational_repo(tmp_path, monkeypatch)
+    _write_switches(
+        repo,
+        'format = 1\n\n[switches.openspec]\nstate = "off"\n'
+        'task = "CR-214"\nreason = "switched off before"\n',
+    )
+    base = _commit_all(repo, "switched off at base")
+    _write_switches(
+        repo,
+        'format = 1\n\n[switches.openspec]\nstate = "on"\ntask = "CR-001"\n',
+    )
+    head = _commit_all(repo, "switch openspec back on")
+
+    passed, output = _run(repo, head, base, head)
+
     assert passed, output
+    assert "PASS: every added or changed switch entry names CR-001" in output
 
 
 def test_an_unchanged_entry_naming_another_task_is_not_refused(
