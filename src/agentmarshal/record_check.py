@@ -36,13 +36,13 @@ from __future__ import annotations
 import argparse
 import hashlib
 import os
-import subprocess
 import tempfile
 from pathlib import Path
 from typing import TextIO
 
 from agentmarshal import __version__
 from agentmarshal.agree import _declared_actor
+from agentmarshal.commits import CommitResolutionError, resolve_commit
 from agentmarshal.journal.actors import resolve_recorded_by
 from agentmarshal.journal.capture import CaptureError, mask_leaks, scan_for_leaks
 from agentmarshal.journal.contracts import JournalContractError
@@ -132,39 +132,6 @@ def _placement(stderr: TextIO) -> Placement | None:
         # the way a transcript line is, as cli.py's placement does.
         print(escape_for_display(str(error)), file=stderr)
         return None
-
-
-def _resolve_commit(journal_project_root: Path, reference: str) -> str:
-    """Resolve *reference* to its full commit id in the journal's repository.
-
-    ``rev-parse --verify <rev>^{commit}`` answers both halves of the rule
-    at once: what resolves is the full id, and what does not — a rev the
-    repository does not hold, or one naming no commit — fails here rather
-    than reaching the record's hex rule with a name it cannot take.
-    """
-
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--verify", f"{reference}^{{commit}}"],
-            cwd=journal_project_root,
-            capture_output=True,
-            check=False,
-        )
-    except OSError as error:
-        raise RecordCheckError(f"cannot run git: {error}") from error
-    resolved = result.stdout.decode("utf-8", errors="replace").strip()
-    if result.returncode != 0 or len(resolved) != 40:
-        detail = result.stderr.decode("utf-8", errors="replace").strip()
-        message = (
-            f"--commit {escape_for_display(reference)} does not resolve to "
-            "a commit in the journal's repository"
-        )
-        if detail:
-            # git's error text is a value the tool did not write — escaped
-            # like every displayed string it does not control.
-            message += f": {escape_for_display(detail)}"
-        raise RecordCheckError(message)
-    return resolved
 
 
 def _bounded_tail(text: str) -> str:
@@ -291,7 +258,14 @@ def run(args: argparse.Namespace, stderr: TextIO) -> int:
     journal_root = placement.journal_root
     try:
         load_task_for_record(journal_root, args.task, "check")
-        resolved = _resolve_commit(placement.project_root, args.commit)
+        try:
+            resolved = resolve_commit(
+                placement.project_root,
+                args.commit,
+                repository="the journal's repository",
+            )
+        except CommitResolutionError as error:
+            raise RecordCheckError(str(error)) from error
         content: bytes | None = None
         if args.output_file is not None:
             try:

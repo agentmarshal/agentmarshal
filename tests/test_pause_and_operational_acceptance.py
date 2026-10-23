@@ -1115,3 +1115,117 @@ def test_an_acceptance_over_findings_is_unchanged(
     assert record["schema"] == 3
     assert "accepted_pause" not in record
     assert "operational" not in record
+
+
+# --- in a sidecar, the journal's repository resolves --------------------------
+
+
+def _git(repo: Path, *arguments: str) -> str:
+    return subprocess.run(
+        ["git", *arguments],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def _commit(repo: Path, message: str) -> str:
+    _git(repo, "add", "-A")
+    _git(
+        repo,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.invalid",
+        "commit",
+        "--quiet",
+        "-m",
+        message,
+    )
+    return _git(repo, "rev-parse", "HEAD")
+
+
+def _host_and_sidecar(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A sidecar project whose host holds a commit the sidecar does not."""
+
+    host = tmp_path / "host"
+    host.mkdir()
+    _git(host, "init", "--quiet")
+    (host / "readme.md").write_text("host\n", encoding="utf-8")
+    _commit(host, "host base")
+
+    sidecar = tmp_path / "sidecar"
+    sidecar.mkdir()
+    _git(sidecar, "init", "--quiet")
+    monkeypatch.chdir(sidecar)
+    assert main(["init", "--host", str(host)]) == 0
+    (sidecar / "notes.txt").write_text("sidecar\n", encoding="utf-8")
+    return host
+
+
+def test_in_a_sidecar_the_pause_commit_resolves_in_the_journal_repository(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: in a sidecar the commit resolves in the journal repository.
+
+    The sidecar's repository carries its own commits; the host's are
+    never asked — a host-only reference is refused and the sidecar's
+    own head resolves to its own id.
+    """
+
+    host = _host_and_sidecar(tmp_path, monkeypatch)
+    host_head = _git(host, "rev-parse", "HEAD")
+    sidecar = tmp_path / "sidecar"
+    sidecar_head = _commit(sidecar, "sidecar state")
+    _extension(sidecar)
+    assert main(["open", "--title", "Task"]) == 0
+    journal = sidecar / ".agentmarshal" / "journal"
+    capsys.readouterr()
+
+    assert _accept("--commit", "HEAD", "--pause", "openspec") == 0
+
+    record = read_records(journal, "CR-001")[-1]
+    assert record["accepted_pause"] == {"extension": "openspec"}
+    assert record["accepted_commit"] == sidecar_head
+    assert sidecar_head != host_head
+
+    # A commit only the host holds does not resolve — the host is never
+    # asked.
+    before = _snapshot(journal)
+    assert _accept("--commit", host_head, "--pause", "openspec") == 1
+    assert "does not resolve" in capsys.readouterr().err
+    assert _snapshot(journal) == before
+
+
+def test_in_a_sidecar_the_operational_commit_resolves_in_the_journal_repository(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: in a sidecar the commit resolves in the journal repository.
+
+    The sidecar's repository carries its own commits; the host's are
+    never asked — a host-only reference is refused and the sidecar's
+    own head resolves to its own id.
+    """
+
+    host = _host_and_sidecar(tmp_path, monkeypatch)
+    host_head = _git(host, "rev-parse", "HEAD")
+    sidecar = tmp_path / "sidecar"
+    sidecar_head = _commit(sidecar, "sidecar state")
+    assert main(["open", "--title", "Task"]) == 0
+    journal = sidecar / ".agentmarshal" / "journal"
+    capsys.readouterr()
+
+    assert _accept("--commit", "HEAD", "--operational") == 0
+
+    record = read_records(journal, "CR-001")[-1]
+    assert record["operational"] is True
+    assert record["accepted_commit"] == sidecar_head
+    assert sidecar_head != host_head
+
+    # A commit only the host holds does not resolve — the host is never
+    # asked.
+    before = _snapshot(journal)
+    assert _accept("--commit", host_head, "--operational") == 1
+    assert "does not resolve" in capsys.readouterr().err
+    assert _snapshot(journal) == before
