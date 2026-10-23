@@ -76,6 +76,15 @@ _RUNTIME_VERSION_TIMEOUT_SECONDS = 10
 #: ignored: ``v20.11.0`` reads as ``20.11.0``.
 _RUNTIME_VERSION_OUTPUT = re.compile(r"v?(\d+(?:\.\d+)*)")
 
+#: The form the one ``PATH`` exception's name takes: a bare program
+#: name — letters, digits, ``.``, ``_``, ``-``. Anything else reads
+#: as a path to ``which``, which then skips the ``PATH`` search and
+#: probes it directly — a ``bin/node``, and on Windows a
+#: drive-relative ``C:tool`` — so the name is refused as invalid
+#: before any lookup. ``.`` and ``..`` match the pattern and are
+#: refused beside it.
+_RUNTIME_NAME = re.compile(r"[A-Za-z0-9._-]+")
+
 
 @dataclass(frozen=True)
 class DoctorCheck:
@@ -389,7 +398,10 @@ def _check_extension_runtime(
     the runtime a wrapped product needs, declared in ``[wraps].runtime``
     as ``<name> >= <version>`` — a minimum. The declared name resolves
     through *resolver* — ``shutil.which`` in a real run, a temporary
-    ``PATH``'s contents in a test; the resolved path runs ``--version``
+    ``PATH``'s contents in a test — but only as a bare program name:
+    a name outside ``_RUNTIME_NAME``'s form, ``.`` and ``..`` beside,
+    is invalid and is reported with no lookup at all, the exception
+    never probing a path. The resolved path runs ``--version``
     as an argv call, never through a shell, under a short limit; and
     the answer's first run of numeric dot-separated components is the
     version, a leading ``v`` ignored — an answer naming none is
@@ -399,14 +411,18 @@ def _check_extension_runtime(
 
     runtime_name, _, minimum_text = runtime.split()
     requirement = escape_for_display(runtime)
-    if runtime_name in {".", ".."} or "/" in runtime_name or "\\" in runtime_name:
-        # ``which`` skips the PATH search for an argument carrying a
-        # directory component and probes the path directly — the one
-        # PATH exception is a bare program name, never a path.
+    if _RUNTIME_NAME.fullmatch(runtime_name) is None or runtime_name in {
+        ".",
+        "..",
+    }:
+        # ``which`` skips the PATH search for an argument it reads as a
+        # path and probes it directly — the one PATH exception is a
+        # bare program name, so an invalid name is reported with no
+        # lookup at all.
         return (
             False,
             f"the declared runtime name {escape_for_display(runtime_name)} "
-            "is not a bare program name and cannot be resolved on PATH",
+            f"is invalid; {escape_for_display(name)} requires {requirement}",
         )
     minimum = _runtime_version(minimum_text)
     if minimum is None:

@@ -394,29 +394,64 @@ def test_a_project_without_wrappers_prints_doctors_output_unchanged(
     assert "Summary: all 11 checks passed" in out
 
 
-def test_a_declared_runtime_name_carrying_a_path_never_leaves_path(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+@pytest.mark.parametrize("runtime_name", ["C:tool", "bin/node", "..", "./tool"])
+def test_an_invalid_runtime_name_is_reported_with_no_lookup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    runtime_name: str,
 ) -> None:
-    """A `<name>` carrying a separator fails rather than probing a path.
+    """An invalid `<name>` is reported as invalid and never reaches `which`.
 
-    Not a spec scenario — the check's own seam: ``shutil.which`` skips
-    the ``PATH`` search for an argument carrying a directory component,
-    so a manifest declaring ``runtime = "./tool >= 1"`` would probe
-    ``./tool`` directly instead of searching ``PATH``. The one ``PATH``
-    exception is a bare program name, so the check fails first — even
-    with an executable waiting at the probed spot.
+    Not a spec scenario — the check's own seam, and the class review
+    finding B1 named: ``shutil.which`` skips the ``PATH`` search for an
+    argument it reads as a path — ``bin/node`` or ``./tool``, and on
+    Windows a drive-relative ``C:tool`` — and probes it directly. The
+    exception is a bare program name, so the name's form is checked
+    before any lookup: an executable waits at each spot a lookup could
+    reach — ``C:tool`` itself sits on the temporary ``PATH`` (a legal
+    POSIX file name), ``bin/node`` and ``tool`` under the working
+    directory for the probe POSIX ``which`` would run — and each name
+    still fails as invalid rather than finding one.
     """
 
     repo = _project(tmp_path, monkeypatch)
-    _wrapper_extension(repo, runtime="./tool >= 1")
-    tool = repo / "tool"
-    tool.write_text("#!/bin/sh\nprintf 'v99.0.0\\n'\n", encoding="utf-8")
-    tool.chmod(0o755)
+    _wrapper_extension(repo, runtime=f"{runtime_name} >= 1")
+    _fake_runtime(tmp_path / "fake-bin", monkeypatch, name="C:tool")
+    for probe in (repo / "bin" / "node", repo / "tool"):
+        probe.parent.mkdir(parents=True, exist_ok=True)
+        probe.write_text("#!/bin/sh\nprintf 'v99.0.0\\n'\n", encoding="utf-8")
+        probe.chmod(0o755)
 
     assert main(["doctor"]) == 1
 
     out = capsys.readouterr().out
     assert (
-        "FAIL: extension runtime openspec — the declared runtime name "
-        "./tool is not a bare program name and cannot be resolved on PATH" in out
+        f"FAIL: extension runtime openspec — the declared runtime name "
+        f"{runtime_name} is invalid; openspec requires {runtime_name} >= 1" in out
+    )
+
+
+def test_a_runtime_name_of_bare_program_name_form_resolves_on_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A `<name>` of bare program-name characters resolves on PATH.
+
+    The declared form keeps dots, digits, underscores and dashes — a
+    runtime named ``py3.11-fmt_1`` is a bare program name, not a path,
+    so it is resolved through the temporary ``PATH`` like ``node``.
+    """
+
+    repo = _project(tmp_path, monkeypatch)
+    _every_precondition_met(repo, monkeypatch)
+    name = "py3.11-fmt_1"
+    _wrapper_extension(repo, runtime=f"{name} >= 2")
+    script = _fake_runtime(tmp_path / "fake-bin", monkeypatch, name=name)
+
+    assert main(["doctor"]) == 0
+
+    out = capsys.readouterr().out
+    assert (
+        f"OK: extension runtime openspec — {script} reports 20.11.0, "
+        f"meeting {name} >= 2" in out
     )
