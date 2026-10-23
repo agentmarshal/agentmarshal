@@ -68,6 +68,63 @@ def render_amendment_history(records: Sequence[Mapping[str, object]]) -> str:
     return "## Contract amendment history\n\n" + "\n".join(entries)
 
 
+# The results that make a check record a failure (ADR-0017 decision 3):
+# `failed` and `error` both count; `passed` and `skipped` do not.
+_FAILING_CHECK_RESULTS = frozenset({"failed", "error"})
+
+
+def render_last_failing_check(records: Sequence[Mapping[str, object]]) -> str:
+    """Render the task's most recent failing check (ADR-0017 decisions 2 and 3).
+
+    Most recent is the last in record order — the record id (ULID) order
+    the rest of the brief reads records in. The record is the observer's
+    declaration, and the section says so in one sentence; every value it
+    lends is escaped as the rest of the brief escapes record values.
+    """
+
+    failing: Mapping[str, object] | None = None
+    position = 0
+    for index, record in enumerate(records):
+        if (
+            record.get("record_type") == "check"
+            and record.get("result") in _FAILING_CHECK_RESULTS
+        ):
+            failing, position = record, index
+    if failing is None:
+        return ""
+    section = [
+        "## Last failing check",
+        "",
+        "A check record is the observer's declaration of what the pipeline "
+        "found on the commit, not proof of it.",
+        "",
+        f"- name: {escape_for_display(str(failing['name']))}",
+        f"- result: {escape_for_display(str(failing['result']))}",
+        f"- commit: {escape_for_display(str(failing['commit'])[:7])}",
+    ]
+    for field in ("failed_step", "run_url", "excerpt"):
+        value = failing.get(field)
+        if value is not None:
+            section.append(f"- {field}: {escape_for_display(str(value))}")
+    fixed: object = None
+    for record in records[position + 1 :]:
+        if (
+            record.get("record_type") == "check"
+            and record.get("result") == "passed"
+            and record.get("name") == failing["name"]
+            and record.get("commit") != failing["commit"]
+        ):
+            fixed = record.get("commit")
+    if fixed is not None:
+        section += [
+            "",
+            "A later check of the same name passed on commit "
+            f"{escape_for_display(str(fixed)[:7])}; "
+            "this failure may already be fixed.",
+        ]
+    return "\n".join(section) + "\n"
+
+
 def _contract_body(text: str) -> str:
     """Return everything after the contract header without altering it."""
 
@@ -372,6 +429,7 @@ def build_brief(journal_root: Path, task_id: str, host_root: Path | None = None)
         f"{body}"
     )
     brief = append_amendment_history(brief, render_amendment_history(task.records))
+    brief = append_amendment_history(brief, render_last_failing_check(task.records))
     project_root = journal_root.parents[1]
     return _append_named_material(
         brief, host_root or project_root, project_root, task.contract
