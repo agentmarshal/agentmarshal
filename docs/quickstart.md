@@ -3,7 +3,7 @@
 This walks through the whole AgentMarshal loop on a throwaway repository —
 from installing the package to a task that carries durable, SHA-bound
 evidence that its work was independently reviewed. Every command in "The
-governed loop" below was run against a wheel of `agentmarshal` 0.4.1 built
+governed loop" below was run against a wheel of `agentmarshal` 0.5.0 built
 before the release was published: the main path end to end in one pass, and
 the two branches that pass cannot reach — `accept`, which needs a non-approving
 review, and `reopen`, which undoes the state the run arrives at — separately.
@@ -23,7 +23,7 @@ Requirements: **Python ≥ 3.12** and **git** on your `PATH`.
 Install the release this guide describes:
 
 ```sh
-pip install agentmarshal==0.4.1
+pip install agentmarshal==0.5.0
 agentmarshal --version
 ```
 
@@ -123,7 +123,11 @@ reviews form a chain. A task's first review carries no link, and `submit-review`
 writes none.
 
 Any other key is refused, and the error names it. The prompt AgentMarshal builds
-states all of this, so a reviewer does not have to guess. It also asks for one
+states the protocol itself — the required fields, each optional field's shape,
+the configured class vocabulary, and that a class outside it is recorded as
+`other` — so a reviewer does not have to guess at the format; the warning and
+refusal behaviour described above is the launcher's, and the prompt does not
+spell it out. It also asks for one
 line of prose per blocking or advisory finding id before the verdict block,
 naming what is wrong and where: ids are labels for the machine, while the prose
 is what a human will read. When a verdict is refused the reviewer's **raw
@@ -243,7 +247,7 @@ second, explicit lie. See [ADR-0006](adr/ADR-0006-actors-and-identity.md).
 
 `agentmarshal init` writes a minimal `.agentmarshal/project.json`
 (`schema` + framework version); no hand-editing is needed for the loop. Of the
-`capture` policy's classes, 0.4.1 acts on `reviews` alone — what happens to a
+`capture` policy's classes, 0.5.0 acts on `reviews` alone — what happens to a
 review's prose, described under step 4. To keep that prose in the journal:
 
 ```json
@@ -252,7 +256,7 @@ review's prose, described under step 4. To keep that prose in the journal:
 
 The `economics` and `sessions` classes are parsed and not acted on, and there
 is no private store yet. The
-`leak_scan.private_markers` list is active in 0.4.1 and adds project-specific
+`leak_scan.private_markers` list is active in 0.5.0 and adds project-specific
 strings to the built-in advisory scan used by `leak-scan` and the gate.
 
 When a schema-2 contract names an extension, the gate reads that extension's
@@ -435,9 +439,11 @@ separate check:
 agentmarshal leak-scan --commit "$IMPL" --base "$BASE"
 ```
 
-The gate runs this scan too and warns on matches; in 0.4.1 a match does not
-block. In an embedded journal, the gate is the merge authority. It passes only
-when every blocking check holds:
+The gate runs this scan too and warns on matches; in 0.5.0 a match does not
+block the gate. The `leak-scan` command itself exits 1 while a reported hit
+carries no acknowledgement; `agentmarshal acknowledge` records the
+verification of one. In an embedded journal, the gate is the merge
+authority. It passes only when every blocking check holds:
 
 ```sh
 AGENTMARSHAL_PIPELINE_OK_SHA="$IMPL" \

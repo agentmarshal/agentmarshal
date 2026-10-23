@@ -1,5 +1,109 @@
 # Upgrading
 
+## 0.4.1 → 0.5.0
+
+### Every clone and CI job moves to 0.5.0 before the first 0.5.0 record
+
+**The upgrade rule of
+[ADR-0022](docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md)
+section 1: every clone and every CI job goes to 0.5.0 before the first
+0.5.0 record is written.** It is the coordinated cutover 0.4.0's was, with
+less warning: a task opened on 0.5.0 carries a schema-7 record from its
+first write, because `opened` and `amendment` records now pin the
+contract's hash — the first `open` anywhere is already the break, not the
+first use of a new feature.
+
+What a 0.4.x installation does with each, as that section states:
+
+- **a schema-7 record** — `read_records` raises `record has an unknown or
+  missing schema version`; the `status` listing and `report` fail
+  outright, and `validate` and the gate refuse on every task and every
+  pull request carrying such a record — which, under the paragraph above,
+  is every new task;
+- **a contract header of schema 3** — contract parsing refuses it, so
+  every surface that parses the contract refuses with it;
+- **a manifest of schema 2, or an extension in directory form** — the
+  0.4.x gate reports "named extension manifest unreadable": a refusal only
+  where the contract names the extension, silence where it does not;
+- **the new `project.json` keys** — ignored outright: a 0.4.x
+  installation simply does not apply an agreement requirement, a
+  finding-class vocabulary or a round threshold.
+
+The break is one-directional: **0.5.0 reads everything 0.4.x wrote** —
+records, contracts and manifests keep the schema they were written at, and
+nothing needs migration or rewriting.
+
+### The procedure
+
+1. **Find every place that reads the shared journal** — each operator's
+   checkout, every CI job that runs `validate`, `status`, `gate` or
+   `complete`, and any merge wrapper.
+2. **Upgrade all of them before the first `open` on 0.5.0.** This is a
+   coordinated cutover; do not let a 0.4.x checkout remain as a reader.
+3. **Verify** `agentmarshal --version` reports `0.5.0` everywhere, then run
+   `agentmarshal validate` on the journal.
+4. Resume work. A 0.4.x reader that was missed refuses the first schema-7
+   record with the message above; upgrade that reader rather than editing
+   the journal to remove evidence.
+
+### Per installation method
+
+**Pinned (`agentmarshal==0.4.1`)** — change the pin to `==0.5.0` and
+reinstall.
+
+**Unpinned (`pip install agentmarshal`)** — an unpinned install does not
+move on its own where the requirement is already satisfied; it moves on a
+fresh environment, on `pip install -U`, or when a container is rebuilt. An
+unpinned CI runner still on 0.4.x is exactly the missed reader the
+procedure above warns about. Pin, or upgrade it explicitly.
+
+**Vendored wheel** — rebuild or re-download the 0.5.0 wheel, replace the
+vendored artifact, and commit it. Remember the CI runner uses the
+committed wheel, so the upgrade lands with that commit.
+
+**From source** — fetch and check out the 0.5.0 tag, then reinstall.
+
+**Coming from 0.3.0?** Go straight to 0.5.0 — it reads every record 0.3.0
+and 0.4.x wrote, and the same procedure applies with 0.5.0 as the target.
+(The `0.4.0 → 0.4.1` section explains why 0.4.0 specifically should not be
+the stop on the way.)
+
+### What the new version adds
+
+New commands: `agentmarshal agree`, `agentmarshal acknowledge`,
+`agentmarshal record-check`, `agentmarshal step start` and `step end`, and
+the `agentmarshal outbox` group (`new`, `check`, `send`, `status`).
+
+New flags on existing commands: `open --contract-file`;
+`complete --disposition <id>=fixed|deferred:<reason>|rejected:<reason>`
+and `--follow-up`; `review --actor` and `submit-review --actor`;
+`record-session`'s `--started-at`/`--ended-at`, `--resets-at`, `--commit`,
+`--model`, `--trace`, `--cli-session`, `--report-ready`,
+`--fallback-reason`, `--cost-amount`/`--cost-currency`/`--cost-source` and
+`--if-missing`; `report --findings`; `leak-scan --task`.
+
+New `project.json` keys, all optional: `review.finding_classes`,
+`review.changes_required_threshold` (default 3) and
+`contract.require_agreement` (default false).
+
+### What changes in the loop
+
+- `complete` now asks for a disposition — `fixed`, `deferred` or
+  `rejected` — for each advisory finding of the review the gate passed on,
+  and refuses before writing `completed` when one is missing. A task whose
+  reviews carried none is unaffected.
+- `leak-scan` still prints every hit, but exits 1 only on a hit nobody has
+  acknowledged; `agentmarshal acknowledge` records the acknowledgement a
+  hit was verified with.
+- The gate gains checks for a schema-3 contract's declared assignment and
+  independence rules, and for the agreement a project that sets
+  `contract.require_agreement` asks for. A project that declares neither
+  sees the same transcript as before.
+- `status`, `report`, `brief` and `doctor` show more of the journal — the
+  new record types, the declared assignment, deferrals, lead times and
+  costs, overdue steps and where the journal, the process log and the
+  local state live.
+
 ## 0.4.0 → 0.4.1
 
 Nothing in this release requires action beyond installing it. Its one behaviour
