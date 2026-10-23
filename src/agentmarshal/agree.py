@@ -153,10 +153,19 @@ def run(args: argparse.Namespace, stderr: TextIO) -> int:
         contract_path = journal_root / "tasks" / args.task / "contract.md"
         current = contract_sha256(contract_path.read_bytes(), str(contract_path))
         pinned = _latest_pin(task.records)
-        # A `--contract` that is not the current hash names what the actor
-        # read against what stands — the refusal owes it both, so it is
-        # decided before drift, whose refusal names the pin instead.
+        # The two hash refusals are owed different content — a
+        # `--contract` mismatch the given and current hashes, drift the
+        # short pin and `amend` — so when both hold the refusal is one
+        # message naming all of it: the given hash, the current hash,
+        # the pinned short hash and that the edit is recorded with
+        # `amend` first.
         if given is not None and given != current:
+            if pinned is not None and current != pinned:
+                raise AgreeError(
+                    f"--contract {given} does not equal the contract's "
+                    f"current hash {current}, which drifted from its "
+                    f"pin {pinned[:7]}; record the edit with amend first"
+                )
             raise AgreeError(
                 f"--contract {given} does not equal the contract's "
                 f"current hash {current}"

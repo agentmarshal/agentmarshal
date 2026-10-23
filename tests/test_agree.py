@@ -393,15 +393,15 @@ def test_contract_argument_differing_is_refused_naming_both_hashes(
     assert _snapshot(_journal(repo)) == before
 
 
-def test_contract_argument_differing_on_a_drifted_contract_names_both(
+def test_drift_and_a_differing_contract_argument_refuse_together(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Scenario: --contract differing is refused naming both hashes.
+    """Design decision: drift and a `--contract` mismatch refuse together.
 
-    Drift does not change what the `--contract` refusal names: when the
-    pin, the current hash and the hash given are three different values,
-    the refusal still names the given and the current hashes — the pair
-    the actor must reconcile — not the pin.
+    When the pin, the current hash and the hash given are three different
+    values, the refusal is one message naming all four items — the given
+    hash, the current hash, the pinned short hash and `amend` — so the
+    content each refusal owes is present, and nothing is written.
     """
 
     repo = _repo(tmp_path, monkeypatch)
@@ -417,11 +417,21 @@ def test_contract_argument_differing_on_a_drifted_contract_names_both(
     other = "0" * 63 + "1"
     assert current != pinned
     assert other != current
+    assert other != pinned
     before = _snapshot(_journal(repo))
     assert _agree("--contract", other) == 1
     err = capsys.readouterr().err
     assert other in err
     assert current in err
+    assert pinned[:7] in err
+    assert "amend" in err
+    assert _snapshot(_journal(repo)) == before
+    # The actor who read the pinned text gets the same combined refusal.
+    assert _agree("--contract", pinned) == 1
+    err = capsys.readouterr().err
+    assert pinned in err
+    assert current in err
+    assert "amend" in err
     assert _snapshot(_journal(repo)) == before
 
 

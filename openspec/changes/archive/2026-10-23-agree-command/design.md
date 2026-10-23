@@ -53,23 +53,29 @@ records, where the latest hash-carrying record is the one compared.
   in hand. `status_view._contract_drift_line` renders a line for a
   reader; the command needs the pin for a refusal, and reaching into the
   view's private helper would couple a writer to a renderer's internals.
-- **Refusal order is: argument shape, task eligibility, readability and
-  drift, explicit-hash equality, recorder.** `--contract` that is not 64
+- **Refusal order is: argument shape, task eligibility, readability,
+  the hash checks together, recorder.** `--contract` that is not 64
   lowercase hex is refused before the journal is touched — a mistyped
   flag fails cheap. Lifecycle eligibility goes through
   `load_task_for_record(..., "agreement")`, the same projection gate
   every writer answers to, so a completed or abandoned task is refused
-  naming its state. The explicit-hash comparison runs before the
-  recorder check so a hash the actor mis-transcribed is refused on the
-  hash, not the identity. The recorder resolves last — an agreement with
-  no recorder is a record the schema refuses, so the command decides it
-  before `write_record` can create the records directory; a recorder who
-  is not a declared actor is written, with a stderr note saying so.
-- **Drift outranks `--contract`.** A drifted contract is refused even
-  when `--contract` equals the old pin: the pin names a text that is no
-  longer current, and agreement with it is agreement with a stale text.
-  The refusal names both short hashes and `amend`, the way `status`
-  words the same fact.
+  naming its state. The hash comparisons run before the recorder check
+  so a hash the actor mis-transcribed is refused on the hash, not the
+  identity. The recorder resolves last — an agreement with no recorder
+  is a record the schema refuses, so the command decides it before
+  `write_record` can create the records directory; a recorder who is
+  not a declared actor is written, with a stderr note saying so.
+- **Drift and a `--contract` mismatch refuse together.** A drifted
+  contract is refused even when `--contract` equals the old pin: the
+  pin names a text that is no longer current, and agreement with it is
+  agreement with a stale text. When the contract has drifted *and* the
+  hash given differs from the current one, the refusal is one message
+  naming all of it — the given hash, the current hash, the pinned
+  short hash and that the edit is recorded with `amend` first — so the
+  content each refusal owes is present in the single answer. When only
+  one condition applies, its message stands alone: drift names both
+  short hashes and `amend`, the way `status` words the same fact; a
+  lone `--contract` mismatch names the given and the current hashes.
 - **Output names what it must and escapes what it must.** The record
   path, the hash and the recorder print on stdout; refusals and the
   undeclared-actor note print on stderr. The recorder passes through
