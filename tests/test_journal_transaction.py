@@ -99,8 +99,10 @@ def _run(
     env.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1")
     if env_extra:
         env.update(env_extra)
+    # Executed by its own path, not through `sh`: the contract's invocation
+    # is direct, so the run itself asserts the template ships executable.
     return subprocess.run(
-        ["sh", str(SCRIPT), *arguments],
+        [str(SCRIPT), *arguments],
         cwd=repo,
         env=env,
         capture_output=True,
