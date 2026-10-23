@@ -25,6 +25,7 @@ from agentmarshal.journal.records import (
     create_abandoned_record,
     create_completed_record,
     read_records,
+    validate_record_for_write,
     write_record,
 )
 from agentmarshal.journal.status import TaskStatusError, load_task_for_record
@@ -99,88 +100,146 @@ def record_commit_completion(
     refuse — precedes the write and names the flag or the ids at fault.
     """
 
-    entries, tasks = _parse_disposition_arguments(dispositions, follow_ups)
     advisory_ids = _advisory_ids_of_the_review_the_gate_passed_on(
         journal_root, task_id, resolved_commit
     )
-    answered = list(dict.fromkeys([*entries, *tasks]))
-    unknown = [finding_id for finding_id in answered if finding_id not in advisory_ids]
-    if unknown:
-        raise LifecycleError(
-            "not an advisory finding of the review the gate passed on: "
-            + ", ".join(escape_for_display(finding_id) for finding_id in unknown)
-        )
-    missing = [finding_id for finding_id in advisory_ids if finding_id not in entries]
+    disposition_arguments = _split_flag_arguments(
+        "--disposition", dispositions, advisory_ids
+    )
+    follow_up_arguments = _split_flag_arguments("--follow-up", follow_ups, advisory_ids)
+    answered = {argument.finding_id for argument in disposition_arguments}
+    missing = [finding_id for finding_id in advisory_ids if finding_id not in answered]
     if missing:
         raise LifecycleError(
             "each advisory finding of the review the gate passed on takes a "
             "--disposition; missing: "
             + ", ".join(escape_for_display(finding_id) for finding_id in missing)
         )
-    for finding_id, task in tasks.items():
-        entries[finding_id]["follow_up"] = task
-    field = entries or None
+    # The field is built piece by piece and the record rules run after
+    # every addition: a refusal lands exactly when the piece at fault is
+    # added, so it is repeated naming the flag that piece came through —
+    # carried on the argument, never read off the refusal's text.
+    field: dict[str, dict[str, str]] = {}
+    for argument in (*disposition_arguments, *follow_up_arguments):
+        entry = field.setdefault(argument.finding_id, {})
+        if argument.flag == "--disposition":
+            # The reason is everything after the first colon, so it may
+            # contain colons.
+            word, colon, reason = argument.value.partition(":")
+            entry["disposition"] = word
+            if colon:
+                entry["reason"] = reason
+        else:
+            entry["follow_up"] = argument.value
+        _run_record_rules_over(
+            field, journal_root, task_id, resolved_commit, argument.flag
+        )
+    dispositions_field = field or None
     try:
         record = create_completed_record(
-            task_id, __version__, resolved_commit, advisory_dispositions=field
+            task_id,
+            __version__,
+            resolved_commit,
+            advisory_dispositions=dispositions_field,
         )
         return write_record(journal_root, task_id, record)
     except JournalRecordError as error:
-        if field is None:
-            raise LifecycleError(str(error)) from error
-        # What the operator typed were flags: a refusal the record rules
-        # raise against the field is repeated naming the flag it came
-        # through — the record's message already names the finding id
-        # and the key at fault.
-        flag = "--follow-up" if "'follow_up'" in str(error) else "--disposition"
-        raise LifecycleError(f"{flag}: {error}") from error
+        raise LifecycleError(str(error)) from error
     except (OSError, ValueError) as error:
         raise LifecycleError(str(error)) from error
 
 
-def _parse_disposition_arguments(
-    dispositions: Iterable[str], follow_ups: Iterable[str]
-) -> tuple[dict[str, dict[str, str]], dict[str, str]]:
-    """Parse the repeatable flags into disposition entries and follow-ups.
+@dataclass(frozen=True)
+class _FlagArgument:
+    """One parsed ``--disposition``/``--follow-up`` value.
 
-    ``<id>=<disposition>[:<reason>]`` — the reason is everything after
-    the first colon, so it may contain colons — and ``<id>=<task>``. A
-    value with no ``=`` or an empty id, a duplicated id and a follow-up
-    with an empty task are refused naming the flag; every other shape
-    refusal is the record rules', repeated flag-named at the write.
+    The flag it came through rides along so every refusal names it —
+    the flag is carried data, never inferred from a refusal's text (an
+    advisory finding may legitimately be named ``follow_up``).
     """
 
-    entries: dict[str, dict[str, str]] = {}
-    for argument in dispositions:
-        finding_id, separator, value = argument.partition("=")
-        if not separator or not finding_id:
+    flag: str
+    finding_id: str
+    value: str
+
+
+def _split_flag_arguments(
+    flag: str, arguments: Iterable[str], advisory_ids: list[str]
+) -> list[_FlagArgument]:
+    """Split each flag value against the advisory ids it can name.
+
+    Each value is ``<finding id>=<rest>`` where the finding id is the
+    LONGEST of the review's advisory ids the value starts with followed
+    by ``=`` — an advisory id may itself carry ``=``, so splitting on
+    the first ``=`` would misread it. A value that starts with no known
+    id followed by ``=`` — an unknown id, a bare id, no ``=`` at all —
+    is refused naming the flag and listing the review's advisory ids,
+    as is an id one flag names twice.
+    """
+
+    parsed: list[_FlagArgument] = []
+    seen: set[str] = set()
+    for argument in arguments:
+        finding_id = _longest_advisory_id_prefix(argument, advisory_ids)
+        if finding_id is None:
             raise LifecycleError(
-                "--disposition expects <finding id>=<disposition>[:<reason>], "
-                f"got '{escape_for_display(argument)}'"
+                f"{flag} value '{escape_for_display(argument)}' names no "
+                "advisory finding of the review the gate passed on; its "
+                "advisory findings: "
+                + (
+                    ", ".join(
+                        escape_for_display(finding_id) for finding_id in advisory_ids
+                    )
+                    or "none"
+                )
             )
-        if finding_id in entries:
+        if finding_id in seen:
             raise LifecycleError(
-                f"--disposition given twice for {escape_for_display(finding_id)}"
+                f"{flag} given twice for {escape_for_display(finding_id)}"
             )
-        word, colon, reason = value.partition(":")
-        entry = {"disposition": word}
-        if colon:
-            entry["reason"] = reason
-        entries[finding_id] = entry
-    tasks: dict[str, str] = {}
-    for argument in follow_ups:
-        finding_id, separator, task = argument.partition("=")
-        if not separator or not finding_id or not task:
-            raise LifecycleError(
-                "--follow-up expects <finding id>=<task id>, "
-                f"got '{escape_for_display(argument)}'"
-            )
-        if finding_id in tasks:
-            raise LifecycleError(
-                f"--follow-up given twice for {escape_for_display(finding_id)}"
-            )
-        tasks[finding_id] = task
-    return entries, tasks
+        seen.add(finding_id)
+        parsed.append(_FlagArgument(flag, finding_id, argument[len(finding_id) + 1 :]))
+    return parsed
+
+
+def _longest_advisory_id_prefix(argument: str, advisory_ids: list[str]) -> str | None:
+    """The longest advisory id `argument` starts with followed by ``=``."""
+
+    match: str | None = None
+    for finding_id in advisory_ids:
+        if argument.startswith(finding_id + "=") and (
+            match is None or len(finding_id) > len(match)
+        ):
+            match = finding_id
+    return match
+
+
+def _run_record_rules_over(
+    field: dict[str, dict[str, str]],
+    journal_root: Path,
+    task_id: str,
+    resolved_commit: str,
+    flag: str,
+) -> None:
+    """Run the record's own write-time rules on `field` as it stands.
+
+    Called after each parsed piece lands — `create_completed_record`
+    only builds, the rules run in `validate_record_for_write`: a
+    refusal fires exactly when the piece at fault was added, so the
+    repeated refusal names the flag that piece came through, and the
+    record's message already names the finding id and the key at fault.
+    """
+
+    try:
+        record = create_completed_record(
+            task_id,
+            __version__,
+            resolved_commit,
+            advisory_dispositions=dict(field),
+        )
+        validate_record_for_write(journal_root, task_id, record)
+    except JournalRecordError as error:
+        raise LifecycleError(f"{flag}: {error}") from error
 
 
 def _advisory_ids_of_the_review_the_gate_passed_on(

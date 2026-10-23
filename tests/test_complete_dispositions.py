@@ -675,3 +675,56 @@ def test_the_sidecar_lane_takes_and_requires_dispositions(
 
     completed = read_records(sidecar / ".agentmarshal" / "journal", "CR-001")[-1]
     assert completed["advisory_dispositions"] == {"A-1": {"disposition": "fixed"}}
+
+
+def test_an_advisory_finding_id_carrying_an_equals_sign_is_answered(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """CR192-001: the value splits against the advisory ids of the
+    review the gate passed on — the longest such id it starts with
+    followed by `=`, so an advisory id may itself carry `=`."""
+
+    repo, base = _repo(tmp_path, monkeypatch)
+    head = _implement(repo)
+    _review(head, advisory=("F=1", "F=1=deep"))
+    capsys.readouterr()
+
+    assert (
+        _complete(
+            head,
+            base,
+            "--disposition",
+            "F=1=fixed",
+            "--disposition",
+            "F=1=deep=rejected:measured noise",
+        )
+        == 0
+    )
+
+    completed = read_records(_journal(repo), "CR-001")[-1]
+    assert completed["advisory_dispositions"] == {
+        "F=1": {"disposition": "fixed"},
+        "F=1=deep": {"disposition": "rejected", "reason": "measured noise"},
+    }
+
+
+def test_an_advisory_id_named_follow_up_reports_its_flag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """CR192-002: a refusal names the flag the value came through —
+    carried with the parsed argument, never read off the refusal's
+    text — so an advisory id called `follow_up` keeps a bad
+    `--disposition` reported as a `--disposition` error."""
+
+    repo, base = _repo(tmp_path, monkeypatch)
+    head = _implement(repo)
+    _review(head, advisory=("follow_up",))
+    capsys.readouterr()
+
+    assert _complete(head, base, "--disposition", "follow_up=bogus") == 1
+
+    error = capsys.readouterr().err
+    assert "--disposition" in error
+    assert "--follow-up" not in error
+    assert "follow_up" in error
+    assert _no_completed_record(repo)
