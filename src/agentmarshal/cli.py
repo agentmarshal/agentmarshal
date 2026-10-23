@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TextIO
 
-from agentmarshal import __version__, agree, outbox, record_check, steps
+from agentmarshal import __version__, acknowledge, agree, outbox, record_check, steps
 from agentmarshal.doctor import run_doctor
 from agentmarshal.journal.acceptance import AcceptanceError, accept_findings
 from agentmarshal.journal.brief import build_brief
@@ -391,6 +391,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     outbox.register(subparsers)
     steps.register(subparsers)
+    acknowledge.register(subparsers)
     agree.register(subparsers)
     record_check.register(subparsers)
     return parser
@@ -1388,6 +1389,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     if args.command == "leak-scan":
         return _run_leak_scan(args, sys.stderr)
+    if args.command == "acknowledge":
+        return acknowledge.run(args, sys.stderr)
     if args.command == "outbox":
         return outbox.run(args, sys.stderr)
     if args.command == "step":
