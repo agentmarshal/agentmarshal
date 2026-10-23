@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -438,25 +439,32 @@ def test_a_symbolic_link_inside_the_extensions_directory_is_recreated_as_a_link(
 ) -> None:
     """Scenario: a symbolic link inside the extension's directory is recreated as a link."""  # noqa: E501
     repo = _project(tmp_path, monkeypatch)
-    _extension(repo)
-    link = repo / ".agentmarshal" / "extensions" / "openspec" / "bin" / "alias.py"
-    link.symlink_to("check.py")
+    _extension(
+        repo,
+        manifest=_manifest(stages=(("pre-gate-stop", "bin/sub/check.py"),)),
+        files={
+            "bin/check.py": "print('bin check')\n",
+            "shared/check.py": "print('shared check')\n",
+        },
+    )
+    # ``bin/sub`` is a link to a directory the extension holds: the
+    # command resolves through it, so only the directory-level refusal
+    # — the link recreated as a link, never a copy — keeps the run on
+    # what the base approved, in CI as on a workstation.
+    link = repo / ".agentmarshal" / "extensions" / "openspec" / "bin" / "sub"
+    link.symlink_to("../shared")
     _commit_all(repo, "base")
     _git(repo, "checkout", "--quiet", "-b", "candidate")
     (repo / "x.txt").write_text("x\n", encoding="utf-8")
     _commit_all(repo, "candidate")
-    _workstation(monkeypatch)
+    _ci(monkeypatch)
     capsys.readouterr()
 
-    # On a workstation the grant hash refuses the link — the reason names
-    # the link's relative path, which is only possible because the
-    # materialized directory carries it as a link, not a copy.
     assert _stage_run(commit="candidate", base="master") == 3
 
     out = capsys.readouterr().out
-    assert "not run" in out
-    assert "bin/alias.py" in out
-    assert "symbolic link" in out
+    assert "openspec: not run (symlink in extension directory: bin/sub)" in out
+    assert "shared check" not in out
 
 
 def test_a_gitlink_inside_the_extensions_directory_is_not_run(
@@ -516,7 +524,7 @@ def test_the_temporary_directories_are_gone_when_the_command_returns(
 def test_an_earlier_stage_cannot_rewrite_a_later_stages_command(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Scenario: the base commit's code runs, not the candidate's or the working tree's."""  # noqa: E501
+    """Scenario: an earlier stage cannot rewrite a later stage's command."""
     repo, _base, _candidate = _repo_with_extension(
         tmp_path,
         monkeypatch,
@@ -623,7 +631,13 @@ def test_the_environment_carries_the_protocol_variables_and_a_minimal_path(
     assert env["AGENTMARSHAL_COMMIT"] == candidate
     assert env["AGENTMARSHAL_BASE"] == merge_base
     assert env["AGENTMARSHAL_SNAPSHOT"].endswith("snapshot-0")
-    assert env["PATH"] == os.defpath
+    # The minimal PATH carries no empty element — an empty element is
+    # the stage's own working directory, the candidate snapshot — and
+    # no directory the stage runs in.
+    assert env["PATH"] == "/usr/bin:/bin"
+    assert "" not in env["PATH"].split(":")
+    assert env["AGENTMARSHAL_SNAPSHOT"] not in env["PATH"].split(":")
+    assert os.getcwd() not in env["PATH"].split(":")
     assert "STAGE_SECRET" not in env
     assert env.get("HOME") != "/must/not/leak"
 
@@ -737,7 +751,7 @@ def test_a_symlinked_command_is_not_run(
     out = capsys.readouterr().out
     assert "openspec: not run" in out
     assert "bin/link.py" in out
-    assert "symbolic link" in out
+    assert "symlink in extension directory" in out
 
 
 def test_exit_status_zero_checks_and_any_other_fails(
@@ -826,6 +840,55 @@ def test_the_cores_limit_caps_a_longer_declared_timeout(
     assert "openspec: did not finish (timeout)" in out
 
 
+@pytest.mark.skipif(
+    os.name != "posix", reason="the detached grandchild needs fork and setsid"
+)
+def test_a_detached_child_holding_the_pipes_does_not_hang_the_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A grandchild outside the group still gets `did not finish (timeout)`.
+
+    Not a spec scenario: the regression the bounded drain guards — a
+    child that leaves the process group and keeps the stdout pipe open
+    must not hold ``stage run`` past the stage's own limit.
+    """
+    _repo_with_extension(
+        tmp_path,
+        monkeypatch,
+        manifest=_manifest(
+            isolation=(
+                "[isolation]\n"
+                "network = false\n"
+                "env = []\n"
+                'writes = "none"\n'
+                "timeout_seconds = 1\n"
+            )
+        ),
+        files={
+            "bin/check.py": (
+                "import os, time\n"
+                "if os.fork() == 0:\n"
+                "    os.setsid()\n"
+                "    time.sleep(60)\n"
+                "    os._exit(0)\n"
+                "time.sleep(60)\n"
+            )
+        },
+    )
+    monkeypatch.setattr(stages_module, "_DRAIN_TIMEOUT_SECONDS", 1)
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    started = time.monotonic()
+    assert _stage_run(commit="candidate", base="master") == 3
+
+    out = capsys.readouterr().out
+    assert "openspec: did not finish (timeout)" in out
+    # The grandchild keeps the pipe for a minute; an unbounded drain
+    # would wait it out.
+    assert time.monotonic() - started < 30
+
+
 # -- the grant ---------------------------------------------------------------
 
 
@@ -897,10 +960,14 @@ def test_a_grant_for_different_contents_is_not_run_naming_the_changed_file(
 
     assert _stage_run(commit="candidate", base="master") == 3
 
-    out = capsys.readouterr().out
-    assert "openspec: not run" in out
-    assert "changed after approval" in out
-    assert "bin/check.py" in out
+    captured = capsys.readouterr()
+    assert "openspec: not run (changed after approval: bin/check.py)" in captured.out
+    # The line keeps the specification's spelling; the kind of the
+    # difference rides on the event instead.
+    events = [event for event in _events(repo) if event["event"] == "extension-event"]
+    assert len(events) == 1
+    assert events[0]["decision"] == "not-run"
+    assert events[0]["reason"] == "changed after approval: bin/check.py (changed)"
 
 
 def test_in_ci_no_grant_is_needed(

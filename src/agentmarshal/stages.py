@@ -84,6 +84,16 @@ from agentmarshal.project import find_project_root
 #: (ADR-0013 decision 8's floor: the timeout no higher than the core's).
 STAGE_TIME_LIMIT_SECONDS = 600
 
+#: How long the second ``communicate`` waits after the group is killed:
+#: a detached grandchild holding the pipes open must not hang the run,
+#: so the drain is bounded too and the pipes are closed past it.
+_DRAIN_TIMEOUT_SECONDS = 5
+
+#: The minimal ``PATH`` every stage's environment starts with: two
+#: fixed system directories and no empty element — an empty element
+#: would name the stage's working directory, the candidate snapshot.
+_MINIMAL_PATH = "/usr/bin:/bin"
+
 _EXTENSIONS_RELPATH = ".agentmarshal/extensions"
 
 #: The manifest modes each ``--phase`` value invokes (ADR-0013 decisions
@@ -107,6 +117,10 @@ class _Prepared:
 
     directory: Path | None
     reason: str | None
+    # The reason the ``extension-event`` records where it may carry
+    # more than the result line does — the result line's spellings are
+    # the specification's own.
+    event_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -116,6 +130,7 @@ class _Outcome:
     decision: _StageDecision
     reason: str
     output: bytes
+    event_reason: str | None = None
 
 
 def register(
@@ -240,9 +255,9 @@ def _materialize_directory(
     byte for byte: ``git archive`` would honour ``export-ignore`` and
     ``export-subst``, and a grant is over the tree's contents, so the
     materialization must carry them undoctored. A symbolic-link entry is
-    recreated as a link — the working-tree reader refuses one and so does
-    the grant hash — and a gitlink is refused: an object store entry that
-    is not a blob cannot be materialized.
+    recreated as a link — the run then refuses the directory holding it,
+    as the grant hash does — and a gitlink is refused: an object store
+    entry that is not a blob cannot be materialized.
     """
 
     relpath = f"{_EXTENSIONS_RELPATH}/{name}"
@@ -268,6 +283,36 @@ def _materialize_directory(
             target.write_bytes(data)
 
 
+def _symlink_in_directory(directory: Path) -> str | None:
+    """The first symbolic link under *directory*, or ``None``.
+
+    The same walk the grant hash performs — sorted, entry by entry, the
+    link weighed before its type is — so the refusal names the same
+    path here that the grant names on a workstation. A link anywhere in
+    the materialized directory can place the command outside what the
+    base approved, so the directory itself is refused, in CI as on a
+    workstation.
+    """
+
+    def walk(root: Path) -> str | None:
+        try:
+            entries = sorted(root.iterdir())
+        except OSError as error:
+            raise StageError(
+                f"cannot read {root}: {error.strerror or error}"
+            ) from error
+        for entry in entries:
+            if entry.is_symlink():
+                return entry.relative_to(directory).as_posix()
+            if entry.is_dir():
+                found = walk(entry)
+                if found is not None:
+                    return found
+        return None
+
+    return walk(directory)
+
+
 def _prepare_extension(
     project_root: Path,
     merge_base: str,
@@ -283,11 +328,16 @@ def _prepare_extension(
     stage could have touched is never reused — decision 14's "before
     each run" is a recomputation on each stage's own materialization.
 
-    The grant check runs on the base-materialized contents: the hash the
-    grant recorded must cover what is about to run, so a change landed
-    after the approval — or a directory that cannot be hashed at all — is
-    the ``not run`` reason, with the first differing file named the way
-    ``extension list`` names it.
+    A materialized directory holding a symbolic link anywhere is
+    refused before the grant is consulted — the refusal the grant hash
+    gives on a workstation, applied in CI too, where a linked
+    intermediate directory would otherwise put the command outside the
+    approved copy. The grant check then runs on the base-materialized
+    contents:
+    the hash the grant recorded must cover what is about to run, so a
+    change landed after the approval — or a directory that cannot be
+    hashed at all — is the ``not run`` reason, with the first differing
+    file named the way ``extension list`` names it.
     """
 
     directory = temp_root / "extensions" / name
@@ -295,6 +345,14 @@ def _prepare_extension(
         _materialize_directory(project_root, merge_base, name, directory)
     except (GateError, StageError, OSError) as error:
         return _Prepared(None, f"cannot materialize: {escape_for_display(str(error))}")
+    try:
+        linked = _symlink_in_directory(directory)
+    except StageError as error:
+        return _Prepared(None, escape_for_display(str(error)))
+    if linked is not None:
+        return _Prepared(
+            None, f"symlink in extension directory: {escape_for_display(linked)}"
+        )
     if ci:
         return _Prepared(directory, None)
     try:
@@ -307,8 +365,11 @@ def _prepare_extension(
     difference = _changed_after_approval(grant.files, files)
     if difference is not None:
         path, kind = difference
+        shown = escape_for_display(path)
         return _Prepared(
-            None, f"changed after approval: {escape_for_display(path)} ({kind})"
+            None,
+            f"changed after approval: {shown}",
+            f"changed after approval: {shown} ({kind})",
         )
     return _Prepared(directory, None)
 
@@ -337,7 +398,7 @@ def _stage_env(
     name colliding with one cannot override the run's own values.
     """
 
-    env: dict[str, str] = {"PATH": os.defpath}
+    env: dict[str, str] = {"PATH": _MINIMAL_PATH}
     if manifest.isolation is not None:
         for variable in manifest.isolation.env:
             if variable in os.environ:
@@ -382,7 +443,9 @@ def _run_stage(
     """Run one stage and report its outcome; never raises for the stage itself."""
 
     if prepared.reason is not None:
-        return _Outcome("not-run", prepared.reason, b"")
+        return _Outcome(
+            "not-run", prepared.reason, b"", event_reason=prepared.event_reason
+        )
     assert prepared.directory is not None
     command = prepared.directory / stage.command
     if command.is_symlink():
@@ -421,7 +484,19 @@ def _run_stage(
         output, _ = process.communicate(timeout=_stage_timeout(manifest))
     except subprocess.TimeoutExpired:
         _kill_process_group(process)
-        output, _ = process.communicate()
+        # A detached child can hold the pipes open past the group's
+        # death, so the drain is bounded too: a second expiry closes the
+        # pipes and the stage is a timeout anyway — the line does not
+        # wait on what keeps its end open.
+        try:
+            output, _ = process.communicate(timeout=_DRAIN_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired as still_open:
+            for pipe in (process.stdout, process.stderr):
+                if pipe is not None:
+                    with suppress(OSError):
+                        pipe.close()
+            process.wait()
+            output = still_open.output or b""
         return _Outcome("did-not-finish", "timeout", output)
     if process.returncode == 0:
         return _Outcome("checked", "", output)
@@ -515,7 +590,13 @@ def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
             return
         # ``result`` rides only on a post-gate event (ADR-0022 section 7's
         # "post-gate results land here carrying a result field"), so the
-        # two spellings are passed literally rather than spread.
+        # two spellings are passed literally rather than spread. The
+        # event's ``reason`` may carry what the result line's own
+        # spelling keeps out — the kind of a changed-after-approval
+        # difference, for one.
+        event_reason = (
+            outcome.reason if outcome.event_reason is None else outcome.event_reason
+        )
         try:
             if stage.phase == "post-gate":
                 write_event(
@@ -526,7 +607,7 @@ def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
                     scope="shared",
                     phase=stage.phase,
                     decision=outcome.decision,
-                    reason=outcome.reason,
+                    reason=event_reason,
                     commit=resolved_commit,
                     result=result_text,
                 )
@@ -539,7 +620,7 @@ def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
                     scope="shared",
                     phase=stage.phase,
                     decision=outcome.decision,
-                    reason=outcome.reason,
+                    reason=event_reason,
                     commit=resolved_commit,
                 )
         except ProcessLogError as error:
