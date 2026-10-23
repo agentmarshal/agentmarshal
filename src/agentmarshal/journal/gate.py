@@ -33,6 +33,7 @@ from agentmarshal.journal.capture import (
 )
 from agentmarshal.journal.contracts import (
     JournalContractError,
+    contract_sha256,
     parse_contract_text,
     scope_covers,
 )
@@ -61,7 +62,7 @@ from agentmarshal.project import (
     project_file_path,
     read_project_file,
 )
-from agentmarshal.settings import changes_required_threshold
+from agentmarshal.settings import changes_required_threshold, require_agreement
 
 _JOURNAL_PREFIX = ".agentmarshal/journal/"
 _EXTENSIONS_PREFIX = ".agentmarshal/extensions/"
@@ -1118,6 +1119,62 @@ def run_gate(
             if scope_details:
                 scope_message += f" ({'; '.join(scope_details)})"
         check(not outside, scope_message)
+
+        # ADR-0018 decision 2 / ADR-0022 section 6: a project whose rules
+        # demand agreement makes the record a merge requirement. The
+        # setting is read from the journal repository's project file —
+        # the same working-tree read the changes_required threshold
+        # makes — and an unreadable setting is reported on a WARN line
+        # the way an unreadable threshold is: reported, neither refused
+        # nor silently skipped.
+        try:
+            agreement_required = require_agreement(journal_root.parents[1])
+        except (OSError, ValueError) as error:
+            say(
+                "WARN: agreement with the contract not examined "
+                f"(contract.require_agreement unreadable: {error})"
+            )
+            agreement_required = False
+        if agreement_required:
+            # The hash an agreement must carry is of the contract the
+            # gate judges against — the merge-base tree's text just
+            # applied to the diff in the embedded placement, the sidecar
+            # working tree's in the other — so a candidate's own contract
+            # edit moves nothing. `contract_sha256` is the one way any
+            # place that hashes a contract computes it.
+            if sidecar:
+                trusted_contract = journal_root / "tasks" / task_id / "contract.md"
+                try:
+                    judged_hash = contract_sha256(
+                        trusted_contract.read_bytes(), str(trusted_contract)
+                    )
+                except (JournalContractError, OSError) as error:
+                    raise GateError(f"cannot hash the contract: {error}") from error
+            else:
+                judged_hash = contract_sha256(
+                    contract_text.encode("utf-8"),
+                    f"{merge_base}:{contract_path}",
+                )
+            agreed = [
+                cast(str, record["contract"])
+                for record in task.records
+                if record.get("record_type") == "agreement"
+            ]
+            if judged_hash in agreed:
+                check(True, f"agreement recorded for contract {judged_hash[:7]}")
+            elif agreed:
+                check(
+                    False,
+                    f"an agreement exists for another hash ({agreed[-1][:7]}), "
+                    f"not for the judged contract {judged_hash[:7]}; record "
+                    "agreement with 'agentmarshal agree'",
+                )
+            else:
+                check(
+                    False,
+                    f"no agreement recorded for contract {judged_hash[:7]}; "
+                    "record agreement with 'agentmarshal agree'",
+                )
 
         named_documents = list(contract.documents)
         for name in contract.extensions:
