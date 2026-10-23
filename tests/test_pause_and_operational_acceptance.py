@@ -15,7 +15,9 @@ from agentmarshal.journal.contracts import ContractHeader
 from agentmarshal.journal.gate import run_findings_gate, run_gate
 from agentmarshal.journal.records import (
     JournalRecordError,
+    create_abandoned_record,
     create_acceptance_record,
+    create_completed_record,
     generate_ulid,
     read_records,
     write_record,
@@ -714,3 +716,402 @@ def test_every_output_for_an_acceptance_over_findings_is_unchanged(
         "Acceptance: accepted over findings by test@example.invalid "
         "(self-accepted: accepting party is a declared author or committer)" in output
     )
+
+
+# --- the accept command's new forms -------------------------------------------
+
+
+def _extension(repo: Path, name: str = "openspec", *, directory: bool = False) -> Path:
+    """Write a shared extension's manifest — the file form, or the directory form."""
+
+    extensions = repo / ".agentmarshal" / "extensions"
+    path = (
+        extensions / name / "manifest.toml"
+        if directory
+        else extensions / f"{name}.toml"
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "schema = 2\n"
+        f'name = "{name}"\n'
+        'version = "1.0.0"\n'
+        f'footprint = ["{name}/"]\n'
+        f'documents = ["{name}/docs/"]\n',
+        encoding="utf-8",
+    )
+    return path
+
+
+def _accept(*extra: str, task: str = "CR-001") -> int:
+    return main(
+        [
+            "accept",
+            "--task",
+            task,
+            "--by",
+            "operator@example.invalid",
+            "--reason",
+            "The operator's recorded decision",
+            *extra,
+        ]
+    )
+
+
+def _review(commit: str, verdict: str, *findings: str, task: str = "CR-001") -> int:
+    arguments = [
+        "submit-review",
+        "--task",
+        task,
+        "--commit",
+        commit,
+        "--verdict",
+        verdict,
+        "--role",
+        "reviewer",
+        "--vendor",
+        "test",
+        "--model",
+        "model",
+        "--email",
+        "reviewer@example.invalid",
+    ]
+    for finding in findings:
+        arguments.extend(["--finding", finding])
+    return main(arguments)
+
+
+def _snapshot(root: Path) -> dict[str, bytes]:
+    if not root.exists():
+        return {}
+    return {
+        str(path.relative_to(root)): path.read_bytes()
+        for path in sorted(root.rglob("*"))
+        if path.is_file()
+    }
+
+
+def test_a_pause_acceptance_is_written_for_a_declared_extension_at_the_resolved_commit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a pause acceptance is written for a declared extension at the
+    resolved commit."""
+
+    repo, journal, commit = _status_repo(tmp_path, monkeypatch)
+    _extension(repo)
+    capsys.readouterr()
+
+    assert _accept("--commit", commit, "--pause", "openspec") == 0
+
+    assert capsys.readouterr().out.endswith("-acceptance.json\n")
+    record = read_records(journal, "CR-001")[-1]
+    assert record["record_type"] == "acceptance"
+    assert record["accepted_pause"] == {"extension": "openspec"}
+    assert record["accepted_commit"] == commit
+    assert record["accepted_by"] == "operator@example.invalid"
+    assert record["reason"] == "The operator's recorded decision"
+    assert record["schema"] == 7
+    assert "findings" not in record
+
+
+def test_a_pause_acceptance_is_written_where_no_review_stands(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a pause acceptance is written where no review stands.
+
+    The first task carries no review at all; the second's latest review
+    approved the commit — a pause raises no review finding, so neither
+    state is consulted and each write stands.
+    """
+
+    repo, journal, commit = _status_repo(tmp_path, monkeypatch)
+    _extension(repo)
+    assert main(["open", "--title", "Reviewed task"]) == 0
+    assert _review(commit, "approved", task="CR-002") == 0
+    capsys.readouterr()
+
+    assert _accept("--commit", commit, "--pause", "openspec") == 0
+    assert _accept("--commit", commit, "--pause", "openspec", task="CR-002") == 0
+
+    capsys.readouterr()
+    for task in ("CR-001", "CR-002"):
+        record = read_records(journal, task)[-1]
+        assert record["record_type"] == "acceptance"
+        assert record["accepted_pause"] == {"extension": "openspec"}
+        assert record["accepted_commit"] == commit
+
+
+def test_a_short_or_symbolic_commit_resolves_to_the_full_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a short or symbolic --commit resolves to the full id."""
+
+    repo, journal, commit = _status_repo(tmp_path, monkeypatch)
+    _extension(repo)
+    capsys.readouterr()
+
+    assert _accept("--commit", "HEAD", "--pause", "openspec") == 0
+    assert _accept("--commit", commit[:8], "--pause", "openspec") == 0
+    assert _accept("--commit", "HEAD^{commit}", "--pause", "openspec") == 0
+
+    records = [
+        record
+        for record in read_records(journal, "CR-001")
+        if record["record_type"] == "acceptance"
+    ]
+    assert [record["accepted_commit"] for record in records] == [commit] * 3
+
+
+def test_a_commit_that_does_not_resolve_is_refused_writing_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a commit that does not resolve is refused writing nothing."""
+
+    repo, journal, _commit = _status_repo(tmp_path, monkeypatch)
+    _extension(repo)
+    capsys.readouterr()
+    before = _snapshot(journal)
+
+    assert _accept("--commit", "0" * 40, "--pause", "openspec") == 1
+
+    err = capsys.readouterr().err
+    assert "0" * 40 in err and "does not resolve" in err
+    assert _snapshot(journal) == before
+
+
+def test_an_extension_no_shared_manifest_declares_is_refused_naming_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: an extension no shared manifest declares is refused naming
+    it."""
+
+    _repo, journal, commit = _status_repo(tmp_path, monkeypatch)
+    capsys.readouterr()
+    before = _snapshot(journal)
+
+    assert _accept("--commit", commit, "--pause", "ghost") == 1
+
+    err = capsys.readouterr().err
+    assert "ghost" in err
+    assert _snapshot(journal) == before
+
+
+def test_an_extension_whose_manifest_cannot_be_read_is_refused_naming_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: an extension whose manifest cannot be read is refused naming
+    it."""
+
+    repo, journal, commit = _status_repo(tmp_path, monkeypatch)
+    manifest = _extension(repo)
+    manifest.write_text("schema = 2\nname = [oops\n", encoding="utf-8")
+    capsys.readouterr()
+    before = _snapshot(journal)
+
+    assert _accept("--commit", commit, "--pause", "openspec") == 1
+
+    err = capsys.readouterr().err
+    assert "openspec" in err
+    assert _snapshot(journal) == before
+
+
+def test_an_extension_declared_in_the_directory_form_is_accepted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: an extension declared in the directory form is accepted."""
+
+    repo, journal, commit = _status_repo(tmp_path, monkeypatch)
+    _extension(repo, directory=True)
+    capsys.readouterr()
+
+    assert _accept("--commit", commit, "--pause", "openspec") == 0
+
+    capsys.readouterr()
+    record = read_records(journal, "CR-001")[-1]
+    assert record["accepted_pause"] == {"extension": "openspec"}
+    assert record["accepted_commit"] == commit
+
+
+@pytest.mark.parametrize("terminal", ["completed", "abandoned"])
+def test_a_task_that_admits_no_acceptance_is_refused_writing_nothing(
+    terminal: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a task that admits no acceptance is refused writing
+    nothing."""
+
+    repo, journal, commit = _status_repo(tmp_path, monkeypatch)
+    _extension(repo)
+    write_record(
+        journal,
+        "CR-001",
+        create_completed_record("CR-001", "test", commit)
+        if terminal == "completed"
+        else create_abandoned_record("CR-001", "test", "Superseded"),
+    )
+    capsys.readouterr()
+    before = _snapshot(journal)
+
+    assert _accept("--commit", commit, "--pause", "openspec") == 1
+
+    state = "done" if terminal == "completed" else "abandoned"
+    assert state in capsys.readouterr().err
+    assert _snapshot(journal) == before
+
+
+def test_an_operational_acceptance_is_written_at_the_resolved_commit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: an operational acceptance is written at the resolved commit."""
+
+    _repo, journal, commit = _status_repo(tmp_path, monkeypatch)
+    capsys.readouterr()
+
+    assert _accept("--commit", commit, "--operational") == 0
+
+    assert capsys.readouterr().out.endswith("-acceptance.json\n")
+    record = read_records(journal, "CR-001")[-1]
+    assert record["record_type"] == "acceptance"
+    assert record["operational"] is True
+    assert record["accepted_commit"] == commit
+    assert record["accepted_by"] == "operator@example.invalid"
+    assert record["reason"] == "The operator's recorded decision"
+    assert record["schema"] == 7
+    assert "findings" not in record
+
+
+def test_an_operational_commit_that_does_not_resolve_is_refused_writing_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: an operational --commit that does not resolve is refused
+    writing nothing."""
+
+    _repo, journal, _commit = _status_repo(tmp_path, monkeypatch)
+    capsys.readouterr()
+    before = _snapshot(journal)
+
+    assert _accept("--commit", "0" * 40, "--operational") == 1
+
+    err = capsys.readouterr().err
+    assert "0" * 40 in err and "does not resolve" in err
+    assert _snapshot(journal) == before
+
+
+@pytest.mark.parametrize("terminal", ["completed", "abandoned"])
+def test_a_task_that_admits_no_acceptance_refuses_an_operational_write(
+    terminal: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a task that admits no acceptance refuses an operational
+    write."""
+
+    _repo, journal, commit = _status_repo(tmp_path, monkeypatch)
+    write_record(
+        journal,
+        "CR-001",
+        create_completed_record("CR-001", "test", commit)
+        if terminal == "completed"
+        else create_abandoned_record("CR-001", "test", "Superseded"),
+    )
+    capsys.readouterr()
+    before = _snapshot(journal)
+
+    assert _accept("--commit", commit, "--operational") == 1
+
+    state = "done" if terminal == "completed" else "abandoned"
+    assert state in capsys.readouterr().err
+    assert _snapshot(journal) == before
+
+
+def test_pause_and_operational_together_are_refused_naming_the_flags(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: --pause and --operational together are refused naming the
+    flags."""
+
+    repo, journal, commit = _status_repo(tmp_path, monkeypatch)
+    _extension(repo)
+    capsys.readouterr()
+    before = _snapshot(journal)
+
+    with pytest.raises(SystemExit) as raised:
+        _accept("--commit", commit, "--pause", "openspec", "--operational")
+
+    assert raised.value.code == 2
+    err = capsys.readouterr().err
+    assert "--pause" in err and "--operational" in err
+    assert _snapshot(journal) == before
+
+
+@pytest.mark.parametrize("form", [("--pause", "openspec"), ("--operational",)])
+def test_accepted_finding_is_refused_with_pause_or_operational_naming_the_flags(
+    form: tuple[str, ...],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: --accepted-finding is refused with --pause or --operational
+    naming the flags."""
+
+    repo, journal, _commit = _status_repo(tmp_path, monkeypatch)
+    _extension(repo)
+    capsys.readouterr()
+    before = _snapshot(journal)
+
+    assert _accept(*form, "--accepted-finding", _FINDING_ID) == 1
+
+    err = capsys.readouterr().err
+    assert form[0] in err and "--accepted-finding" in err
+    assert _snapshot(journal) == before
+
+
+@pytest.mark.parametrize("form", [("--pause", "openspec"), ("--operational",)])
+def test_finding_is_refused_with_pause_or_operational_naming_the_flags(
+    form: tuple[str, ...],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: --finding is refused with --pause or --operational naming the
+    flags."""
+
+    repo, journal, commit = _status_repo(tmp_path, monkeypatch)
+    _extension(repo)
+    capsys.readouterr()
+    before = _snapshot(journal)
+
+    assert _accept("--commit", commit, *form, "--finding", "F-1") == 1
+
+    err = capsys.readouterr().err
+    assert form[0] in err and "--finding" in err
+    assert _snapshot(journal) == before
+
+
+def test_an_acceptance_over_findings_is_unchanged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: an acceptance over findings is unchanged.
+
+    The findings form selects itself by naming neither new flag: the
+    latest non-approving review of the commit supplies the findings, and
+    the record keeps the shape and stamp it had before the new forms
+    existed.
+    """
+
+    _repo, journal, commit = _status_repo(tmp_path, monkeypatch)
+    assert _review(commit, "changes_required", "F-2", "F-1") == 0
+    capsys.readouterr()
+
+    assert _accept("--commit", commit) == 0
+
+    assert capsys.readouterr().out.endswith("-acceptance.json\n")
+    record = read_records(journal, "CR-001")[-1]
+    assert record["record_type"] == "acceptance"
+    assert record["findings"] == ["F-2", "F-1"]
+    assert record["accepted_commit"] == commit
+    assert record["schema"] == 3
+    assert "accepted_pause" not in record
+    assert "operational" not in record
