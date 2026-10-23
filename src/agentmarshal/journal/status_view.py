@@ -500,7 +500,7 @@ def _agreement_line(journal_root: Path, task: TaskStatus) -> str | None:
     )
 
 
-def _changes_required_count_line(project_root: Path, task: TaskStatus) -> str | None:
+def _changes_required_count_line(journal_root: Path, task: TaskStatus) -> str | None:
     """One line with the task's ``changes_required`` count, else ``None``.
 
     ADR-0016 decision 4: the same count the gate's line carries since
@@ -509,10 +509,14 @@ def _changes_required_count_line(project_root: Path, task: TaskStatus) -> str | 
     ADR-0009) is not a candidate's return and is not counted — computed
     over ``task.records`` with exactly the gate's definition (the counting
     block at the end of ``run_gate`` in ``gate.py``). The threshold is the
-    project's ``review.changes_required_threshold`` through the same
-    settings reader, and an unreadable one is named on the line rather
-    than refused. The line reports; it blocks nothing — and a task with
-    no such verdict gets no line at all.
+    project's ``review.changes_required_threshold`` read from the same
+    root the gate reads it — the journal's own project root
+    (``changes_required_threshold(journal_root.parents[1])`` in
+    ``run_gate``), resolved through ``_project_root_for`` as the actors
+    table already is; under a sidecar placement the host root the view
+    also takes is a different project. An unreadable threshold is named
+    on the line rather than refused. The line reports; it blocks nothing
+    — and a task with no such verdict gets no line at all.
     """
 
     count = sum(
@@ -525,7 +529,7 @@ def _changes_required_count_line(project_root: Path, task: TaskStatus) -> str | 
     if count == 0:
         return None
     try:
-        threshold = changes_required_threshold(project_root)
+        threshold = changes_required_threshold(_project_root_for(journal_root))
     except (OSError, ValueError) as error:
         return (
             f"changes_required verdicts for {task.task_id}: {count} "
@@ -673,7 +677,7 @@ def print_task_detail(project_root: Path, task: TaskStatus, journal_root: Path) 
         print(escape_for_display(drift))
     for line in _deferral_lines(journal_root, task):
         print(escape_for_display(line))
-    count_line = _changes_required_count_line(project_root, task)
+    count_line = _changes_required_count_line(journal_root, task)
     if count_line is not None:
         print(escape_for_display(count_line))
 

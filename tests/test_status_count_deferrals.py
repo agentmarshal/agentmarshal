@@ -30,6 +30,14 @@ def _project_root(tmp_path: Path, settings: str = "{}") -> Path:
     return project_root
 
 
+def _journal_root(project_root: Path) -> Path:
+    """The journal root of the standard layout: ``<project>/.agentmarshal/journal``."""
+
+    journal_root = project_root / ".agentmarshal" / "journal"
+    journal_root.mkdir(parents=True)
+    return journal_root
+
+
 def _contract(task_id: str = "CR-001") -> ContractHeader:
     return ContractHeader(
         schema=1, id=task_id, title="Task", scope=("src/",), acceptance=()
@@ -136,7 +144,8 @@ def test_the_count_line_prints_over_every_review_of_the_task(
         state="open",
     )
 
-    print_task_detail(_project_root(tmp_path), task, tmp_path)
+    project_root = _project_root(tmp_path)
+    print_task_detail(project_root, task, _journal_root(project_root))
 
     out = capsys.readouterr().out
     assert "changes_required verdicts for CR-001: 2 (threshold 3)\n" in out
@@ -163,7 +172,8 @@ def test_a_review_bound_to_a_research_finding_is_not_counted(
         state="open",
     )
 
-    print_task_detail(_project_root(tmp_path), task, tmp_path)
+    project_root = _project_root(tmp_path)
+    print_task_detail(project_root, task, _journal_root(project_root))
 
     out = capsys.readouterr().out
     assert "changes_required verdicts for CR-001: 1 (threshold 3)\n" in out
@@ -194,7 +204,7 @@ def test_a_count_at_the_threshold_is_marked(
         state="open",
     )
 
-    print_task_detail(project_root, task, tmp_path)
+    print_task_detail(project_root, task, _journal_root(project_root))
 
     out = capsys.readouterr().out
     assert (
@@ -225,10 +235,50 @@ def test_a_malformed_threshold_is_named_on_the_line(
         state="open",
     )
 
-    print_task_detail(project_root, task, tmp_path)
+    print_task_detail(project_root, task, _journal_root(project_root))
 
     out = capsys.readouterr().out
     assert "changes_required verdicts for CR-001: 1 (threshold unreadable:" in out
+
+
+def test_the_threshold_is_read_from_the_journal_project_as_the_gate_reads_it(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: the threshold is the journal project's, not the host's.
+
+    Sidecar layout: the host repository's project file and the journal
+    repository's project file declare different thresholds — the host
+    says 9, the journal says 2. `status` reads the same root the gate's
+    counting block reads (`changes_required_threshold` on the journal's
+    project root), so two `changes_required` verdicts print the
+    journal's threshold — marked reached — where the host's would print
+    an unmarked `threshold 9`.
+    """
+
+    host_root = _project_root(
+        tmp_path / "host", '{"review": {"changes_required_threshold": 9}}'
+    )
+    journal_project = _project_root(
+        tmp_path / "sidecar", '{"review": {"changes_required_threshold": 2}}'
+    )
+    task = TaskStatus(
+        task_id="CR-001",
+        contract=_contract(),
+        records=(
+            {"id": "r-open", "record_type": "opened", "created_at": "t0"},
+            _review("r1", "changes_required"),
+            _review("r2", "changes_required"),
+        ),
+        state="open",
+    )
+
+    print_task_detail(host_root, task, _journal_root(journal_project))
+
+    out = capsys.readouterr().out
+    assert (
+        "changes_required verdicts for CR-001: 2 "
+        "(threshold 2 reached — stop and revisit the contract)\n" in out
+    )
 
 
 def test_each_deferred_finding_is_listed_with_reason_and_follow_up(

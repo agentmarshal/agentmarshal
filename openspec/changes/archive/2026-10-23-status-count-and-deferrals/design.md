@@ -7,7 +7,12 @@ and drift notices. `task.records` already carries everything the new
 lines need: the review records with their `verdict` and optional
 `reviewed_finding`, and the `completed` record's `advisory_dispositions`
 (CR-175). The threshold is read through `changes_required_threshold`
-(`settings.py`) — the same reader the gate uses.
+(`settings.py`) — the same reader the gate uses, on the same root: the
+journal's own project root (`gate.py`'s counting block calls it on
+`journal_root.parents[1]`), resolved through `_project_root_for` as the
+actors table already is. Under a sidecar placement the host root
+`print_task_detail` takes is a different project — the review of CR-194
+caught the line reading it instead.
 
 ADR-0016 decision 4 pairs `status` with the gate's count line (CR-168);
 ADR-0016 decision 1 says `status` and `report` show the deferrals still
@@ -40,9 +45,12 @@ open — `report` is a later task; this one is `status` only.
   names; a review bound to a research finding (ADR-0009) is not a
   candidate's return. `status_view.py` sums over `task.records` with
   those same three conditions.
-- **Same threshold, same reader.** `changes_required_threshold(project_root)`
-  — the same `settings.py` reader the gate calls. An unreadable or
-  malformed setting is named on the line
+- **Same threshold, same reader, same root.** `changes_required_threshold`
+  — the same `settings.py` reader the gate calls — is read on the
+  journal's project root, resolved through `_project_root_for(journal_root)`
+  the way the actors table already resolves it; the gate's counting block
+  reads `journal_root.parents[1]`, the same root in the standard layout.
+  An unreadable or malformed setting is named on the line
   (`threshold unreadable: <error>`), as on the gate's line; the view
   does not fail.
 - **The line wording mirrors the gate's** minus the level prefix:
