@@ -11,7 +11,15 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TextIO
 
-from agentmarshal import __version__, acknowledge, agree, outbox, record_check, steps
+from agentmarshal import (
+    __version__,
+    acknowledge,
+    agree,
+    extension_trust,
+    outbox,
+    record_check,
+    steps,
+)
 from agentmarshal.doctor import run_doctor
 from agentmarshal.journal.acceptance import AcceptanceError, accept_findings
 from agentmarshal.journal.brief import build_brief
@@ -460,6 +468,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     outbox.register(subparsers)
     steps.register(subparsers)
+    extension_trust.register(subparsers)
     acknowledge.register(subparsers)
     agree.register(subparsers)
     record_check.register(subparsers)
@@ -1560,6 +1569,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return outbox.run(args, sys.stderr)
     if args.command == "step":
         return steps.run(args, sys.stderr)
+    if args.command == "extension":
+        return extension_trust.run(args, sys.stderr)
     if args.command == "agree":
         return agree.run(args, sys.stderr)
     if args.command == "record-check":
