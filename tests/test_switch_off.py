@@ -257,15 +257,56 @@ def test_a_file_form_extension_is_a_shared_extension_the_command_switches_off(
     assert _switches(repo)["openspec"]["state"] == "off"
 
 
-def test_a_symlinked_extension_directory_is_refused_before_anything_is_written(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+def test_a_directory_extension_whose_declared_bin_file_is_missing_is_switched_off(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A linked extension directory is not a declared shared extension.
+    """Scenario: a declared extension whose manifest cannot be read is switched off.
 
-    Whether the name is a shared extension the working tree declares is
-    the manifest reader's call, and the reader refuses to read through
-    a symlink — so the command refuses naming the extension and the
-    reader's message, before any task is opened, writing nothing.
+    The manifest names ``bin/check.py`` under a directory that does not
+    hold it, so the manifest reader cannot read it — but the name is
+    still one ``doctor`` and ``stage run`` enumerate under
+    ``.agentmarshal/extensions/``, and a broken extension must stay
+    switchable: an operational CR's diff runs no ``pre-gate`` stage, so
+    the broken extension cannot block its own switching off.
+    """
+    repo = stage_helpers._project(tmp_path, monkeypatch)
+    # The manifest declares bin/check.py; the directory does not hold it.
+    stage_helpers._extension(
+        repo, manifest=stage_helpers._manifest(name="openspec"), files={}
+    )
+
+    assert _switch_off() == 0
+
+    assert _switches(repo)["openspec"]["state"] == "off"
+
+
+def test_a_name_claimed_in_both_forms_is_switched_off(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a declared extension whose manifest cannot be read is switched off.
+
+    A ``<name>.toml`` and a ``<name>/`` directory for one name leave
+    the manifest unreadable — the reader refuses the ambiguity — but
+    the entry is still enumerated under the name it carries.
+    """
+    repo = stage_helpers._project(tmp_path, monkeypatch)
+    _extension(repo)
+    _file_form_extension(repo)
+
+    assert _switch_off() == 0
+
+    assert _switches(repo)["openspec"]["state"] == "off"
+
+
+def test_a_symlinked_extension_directorys_name_is_switched_off(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a link entry's name is a shared extension the command switches off.
+
+    A symbolic-link entry under ``.agentmarshal/extensions/`` is kept
+    under the name it carries — the link is the manifest reader's
+    refusal, not the enumeration's, and a broken extension stays
+    switchable.
     """
     repo = stage_helpers._project(tmp_path, monkeypatch)
     target = _extension(tmp_path / "elsewhere")
@@ -273,23 +314,19 @@ def test_a_symlinked_extension_directory_is_refused_before_anything_is_written(
     managed.mkdir(parents=True)
     (managed / "openspec").symlink_to(target, target_is_directory=True)
 
-    assert _switch_off() == 1
+    assert _switch_off() == 0
 
-    captured = capsys.readouterr()
-    assert "openspec" in captured.err
-    assert "symlink" in captured.err
-    assert _task_dirs(repo) == []
-    assert not _switches_file(repo).exists()
+    assert _switches(repo)["openspec"]["state"] == "off"
 
 
-def test_a_symlinked_extension_manifest_is_refused_before_anything_is_written(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+def test_a_symlinked_extension_manifests_name_is_switched_off(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A linked ``<name>.toml`` is not a declared shared extension either.
+    """Scenario: a link entry's name is a shared extension the command switches off.
 
-    The same rule as for the directory form: the manifest reader
-    refuses to read through the link, and the refusal names the
-    extension and the reader's message before any task is opened.
+    The same enumeration rule for the linked file form: a linked
+    ``<name>.toml`` enumerates ``<name>`` and the command switches it
+    off the same way.
     """
     repo = stage_helpers._project(tmp_path, monkeypatch)
     target = _file_form_extension(tmp_path / "elsewhere")
@@ -297,24 +334,20 @@ def test_a_symlinked_extension_manifest_is_refused_before_anything_is_written(
     managed.mkdir(parents=True)
     (managed / "openspec.toml").symlink_to(target)
 
-    assert _switch_off() == 1
+    assert _switch_off() == 0
 
-    captured = capsys.readouterr()
-    assert "openspec" in captured.err
-    assert "symlink" in captured.err
-    assert _task_dirs(repo) == []
-    assert not _switches_file(repo).exists()
+    assert _switches(repo)["openspec"]["state"] == "off"
 
 
-def test_a_switch_naming_a_symlinked_extension_is_refused_naming_the_file(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+def test_a_switch_file_entry_naming_a_symlinked_extension_is_accepted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A linked entry counts for nothing, so a switch naming it fails the parse.
+    """Scenario: a file whose other entry names a linked extension is accepted.
 
-    The names the existing file is parsed against follow the same
-    reader rule: a symlinked entry under `.agentmarshal/extensions/` is
-    no shared extension, so an entry naming it is refused naming the
-    file and the entry — before any task is opened, writing nothing.
+    ``doctor`` enumerates a link entry under the name it carries, so
+    the names the existing file's entries are checked against include
+    it: the file parses and the command switches the named extension
+    off, the other entry kept as it was.
     """
     repo = stage_helpers._project(tmp_path, monkeypatch)
     _extension(repo)
@@ -326,13 +359,11 @@ def test_a_switch_naming_a_symlinked_extension_is_refused_naming_the_file(
     )
     _switches_file(repo).write_text(original, encoding="utf-8")
 
-    assert _switch_off() == 1
+    assert _switch_off() == 0
 
-    captured = capsys.readouterr()
-    assert "switches.toml" in captured.err
-    assert "ghost" in captured.err
-    assert _task_dirs(repo) == []
-    assert _switches_file(repo).read_text(encoding="utf-8") == original
+    assert _switches_file(repo).read_text(encoding="utf-8").startswith(original)
+    assert _switches(repo)["openspec"]["state"] == "off"
+    assert _switches(repo)["ghost"]["state"] == "on"
 
 
 # -- the file keeps its text and is replaced atomically -------------------------
@@ -570,6 +601,49 @@ def test_the_file_is_replaced_by_a_temporary_file_renamed_in_the_same_directory(
     # The staging file is gone: the rename published it.
     assert not Path(staging).exists()
     assert not list((repo / ".agentmarshal").glob(".switches-*.tmp"))
+
+
+def test_the_replaced_file_keeps_its_permission_bits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The atomic replace keeps the existing file's permission bits.
+
+    The staging file is always created ``0o600`` by ``mkstemp``, so a
+    replace that did not carry the existing file's mode would tighten
+    it — the mode the operator gave the file must survive the rewrite.
+    """
+    repo = stage_helpers._project(tmp_path, monkeypatch)
+    _extension(repo)
+    _switches_file(repo).write_text(
+        'format = 1\n\n[switches.openspec]\nstate = "on"\ntask = "CR-1"\n',
+        encoding="utf-8",
+    )
+    _switches_file(repo).chmod(0o640)
+
+    assert _switch_off() == 0
+
+    assert _switches_file(repo).stat().st_mode & 0o7777 == 0o640
+    assert _switches(repo)["openspec"]["state"] == "off"
+
+
+def test_a_created_switches_file_gets_the_umask_creation_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A switches file the command creates gets ``0o666 & ~umask``.
+
+    A created file must land with the usual creation mode — not the
+    staging file's ``0o600``, which would hide the shared switches from
+    the team the file is committed for.
+    """
+    repo = stage_helpers._project(tmp_path, monkeypatch)
+    _extension(repo)
+    previous = os.umask(0o027)
+    try:
+        assert _switch_off() == 0
+    finally:
+        os.umask(previous)
+
+    assert _switches_file(repo).stat().st_mode & 0o777 == 0o640
 
 
 def test_a_failure_after_the_task_is_opened_names_the_task_on_one_line_and_exits_non_zero(  # noqa: E501

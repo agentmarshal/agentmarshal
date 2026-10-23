@@ -19,6 +19,8 @@ extension-name rule every extension command applies;
 `extension_trust.py` holds the working tree's managed directory
 (`_managed_directory`, with its link refusals) and the TOML
 basic-string writer (`_toml_string`) `trust.toml` is dumped with;
+`switches.py`'s `shared_extension_names` is the rule `doctor` and
+`stage run` enumerate shared extension names by;
 `journal/display.py`'s `escape_for_display` is the display half of the
 forgeable-text rule; and `cli.py`'s `_placement` is the pattern every
 command resolves its journal placement with.
@@ -64,16 +66,17 @@ command resolves its journal placement with.
   scopes a human writes.
 - **Name, reason and the existing file are checked before the task is
   opened.** The name passes `_validate_name` and is a shared extension
-  the working tree declares exactly when `read_extension_manifest`
-  accepts it — the one rule, not a second copy of it:
-  `ExtensionManifestMissing` is "not declared", and any other reader
-  refusal — a linked manifest or extension directory, a name claimed
-  in both forms, a manifest that cannot be read — is refused naming
-  the extension with the reader's own message, escaped. The names the
-  existing file's parse is checked against follow the same rule: the
-  `.agentmarshal/extensions/` entries are the candidates, and a
-  candidate counts only when the reader accepts it — a linked entry
-  is not counted.
+  the working tree declares exactly when `shared_extension_names`
+  enumerates it under `.agentmarshal/extensions/` — a `<name>.toml`
+  entry, a `<name>/` directory, or a link entry kept under the name it
+  carries — whether or not the manifest under it can be read. ADR-0013
+  decision 17 needs a broken extension to stay switchable: an
+  operational CR runs no `pre-gate` stage, so requiring a readable
+  manifest would let a broken extension block its own switching off.
+  The enumeration is `doctor.py`'s `_extension_names` rule made public
+  in `switches.py` — `doctor` moving onto it is a follow-up — and the
+  names the existing file's parse is checked against are the same set:
+  a linked entry and a name whose manifest cannot be read each count.
   The reason is checked against the parser's own rule — non-empty, at
   most `REASON_CHAR_LIMIT` characters, `reject_control_characters` — so
   the file the command writes can never contain a reason the parser
@@ -136,7 +139,10 @@ command resolves its journal placement with.
   file is created in `.agentmarshal/` — the switches file's own
   directory, the same-directory rule `_write_grants` follows — written,
   then `os.replace`d over the target; a failure anywhere unlinks the
-  staging file and leaves the previous file whole.
+  staging file and leaves the previous file whole. The replacement
+  keeps an existing file's permission bits — `mkstemp`'s `0o600` is
+  corrected by `os.fchmod` to `st_mode & 0o7777` before the rename —
+  and a file the command creates gets `0o666` masked by the umask.
 - **A post-open failure names the task once.** If the task opened but
   the file could not be written — the staging file, the parse-back, the
   rename — the command says so on one line naming the opened task and

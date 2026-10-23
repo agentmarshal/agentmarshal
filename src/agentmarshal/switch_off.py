@@ -9,11 +9,13 @@ opens the task through the journal's own ``open_task`` — a generated
 contract whose scope is exactly the switches file — and writes the
 ``off`` entry for the task it opened.
 
-The name must be a shared extension the working tree declares — the
-manifest reader's call, so a linked or unreadable manifest is refused
-with the reader's own message — and the reason must pass the parser's
-own rule, each checked with the existing file before the task is
-opened, so an early refusal writes nothing. The rewrite is
+The name must be a shared extension the working tree declares — a
+name ``doctor`` and ``stage run`` enumerate under
+``.agentmarshal/extensions/``, a ``<name>.toml`` file, a ``<name>/``
+directory or a link carrying such a name, whether or not its manifest
+can be read, so a broken extension stays switchable — and the reason
+must pass the parser's own rule, each checked with the existing file
+before the task is opened, so an early refusal writes nothing. The rewrite is
 textual — there is no TOML writer to add — an ``on`` entry has the
 switch's own key/value lines inside its table replaced, every other
 key and line kept, or a new table is appended; the new text is
@@ -54,9 +56,7 @@ from agentmarshal.journal.contracts import (
 from agentmarshal.journal.display import escape_for_display
 from agentmarshal.journal.extensions import (
     ExtensionManifestError,
-    ExtensionManifestMissing,
     _validate_name,
-    read_extension_manifest,
 )
 from agentmarshal.journal.open_task import (
     OpenedTask,
@@ -75,6 +75,7 @@ from agentmarshal.switches import (
     Switch,
     SwitchesError,
     parse_switches,
+    shared_extension_names,
 )
 
 _COMMAND = "extension switch off"
@@ -142,39 +143,6 @@ def _placement(stderr: TextIO) -> Placement | None:
         # placement escapes it.
         print(escape_for_display(str(error)), file=stderr)
         return None
-
-
-def _shared_extension_names(project_root: Path, managed: Path) -> frozenset[str]:
-    """The shared extension names the working tree declares, in both forms.
-
-    The candidates are *managed*'s entries — a ``<name>.toml`` entry or
-    a ``<name>/`` directory, a symbolic-link entry under the name it
-    carries — and a candidate is declared only when the manifest
-    reader accepts it: a linked manifest or extension directory, a
-    name claimed in both forms and a manifest that cannot be read each
-    fail the reader, so they are no shared extension the file may
-    name. The reader is the one rule — ``read_extension_manifest``
-    decides here exactly as it decides for the name being switched
-    off. A *managed* that is not a directory is simply no extensions.
-    """
-
-    candidates: set[str] = set()
-    if managed.is_dir():
-        for entry in sorted(managed.iterdir()):
-            if entry.is_symlink():
-                candidates.add(entry.name.removesuffix(".toml"))
-            elif entry.is_dir():
-                candidates.add(entry.name)
-            elif entry.name.endswith(".toml"):
-                candidates.add(entry.name.removesuffix(".toml"))
-    names: set[str] = set()
-    for name in sorted(candidates):
-        try:
-            read_extension_manifest(project_root, name)
-        except ExtensionManifestError:
-            continue
-        names.add(name)
-    return frozenset(names)
 
 
 def _reason_error(reason: str) -> str | None:
@@ -546,15 +514,28 @@ def _write_switches(project_root: Path, switches_file: Path, text: str) -> None:
     same-directory rule ``_write_grants`` follows — so the rename can
     never cross filesystems and a reader never meets a half-written
     file; a failure anywhere leaves the previous file whole and the
-    staging file unlinked.
+    staging file unlinked. The replacement keeps the existing file's
+    permission bits where there is one — ``mkstemp`` always creates the
+    staging file ``0o600``, so the mode is applied with ``os.fchmod``
+    before the rename — and a file the command creates gets the usual
+    creation mode, ``0o666`` masked by the umask.
     """
 
+    try:
+        mode = os.stat(switches_file).st_mode & 0o7777
+    except FileNotFoundError:
+        # The one way to read the umask is to set it; restore it at
+        # once, before anything else can observe the change.
+        umask = os.umask(0)
+        os.umask(umask)
+        mode = 0o666 & ~umask
     descriptor, staging_name = tempfile.mkstemp(
         dir=project_root / ".agentmarshal", prefix=".switches-", suffix=".tmp"
     )
     staging = Path(staging_name)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            os.fchmod(handle.fileno(), mode)
             handle.write(text)
         os.replace(staging, switches_file)
     except Exception:
@@ -607,29 +588,22 @@ def _run_off(args: argparse.Namespace, stderr: TextIO) -> int:
     # that is to land in it — so an early refusal leaves nothing
     # behind: no task, no file.
     try:
-        names = _shared_extension_names(project_root, _managed_directory(project_root))
+        names = shared_extension_names(_managed_directory(project_root))
     except (ExtensionTrustError, OSError) as error:
         print(f"{_COMMAND}: {escape_for_display(str(error))}", file=stderr)
         return 1
     # Whether the name is a shared extension the working tree declares
-    # is the manifest reader's call — not a second copy of its rules: a
-    # missing manifest is "not declared", and any other refusal — a
-    # linked manifest or extension directory, a manifest in both forms,
-    # one that cannot be read — is reported with the reader's own
-    # message, before anything is written.
-    try:
-        read_extension_manifest(project_root, args.name)
-    except ExtensionManifestMissing:
+    # is the enumeration's call — the same set `doctor` and `stage run`
+    # enumerate under `.agentmarshal/extensions/` and the set the
+    # existing file's entries are checked against. A name missing from
+    # it is no shared extension, however the working tree fails to
+    # carry it; a name in it is declared, whether or not the manifest
+    # under it can be read — a broken extension must stay switchable,
+    # since its own pre-gate stage is what may be broken.
+    if args.name not in names:
         print(
             f"{_COMMAND}: '{escape_for_display(args.name)}' is not a shared "
             "extension the working tree declares",
-            file=stderr,
-        )
-        return 1
-    except ExtensionManifestError as error:
-        print(
-            f"{_COMMAND}: '{escape_for_display(args.name)}': "
-            f"{escape_for_display(str(error))}",
             file=stderr,
         )
         return 1

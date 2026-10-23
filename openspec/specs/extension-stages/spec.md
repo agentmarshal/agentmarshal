@@ -565,15 +565,20 @@ does, then the switches file's path, and SHALL commit nothing.
 ### Requirement: name, reason and the existing file are checked before the task is opened
 
 The name SHALL be a shared extension the working tree declares — a
-`<name>.toml` entry or a `<name>/` directory under
-`.agentmarshal/extensions/` — and the reason SHALL pass the parser's
-own rule: non-empty, at most 1000 characters, the forgeable-text rule.
-An existing `.agentmarshal/switches.toml` SHALL be parsed by the shared
+name `doctor` and `stage run` enumerate under
+`.agentmarshal/extensions/`: a `<name>.toml` entry, a `<name>/`
+directory, or a link entry kept under the name it carries — whether
+or not the manifest under it can be read, since a broken extension
+must stay switchable — and the names an existing
+`.agentmarshal/switches.toml`'s entries are checked against SHALL be
+that same set. The reason SHALL pass the parser's own rule:
+non-empty, at most 1000 characters, the forgeable-text rule. An
+existing `.agentmarshal/switches.toml` SHALL be parsed by the shared
 parser before the task is opened: a file the parse refuses SHALL be
-refused naming it, and an extension whose entry is already `off` SHALL
-be refused naming the task that switched it off. Every refusal before
-the task is opened SHALL write nothing — no task is opened and no file
-changes.
+refused naming it, and an extension whose entry is already `off`
+SHALL be refused naming the task that switched it off. Every refusal
+before the task is opened SHALL write nothing — no task is opened and
+no file changes.
 
 #### Scenario: a name the working tree does not declare is refused before anything is written
 - **WHEN** `extension switch off` names an extension
@@ -603,6 +608,26 @@ changes.
 - **THEN** the command opens the task and writes the switch the same
   way
 
+#### Scenario: a declared extension whose manifest cannot be read is switched off
+- **WHEN** the name is enumerated under `.agentmarshal/extensions/`
+  but its manifest cannot be read — a directory form whose declared
+  `bin/` file is missing, or a name claimed in both forms
+- **THEN** the command opens the task and writes the switch the same
+  way
+
+#### Scenario: a link entry's name is a shared extension the command switches off
+- **WHEN** the working tree declares the extension through a
+  symbolic-link entry under `.agentmarshal/extensions/` — the
+  directory form or the file form linked
+- **THEN** the command opens the task and writes the switch the same
+  way
+
+#### Scenario: a file whose other entry names a linked extension is accepted
+- **WHEN** an existing `.agentmarshal/switches.toml` carries an entry
+  for an extension the working tree declares through a link
+- **THEN** the parse accepts the file and the command proceeds — the
+  names the entries are checked against are the enumerated set
+
 ### Requirement: the switches file keeps its text and is replaced atomically
 
 The command SHALL keep the existing file's text and change only what
@@ -624,9 +649,10 @@ as a TOML basic string with every character that needs escaping
 escaped. The whole new text SHALL be parsed by the shared parser
 before the file is replaced — a text the parse refuses writes
 nothing — and the file SHALL be replaced atomically: a temporary file
-in `.agentmarshal/` renamed over it. A failure after the task is
-opened SHALL be reported on one line naming the opened task and SHALL
-exit non-zero.
+in `.agentmarshal/` renamed over it, an existing file's permission
+bits kept and a created file's the usual creation mode masked by the
+umask. A failure after the task is opened SHALL be reported on one
+line naming the opened task and SHALL exit non-zero.
 
 #### Scenario: an existing on entry's table is replaced and the file's other content is kept
 - **WHEN** the file switches the extension `on` and carries other

@@ -23,7 +23,9 @@ developer to commit and send through the gate.
   writes the switch into the working tree's
   `.agentmarshal/switches.toml` for the task it opened.
 - The name is checked to be a shared extension the working tree
-  declares (file or directory form), the reason passes the parser's own
+  declares — a name `doctor` and `stage run` enumerate under
+  `.agentmarshal/extensions/`, file, directory or link form, whether or
+  not its manifest can be read — the reason passes the parser's own
   rule — non-empty, at most 1000 characters, the forgeable-text rule —
   and an existing switches file is parsed before the task is opened: a
   malformed file is refused naming it, an extension already switched
@@ -53,8 +55,9 @@ and the `off` subcommand's logic: validation, the generated contract,
 the surgical rewrite and the atomic replace.
 `src/agentmarshal/extension_trust.py` registers `switch` under the
 existing `extension` group and dispatches it; `trust`, `untrust` and
-`list` are unchanged. `src/agentmarshal/switches.py` gains no new
-rules — its parser is the command's pre-open check and its parse-back
+`list` are unchanged. `src/agentmarshal/switches.py` gains
+`shared_extension_names` — `doctor`'s enumeration rule made public —
+and its parser stays the command's pre-open check and parse-back
 guard. The gate and `stage run` are unchanged — the operational lane
 is CR-219 in parallel — and no other command changes. Out of scope by
 the contract's own staging: `switch on`, personal switches,
