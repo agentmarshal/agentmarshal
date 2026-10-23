@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from decimal import Decimal
+from decimal import MAX_PREC, Decimal, Inexact, localcontext
 from pathlib import Path
 from typing import cast
 
@@ -306,18 +306,25 @@ def _cost_sums(
     estimated: dict[str, Decimal] = {}
     sessions = 0
     without_cost = 0
-    for record in records:
-        if record["record_type"] != "session":
-            continue
-        sessions += 1
-        cost = record.get("cost")
-        if not isinstance(cost, dict):
-            without_cost += 1
-            continue
-        amount = Decimal(str(cost["amount"]))
-        currency = cast(str, cost["currency"])
-        sums = reported if cost["source"] == "reported" else estimated
-        sums[currency] = sums.get(currency, Decimal(0)) + amount
+    # An amount runs to more digits than the default context's 28; under
+    # the maximum precision the addition of the recorded finite decimals
+    # is exact, and a sum that still cannot be represented fails on the
+    # Inexact trap rather than printing a rounded figure.
+    with localcontext() as context:
+        context.prec = MAX_PREC
+        context.traps[Inexact] = True
+        for record in records:
+            if record["record_type"] != "session":
+                continue
+            sessions += 1
+            cost = record.get("cost")
+            if not isinstance(cost, dict):
+                without_cost += 1
+                continue
+            amount = Decimal(str(cost["amount"]))
+            currency = cast(str, cost["currency"])
+            sums = reported if cost["source"] == "reported" else estimated
+            sums[currency] = sums.get(currency, Decimal(0)) + amount
     return (
         tuple(
             CostSum(currency, reported.get(currency), estimated.get(currency))

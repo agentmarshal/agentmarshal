@@ -191,6 +191,37 @@ def test_amounts_sum_and_print_as_decimals_never_floats(
     assert "Cost\tUSD\treported=3.30" in lines
 
 
+def test_amounts_past_the_default_decimal_context_still_sum_exactly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An amount longer than the default context's 28 digits sums exactly.
+
+    The reviewer measured ``123456789012345678901234567890`` + ``1``
+    printing ``123456789012345678901234567900`` under the default
+    context — a valid amount the record rule admits at any length
+    (CR199-DECIMAL-PRECISION).
+    """
+
+    repo = tmp_path / "repo"
+    journal = _initialize_repo(repo, monkeypatch)
+    _open(journal, "CR-001")
+    for amount in ("123456789012345678901234567890", "1"):
+        _write(
+            journal,
+            "CR-001",
+            _session(
+                "CR-001",
+                cost={"amount": amount, "currency": "USD", "source": "reported"},
+            ),
+        )
+    capsys.readouterr()
+
+    assert main(["report", "--task", "CR-001"]) == 0
+    assert "Cost\tUSD\treported=123456789012345678901234567891" in (
+        capsys.readouterr().out.splitlines()
+    )
+
+
 def test_a_task_with_no_cost_shows_none_rather_than_zero(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
