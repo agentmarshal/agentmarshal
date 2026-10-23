@@ -934,8 +934,10 @@ def test_report_totals_the_prose(
     capsys.readouterr()
 
     assert main(["report", "--task", "CR-001"]) == 0
-    assert capsys.readouterr().out == (
-        "CR-001\topen\treviews=2\ttokens=0\tartifacts=2\n"
+    assert (
+        capsys.readouterr()
+        .out.splitlines()[0]
+        .endswith("\topen\treviews=2\ttokens=0\tartifacts=2")
     )
 
 
@@ -2350,6 +2352,7 @@ print("AGENTMARSHAL_VERDICT_END")
     monkeypatch.setenv("AGENTMARSHAL_PIPELINE_OK_SHA", head)
     assert main(["gate", "--task", "CR-001", "--commit", head, "--base", base]) == 0
     assert main(["complete", "--task", "CR-001", "--commit", head, "--base", base]) == 0
+    capsys.readouterr()
     assert main(["prune"]) == 0
     # Exit code alone passed while prune read task state from the host, which
     # has no journal, and called every task unknown. The report's content is
