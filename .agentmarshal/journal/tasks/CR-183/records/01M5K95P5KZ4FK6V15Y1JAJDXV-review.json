@@ -1,0 +1,37 @@
+{
+  "artifacts": [
+    {
+      "hash": "2b2026314fdf2d9b42debab6e38554ed6a831a87e272b5d6cd67432950dfc3c5",
+      "ref": ".agentmarshal/journal/tasks/CR-183/artifacts/01M5K95P5KZ4FK6V15Y1JAJDXV-review.md"
+    }
+  ],
+  "classes": {
+    "RC-MASK-02": "correctness",
+    "RC-OUTPUT-03": "correctness",
+    "RC-TEST-04": "test-gap",
+    "RC-UTF8-01": "correctness"
+  },
+  "created_at": "2026-10-23T02:24:22.195421Z",
+  "findings": [
+    "RC-UTF8-01",
+    "RC-MASK-02",
+    "RC-OUTPUT-03",
+    "RC-TEST-04"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "0b946ce10c4cf9d7fb06fffbe3b2a71459859c0b",
+  "reviewed_contract": "88a4a727a988cd8a8405dd671cb9c1bd0f066b436222f69639b373b5c901ed53",
+  "reviewer": {
+    "email": "auto-review-openai@agent.example.invalid",
+    "model": "gpt-5.6-sol",
+    "role": "code-reviewer",
+    "vendor": "openai"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-183",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "changes_required"
+}
