@@ -77,7 +77,11 @@ from agentmarshal.journal.status_view import (
     print_paths,
     print_task_detail,
 )
-from agentmarshal.journal.submit_review import ReviewSubmitError, submit_review
+from agentmarshal.journal.submit_review import (
+    ReviewSubmitError,
+    reviewer_actor_note,
+    submit_review,
+)
 from agentmarshal.journal.validate import validate_journal
 from agentmarshal.localstate import LocalState, LocalStateError, local_state
 from agentmarshal.migrate import JournalMigrationError, migrate_journal
@@ -153,6 +157,9 @@ def _build_parser() -> argparse.ArgumentParser:
     review_parser.add_argument("--model", required=True, help="reviewer model")
     review_parser.add_argument("--email", required=True, help="reviewer email")
     review_parser.add_argument(
+        "--actor", help="declared reviewer actor id to record on the review"
+    )
+    review_parser.add_argument(
         "--prose",
         type=Path,
         help="file containing the reviewer's prose to preserve and pin",
@@ -181,7 +188,8 @@ def _build_parser() -> argparse.ArgumentParser:
         help="exercise the configured reviewer; records nothing",
     )
     # The shared review metadata is required for a recorded review and refused
-    # for a dry run. The selected binding decides whether --commit/--base apply.
+    # for a dry run — except --actor, the one record flag a dry run accepts.
+    # The selected binding decides whether --commit/--base apply.
     required_unless_dry_run = "required unless --dry-run"
     launch_parser.add_argument(
         "--task", help=f"task identifier ({required_unless_dry_run})"
@@ -218,6 +226,13 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     launch_parser.add_argument(
         "--email", help=f"reviewer email ({required_unless_dry_run})"
+    )
+    launch_parser.add_argument(
+        "--actor",
+        help=(
+            "declared reviewer actor id to record on the review; a dry run "
+            "accepts it and shows what it would record"
+        ),
     )
     gate_parser = subparsers.add_parser(
         "gate", help="verify a merge candidate against the journal"
@@ -559,11 +574,14 @@ def _run_submit_review(args: argparse.Namespace, stderr: TextIO) -> int:
             args.advisory_finding,
             reviewed_finding=args.reviewed_finding,
             prose=prose,
+            reviewer_actor=args.actor,
         )
     except (OSError, ReviewSubmitError) as error:
         print(error, file=stderr)
         return 1
     print(submitted.record_path)
+    if submitted.actor_note is not None:
+        print(submitted.actor_note, file=stderr)
     return 0
 
 
@@ -618,7 +636,10 @@ def _run_review(args: argparse.Namespace, stderr: TextIO) -> int:
             return 1
         try:
             tree, diagnostics_note = dry_run_review(
-                placement.host_root, args.model, journal_root=placement.journal_root
+                placement.host_root,
+                args.model,
+                journal_root=placement.journal_root,
+                reviewer_actor=args.actor,
             )
         except ReviewLaunchError as error:
             print(f"dry run failed: {error}", file=stderr)
@@ -627,6 +648,13 @@ def _run_review(args: argparse.Namespace, stderr: TextIO) -> int:
             f"dry run: the command ran against {tree}; its output has a "
             "parseable verdict; nothing was recorded"
         )
+        if args.actor is not None:
+            print(
+                f"dry run: would record reviewer actor {escape_for_display(args.actor)}"
+            )
+            actor_note = reviewer_actor_note(placement.journal_root, args.actor)
+            if actor_note is not None:
+                print(actor_note, file=stderr)
         if diagnostics_note is not None:
             print(diagnostics_note, file=stderr)
         return 0
@@ -661,6 +689,7 @@ def _run_review(args: argparse.Namespace, stderr: TextIO) -> int:
             args.email,
             journal_root=placement.journal_root if placement.is_sidecar else None,
             reviewed_finding=args.reviewed_finding,
+            reviewer_actor=args.actor,
         )
     except ReviewLaunchError as error:
         print(error, file=stderr)
@@ -673,6 +702,8 @@ def _run_review(args: argparse.Namespace, stderr: TextIO) -> int:
         print(submitted.diagnostics_note, file=stderr)
     if submitted.prose_note is not None:
         print(submitted.prose_note, file=stderr)
+    if submitted.actor_note is not None:
+        print(submitted.actor_note, file=stderr)
     print(submitted.record_path)
     return 0
 
