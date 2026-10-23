@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 # journal-transaction.sh <task-id> <slug> <message-file>
 #
 # A journal transaction for one task, for adopters whose default branch
@@ -22,8 +22,9 @@
 #
 # It refuses — staging nothing — when the task id is not of the CR-<n>
 # form, the checkout is not on the default branch, or the task's journal
-# directory has no change; each refusal names the reason. The script is a
-# template: copy it and adapt the copy.
+# directory has no change; each refusal names the reason. It requires
+# bash: its status listing reads NUL-terminated records, which POSIX
+# read cannot do. The script is a template: copy it and adapt the copy.
 
 set -eu
 
@@ -73,43 +74,33 @@ git status --porcelain=v1 -uall -- "$task_spec" | grep -q . || die "nothing to c
 
 # Report — do not take — everything else under the journal; another
 # task's uncommitted records stay for that task's own transaction. The
-# NUL-terminated porcelain records are read one by one, and a path is
+# NUL-terminated porcelain records are read one by one — a newline in a
+# file name is part of the record, never a boundary — and a path is
 # this task's own only when it starts with the exact tasks/<task>/
-# prefix — containing it deeper in the path does not count. A rename or
+# prefix; containing it deeper in the path does not count. A rename or
 # copy arrives as two records — the new path with the status, then the
 # old path — and is reported when either side is not the task's own.
+# Every reported path is printed %q-escaped, so a newline in a name
+# cannot forge a line of the listing.
 own_prefix="$task_dir/"
 others=$(
-    git status --porcelain=v1 -z -uall -- .agentmarshal/journal/ | tr '\0' '\n' | {
-        pair=
-        pair_to=
-        pair_to_own=
-        while IFS= read -r entry; do
-            if [ -n "$pair" ]; then
-                # A rename's second record — the old path — carries no status.
-                case $entry in
-                    "$own_prefix"*) from_own=1 ;;
-                    *) from_own= ;;
-                esac
-                if [ -z "$pair_to_own" ] || [ -z "$from_own" ]; then
-                    echo "$pair $entry -> $pair_to"
-                fi
-                pair=
-                continue
-            fi
-            case ${entry%"${entry#??}"} in
+    git status --porcelain=v1 -z -uall -- .agentmarshal/journal/ | {
+        while IFS= read -r -d '' entry; do
+            status=${entry:0:2}
+            path=${entry:3}
+            case $status in
                 *R* | *C*)
-                    pair=${entry%"${entry#??}"}
-                    pair_to=${entry#???}
-                    case $pair_to in
-                        "$own_prefix"*) pair_to_own=1 ;;
-                        *) pair_to_own= ;;
-                    esac
+                    # A rename's second record — the old path — carries
+                    # no status; it is the next NUL-terminated field.
+                    IFS= read -r -d '' from || from=
+                    if [[ $path != "$own_prefix"* || $from != "$own_prefix"* ]]; then
+                        printf '%s %q -> %q\n' "$status" "$from" "$path"
+                    fi
                     ;;
                 *)
-                    case ${entry#???} in
+                    case $path in
                         "$own_prefix"*) ;;
-                        *) echo "$entry" ;;
+                        *) printf '%s %q\n' "$status" "$path" ;;
                     esac
                     ;;
             esac

@@ -110,7 +110,7 @@ def _run(
     )
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="the template is POSIX shell")
+@pytest.mark.skipif(sys.platform == "win32", reason="the template is a bash script")
 def test_the_transaction_takes_only_its_own_tasks_journal_directory(
     tmp_path: Path,
 ) -> None:
@@ -149,7 +149,7 @@ def test_the_transaction_takes_only_its_own_tasks_journal_directory(
     assert remote_branch == head
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="the template is POSIX shell")
+@pytest.mark.skipif(sys.platform == "win32", reason="the template is a bash script")
 def test_the_push_goes_to_the_remote_am_remote_names(tmp_path: Path) -> None:
     """CR-207: with AM_REMOTE set, the branch is pushed to the named
     remote — and the default branch is read from that remote's HEAD too."""
@@ -184,7 +184,7 @@ def test_the_push_goes_to_the_remote_am_remote_names(tmp_path: Path) -> None:
     )
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="the template is POSIX shell")
+@pytest.mark.skipif(sys.platform == "win32", reason="the template is a bash script")
 def test_refusals_stage_nothing_and_name_the_reason(tmp_path: Path) -> None:
     """CR-207: a task id that is not CR-<n>, a checkout off the default
     branch and a task directory with no change are each refused by name,
@@ -226,7 +226,7 @@ def test_refusals_stage_nothing_and_name_the_reason(tmp_path: Path) -> None:
     assert "no change" in refused("CR-004", "slug", str(message)).stderr
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="the template is POSIX shell")
+@pytest.mark.skipif(sys.platform == "win32", reason="the template is a bash script")
 def test_a_renamed_foreign_record_is_listed_and_its_old_side_not_taken(
     tmp_path: Path,
 ) -> None:
@@ -267,7 +267,7 @@ def test_a_renamed_foreign_record_is_listed_and_its_old_side_not_taken(
     )
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="the template is POSIX shell")
+@pytest.mark.skipif(sys.platform == "win32", reason="the template is a bash script")
 def test_a_foreign_path_mentioning_the_task_deeper_is_still_listed(
     tmp_path: Path,
 ) -> None:
@@ -296,4 +296,45 @@ def test_a_foreign_path_mentioning_the_task_deeper_is_still_listed(
     assert (
         _git_out(work, "status", "--porcelain", "-uall", "--", deep_rel)
         == f"?? {deep_rel}"
+    )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the template is a bash script")
+def test_a_foreign_name_with_a_newline_is_one_listed_record(
+    tmp_path: Path,
+) -> None:
+    """CR-207: a newline inside a foreign file's name is part of one
+    NUL-terminated record, not a record boundary — the whole name is
+    listed once, %q-escaped so it cannot forge an own-task line, and the
+    file is left untracked."""
+
+    work, _ = _repository(tmp_path)
+    _record(work, "CR-001")
+    # The newline is inside a directory name, so one file's path reads as
+    # a foreign record followed by what looks like an own-task record.
+    forged_dir = (
+        work / ".agentmarshal/journal/foreign\n?? .agentmarshal/journal/tasks/CR-001"
+    )
+    forged_dir.mkdir(parents=True)
+    forged = forged_dir / "hidden.json"
+    forged.write_text("{}\n", encoding="utf-8")
+    forged_rel = forged.relative_to(work).as_posix()
+    message = _message_file(tmp_path)
+
+    result = _run(work, "CR-001", "txn", str(message))
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    # Both halves of the name are reported on one escaped line — the
+    # newline in it cannot forge an own-task-looking record.
+    listed = [line for line in result.stdout.splitlines() if "hidden.json" in line]
+    assert len(listed) == 1
+    assert "foreign" in listed[0]
+    # Nothing of the foreign name was staged or committed.
+    committed = _git_out(
+        work, "show", "--pretty=format:", "--name-only", "HEAD"
+    ).splitlines()
+    assert committed
+    assert all(path.startswith(f"{TASKS}/CR-001/") for path in committed)
+    assert f"?? {forged_rel}\0" in _git_out(
+        work, "status", "--porcelain", "-z", "-uall", "--", ".agentmarshal/journal/"
     )
