@@ -569,8 +569,10 @@ parts, each of them reporting and none deciding anything:
   generic `<id> <type> <time>` line: `check` (`name`, `result`, `commit`,
   `failed_step` when present), `agreement` (the agreed hash under
   `contract`), `acknowledgement` (`commit`, `file`, `signature` or `marker`,
-  `reason`, and a `self-acknowledged` or `self-acknowledgement not checked`
-  mark derived on display) and `ext` (`kind`, `commit`, `payload_sha256`) —
+  `reason`, and a mark derived on display — `self-acknowledged` when the
+  acknowledging actor wrote the commit, `self-acknowledgement not checked`
+  when git cannot read it, none when another actor acknowledged) and `ext`
+  (`kind`, `commit`, `payload_sha256`) —
   each naming `recorded_by=<actor>`, marked `(not a declared actor)` when
   the recorder is not in the project's actors table.
 - One line after the records states the agreement state: `No agreement with
