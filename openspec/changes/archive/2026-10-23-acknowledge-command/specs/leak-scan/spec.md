@@ -181,10 +181,11 @@ escaped where it could forge a rendered line.
 
 Every refusal the command can foresee — an unknown or inadmissible
 task, a commit or base that does not resolve, both or neither of
-`--signature` and `--marker`, a value the record rules refuse, a hit
-the scan does not report, no resolvable recorder, a project file that
-cannot be read — SHALL be decided before any write, so a refused run
-writes no record, and the journal still validates.
+`--signature` and `--marker`, a value the record rules refuse, a
+`--reason` that trips the scan, a hit the scan does not report, no
+resolvable recorder, a project file that cannot be read — SHALL be
+decided before any write, so a refused run writes no record, and the
+journal still validates.
 
 #### Scenario: a refused run leaves the journal untouched
 - **WHEN** `acknowledge` is refused for any reason it can foresee
@@ -197,6 +198,13 @@ writes no record, and the journal still validates.
   does not know, a marker below 1 — would keep the record from being
   written
 - **THEN** the command is refused naming the field's rule, and no
+  record is written
+
+#### Scenario: a reason that trips the scan is refused naming the categories
+- **WHEN** `--reason` carries a string a built-in signature matches or
+  a configured private marker
+- **THEN** the acknowledgement is refused naming the categories the
+  scan found — never the matched text nor a marker's value — and no
   record is written
 
 ## MODIFIED Requirements

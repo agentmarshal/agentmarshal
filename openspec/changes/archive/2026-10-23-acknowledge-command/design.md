@@ -94,7 +94,10 @@ trusting the flags.
   vocabulary, `marker` at least 1, the reason's bound, the
   forgeable-text rule, a resolvable recorder — before the hit is
   matched, so a value the record rules refuse is refused on the rule
-  rather than reported as a missing hit. The hit match is last: only a
+  rather than reported as a missing hit. The reason lands in the
+  record, so it passes `scan_for_leaks` with the project's markers the
+  same way: a hit is refused naming the categories — never the text —
+  and the operator re-words the reason. The hit match is last: only a
   writable record naming a reported hit reaches `write_record`, and
   every refusal leaves the journal byte-identical.
 - **A file the scan could not decode is named, not counted.** The

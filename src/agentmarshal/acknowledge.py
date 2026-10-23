@@ -24,9 +24,10 @@ how many hits the scan did report, never the matched text.
 
 Every refusal — an unknown or terminal task, a commit or base that does
 not resolve, both or neither of ``--signature`` and ``--marker``, a
-value the record rules refuse, a hit the scan does not report — is
-decided before any write: no record. An acknowledgement is not yet
-honoured anywhere: ``leak-scan``'s output and exit are unchanged.
+value the record rules refuse, a ``--reason`` that trips the scan, a
+hit the scan does not report — is decided before any write: no record.
+An acknowledgement is not yet honoured anywhere: ``leak-scan``'s output
+and exit are unchanged.
 """
 
 from __future__ import annotations
@@ -44,6 +45,7 @@ from agentmarshal.journal.capture import (
     render_undecodable_files,
     safe_path,
     scan_diff_for_leaks,
+    scan_for_leaks,
 )
 from agentmarshal.journal.contracts import JournalContractError
 from agentmarshal.journal.display import escape_for_display
@@ -253,6 +255,16 @@ def run(args: argparse.Namespace, stderr: TextIO) -> int:
             )
         except (GateError, CaptureError, ValueError) as error:
             raise AcknowledgeError(f"cannot read project config: {error}") from error
+        # The reason lands in the record, so it passes the same text
+        # scan any kept text passes, with the same markers: a hit is a
+        # refusal naming the categories — never the matched text — and
+        # the operator re-words the reason rather than masking it.
+        reason_categories = scan_for_leaks(args.reason, markers)
+        if reason_categories:
+            raise AcknowledgeError(
+                f"--reason refused: possible secrets detected "
+                f"({', '.join(reason_categories)}); re-word the reason"
+            )
         try:
             diff_text, undecodable = leak_scan_diff(scan_root, merge_base, args.commit)
         except GateError as error:

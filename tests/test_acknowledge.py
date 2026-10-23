@@ -1017,6 +1017,39 @@ def test_a_value_the_record_rules_refuse_writes_nothing(
     assert main(["validate"]) == 0
 
 
+def test_a_reason_that_trips_the_scan_is_refused_naming_the_categories(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a reason that trips the scan is refused naming the
+    categories.
+
+    The reason lands in the record, so it passes the text scan with the
+    project's markers: a reason carrying a built-in signature's text or
+    a configured marker is refused naming the categories found — never
+    the matched text — and no record is written.
+    """
+
+    repo, base, head = _repo_with_hit(tmp_path, monkeypatch, markers=(_MARKER,))
+    monkeypatch.setenv("AGENTMARSHAL_ACTOR", "an-operator")
+    capsys.readouterr()
+    before = _snapshot(_journal(repo))
+
+    assert _acknowledge(*_hit_args(base, head, reason=f"token {_GITHUB_TOKEN}")) == 1
+    captured = capsys.readouterr()
+    assert "github-token" in captured.err
+    assert _GITHUB_TOKEN not in captured.out + captured.err
+
+    assert _acknowledge(*_hit_args(base, head, reason=f"host {_MARKER}")) == 1
+    captured = capsys.readouterr()
+    assert "private-marker" in captured.err
+    assert _MARKER not in captured.out + captured.err
+
+    assert _snapshot(_journal(repo)) == before
+    from agentmarshal.cli import main
+
+    assert main(["validate"]) == 0
+
+
 def test_acknowledge_lists_its_arguments_in_help(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
