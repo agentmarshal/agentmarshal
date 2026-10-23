@@ -1,0 +1,33 @@
+{
+  "advisory_findings": [
+    "CR185-DOC-PROMPT-OVERCLAIM"
+  ],
+  "artifacts": [
+    {
+      "hash": "6412daba5d0ffa88f3e3678a7f1f3d8bfa0ef799d0b6a28f171987ae9a90ff2b",
+      "ref": ".agentmarshal/journal/tasks/CR-185/artifacts/01M5K6XQ8WK1DE8J4C837FDHKA-review.md"
+    }
+  ],
+  "classes": {
+    "CR185-DOC-PROMPT-OVERCLAIM": "claim-accuracy"
+  },
+  "created_at": "2026-10-23T01:45:04.028397Z",
+  "findings": [],
+  "previous_review": "01M5K6CHH8NB0W442Q9JV2SE1J",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "37608f73ebf5560299124b4b8fb2499cb3c27e3f",
+  "reviewed_contract": "b881e61e8609a9e583302e943a472f92c580a99f3698df46e1404444d55bb05d",
+  "reviewer": {
+    "email": "auto-review-openai@agent.example.invalid",
+    "model": "gpt-5.6-sol",
+    "role": "code-reviewer",
+    "vendor": "openai"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-185",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "approved"
+}
