@@ -450,8 +450,7 @@ def test_a_completed_record_carrying_the_field_stamps_schema_7() -> None:
 def test_the_field_on_a_completed_record_below_schema_7_is_refused_at_write(
     tmp_path: Path,
 ) -> None:
-    """Scenario: the field on a completed record below schema 7 is refused
-    at write."""
+    """Scenario: the field on a completed record below schema 7 is refused at write."""
 
     journal_root = tmp_path / "journal"
     record = _completed_record()
@@ -465,8 +464,7 @@ def test_the_field_on_a_completed_record_below_schema_7_is_refused_at_write(
 def test_the_field_on_a_completed_record_below_schema_7_is_refused_on_read(
     tmp_path: Path,
 ) -> None:
-    """Scenario: the field on a completed record below schema 7 is refused
-    on read."""
+    """Scenario: the field on a completed record below schema 7 is refused on read."""
 
     record = _completed_record()
     record["schema"] = 6
@@ -478,8 +476,9 @@ def test_the_field_on_a_completed_record_below_schema_7_is_refused_on_read(
 def test_a_completed_record_without_the_field_keeps_its_schema_and_reads_as_before(
     tmp_path: Path,
 ) -> None:
-    """Scenario: a completed record without the field keeps its schema and
-    reads as before."""
+    """
+    Scenario: a completed record without the field keeps its schema and reads as before.
+    """
 
     journal_root = tmp_path / "journal"
     record = _plain_completed()

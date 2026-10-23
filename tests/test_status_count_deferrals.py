@@ -79,7 +79,8 @@ def _held_task(journal_root: Path, task_id: str) -> None:
 def test_a_task_without_the_marks_prints_exactly_todays_detail_view(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Scenario: no count line and no deferrals when the task has neither.
+    """Scenario: the detail view is byte for byte unchanged without the marks.
+    Scenario: no count line when the count is zero.
 
     The byte-for-byte pin: a task with an approved review and a completed
     record without `advisory_dispositions` prints exactly the detail view
@@ -125,7 +126,8 @@ def test_a_task_without_the_marks_prints_exactly_todays_detail_view(
 def test_the_count_line_prints_over_every_review_of_the_task(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Scenario: the count line covers every review of the task's candidates.
+    """Scenario: the count line prints when at least one verdict is changes_required.
+    Scenario: the count covers every review of the task's candidates.
 
     Two `changes_required` verdicts over different commits and one approved
     — the count is 2, below the default threshold 3, so the line names the
@@ -216,7 +218,7 @@ def test_a_count_at_the_threshold_is_marked(
 def test_a_malformed_threshold_is_named_on_the_line(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Scenario: a malformed threshold is reported on the line.
+    """Scenario: a malformed threshold is named on the line.
 
     The count still prints and the view does not fail — the line names
     the unreadable threshold, like the gate's line does.
@@ -284,7 +286,10 @@ def test_the_threshold_is_read_from_the_journal_project_as_the_gate_reads_it(
 def test_each_deferred_finding_is_listed_with_reason_and_follow_up(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Scenario: each deferred finding is listed with its reason and follow-up.
+    """Scenario: each deferred finding is listed with its reason.
+    Scenario: a follow-up task held by the journal shows its state.
+    Scenario: a follow-up task the journal does not hold is named.
+    Scenario: fixed and rejected dispositions are counted on one line.
 
     `advisory_dispositions` of the `completed` record: two deferrals —
     one naming a follow-up task the journal holds (its state shows), one
