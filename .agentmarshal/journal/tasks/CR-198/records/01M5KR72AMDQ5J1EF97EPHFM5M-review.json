@@ -1,0 +1,75 @@
+{
+  "artifacts": [
+    {
+      "hash": "437c64943fa050b791a3453557c5fa66eaec0c55abc6fd022ecedd23a6f0ab54",
+      "ref": ".agentmarshal/journal/tasks/CR-198/artifacts/01M5KR72AMDQ5J1EF97EPHFM5M-review.md"
+    }
+  ],
+  "created_at": "2026-10-23T06:47:16.052040Z",
+  "findings": [],
+  "previous_review": "01M5KQJW2879ZZYD113DHHP1HA",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "ef6cffcbb0036bc84872815c86f8517ffbe2f81d",
+  "reviewed_contract": "8e4b3450c518bb13816a2f515a776d05aa419fbf02ac9465f620f4961793c7b5",
+  "reviewer": {
+    "email": "auto-review-openai@agent.example.invalid",
+    "model": "gpt-5.6-sol",
+    "role": "code-reviewer",
+    "vendor": "openai"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-198",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "All newly documented status output and conditions match the implementation.",
+        "what": "Static comparison of the documentation against src/agentmarshal/journal/status_view.py and src/agentmarshal/cli.py"
+      },
+      {
+        "result": "All referenced local targets checked exist; the diff adds no links.",
+        "what": "Targeted link-target existence checks"
+      },
+      {
+        "result": "The clarification accurately names gate-rules-unreachable-on-read from review round 1 and gate-admits-forged-low-schema-record from review round 2.",
+        "what": "Inspection of CR-145 review artifacts"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "Full CI sequence locally",
+        "why": "uv is unavailable in the review snapshot; the coordinator reports that the complete sequence passed on the exact reviewed commit."
+      },
+      {
+        "what": "Commit-aware git diff verification",
+        "why": "The supplied snapshot contains no Git metadata; scope was verified from the supplied diff."
+      }
+    ],
+    "read": [
+      "docs/quickstart.md",
+      "docs/adr/ADR-0015-a-rule-applies-from-the-schema-that-introduced-it.md",
+      "docs/adr/ADR-0016-the-lifecycle-of-review-findings.md",
+      "docs/adr/ADR-0018-governing-the-contract.md",
+      "docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md",
+      "docs/threat-model.md",
+      "src/agentmarshal/journal/status_view.py",
+      "src/agentmarshal/cli.py",
+      "src/agentmarshal/journal/gate.py",
+      "src/agentmarshal/journal/records.py",
+      "tests/test_status_steps.py",
+      "tests/test_status_assignment.py",
+      "tests/test_status_schema_7_lines.py",
+      "tests/test_status_count_deferrals.py",
+      "tests/test_gate.py",
+      "tests/test_record_schema.py",
+      "tests/test_quickstart.py",
+      ".agentmarshal/journal/tasks/CR-198/contract.md",
+      ".agentmarshal/journal/tasks/CR-145/artifacts/01M3ZRFG9KMGS8CR1FXMM0N9XK-review.md",
+      ".agentmarshal/journal/tasks/CR-145/artifacts/01M3ZRYKN0G1R8NQ7XKENX8343-review.md"
+    ]
+  }
+}

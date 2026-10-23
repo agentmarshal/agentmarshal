@@ -1,0 +1,66 @@
+{
+  "artifacts": [
+    {
+      "hash": "4ed214df315e1dee20fb0af705f62d8f0c5986fe4dd4ac773aa4893914687dcd",
+      "ref": ".agentmarshal/journal/tasks/CR-198/artifacts/01M5KQJW2879ZZYD113DHHP1HA-review.md"
+    }
+  ],
+  "classes": {
+    "quickstart-acknowledgement-marker-states-only-two-outcomes": "contract-mismatch"
+  },
+  "created_at": "2026-10-23T06:36:14.280844Z",
+  "evidence": {
+    "quickstart-acknowledgement-marker-states-only-two-outcomes": "docs/quickstart.md:571-573; src/agentmarshal/journal/status_view.py:273-276; tests/test_status_schema_7_lines.py:530-556"
+  },
+  "findings": [
+    "quickstart-acknowledgement-marker-states-only-two-outcomes"
+  ],
+  "previous_review": "01M5KQ1NYMJSPEYNMB8QE7KD15",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "782ede479f9198b10a6682e34abbbb17a8f84e8c",
+  "reviewed_contract": "8e4b3450c518bb13816a2f515a776d05aa419fbf02ac9465f620f4961793c7b5",
+  "reviewer": {
+    "email": "auto-review-openai@agent.example.invalid",
+    "model": "gpt-5.6-sol",
+    "role": "code-reviewer",
+    "vendor": "openai"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-198",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "Confirmed acknowledgement rendering has self, unchecked, and unmarked non-self outcomes; verified the other documented status features against their renderers and focused tests.",
+        "what": "Direct source and test inspection with rg, sed, and nl"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "Full CI sequence",
+        "why": "The coordinator certified it passed on the reviewed commit; the supplied snapshot is read-only and is not recognized as a Git worktree."
+      }
+    ],
+    "read": [
+      ".agentmarshal/journal/tasks/CR-198/contract.md",
+      "docs/quickstart.md",
+      "docs/adr/ADR-0015-a-rule-applies-from-the-schema-that-introduced-it.md",
+      "docs/adr/ADR-0016-the-lifecycle-of-review-findings.md",
+      "docs/adr/ADR-0018-governing-the-contract.md",
+      "docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md",
+      "src/agentmarshal/journal/status_view.py",
+      "src/agentmarshal/journal/gate.py",
+      "tests/test_status_assignment.py",
+      "tests/test_status_schema_7_lines.py",
+      "tests/test_status_count_deferrals.py",
+      "tests/test_status_steps.py",
+      "tests/test_gate.py",
+      ".agentmarshal/journal/tasks/CR-145/artifacts/01M3ZRFG9KMGS8CR1FXMM0N9XK-review.md",
+      ".agentmarshal/journal/tasks/CR-145/artifacts/01M3ZRYKN0G1R8NQ7XKENX8343-review.md"
+    ]
+  }
+}
