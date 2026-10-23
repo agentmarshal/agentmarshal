@@ -84,8 +84,11 @@ materializes a commit as a clean directory via `git archive`;
   with `git show`: a blob byte for byte, a symbolic-link entry
   recreated as a link (the grant hash refuses it as the filesystem
   walk would, and a linked `command` is refused at invocation), a
-  gitlink refused as not materializable. The directory lands under the
-  command's `TemporaryDirectory`, removed with everything else.
+  gitlink refused as not materializable. Each stage materializes its
+  own copy under its own `TemporaryDirectory`, removed when the stage
+  ends: a stage can reach the copy through `__file__`, so no copy an
+  earlier stage could have touched is reused, and the grant check
+  below recomputes on each stage's fresh copy.
 - **The working directory is a fresh snapshot of the candidate
   commit.** `journal/review.py`'s `_extract_snapshot` — `git archive`
   into a tar extracted with the `data` filter — is reused; its
@@ -151,6 +154,9 @@ materializes a commit as a clean directory via `git archive`;
 
 - [A stage writes into its own snapshot and a later stage sees it] → a
   fresh snapshot per stage removes the channel.
+- [A stage rewrites a later stage's command in a shared materialized
+  directory] → each stage's copy is a fresh materialization, the grant
+  check recomputes on it, and the copy is removed when its stage ends.
 - [A stage's environment misses something an operator's shell had] →
   `isolation.env` is the declared channel; an undeclared variable not
   passing is the point of the minimal environment, and the reason is in

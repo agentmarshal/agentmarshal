@@ -513,6 +513,49 @@ def test_the_temporary_directories_are_gone_when_the_command_returns(
     assert not snapshot.parent.exists()
 
 
+def test_an_earlier_stage_cannot_rewrite_a_later_stages_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: the base commit's code runs, not the candidate's or the working tree's."""  # noqa: E501
+    repo, _base, _candidate = _repo_with_extension(
+        tmp_path,
+        monkeypatch,
+        manifest=_manifest(
+            stages=(
+                ("pre-gate-warn", "bin/first.py"),
+                ("pre-gate-stop", "bin/second.py"),
+            )
+        ),
+        files={
+            # The first stage reaches its own materialized copy through
+            # __file__ and rewrites the second stage's command file in it.
+            "bin/first.py": (
+                "from pathlib import Path\n"
+                "target = Path(__file__).resolve().parents[1] / 'bin' / 'second.py'\n"
+                "target.write_text(\"print('REWRITTEN')\\n\", encoding='utf-8')\n"
+                "print('first ran')\n"
+            ),
+            "bin/second.py": "print('BASE SECOND')\n",
+        },
+    )
+    # The grant is recorded on master's checkout, where the extension's
+    # contents are the base's — the contents each stage's fresh
+    # materialization carries and the grant check recomputes on.
+    _git(repo, "checkout", "--quiet", "master")
+    assert _trust(monkeypatch) == 0
+    _git(repo, "checkout", "--quiet", "candidate")
+    _workstation(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 0
+
+    out = capsys.readouterr().out
+    assert "openspec | first ran" in out
+    assert "openspec | BASE SECOND" in out
+    assert "REWRITTEN" not in out
+    assert out.count("openspec: checked") == 2
+
+
 # -- the argv invocation -----------------------------------------------------
 
 

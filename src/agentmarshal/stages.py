@@ -278,6 +278,11 @@ def _prepare_extension(
 ) -> _Prepared:
     """Materialize one extension's directory and, off CI, check its grant.
 
+    Called once per stage against a fresh *temp_root*: a stage can reach
+    its own materialized copy through ``__file__``, so a copy an earlier
+    stage could have touched is never reused — decision 14's "before
+    each run" is a recomputation on each stage's own materialization.
+
     The grant check runs on the base-materialized contents: the hash the
     grant recorded must cover what is about to run, so a change landed
     after the approval — or a directory that cannot be hashed at all — is
@@ -547,14 +552,18 @@ def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
 
     paused: list[str] = []
     warnings: list[str] = []
-    with tempfile.TemporaryDirectory(prefix="agentmarshal-stage-") as temporary:
-        temp_root = Path(temporary)
-        prepared: dict[str, _Prepared] = {}
-        for index, (name, manifest, stage) in enumerate(plan):
-            if name not in prepared:
-                prepared[name] = _prepare_extension(
-                    project_root, merge_base, name, temp_root, ci, grants
-                )
+    for index, (name, manifest, stage) in enumerate(plan):
+        # Each stage gets its own temporary directory: a stage runs its
+        # extension's code with the materialized copy in reach of
+        # ``__file__``, so a copy an earlier stage ran against can no
+        # longer speak for the base. The directory is materialized
+        # afresh and the grant check recomputed on it for every stage,
+        # and the copy goes away with the stage's own context.
+        with tempfile.TemporaryDirectory(prefix="agentmarshal-stage-") as temporary:
+            temp_root = Path(temporary)
+            prepared = _prepare_extension(
+                project_root, merge_base, name, temp_root, ci, grants
+            )
             outcome = _run_stage(
                 project_root,
                 resolved_commit,
@@ -564,25 +573,23 @@ def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
                 name,
                 manifest,
                 stage,
-                prepared[name],
+                prepared,
                 temp_root / f"snapshot-{index}",
             )
-            shown = escape_for_display(name)
-            text = outcome.output.decode("utf-8", errors="replace")
-            lines = text.split("\n")
-            if lines and lines[-1] == "":
-                lines.pop()
-            for line in lines:
-                print(f"{shown} | {escape_for_display(line)}")
-            result_text = _result_text(outcome)
-            print(f"{shown}: {result_text}")
-            record_event(name, stage, outcome, result_text)
-            if stage.phase == "pre-gate-stop" and outcome.decision != "checked":
-                paused.append(f"{shown}: {result_text}")
-            elif stage.phase == "pre-gate-warn" and outcome.decision != "checked":
-                warnings.append(f"{shown}: {result_text}")
-    # The temporary directories' cleanup is the context's own; nothing a
-    # stage wrote outlives the command.
+        shown = escape_for_display(name)
+        text = outcome.output.decode("utf-8", errors="replace")
+        lines = text.split("\n")
+        if lines and lines[-1] == "":
+            lines.pop()
+        for line in lines:
+            print(f"{shown} | {escape_for_display(line)}")
+        result_text = _result_text(outcome)
+        print(f"{shown}: {result_text}")
+        record_event(name, stage, outcome, result_text)
+        if stage.phase == "pre-gate-stop" and outcome.decision != "checked":
+            paused.append(f"{shown}: {result_text}")
+        elif stage.phase == "pre-gate-warn" and outcome.decision != "checked":
+            warnings.append(f"{shown}: {result_text}")
     for entry in warnings:
         print(f"stage run: WARNING: extension at pre-gate-warn — {entry}", file=stderr)
     for entry in paused:
