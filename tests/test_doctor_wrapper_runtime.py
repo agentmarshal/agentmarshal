@@ -234,6 +234,18 @@ def test_a_runtime_reporting_no_readable_version_fails_the_check(
         "version" in out
     )
 
+    # And a digit run past the interpreter's integer-conversion limit
+    # is just as unreadable — reported, never an exception out of the
+    # check.
+    digits = "9" * 5000
+    script.write_text(f"#!/bin/sh\nprintf 'v{digits}\\n'\n", encoding="utf-8")
+    assert main(["doctor"]) == 1
+    out = capsys.readouterr().out
+    assert (
+        f"FAIL: extension runtime openspec — {script} reports no readable "
+        "version" in out
+    )
+
 
 def test_a_runtime_below_the_declared_minimum_fails_the_check(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]

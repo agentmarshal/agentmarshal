@@ -165,13 +165,20 @@ def _runtime_version(output: str) -> tuple[int, ...] | None:
     The first run of numeric dot-separated components is the version —
     ``v20.11.0`` reads as ``(20, 11, 0)``, the leading ``v`` ignored
     and whatever follows the numeric run playing no part — and output
-    naming no number at all reports unreadable rather than guessed.
+    naming no number at all, or a number whose component the
+    interpreter cannot convert to an integer, reports unreadable
+    rather than guessed.
     """
 
     match = _RUNTIME_VERSION_OUTPUT.search(output)
     if match is None:
         return None
-    return tuple(int(part) for part in match.group(1).split("."))
+    try:
+        return tuple(int(part) for part in match.group(1).split("."))
+    except ValueError:
+        # A digit run past the interpreter's conversion limit cannot
+        # be converted — as unreadable as naming none.
+        return None
 
 
 def _version_at_least(reported: tuple[int, ...], minimum: tuple[int, ...]) -> bool:
