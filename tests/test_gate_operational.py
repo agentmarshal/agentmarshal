@@ -76,6 +76,8 @@ def test_the_operational_lane_admits_a_switches_only_candidate(
     assert output == (
         "PASS: task CR-001 is not closed at base\n"
         "PASS: operational transaction (operational lane; review not required)\n"
+        "PASS: scope (operational lane: the diff is "
+        ".agentmarshal/switches.toml and the task's own records)\n"
         "PASS: the switches file outside its entries matches the base\n"
         "PASS: every added or changed switch entry names CR-001\n"
         "NOT EXAMINED: agreement (the operational lane requires none)\n"
@@ -577,6 +579,50 @@ def test_pre_gate_stages_do_not_run_on_an_operational_change(
     )
     assert captured.err == ""
     assert "stop ran" not in captured.out
+    assert [
+        event for event in _events(repo) if event["event"] == "extension-event"
+    ] == []
+
+
+def test_an_operational_change_reports_no_switched_off_stage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: an operational change reports no switched-off stage.
+
+    The base's file already switches openspec off; the candidate switches
+    it back on under this task. On the lane the pre-gate invocation plans
+    no stage at all, so no `switched off` result line exists — the one
+    line printed is the operational skip.
+    """
+
+    repo = _project(tmp_path, monkeypatch)
+    _extension(
+        repo,
+        files={"bin/check.py": "import sys\nprint('stop ran')\nsys.exit(1)\n"},
+    )
+    assert main(["open", "--title", "Switch off openspec", "--scope", _SWITCHES]) == 0
+    _write_switches(
+        repo,
+        'format = 1\n\n[switches.openspec]\nstate = "off"\n'
+        'task = "CR-214"\nreason = "switched off before"\n',
+    )
+    base = _commit_all(repo, "extension, task and a switched-off base")
+    _write_switches(
+        repo,
+        'format = 1\n\n[switches.openspec]\nstate = "on"\ntask = "CR-001"\n',
+    )
+    candidate = _commit_all(repo, "switch openspec back on")
+    capsys.readouterr()
+
+    assert _stage_run(commit=candidate, base=base) == 0
+
+    captured = capsys.readouterr()
+    assert (
+        captured.out
+        == "stage run: pre-gate stages do not run on an operational change\n"
+    )
+    assert "switched off" not in captured.out
+    assert captured.err == ""
     assert [
         event for event in _events(repo) if event["event"] == "extension-event"
     ] == []

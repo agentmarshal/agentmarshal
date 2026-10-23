@@ -176,7 +176,12 @@ when the task's contract — read from the merge-base tree when the task
 exists there, and read from the candidate's tree when the candidate
 opens the task — declares `scope` exactly
 `[".agentmarshal/switches.toml"]`. On that lane the transcript SHALL
-print one PASS line for the transaction; the review, verdict,
+print one PASS line for the transaction and one PASS line for the
+scope — `PASS: scope (operational lane: the diff is
+.agentmarshal/switches.toml and the task's own records)` — because the
+scope is enforced by the lane's own predicate: the admitted diff is the
+switches file plus the task's own records and the contract's scope is
+exactly that file. The review, verdict,
 independence and agreement checks SHALL be reported NOT EXAMINED — the
 operational change requires none of them — and every check that does
 not depend on a review SHALL run as on the diff lane. A candidate whose
@@ -192,7 +197,8 @@ NOT be offered.
   task's contract at the base declares scope exactly
   `[".agentmarshal/switches.toml"]`
 - **THEN** the transcript prints one PASS line for the operational
-  transaction, NOT EXAMINED lines for the latest-review, reviewer
+  transaction and one for the scope the lane's predicate enforced,
+  NOT EXAMINED lines for the latest-review, reviewer
   independence and agreement checks, and every other check runs as it
   does today — the gate passes with no review record
 

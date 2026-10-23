@@ -21,7 +21,8 @@ transaction that retires it.
   the task's contract — read from the base tree when the task exists
   there, from the candidate's tree when the candidate opens the task —
   declares `scope` exactly `[".agentmarshal/switches.toml"]`.
-- On that lane the transcript prints one PASS line for the transaction,
+- On that lane the transcript prints one PASS line for the transaction
+  and one for the scope the lane's own predicate enforces,
   parses the candidate's switches file with CR-217's parser against the
   shared extension names the base declares, and marks the review,
   verdict, independence and agreement checks NOT EXAMINED — the
@@ -47,7 +48,7 @@ transaction that retires it.
 
 ## Capabilities
 
-- modified: `gate-lanes`
+- modified: `gate-lanes`, `extension-stages`
 
 ## Impact
 
@@ -56,6 +57,7 @@ example `operational_candidate` — which `src/agentmarshal/stages.py`
 imports for its `pre-gate` skip; the switches file and the
 base-or-candidate contract are read from trees with the gate's existing
 `git show`/`ls-tree` helpers. `tests/` gains a scenario per delta-spec
-scenario. `openspec/changes/archive/` and
-`openspec/specs/gate-lanes/spec.md` change only through the archive
-command.
+scenario. `openspec/changes/archive/`,
+`openspec/specs/gate-lanes/spec.md` and
+`openspec/specs/extension-stages/spec.md` change only through the
+archive command.

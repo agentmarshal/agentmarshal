@@ -111,6 +111,7 @@ In place of the regular lane's scope-through-implementers block:
 
 ```
 PASS: operational transaction (operational lane; review not required)
+PASS: scope (operational lane: the diff is .agentmarshal/switches.toml and the task's own records)
 PASS|FAIL: <switches checks>
 NOT EXAMINED: agreement (the operational lane requires none)
 <named-documents check, when the contract names documents>
@@ -120,6 +121,13 @@ NOT EXAMINED: independence rule '<rule>' (the operational lane requires no revie
 NOT EXAMINED: declared reviewers (the operational lane requires no review)           — when declared
 <implementers check, when the contract names implementers>
 ```
+
+The scope line stands where the diff lane's scope check stands because
+the check is not skipped — it is made by the lane's own predicate,
+which admits only a diff of the switches file plus the task's own
+records under a contract scoping exactly that file. Saying so on a PASS
+line keeps the transcript from implying scope went unexamined: what the
+lane enforces and where it was enforced are both named.
 
 Review, verdict, independence and agreement are what the lane requires
 none of — each says so. "Latest review" names the single regular-lane
@@ -242,6 +250,28 @@ stage builds, no pause can stand. The predicate's own reads — the
 base's contract, extension names and switches file — are gate inputs,
 not extension code. Other phases fall
 through to today's behaviour; a non-operational candidate is unchanged.
+
+### The exception is stated on two extension-stages requirements
+
+The behaviour the lane carves out contradicts two requirements' literal
+text, so the delta modifies both — a MODIFIED requirement carries the
+requirement's full text with the exception stated, every existing
+scenario kept:
+
+- `stage run` invokes the declared stages of the base's shared
+  extensions — the requirement that has a `pre-gate` invocation read
+  each manifest and run each matching stage. The exception is stated
+  ahead of the manifest read: on a candidate the predicate qualifies,
+  one line prints, no stage runs, success returns.
+- `stage run` reads the switches from the base and reports a
+  switched-off extension — the requirement that has each stage of a
+  base-switched-off extension print `switched off`. On the lane no
+  stage is planned, so no stage carries the line; the exception states
+  that, and that the base-file read this requirement governs is the one
+  the lane's own predicate makes.
+
+The doctor requirement needs no exception: `doctor` reads the working
+tree's file and is untouched by the lane.
 
 ## Risks / Trade-offs
 

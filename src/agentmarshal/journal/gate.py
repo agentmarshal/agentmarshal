@@ -1327,6 +1327,16 @@ def run_gate(
     elif operational is not None:
         contract = operational.contract
         say("PASS: operational transaction (operational lane; review not required)")
+        # The regular lane's scope check is one the lane's own predicate
+        # has already made: the diff is the switches file plus the task's
+        # own records and the contract's scope is exactly that file, so
+        # the transcript says so in the check's place rather than leaving
+        # the lane silent where the diff lane reports.
+        check(
+            True,
+            "scope (operational lane: the diff is "
+            ".agentmarshal/switches.toml and the task's own records)",
+        )
         # ADR-0013 decision 17's lane check: the candidate's file parses
         # against the shared extension names the base declares, then is
         # compared to the base's as raw TOML — the tables `tomllib`

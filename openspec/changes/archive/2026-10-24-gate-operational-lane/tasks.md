@@ -19,7 +19,10 @@
 ## 2. The gate
 
 - [x] 2.1 `run_gate` asks the predicate only when `not sidecar` and runs
-  the lane block when it returns a contract: the PASS line, the
+  the lane block when it returns a contract: the PASS line, one PASS
+  line for the scope the predicate itself enforces
+  (`PASS: scope (operational lane: the diff is
+  .agentmarshal/switches.toml and the task's own records)`), the
   switches checks against the base-declared names, NOT EXAMINED for
   agreement, latest review and reviewer independence, NOT EXAMINED per
   declared independence rule and for declared reviewers when the
@@ -43,8 +46,11 @@
 
 ## 4. The change itself
 
-- [x] 4.1 proposal.md, design.md, tasks.md and the gate-lanes delta spec
-  are written — verify: openspec validate.
+- [x] 4.1 proposal.md, design.md, tasks.md, the gate-lanes delta spec
+  and the extension-stages delta spec — MODIFIED requirements carrying
+  the full text of the invocation and base-switches requirements with
+  the operational exception stated — are written — verify: openspec
+  validate.
 - [x] 4.2 Every scenario in the delta spec is demonstrated by a test
   whose docstring names it — verify: grep the test docstrings against
   the spec's scenario headings.
@@ -53,5 +59,7 @@
   `uv run mypy` — and the CI-conditions run `env -u AGENTMARSHAL_ACTOR
   GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 uv run pytest -q`.
 - [x] 4.4 The change is archived with the archive command — verify:
-  `openspec/specs/gate-lanes/spec.md` gains each new requirement once
-  and the change lives under `openspec/changes/archive/`.
+  `openspec/specs/gate-lanes/spec.md` gains each new requirement once,
+  `openspec/specs/extension-stages/spec.md` has the two requirements
+  replaced and its count unchanged, and the change lives under
+  `openspec/changes/archive/`.
