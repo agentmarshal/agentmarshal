@@ -1,0 +1,76 @@
+{
+  "artifacts": [
+    {
+      "hash": "b498003295a75e51db531c46dee3034b7e067bcca2583c774bbf6bdcec8983e3",
+      "ref": ".agentmarshal/journal/tasks/CR-217/artifacts/01M5N1JGZ5838CFRHN9GE2ZJTA-review.md"
+    }
+  ],
+  "classes": {
+    "CR217-001": "correctness",
+    "CR217-002": "contract-mismatch"
+  },
+  "created_at": "2026-10-23T18:50:03.109298Z",
+  "evidence": {
+    "CR217-001": "Stubbed command output: exit=1, stdout='', stderr='stage run: /local/trust.toml: malformed\\n'; controlling code is src/agentmarshal/stages.py:645.",
+    "CR217-002": "Stubbed command output: exit=0 with only 'stage run: no shared extension declares a pre-gate stage'; early return is src/agentmarshal/stages.py:611."
+  },
+  "findings": [
+    "CR217-001",
+    "CR217-002"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "64862b0b788bdcdef623338af36986b913ac9e08",
+  "reviewed_contract": "0c1ea4e060db0a88f27a7e3440ec395d3673d4fc4909530c56528585668240eb",
+  "reviewer": {
+    "email": "auto-review-openai@agent.example.invalid",
+    "model": "gpt-5.6-sol",
+    "role": "code-reviewer",
+    "vendor": "openai"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-217",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "blocked",
+  "verification": {
+    "executed": [
+      {
+        "result": "20 delta-spec scenarios and 21 matching scenario docstrings; the base-reading scenario intentionally has two tests.",
+        "what": "Static scenario/docstring comparison with rg"
+      },
+      {
+        "result": "exit=1, stdout='', stderr='stage run: /local/trust.toml: malformed\\n'",
+        "what": "Stubbed non-CI _run_stages invocation with an off switch and malformed trust file"
+      },
+      {
+        "result": "exit=0, stdout='stage run: no shared extension declares a pre-gate stage\\n', stderr=''; _base_switches was not called.",
+        "what": "Stubbed _run_stages invocation with no stage in the requested phase and malformed _base_switches"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "Full CI sequence and focused pytest suite",
+        "why": "The snapshot lacks uv and pytest; the coordinator states the full sequence passed on the reviewed commit."
+      },
+      {
+        "what": "Independent Git commit/diff verification",
+        "why": "The supplied snapshot contains no Git metadata."
+      }
+    ],
+    "read": [
+      "supplied CR-217 contract and diff",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md",
+      "docs/adr/ADR-0014-where-things-live.md",
+      "docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md",
+      "docs/threat-model.md",
+      "openspec/changes/archive/2026-10-24-shared-extension-switches/",
+      "openspec/specs/extension-stages/spec.md",
+      "src/agentmarshal/switches.py",
+      "src/agentmarshal/stages.py",
+      "src/agentmarshal/doctor.py",
+      "tests/test_switches.py"
+    ]
+  }
+}
