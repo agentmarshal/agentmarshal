@@ -1,0 +1,73 @@
+{
+  "artifacts": [
+    {
+      "hash": "fc8db25a21c3fc684b3aa6969320fed40367e80856d8bc8b0b3ca2697c25bded",
+      "ref": ".agentmarshal/journal/tasks/CR-211/artifacts/01M5MTAV62XS32DQV43JGX0ZCV-review.md"
+    }
+  ],
+  "classes": {
+    "CR211-F1": "correctness"
+  },
+  "created_at": "2026-10-23T16:43:31.394234Z",
+  "evidence": {
+    "CR211-F1": "src/agentmarshal/stages.py:552-568 caches _Prepared by extension name; src/agentmarshal/stages.py:288-308 materializes and hashes only while creating that cached value; ADR-0013 lines 243-248 requires recomputation before each run"
+  },
+  "findings": [
+    "CR211-F1"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "2229b64a3f8c3e0c240f8a9458e4ee3332423cd6",
+  "reviewed_contract": "e68e61aa84c14df51ce3ec3d38232a9e1950e1ab156db4ba8d19ad1ebc8649f0",
+  "reviewer": {
+    "email": "auto-review-openai@agent.example.invalid",
+    "model": "gpt-5.6-sol",
+    "role": "code-reviewer",
+    "vendor": "openai"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-211",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "42 scenario headings and 42 matching docstrings; no missing or extra names",
+        "what": "Compared archived delta-spec scenario headings with tests/test_stages.py scenario docstrings"
+      },
+      {
+        "result": "Found the extension-level prepared-directory cache is reused across all stages without rematerialization or rehashing",
+        "what": "Inspected stage preparation, execution loop, grant hashing, manifest parsing, snapshot extraction, process-log writing, and named ADR requirements"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "Full CI sequence",
+        "why": "The coordinator supplied its passing result for this exact commit, and uv is unavailable in the review environment"
+      }
+    ],
+    "read": [
+      ".agentmarshal/journal/tasks/CR-211/contract.md",
+      "src/agentmarshal/stages.py",
+      "src/agentmarshal/cli.py",
+      "src/agentmarshal/extension_trust.py",
+      "src/agentmarshal/journal/extensions.py",
+      "src/agentmarshal/journal/gate.py",
+      "src/agentmarshal/journal/review.py",
+      "src/agentmarshal/process_log.py",
+      "tests/test_stages.py",
+      "openspec/changes/archive/2026-10-24-extension-stage-run/design.md",
+      "openspec/changes/archive/2026-10-24-extension-stage-run/proposal.md",
+      "openspec/changes/archive/2026-10-24-extension-stage-run/specs/extension-stages/spec.md",
+      "openspec/changes/archive/2026-10-24-extension-stage-run/tasks.md",
+      "openspec/specs/extension-stages/spec.md",
+      "docs/adr/ADR-0010-process-extensions.md",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md",
+      "docs/adr/ADR-0014-where-things-live.md",
+      "docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md",
+      "docs/threat-model.md"
+    ]
+  }
+}

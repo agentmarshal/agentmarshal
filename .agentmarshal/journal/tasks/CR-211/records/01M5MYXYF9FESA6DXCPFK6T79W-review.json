@@ -1,0 +1,62 @@
+{
+  "artifacts": [
+    {
+      "hash": "4b9d3fb6f686d7b64f24c27899356daa3d2c6eb26247df14bbc8266ae69aaaaa",
+      "ref": ".agentmarshal/journal/tasks/CR-211/artifacts/01M5MYXYF9FESA6DXCPFK6T79W-review.md"
+    }
+  ],
+  "classes": {
+    "CR211-ENV-PATH": "contract-mismatch"
+  },
+  "created_at": "2026-10-23T18:03:51.657793Z",
+  "evidence": {
+    "CR211-ENV-PATH": "openspec/changes/archive/2026-10-24-extension-stage-run/design.md:107-110 requires a caller PATH named in isolation.env to be copied, while src/agentmarshal/stages.py:409-414 skips PATH explicitly; tests/test_stages.py:757-795 asserts the conflicting implementation."
+  },
+  "findings": [
+    "CR211-ENV-PATH"
+  ],
+  "previous_review": "01M5MY5XS6VE3AJ646YD67X018",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "0d2280b6446d9da95d0dab59ba995817422bd5a0",
+  "reviewed_contract": "e68e61aa84c14df51ce3ec3d38232a9e1950e1ab156db4ba8d19ad1ebc8649f0",
+  "reviewer": {
+    "email": "auto-review-openai@agent.example.invalid",
+    "model": "gpt-5.6-sol",
+    "role": "code-reviewer",
+    "vendor": "openai"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-211",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "All 43 published scenario headings had a matching test docstring.",
+        "what": "Static comparison of published scenario headings against tests/test_stages.py Scenario docstrings"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "Full CI sequence",
+        "why": "The coordinator supplied its passing result for this exact commit; uv and pytest are unavailable in the review snapshot."
+      }
+    ],
+    "read": [
+      ".agentmarshal/journal/tasks/CR-211/contract.md",
+      "docs/threat-model.md",
+      "docs/adr/ADR-0010-process-extensions.md",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md",
+      "docs/adr/ADR-0014-where-things-live.md",
+      "docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md",
+      "src/agentmarshal/stages.py",
+      "src/agentmarshal/cli.py",
+      "tests/test_stages.py",
+      "openspec/changes/archive/2026-10-24-extension-stage-run/design.md",
+      "openspec/specs/extension-stages/spec.md"
+    ]
+  }
+}
