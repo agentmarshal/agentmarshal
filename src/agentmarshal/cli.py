@@ -341,6 +341,40 @@ def _build_parser() -> argparse.ArgumentParser:
     session_parser.add_argument(
         "--fallback-reason", help="why the run moved down the fallback list"
     )
+    session_parser.add_argument(
+        "--started-at",
+        help="session start, a UTC ISO-8601 timestamp (requires --ended-at)",
+    )
+    session_parser.add_argument(
+        "--ended-at",
+        help="session end, a UTC ISO-8601 timestamp (requires --started-at)",
+    )
+    session_parser.add_argument(
+        "--resets-at",
+        help="provider's stated reset time, a UTC ISO-8601 timestamp "
+        "(a 'provider-limit' outcome only)",
+    )
+    session_parser.add_argument(
+        "--cost-amount",
+        help="session cost amount, a decimal string (requires --cost-currency "
+        "and --cost-source)",
+    )
+    session_parser.add_argument(
+        "--cost-currency",
+        help="session cost currency, three uppercase ASCII letters (requires "
+        "--cost-amount and --cost-source)",
+    )
+    session_parser.add_argument(
+        "--cost-source",
+        choices=("reported", "estimated"),
+        help="session cost source (requires --cost-amount and --cost-currency)",
+    )
+    session_parser.add_argument(
+        "--if-missing",
+        action="store_true",
+        help="write nothing and name the existing record when the task "
+        "already holds a session with the same role, actor and activity",
+    )
     finding_parser = subparsers.add_parser(
         "finding", help="record a hash-pinned research finding"
     )
@@ -1019,7 +1053,7 @@ def _run_record_session(args: argparse.Namespace, stderr: TextIO) -> int:
             print(error, file=stderr)
             return 1
     try:
-        record_path = record_session(
+        recorded = record_session(
             placement.journal_root,
             args.task,
             args.role,
@@ -1037,11 +1071,21 @@ def _run_record_session(args: argparse.Namespace, stderr: TextIO) -> int:
             cli_session=args.cli_session,
             report_ready=args.report_ready,
             fallback_reason=args.fallback_reason,
+            started_at=args.started_at,
+            ended_at=args.ended_at,
+            resets_at=args.resets_at,
+            cost_amount=args.cost_amount,
+            cost_currency=args.cost_currency,
+            cost_source=args.cost_source,
+            if_missing=args.if_missing,
         )
     except SessionRecordError as error:
         print(error, file=stderr)
         return 1
-    print(record_path)
+    if recorded.existing_id is not None:
+        print(f"already recorded: {recorded.existing_id}")
+    else:
+        print(recorded.record_path)
     return 0
 
 
