@@ -1,0 +1,59 @@
+{
+  "artifacts": [
+    {
+      "hash": "f43d2da483cf48b61ab03ec8f368ecc2ff92f9c9cdd50b90ceb16afce609b3ef",
+      "ref": ".agentmarshal/journal/tasks/CR-202/artifacts/01M5KXW0MEX8M3MREPNZHFQ323-review.md"
+    }
+  ],
+  "created_at": "2026-10-23T08:26:05.326930Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "4a36e64a7755b2f5d2a9ea145893dbf20633f963",
+  "reviewed_contract": "62957a32d26a61a6fcf9f540a95e357bf64719eeb442f5204a9b219c28b6f308",
+  "reviewer": {
+    "email": "auto-review-openai@agent.example.invalid",
+    "model": "gpt-5.6-sol",
+    "role": "code-reviewer",
+    "vendor": "openai"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-202",
+  "tool_version": "0.5.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "All scenarios were located; two docstrings wrap their scenario names across lines and were confirmed by direct inspection.",
+        "what": "Read-only Python AST comparison of archived delta scenario headings against test docstrings"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "Focused pytest and full CI sequence",
+        "why": "The review environment has no uv executable; the coordinator states the full sequence passed on the reviewed commit."
+      },
+      {
+        "what": "Git-history verification of the reviewed SHA",
+        "why": "The supplied snapshot contains no Git metadata."
+      }
+    ],
+    "read": [
+      ".agentmarshal/journal/tasks/CR-202/contract.md",
+      "docs/threat-model.md",
+      "docs/adr/ADR-0018-governing-the-contract.md",
+      "docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md",
+      "src/agentmarshal/journal/gate.py",
+      "src/agentmarshal/settings.py",
+      "src/agentmarshal/journal/contracts.py",
+      "src/agentmarshal/journal/records.py",
+      "src/agentmarshal/journal/status.py",
+      "tests/test_gate_requires_agreement.py",
+      "tests/test_agreement.py",
+      "openspec/changes/archive/2026-10-23-gate-requires-agreement/",
+      "openspec/specs/contract-governance/spec.md"
+    ]
+  }
+}
