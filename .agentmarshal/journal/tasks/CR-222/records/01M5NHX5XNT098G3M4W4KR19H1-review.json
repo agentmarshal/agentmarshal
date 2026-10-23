@@ -1,0 +1,70 @@
+{
+  "artifacts": [
+    {
+      "hash": "3f94729ee8f8aa3f1153827857c81185b3edf80cbcafb13a08b0a859802043e1",
+      "ref": ".agentmarshal/journal/tasks/CR-222/artifacts/01M5NHX5XNT098G3M4W4KR19H1-review.md"
+    }
+  ],
+  "classes": {
+    "CR222-001": "contract-mismatch"
+  },
+  "created_at": "2026-10-23T23:35:29.461757Z",
+  "evidence": {
+    "CR222-001": "The spec requires no new stderr when switches.toml is absent at openspec/specs/extension-stages/spec.md:28-30, but src/agentmarshal/cli.py:1282-1289 calls _managed_directory/shared_extension_names first and reports any resulting exception; the unit-level check produced 'switches: unavailable (cannot enumerate extensions)'."
+  },
+  "findings": [
+    "CR222-001"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "719c3614f20b5a5d7834193bead3b8707f1835ff",
+  "reviewed_contract": "95ac858b5a8759ea72d8badbd7744bcfbb29efce3eee09f474df15c6387939ed",
+  "reviewer": {
+    "email": "auto-review-openai@agent.example.invalid",
+    "model": "gpt-5.6-sol",
+    "role": "code-reviewer",
+    "vendor": "openai"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-222",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "Succeeded; printed the contract, named decisions, and extension-stages specification.",
+        "what": "PYTHONPATH=src python3 -m agentmarshal brief --task CR-222"
+      },
+      {
+        "result": "Produced 'switches: unavailable (cannot enumerate extensions)\\n', confirming the exception path emits output before file absence can be handled.",
+        "what": "Unit-level invocation of _print_switched_off with extension enumeration raising before read_switches"
+      },
+      {
+        "result": "Git metadata is absent from the supplied snapshot, so HEAD could not be resolved independently.",
+        "what": "git status --short && git rev-parse HEAD"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "Full CI sequence",
+        "why": "The coordinator reports it passed on the exact reviewed commit; uv is unavailable in this read-only snapshot."
+      }
+    ],
+    "read": [
+      ".agentmarshal/journal/tasks/CR-222/contract.md",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md",
+      "docs/adr/ADR-0014-where-things-live.md",
+      "docs/threat-model.md",
+      "src/agentmarshal/cli.py",
+      "src/agentmarshal/doctor.py",
+      "src/agentmarshal/switches.py",
+      "src/agentmarshal/extension_trust.py",
+      "tests/test_status_switches.py",
+      "tests/test_doctor_extensions.py",
+      "openspec/changes/archive/2026-10-24-status-shows-switches/",
+      "openspec/specs/extension-stages/spec.md"
+    ]
+  }
+}
