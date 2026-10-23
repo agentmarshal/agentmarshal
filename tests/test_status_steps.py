@@ -260,8 +260,8 @@ def test_an_overdue_step_prints_its_line_after_the_existing_lines(
     )
     assert lines[-1].startswith(overdue)
     # The line lands after every line the detail prints today — the line
-    # before it is the task's last record line.
-    assert lines[-2].startswith("- ") and " opened " in lines[-2]
+    # before it is the task's agreement line, after the record lines.
+    assert lines[-2] == "No agreement with the contract is recorded"
 
 
 def test_a_task_with_no_overdue_step_prints_no_step_line(
@@ -449,6 +449,7 @@ def test_a_task_without_steps_prints_what_it_printed_before(
         "- (none)\n"
         "Records:\n"
         f"- {record['id']} opened {record['created_at']}\n"
+        "No agreement with the contract is recorded\n"
     )
     assert captured.err == f"Placement: embedded\n{_paths_lines(repo)}"
 

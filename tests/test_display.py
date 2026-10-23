@@ -169,6 +169,7 @@ def test_a_refused_character_prints_escaped_in_status(
         "- r-completed completed t4 completed_finding=F\\u202e3\n"
         "- r-reopened reopened t5 reason=back\\n\\u202e\n"
         "- r-session session t6\n"
+        "No agreement with the contract is recorded\n"
     )
 
 

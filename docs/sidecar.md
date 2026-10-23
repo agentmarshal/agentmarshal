@@ -319,6 +319,7 @@ Records:
 - 01M1EB6XWYBSZ54QKH71FFJ8KN review 2026-09-01T11:21:00.574048Z reviewed_commit=efab8ed verdict=approved findings=0 advisory=0
 - 01M1EB6Y4Z99FKM6K7JTWBJ9DX completed 2026-09-01T11:21:00.831134Z completed_commit=efab8ed
 - 01M1EB6YAK9S5TA7G61TDFRQZT session 2026-09-01T11:21:01.011350Z
+No agreement with the contract is recorded
 ```
 
 ```sh
