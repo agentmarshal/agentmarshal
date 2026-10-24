@@ -6,6 +6,7 @@ import subprocess
 import sys
 from collections.abc import Callable
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -239,6 +240,7 @@ def test_a_pre_gate_stage_s_candidate_directory_is_bound_read_only_over_itself(
     unshared: list[int] = []
     written: list[tuple[str, str]] = []
     mounted: list[tuple[str | None, str, int]] = []
+    entered: list[str] = []
     dropped: list[int] = []
     monkeypatch.setattr(os, "unshare", unshared.append)
     monkeypatch.setattr(
@@ -246,11 +248,13 @@ def test_a_pre_gate_stage_s_candidate_directory_is_bound_read_only_over_itself(
         "_write_file",
         lambda path, text: written.append((path, text)),
     )
+    monkeypatch.setattr(os, "statvfs", lambda path: SimpleNamespace(f_flag=0))
     monkeypatch.setattr(
         isolation,
         "_mount",
         lambda source, target, flags: mounted.append((source, target, flags)),
     )
+    monkeypatch.setattr(os, "chdir", entered.append)
     monkeypatch.setattr(isolation, "_drop_capabilities", lambda: dropped.append(1))
     target = Path("/the/candidate")
     report = _setup_report(real_stage_setup, network=False, readonly=target)
@@ -271,7 +275,162 @@ def test_a_pre_gate_stage_s_candidate_directory_is_bound_read_only_over_itself(
             isolation._MS_BIND | isolation._MS_REMOUNT | isolation._MS_RDONLY,
         ),
     ]
+    assert entered == ["/the/candidate"]
     assert dropped == [1]
+
+
+def test_the_read_only_remount_keeps_the_flags_the_candidate_s_mount_locks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Scenario: the read-only remount keeps the flags the candidate's mount locks."""
+    f_flag = isolation._ST_NOSUID | isolation._ST_NODEV | isolation._ST_RELATIME
+    statvfs_calls: list[str] = []
+    mounted: list[tuple[str | None, str, int]] = []
+
+    def fake_statvfs(path: str) -> SimpleNamespace:
+        statvfs_calls.append(path)
+        return SimpleNamespace(f_flag=f_flag)
+
+    monkeypatch.setattr(os, "unshare", lambda flags: None)
+    monkeypatch.setattr(isolation, "_write_file", lambda path, text: None)
+    monkeypatch.setattr(os, "statvfs", fake_statvfs)
+    monkeypatch.setattr(
+        isolation,
+        "_mount",
+        lambda source, target, flags: mounted.append((source, target, flags)),
+    )
+    monkeypatch.setattr(os, "chdir", lambda path: None)
+    monkeypatch.setattr(isolation, "_drop_capabilities", lambda: None)
+    report = _setup_report(
+        isolation.stage_setup, network=False, readonly=Path("/the/candidate")
+    )
+
+    # The candidate's own mount reports ``nosuid,nodev,relatime`` — the
+    # ``/tmp`` case: the remount carries them or the kernel answers
+    # ``EPERM``.
+    assert report == {"read-only candidate": "ok"}
+    assert statvfs_calls == ["/the/candidate"]
+    assert mounted[-1] == (
+        "/the/candidate",
+        "/the/candidate",
+        isolation._MS_BIND
+        | isolation._MS_REMOUNT
+        | isolation._MS_RDONLY
+        | isolation._MS_NOSUID
+        | isolation._MS_NODEV
+        | isolation._MS_RELATIME,
+    )
+
+
+def test_each_locked_flag_statvfs_reports_is_mapped_to_its_mount_flag() -> None:
+    """Scenario: each locked flag statvfs reports is mapped to its mount flag."""
+
+    pairs = [
+        (isolation._ST_NOSUID, isolation._MS_NOSUID),
+        (isolation._ST_NODEV, isolation._MS_NODEV),
+        (isolation._ST_NOEXEC, isolation._MS_NOEXEC),
+        (isolation._ST_NOATIME, isolation._MS_NOATIME),
+        (isolation._ST_NODIRATIME, isolation._MS_NODIRATIME),
+        (isolation._ST_RELATIME, isolation._MS_RELATIME),
+    ]
+    for statvfs_flag, mount_flag in pairs:
+        assert isolation._locked_mount_flags(statvfs_flag) == mount_flag
+    everything = 0
+    for statvfs_flag, _mount_flag in pairs:
+        everything |= statvfs_flag
+    assert isolation._locked_mount_flags(everything) == (
+        isolation._MS_NOSUID
+        | isolation._MS_NODEV
+        | isolation._MS_NOEXEC
+        | isolation._MS_NOATIME
+        | isolation._MS_NODIRATIME
+        | isolation._MS_RELATIME
+    )
+    assert isolation._locked_mount_flags(0) == 0
+    # A bit the mount lock does not cover stays out of the remount.
+    assert isolation._locked_mount_flags(getattr(os, "ST_SYNCHRONOUS", 16)) == 0
+
+
+def test_the_child_re_enters_the_candidate_after_the_read_only_remount(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Scenario: the child re-enters the candidate after the read-only remount."""
+    steps: list[tuple[object, ...]] = []
+    monkeypatch.setattr(os, "unshare", lambda flags: None)
+    monkeypatch.setattr(isolation, "_write_file", lambda path, text: None)
+    monkeypatch.setattr(os, "statvfs", lambda path: SimpleNamespace(f_flag=0))
+    monkeypatch.setattr(
+        isolation,
+        "_mount",
+        lambda source, target, flags: steps.append(("mount", source, target, flags)),
+    )
+    monkeypatch.setattr(os, "chdir", lambda path: steps.append(("chdir", path)))
+    monkeypatch.setattr(
+        isolation, "_drop_capabilities", lambda: steps.append(("drop",))
+    )
+    report = _setup_report(
+        isolation.stage_setup, network=False, readonly=Path("/the/candidate")
+    )
+
+    # The re-entry rides on the whole mount chain — it is what the
+    # remount bought — and lands before the capability drop and exec.
+    assert report == {"read-only candidate": "ok"}
+    remount = isolation._MS_BIND | isolation._MS_REMOUNT | isolation._MS_RDONLY
+    assert steps == [
+        ("mount", None, "/", isolation._MS_REC | isolation._MS_PRIVATE),
+        ("mount", "/the/candidate", "/the/candidate", isolation._MS_BIND),
+        ("mount", "/the/candidate", "/the/candidate", remount),
+        ("chdir", "/the/candidate"),
+        ("drop",),
+    ]
+
+
+def test_a_re_entry_that_fails_is_named_on_the_read_only_guarantee(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Scenario: a re-entry that fails is named on the read-only guarantee."""
+
+    def refuse(path: str) -> None:
+        raise OSError(13, "Permission denied")
+
+    dropped: list[int] = []
+    monkeypatch.setattr(os, "unshare", lambda flags: None)
+    monkeypatch.setattr(isolation, "_write_file", lambda path, text: None)
+    monkeypatch.setattr(os, "statvfs", lambda path: SimpleNamespace(f_flag=0))
+    monkeypatch.setattr(isolation, "_mount", lambda s, t, f: None)
+    monkeypatch.setattr(os, "chdir", refuse)
+    monkeypatch.setattr(isolation, "_drop_capabilities", lambda: dropped.append(1))
+    report = _setup_report(isolation.stage_setup, network=False, readonly=Path("/cand"))
+
+    # The mounts stood but the re-entry refused: the guarantee is named
+    # with the step's reason — never silently weakened — and the drop
+    # that follows still ran.
+    assert report == {"read-only candidate": "Permission denied"}
+    assert dropped == [1]
+
+
+def test_a_failed_statvfs_is_named_on_the_read_only_guarantee(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A statvfs refusal names the floor before any mount is attempted."""
+
+    def refuse(path: str) -> SimpleNamespace:
+        raise OSError(30, "Read-only file system")
+
+    mounted: list[tuple[str | None, str, int]] = []
+    monkeypatch.setattr(os, "unshare", lambda flags: None)
+    monkeypatch.setattr(isolation, "_write_file", lambda path, text: None)
+    monkeypatch.setattr(os, "statvfs", refuse)
+    monkeypatch.setattr(
+        isolation,
+        "_mount",
+        lambda source, target, flags: mounted.append((source, target, flags)),
+    )
+    monkeypatch.setattr(isolation, "_drop_capabilities", lambda: None)
+    report = _setup_report(isolation.stage_setup, network=False, readonly=Path("/cand"))
+
+    assert report == {"read-only candidate": "Read-only file system"}
+    assert mounted == []
 
 
 def test_a_mount_the_platform_refuses_is_named_and_the_stage_still_runs(
@@ -350,7 +509,10 @@ def test_a_declared_writes_beyond_the_candidate_is_reported_as_not_enforced(
 def test_an_isolated_stage_cannot_reach_the_network_or_write_the_candidate(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Scenario: an isolated stage cannot reach the network or write the candidate."""
+    """Scenario: an isolated stage cannot reach the network or write the candidate.
+
+    Scenario: a stage cannot write the candidate by a relative or an absolute path.
+    """
     verdicts = isolation.probe()
     if verdicts.network is not None and verdicts.readonly is not None:
         pytest.skip(
@@ -394,6 +556,12 @@ def test_an_isolated_stage_cannot_reach_the_network_or_write_the_candidate(
                 '    print("WRITE:ok")\n'
                 "except OSError:\n"
                 '    print("WRITE:blocked")\n'
+                "try:\n"
+                '    open(os.path.join(os.getcwd(), "probe-abs.txt"), "w")'
+                '.write("x")\n'
+                '    print("ABSWRITE:ok")\n'
+                "except OSError:\n"
+                '    print("ABSWRITE:blocked")\n'
             )
         },
     )
@@ -416,6 +584,7 @@ def test_an_isolated_stage_cannot_reach_the_network_or_write_the_candidate(
         assert f"not enforced: network ({verdicts.network})" in captured.err
     if verdicts.readonly is None:
         assert "openspec | WRITE:blocked" in captured.out
+        assert "openspec | ABSWRITE:blocked" in captured.out
         assert "not enforced: read-only candidate" not in captured.err
     else:
         assert (
@@ -941,6 +1110,7 @@ def test_the_child_setup_names_a_failed_mount(
 
     monkeypatch.setattr(os, "unshare", lambda flags: None)
     monkeypatch.setattr(isolation, "_write_file", lambda path, text: None)
+    monkeypatch.setattr(os, "statvfs", lambda path: SimpleNamespace(f_flag=0))
     monkeypatch.setattr(isolation, "_drop_capabilities", lambda: None)
 
     def refuse(source: str | None, target: str, flags: int) -> None:
@@ -1091,7 +1261,9 @@ def test_a_capability_drop_failure_names_every_guarantee_the_child_was_asked_to_
 
     monkeypatch.setattr(os, "unshare", lambda flags: None)
     monkeypatch.setattr(isolation, "_write_file", lambda path, text: None)
+    monkeypatch.setattr(os, "statvfs", lambda path: SimpleNamespace(f_flag=0))
     monkeypatch.setattr(isolation, "_mount", lambda s, t, f: None)
+    monkeypatch.setattr(os, "chdir", lambda path: None)
     monkeypatch.setattr(isolation, "_drop_capabilities", refuse)
     report = _setup_report(isolation.stage_setup, network=True, readonly=Path("/cand"))
     detail = "capabilities could not be dropped: Operation not permitted"
@@ -1181,3 +1353,46 @@ def test_the_probe_child_skips_the_drop_without_the_maps(
     assert verdicts["network"] is not None
     assert verdicts["network"].startswith("the uid/gid maps:")
     assert verdicts["readonly"] is not None
+
+
+def test_the_probe_performs_the_same_remount_and_re_entry_the_stage_gets(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: the probe performs the same remount and re-entry the stage gets."""
+    steps: list[tuple[object, ...]] = []
+
+    def fake_statvfs(path: str) -> SimpleNamespace:
+        steps.append(("statvfs", path))
+        return SimpleNamespace(f_flag=isolation._ST_NOSUID)
+
+    monkeypatch.setattr(os, "statvfs", fake_statvfs)
+    monkeypatch.setattr(
+        isolation,
+        "_mount",
+        lambda source, target, flags: steps.append(("mount", source, target, flags)),
+    )
+    monkeypatch.setattr(os, "chdir", lambda path: steps.append(("chdir", path)))
+    directory = str(tmp_path)
+
+    verdict = isolation._probe_read_only(directory)
+
+    # The mounts were only reported, so the writability check lands —
+    # the probe verifies rather than assumes — and the sequence it ran
+    # is the stage's own: the mapped remount and the re-entry.
+    assert verdict == ("the remount reported success but the directory stayed writable")
+    assert steps == [
+        ("statvfs", directory),
+        ("mount", None, "/", isolation._MS_REC | isolation._MS_PRIVATE),
+        ("mount", directory, directory, isolation._MS_BIND),
+        (
+            "mount",
+            directory,
+            directory,
+            isolation._MS_BIND
+            | isolation._MS_REMOUNT
+            | isolation._MS_RDONLY
+            | isolation._MS_NOSUID,
+        ),
+        ("chdir", directory),
+    ]
+    assert (tmp_path / ".agentmarshal-read-only-probe").exists()
