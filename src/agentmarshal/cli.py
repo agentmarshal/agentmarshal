@@ -1196,17 +1196,26 @@ def _run_complete(args: argparse.Namespace, stderr: TextIO) -> int:
         # nothing: a post-gate stage cannot pause, and its outcome does
         # not change completion's verdict (ADR-0013 decision 2). The
         # resolved SHAs are the pre-gate run's, so the notification
-        # reports on the commit that was gated.
-        stages.run_stages(
-            placement,
-            state,
-            args.task,
-            resolved_commit,
-            resolved_base,
-            "post-gate",
-            stderr,
-            quiet=True,
-        )
+        # reports on the commit that was gated. A run that raises at all —
+        # the stage's temporary directory is created inside the runner —
+        # is reported on one line and changes just as little.
+        try:
+            stages.run_stages(
+                placement,
+                state,
+                args.task,
+                resolved_commit,
+                resolved_base,
+                "post-gate",
+                stderr,
+                quiet=True,
+            )
+        except Exception as error:
+            print(
+                "complete: the post-gate stage run could not finish "
+                f"({escape_for_display(str(error))})",
+                file=stderr,
+            )
     return 0
 
 
