@@ -64,6 +64,7 @@ from agentmarshal.journal.records import (
 from agentmarshal.journal.status import (
     TaskStatusError,
     load_task_status,
+    project_status,
     projected_state_of,
     record_type_is_admitted_after_terminal,
 )
@@ -2054,34 +2055,87 @@ def run_gate(
 
     # A single record is valid in isolation yet corrupts the lifecycle
     # projection in aggregate — a second 'opened' record makes the task
-    # unreadable after merge. Reject a task ending up with more than one
-    # opened record across the target tip and the candidate's additions.
+    # unreadable after merge. The judged task's own records went through
+    # load_task_status above; every task the candidate adds records to —
+    # the judged one included — gets the same projection over the union
+    # of the target's records and the candidate's additions, and every
+    # other affected task the same closed-at-base admission the judged
+    # task's diff was held to, so a record the projection refuses cannot
+    # ride a transaction that only appends to another task. The
+    # projection reads record types in stored order — the record id leads
+    # the filename — so the merged set is the union of the two sides'
+    # record paths in sorted order, and no record's bytes are read here.
     def _task_of(path: str) -> str:
         return path.removeprefix(f"{_JOURNAL_PREFIX}tasks/").split("/", 1)[0]
 
-    duplicate_opened: set[str] = set()
-    affected_tasks = {_task_of(path) for path in added_records}
-    for affected in affected_tasks:
-        prefix = f"{_JOURNAL_PREFIX}tasks/{affected}/records/"
-        opened_paths = {
+    added_record_paths = set(added_records)
+    lifecycle_refusals = 0
+    for affected in sorted({_task_of(path) for path in added_records}):
+        affected_prefix = f"{_JOURNAL_PREFIX}tasks/{affected}/"
+        records_prefix = f"{affected_prefix}records/"
+        merged_types = [
+            _record_type_from_record_path(path)
+            for path in sorted(
+                path
+                for path in base_tree | added_record_paths
+                if path.startswith(records_prefix)
+            )
+        ]
+        try:
+            merged_state = project_status(
+                [{"record_type": record_type} for record_type in merged_types]
+            )
+        except TaskStatusError as error:
+            check(False, f"task {affected}: {error}")
+            lifecycle_refusals += 1
+            continue
+        if affected == task_id:
+            # The judged task's own closed-at-base admission ran at the
+            # top of the transcript; the merged projection is what the
+            # check owes it here.
+            continue
+        lifecycle_at_base = sorted(
             path
             for path in base_tree
-            if path.startswith(prefix) and path.endswith("-opened.json")
-        }
-        opened_paths.update(
-            path
-            for path in added_records
-            if path.startswith(prefix) and path.endswith("-opened.json")
+            if path.startswith(records_prefix)
+            and path.endswith(("-completed.json", "-abandoned.json", "-reopened.json"))
         )
-        if len(opened_paths) > 1:
-            duplicate_opened.add(affected)
-    check(
-        not duplicate_opened,
-        "task lifecycle records are consistent"
-        if not duplicate_opened
-        else "multiple opened records after merge for: "
-        + ", ".join(sorted(duplicate_opened)),
-    )
+        if not lifecycle_at_base or lifecycle_at_base[-1].endswith("-reopened.json"):
+            # Not closed at base — the task is open and every record the
+            # projection admits may be appended.
+            continue
+        terminal_state = projected_state_of(
+            _record_type_from_record_path(lifecycle_at_base[-1])
+        )
+        # The same admission rule as the judged task's: a candidate
+        # appending to a closed task may only add the records its
+        # terminal state admits, and every change under the task's
+        # subtree stays an addition — appended evidence cannot authorize
+        # a modification.
+        admitted_only = (
+            terminal_state is not None
+            and all(
+                status == "A"
+                for status, path in changes_with_status
+                if path.startswith(affected_prefix)
+            )
+            and all(
+                record_type_is_admitted_after_terminal(
+                    _record_type_from_record_path(path), terminal_state
+                )
+                for path in added_records
+                if path.startswith(records_prefix)
+            )
+        )
+        if not admitted_only:
+            check(
+                False,
+                f"task {affected} is already closed at base "
+                f"(candidate state: {merged_state})",
+            )
+            lifecycle_refusals += 1
+    if lifecycle_refusals == 0:
+        check(True, "task lifecycle records are consistent")
 
     # Proposal 035's disposition: `open` and `amend` are the events that must
     # arrive on the base in a transaction naming their own task, and a
