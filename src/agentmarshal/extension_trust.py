@@ -21,6 +21,21 @@ none writes the journal.
 The ``switch`` group — ``extension switch off <name> --reason <text>``,
 the operational switch-off of decisions 16 and 17 — is registered here
 under the same ``extension`` group; its logic lives in ``switch_off.py``.
+
+``extension disable <name>`` and ``extension enable <name>`` are the
+personal switch of decision 16: they write and clear a ``state = "off"``
+entry under ``[switches.<name>]`` in the clone's ``switches.toml``
+(``LocalState.switches_file``) for a personal extension — one declared
+under the clone's ``LocalState.extensions`` — and refuse a name any
+shared extension declares, which an operational task alone may switch.
+The rewrite is textual, the shared command's way: only the named
+extension's entry is changed or removed — every other entry, and every
+key an entry carries beyond the switch's own, stays as it was read,
+verified against the parsed document before the file is replaced
+atomically.
+``disable`` takes an optional ``--reason`` under the shared field's rule.
+``read_personal_manifest`` is the clone-side manifest reader both they
+and ``doctor`` use.
 """
 
 from __future__ import annotations
@@ -30,16 +45,25 @@ import hashlib
 import os
 import tempfile
 import tomllib
-from dataclasses import dataclass
+from collections.abc import Collection
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TextIO
+from typing import Any, TextIO
 
 from agentmarshal.journal.actors import resolve_recorded_by
+from agentmarshal.journal.contracts import (
+    JournalContractError,
+    reject_control_characters,
+)
 from agentmarshal.journal.display import escape_for_display
 from agentmarshal.journal.extensions import (
+    ExtensionManifest,
     ExtensionManifestError,
+    _manifest_directory_paths,
+    _require_existing_directory_file,
     _validate_name,
+    parse_extension_manifest_text,
 )
 from agentmarshal.journal.placement import (
     Placement,
@@ -49,6 +73,14 @@ from agentmarshal.journal.placement import (
 from agentmarshal.localstate import LocalState, LocalStateError, local_state
 from agentmarshal.process_log import ProcessLogError, open_writer, write_event
 from agentmarshal.project import find_project_root
+from agentmarshal.switches import (
+    REASON_CHAR_LIMIT,
+    PersonalSwitch,
+    SwitchesError,
+    parse_personal_switches,
+    personal_extension_names,
+    shared_extension_names,
+)
 
 TRUST_FORMAT = 1
 
@@ -110,6 +142,17 @@ def register(
     off_parser.add_argument(
         "--reason", required=True, help="the mandatory switch-off reason"
     )
+    disable_parser = extension_commands.add_parser(
+        "disable", help="switch a personal extension off in this clone"
+    )
+    disable_parser.add_argument("name", help="personal extension name")
+    disable_parser.add_argument(
+        "--reason", help="a note recorded in the clone's switches file"
+    )
+    enable_parser = extension_commands.add_parser(
+        "enable", help="switch a disabled personal extension back on"
+    )
+    enable_parser.add_argument("name", help="personal extension name")
 
 
 def run(args: argparse.Namespace, stderr: TextIO) -> int:
@@ -128,6 +171,10 @@ def run(args: argparse.Namespace, stderr: TextIO) -> int:
         from agentmarshal import switch_off
 
         return switch_off.run(args, stderr)
+    if args.extension_command == "disable":
+        return _run_disable(args, stderr)
+    if args.extension_command == "enable":
+        return _run_enable(args, stderr)
     print(f"extension: unknown command {args.extension_command}", file=stderr)
     return 1
 
@@ -211,6 +258,100 @@ def _extension_directory(managed: Path, name: str) -> Path:
     raise ExtensionTrustError(
         f"extension {name!r} is missing: {directory} does not exist"
     )
+
+
+def read_personal_manifest(directory: Path, name: str) -> ExtensionManifest:
+    """Read and validate one personal extension's manifest from the clone.
+
+    A personal extension is a directory ``<name>/`` under the clone's
+    ``LocalState.extensions`` carrying ``manifest.toml`` — the directory
+    form alone (ADR-0013 decision 9), read from that directory and never
+    the base. The same refusal rules as the shared directory form apply:
+    a link at the directory or the manifest is refused as a link, schema
+    2 is required, and every path the manifest names under ``bin/`` or
+    ``lock/`` must exist inside the directory as a regular file. On top
+    of those, decision 10's bound is checked on the raw table before the
+    shared parser sees the text: a personal manifest carries no
+    ``footprint``, ``documents`` or ``artifacts`` — a personal extension
+    has no footprint in the repository — and the parser is handed the
+    text with the two mandatory arrays supplied empty, so every other
+    rule (stages, isolation, wraps, records) applies unchanged.
+
+    The returned manifest exposes its directory, as the shared
+    directory-form read does.
+    """
+
+    if directory.is_symlink():
+        raise ExtensionManifestError(f"refusing to read through a symlink: {directory}")
+    manifest_lexical = directory / "manifest.toml"
+    if manifest_lexical.is_symlink():
+        raise ExtensionManifestError(
+            f"refusing to read through a symlink: {manifest_lexical}"
+        )
+    try:
+        root = directory.resolve(strict=True)
+    except FileNotFoundError:
+        raise ExtensionManifestError(
+            f"extension manifest {name!r} is missing: {manifest_lexical}"
+        ) from None
+    except (NotADirectoryError, OSError, RuntimeError) as error:
+        raise ExtensionManifestError(
+            f"cannot resolve extension manifest {name!r}: {error}"
+        ) from error
+    source = root / "manifest.toml"
+    try:
+        resolved = source.resolve(strict=True)
+    except FileNotFoundError:
+        raise ExtensionManifestError(
+            f"extension manifest {name!r} is missing: {source}"
+        ) from None
+    except (NotADirectoryError, OSError, RuntimeError) as error:
+        raise ExtensionManifestError(
+            f"cannot resolve extension manifest {name!r}: {error}"
+        ) from error
+    if resolved != source:
+        raise ExtensionManifestError(f"refusing to read through a symlink: {source}")
+    try:
+        text = source.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as error:
+        raise ExtensionManifestError(
+            f"cannot read extension manifest {name!r}: {error}"
+        ) from error
+    try:
+        raw = tomllib.loads(text)
+    except tomllib.TOMLDecodeError as error:
+        raise ExtensionManifestError(
+            f"invalid TOML extension manifest: {source}"
+        ) from error
+    for field in ("footprint", "documents", "artifacts"):
+        if field in raw:
+            raise ExtensionManifestError(
+                f"extension manifest field {field!r} is not allowed in a "
+                f"personal manifest: {source}"
+            )
+    # The schema is weighed on the raw table before the shared parser
+    # sees the text: the parser reads a schema-1 manifest under the
+    # schema-1 rules and would refuse its missing ``artifacts`` first —
+    # the refusal owed here names the schema, never a field the schema
+    # does not require. A schema that is no known integer is left for
+    # the parser's own refusal.
+    schema = raw.get("schema")
+    if type(schema) is int and schema != 2:
+        raise ExtensionManifestError(
+            "the directory form requires a manifest of schema 2; "
+            f"{name!r} declares schema {schema}: {source}"
+        )
+    manifest = parse_extension_manifest_text(
+        "footprint = []\ndocuments = []\n" + text, name, source
+    )
+    if manifest.schema != 2:
+        raise ExtensionManifestError(
+            "the directory form requires a manifest of schema 2; "
+            f"{name!r} declares schema {manifest.schema}: {source}"
+        )
+    for relpath in _manifest_directory_paths(manifest):
+        _require_existing_directory_file(root, relpath)
+    return replace(manifest, directory=root)
 
 
 def _hash_directory(directory: Path) -> dict[str, str]:
@@ -599,4 +740,475 @@ def _run_list(args: argparse.Namespace, stderr: TextIO) -> int:
             print(
                 f"{name}: changed after approval: {escape_for_display(path)} ({kind})"
             )
+    return 0
+
+
+def _read_personal_existing(
+    switches_file: Path, names: Collection[str]
+) -> tuple[str | None, dict[str, PersonalSwitch], dict[str, Any]]:
+    """The clone's switches file's text, parsed switches and raw document.
+
+    The read is the one ``read_personal_switches`` performs — a missing
+    file is ``(None, {}, {"format": 1})``, the document the skeleton the
+    command creates — and keeps the raw document the filtered parse
+    drops: an entry naming no live personal extension and a key beyond
+    the shape are the rewrite's to preserve, so the verification
+    compares the whole file, not the names the parse was asked about.
+    """
+
+    try:
+        data = switches_file.read_bytes()
+    except FileNotFoundError:
+        return None, {}, {"format": 1}
+    except OSError as error:
+        raise SwitchesError(
+            f"{switches_file}: cannot read the switches file: {error.strerror or error}"
+        ) from error
+    switches = parse_personal_switches(data, switches_file, names)
+    # The parse decoded these same bytes, so the decode cannot fail.
+    text = data.decode("utf-8")
+    return text, switches, tomllib.loads(text)
+
+
+def _switch_entry(document: dict[str, Any], name: str) -> dict[str, Any] | None:
+    """The ``switches.<name>`` entry the document carries, or ``None``."""
+
+    table = document.get("switches")
+    if isinstance(table, dict):
+        entry = table.get(name)
+        if isinstance(entry, dict):
+            return entry
+    return None
+
+
+def _off_entry_lines(reason: str | None) -> list[str]:
+    """The off entry's key/value lines, in the file's own field order."""
+
+    lines = ['state = "off"']
+    if reason is not None:
+        lines.append(f"reason = {_toml_string(reason)}")
+    return lines
+
+
+def _off_entry_body(
+    lines: list[str], lo: int, hi: int, reason: str | None, crlf: bool
+) -> list[str] | None:
+    """The table's own lines carrying the off entry — or ``None``.
+
+    ``state``'s pair is replaced by ``state = "off"``; ``reason``'s
+    pair, where the entry carries one, by the given reason — or removed
+    when none is given — and a reason the entry does not yet carry is
+    added after ``state``. Every other line of the table — comments,
+    blanks and keys the entry holds beyond the switch's own — stays as
+    it was. ``None`` when a pair cannot be located and bounded on its
+    own lines.
+    """
+
+    from agentmarshal import switch_off
+
+    state_pair = switch_off._key_pair(lines, lo, hi, "state")
+    if state_pair is None:
+        return None
+    reason_pair = switch_off._key_pair(lines, lo, hi, "reason")
+    if reason_pair is not None and (
+        reason_pair[0] < state_pair[1] and state_pair[0] < reason_pair[1]
+    ):
+        # One located pair inside another's lines — a key-shaped line
+        # inside a multi-line value. There is no safe rewrite.
+        return None
+    suffix = "\r" if crlf else ""
+    out: list[str] = []
+    index = lo
+    while index < hi:
+        if index == state_pair[0]:
+            out.append('state = "off"' + suffix)
+            if reason_pair is None and reason is not None:
+                out.append(f"reason = {_toml_string(reason)}" + suffix)
+            index = state_pair[1]
+            continue
+        if reason_pair is not None and index == reason_pair[0]:
+            if reason is not None:
+                out.append(f"reason = {_toml_string(reason)}" + suffix)
+            index = reason_pair[1]
+            continue
+        out.append(lines[index])
+        index += 1
+    return out
+
+
+def _personal_off_text(
+    text: str | None,
+    name: str,
+    span: tuple[int, int] | None,
+    reason: str | None,
+) -> str | None:
+    """The file's new text with *name*'s entry off — or ``None``.
+
+    *text* is ``None`` when the file does not exist — it is created
+    with ``format = 1`` and a ``[switches]`` table. *span* is the
+    existing ``[switches.<name>]`` table's: its ``state`` and ``reason``
+    pairs are rewritten in place, every other line kept; when *span* is
+    ``None`` — the file carries no entry for the name — the new table
+    is appended after the file's existing content, on the file's own
+    line-ending convention.
+    """
+
+    from agentmarshal import switch_off
+
+    if text is None:
+        return (
+            "format = 1\n\n[switches]\n\n"
+            f"[switches.{switch_off._table_key(name)}]\n"
+            + "\n".join(_off_entry_lines(reason))
+            + "\n"
+        )
+    crlf = "\r\n" in text
+    if span is not None:
+        lines = text.split("\n")
+        start, end = span
+        body = _off_entry_body(lines, start + 1, end, reason, crlf)
+        if body is None:
+            return None
+        return "\n".join(lines[: start + 1] + body + lines[end:])
+    eol = "\r\n" if crlf else "\n"
+    addition = (
+        eol.join(
+            [f"[switches.{switch_off._table_key(name)}]", *_off_entry_lines(reason)]
+        )
+        + eol
+    )
+    if not text.endswith("\n"):
+        text += "\n"
+    if not text.endswith("\n\n"):
+        text += "\n"
+    return text + addition
+
+
+def _personal_on_text(text: str, span: tuple[int, int]) -> str:
+    """The file's new text with the *span* table removed.
+
+    *span* is the ``[switches.<name>]`` table's; its lines are removed
+    whole, every other line kept — and the file's last newline
+    restored when the span carried it. When the removed table was the
+    parent's last child declared under a header — the file carrying no
+    ``[switches]`` line of its own — the implicit parent would vanish
+    from the parse and the file would lose the ``switches`` table the
+    format requires, so an explicit ``[switches]`` header is left where
+    the removed table stood.
+    """
+
+    lines = text.split("\n")
+    kept = lines[: span[0]] + lines[span[1] :]
+    if text.endswith("\n") and kept and kept[-1] != "":
+        kept.append("")  # the removed span carried the file's last newline
+    new_text = "\n".join(kept)
+    try:
+        reparsed = tomllib.loads(new_text)
+    except tomllib.TOMLDecodeError:
+        return new_text  # the verification names it
+    if "switches" in reparsed:
+        return new_text
+    header = "[switches]" + ("\r" if "\r\n" in text else "")
+    kept.insert(span[0], header)
+    if kept[-1] == header and text.endswith("\n"):
+        kept.append("")
+    return "\n".join(kept)
+
+
+def _verify_personal_rewrite(
+    new_text: str,
+    document: dict[str, Any],
+    name: str,
+    entry: dict[str, Any] | None,
+    switches_file: Path,
+    names: Collection[str],
+) -> str | None:
+    """Why *new_text* is not the old file with only *name* changed — or ``None``.
+
+    The new text is trusted only as far as TOML itself proves it: the
+    parsed new text must equal the parsed old document everywhere, with
+    the one ``switches`` entry set to *entry* — ``None`` for a removal —
+    so an entry the rewrite dropped or a key it lost shows here — and
+    the personal parser must accept the file and read the change back.
+    A missing file's old document is the skeleton the command creates.
+    """
+
+    try:
+        new_data = tomllib.loads(new_text)
+    except tomllib.TOMLDecodeError as error:
+        return f"the rewritten text is not TOML: {error}"
+    expected_switches: dict[str, Any] = dict(document.get("switches") or {})
+    if entry is None:
+        expected_switches.pop(name, None)
+    else:
+        expected_switches[name] = entry
+    expected = dict(document)
+    expected["switches"] = expected_switches
+    if new_data != expected:
+        return "the rewritten text changed more than the named switch"
+    try:
+        written = parse_personal_switches(
+            new_text.encode("utf-8"), switches_file, names
+        ).get(name)
+    except SwitchesError as error:
+        return str(error)
+    if entry is None:
+        if written is not None:
+            return f"the removed entry for {name!r} is still there"
+    elif (
+        written is None
+        or written.state != entry.get("state")
+        or written.reason != entry.get("reason")
+    ):
+        return f"the off entry for {name!r} is missing"
+    return None
+
+
+def _write_personal_switches(state: LocalState, text: str) -> None:
+    """Write *text* over the clone's ``switches.toml`` atomically.
+
+    The staging file sits in the file's own directory — the
+    same-directory rule ``_write_grants`` follows — so the rename can
+    never cross filesystems and a reader never meets a half-written
+    file; a failure anywhere leaves the previous file whole and the
+    staging file unlinked.
+    """
+
+    root = state.ensure_directory(state.root)
+    descriptor, staging_name = tempfile.mkstemp(
+        dir=root, prefix=".switches-", suffix=".tmp"
+    )
+    staging = Path(staging_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        os.replace(staging, state.switches_file)
+    except Exception:
+        staging.unlink(missing_ok=True)
+        raise
+
+
+def _cannot_rewrite(command: str, switches_file: Path, name: str, reason: str) -> str:
+    """The one line naming an entry this command cannot carry through."""
+
+    return (
+        f"extension {command}: {escape_for_display(str(switches_file))}: the "
+        f"entry for '{escape_for_display(name)}' cannot be rewritten by "
+        f"this command — edit the file by hand: {escape_for_display(reason)}"
+    )
+
+
+def _shared_name_refusal(command: str, name: str) -> str:
+    """The one line every personal switch prints for a shared extension."""
+
+    return (
+        f"extension {command}: {escape_for_display(name)}: a shared "
+        "extension is switched off only by an operational task "
+        "(extension switch off)"
+    )
+
+
+def _personal_names(
+    command: str, state: LocalState, stderr: TextIO
+) -> frozenset[str] | None:
+    """Enumerate the clone's personal extensions, or print why not."""
+
+    try:
+        return personal_extension_names(state.extensions)
+    except OSError as error:
+        print(
+            f"extension {command}: cannot enumerate "
+            f"{escape_for_display(str(state.extensions))}: "
+            f"{escape_for_display(error.strerror or str(error))}",
+            file=stderr,
+        )
+        return None
+
+
+def _run_disable(args: argparse.Namespace, stderr: TextIO) -> int:
+    try:
+        _validate_name(args.name)
+    except ExtensionManifestError as error:
+        print(f"extension disable: {escape_for_display(str(error))}", file=stderr)
+        return 1
+    reason: str | None = args.reason
+    if reason is not None:
+        if not reason or len(reason) > REASON_CHAR_LIMIT:
+            print(
+                f"extension disable: --reason must be a non-empty string of "
+                f"at most {REASON_CHAR_LIMIT} characters",
+                file=stderr,
+            )
+            return 1
+        try:
+            reject_control_characters(reason, "extension disable field 'reason'")
+        except JournalContractError as error:
+            print(
+                f"extension disable: {escape_for_display(str(error))}",
+                file=stderr,
+            )
+            return 1
+    resolved = _resolve(stderr)
+    if resolved is None:
+        return 1
+    placement, state = resolved
+    try:
+        managed = _managed_directory(placement.project_root)
+    except ExtensionTrustError as error:
+        print(f"extension disable: {escape_for_display(str(error))}", file=stderr)
+        return 1
+    if args.name in shared_extension_names(managed):
+        print(_shared_name_refusal("disable", args.name), file=stderr)
+        return 1
+    names = _personal_names("disable", state, stderr)
+    if names is None:
+        return 1
+    if args.name not in names:
+        print(
+            f"extension disable: {escape_for_display(args.name)} is not a "
+            "personal extension",
+            file=stderr,
+        )
+        return 1
+    try:
+        text, _switches, document = _read_personal_existing(state.switches_file, names)
+    except SwitchesError as error:
+        print(f"extension disable: {escape_for_display(str(error))}", file=stderr)
+        return 1
+    old_entry = _switch_entry(document, args.name)
+    span: tuple[int, int] | None = None
+    if old_entry is not None:
+        assert text is not None
+        from agentmarshal import switch_off
+
+        span = switch_off._entry_span(
+            text.split("\n"), switch_off._entry_header(args.name)
+        )
+    # The rewrite is produced and verified before anything is written —
+    # the new text must parse to the old document everywhere but the
+    # named switch, so an entry or a key the command did not intend to
+    # touch stays exactly as it was read. An entry the file carries in
+    # a form the command cannot locate and bound on its own lines is
+    # refused here, so nothing is written.
+    new_text: str | None = None
+    if old_entry is None or span is not None:
+        new_text = _personal_off_text(text, args.name, span, reason)
+    if new_text is None:
+        refusal: str | None = "its table could not be bounded on its own lines"
+    else:
+        expected_entry = dict(old_entry or {})
+        expected_entry["state"] = "off"
+        if reason is None:
+            expected_entry.pop("reason", None)
+        else:
+            expected_entry["reason"] = reason
+        checked = _verify_personal_rewrite(
+            new_text,
+            document,
+            args.name,
+            expected_entry,
+            state.switches_file,
+            names,
+        )
+        refusal = (
+            None if checked is None else f"the rewrite could not be verified: {checked}"
+        )
+    if refusal is not None:
+        print(
+            _cannot_rewrite("disable", state.switches_file, args.name, refusal),
+            file=stderr,
+        )
+        return 1
+    assert new_text is not None
+    try:
+        _write_personal_switches(state, new_text)
+    except (LocalStateError, OSError) as error:
+        print(f"extension disable: {escape_for_display(str(error))}", file=stderr)
+        return 1
+    print(escape_for_display(str(state.switches_file)))
+    print(f"disabled {escape_for_display(args.name)}")
+    return 0
+
+
+def _run_enable(args: argparse.Namespace, stderr: TextIO) -> int:
+    try:
+        _validate_name(args.name)
+    except ExtensionManifestError as error:
+        print(f"extension enable: {escape_for_display(str(error))}", file=stderr)
+        return 1
+    resolved = _resolve(stderr)
+    if resolved is None:
+        return 1
+    placement, state = resolved
+    try:
+        managed = _managed_directory(placement.project_root)
+    except ExtensionTrustError as error:
+        print(f"extension enable: {escape_for_display(str(error))}", file=stderr)
+        return 1
+    if args.name in shared_extension_names(managed):
+        print(_shared_name_refusal("enable", args.name), file=stderr)
+        return 1
+    names = _personal_names("enable", state, stderr)
+    if names is None:
+        return 1
+    parse_names = names | {args.name}
+    try:
+        # `names | {name}`: an entry may outlive its extension — the
+        # switch of a deleted personal extension is still removable.
+        text, switches, document = _read_personal_existing(
+            state.switches_file, parse_names
+        )
+    except SwitchesError as error:
+        print(f"extension enable: {escape_for_display(str(error))}", file=stderr)
+        return 1
+    switch = switches.get(args.name)
+    if switch is None or switch.state != "off":
+        print(
+            f"extension enable: {escape_for_display(args.name)} is not disabled",
+            file=stderr,
+        )
+        return 1
+    # The entry exists, so the file exists; its table's span is removed
+    # whole, every other entry and key kept — a span the command cannot
+    # locate and bound on its own lines is refused, so nothing is
+    # written.
+    assert text is not None
+    from agentmarshal import switch_off
+
+    lines = text.split("\n")
+    span = switch_off._entry_span(lines, switch_off._entry_header(args.name))
+    refusal: str | None = None
+    new_text: str | None = None
+    if span is None:
+        refusal = "its table could not be bounded on its own lines"
+    else:
+        new_text = _personal_on_text(text, span)
+        checked = _verify_personal_rewrite(
+            new_text,
+            document,
+            args.name,
+            None,
+            state.switches_file,
+            parse_names,
+        )
+        if checked is not None:
+            refusal = f"the rewrite could not be verified: {checked}"
+    if refusal is not None or new_text is None:
+        print(
+            _cannot_rewrite(
+                "enable",
+                state.switches_file,
+                args.name,
+                refusal or "its table could not be bounded on its own lines",
+            ),
+            file=stderr,
+        )
+        return 1
+    try:
+        _write_personal_switches(state, new_text)
+    except (LocalStateError, OSError) as error:
+        print(f"extension enable: {escape_for_display(str(error))}", file=stderr)
+        return 1
+    print(escape_for_display(str(state.switches_file)))
+    print(f"enabled {escape_for_display(args.name)}")
     return 0

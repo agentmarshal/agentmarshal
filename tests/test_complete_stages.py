@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 import tempfile
+from collections.abc import Collection
 from pathlib import Path
 from typing import NoReturn, TextIO
 
@@ -173,10 +174,19 @@ def test_both_commands_go_through_the_one_runner(
         stderr: TextIO,
         *,
         quiet: bool = False,
+        skip: Collection[str] = (),
     ) -> stages_module.StageRunResult:
         calls.append((phase, quiet))
         return original(
-            placement, state, task_id, commit, base_ref, phase, stderr, quiet=quiet
+            placement,
+            state,
+            task_id,
+            commit,
+            base_ref,
+            phase,
+            stderr,
+            quiet=quiet,
+            skip=skip,
         )
 
     monkeypatch.setattr(stages_module, "run_stages", spy)
