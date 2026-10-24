@@ -211,10 +211,11 @@ mentioned, so a platform enforcing everything shows unchanged
 output. A setup step that fails in the stage's own child after the
 probe allowed it SHALL be named the same way: before `execve` the
 child reports each asked-for guarantee's outcome over a dedicated
-pipe the parent creates — the write end kept open through the
-spawn's descriptor closing and marked close-on-exec by the child,
-so it is closed the instant `execve` succeeds and the extension's
-code never holds it — and the parent reads it to EOF; a report
+pipe the parent creates — the write end close-on-exec since
+`os.pipe()` made it, never named in `pass_fds` which would make
+it inheritable — so the spawn's own descriptor closing closes it
+before `execve` and the extension's code never holds it — and the
+parent reads it to EOF; a report
 that never arrives cannot vouch for a guarantee and names it not
 enforced — never a silent weakening, and never a byte of the
 stage's own output read as a core message; a capability drop that

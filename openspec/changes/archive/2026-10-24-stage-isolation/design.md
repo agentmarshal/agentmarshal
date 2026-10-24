@@ -88,23 +88,31 @@ discovering it in the stage's child or weakening silently.
 
 - **Child failures are never silent — and never forgeable.** The
   child reports on a dedicated pipe the parent opens with
-  `os.pipe()`: `pass_fds` keeps the write end open through the
-  spawn's descriptor closing, the child marks it close-on-exec
-  before anything else — so the instant `execve` succeeds the fd
-  is closed and the extension's code never holds it — and then,
-  still before exec, writes one `<guarantee>=<ok|reason>` line per
+  `os.pipe()`: the write end is close-on-exec from creation (PEP
+  446 makes `os.pipe()` descriptors non-inheritable) and is never
+  named in `pass_fds` — `pass_fds` would clear the flag and keep
+  it inheritable past `execve` — so the spawn's own descriptor
+  sweep, which runs after `preexec_fn`, closes it before the
+  stage's code runs and the extension never holds it. Still before
+  exec the child writes one `<guarantee>=<ok|reason>` line per
   requested guarantee in a single write. The parent reads the pipe
   to EOF once `Popen`'s own exec handshake has already waited for
   the child to exec or die — the drain cannot block — and
   `parse_setup_report` names each reported failure; a guarantee
   the report does not name — a child that died before writing —
   cannot vouch for itself and is named not enforced the same way.
-  The setup never raises out of the child. This is how
-  `subprocess` itself reports exec failures; nothing in the
-  stage's own output is ever read as a core message, so a line
-  shaped like a report that a stage prints is framed as its output
-  and decides nothing — the round-1 marker channel through the
-  captured stream was forgeable exactly here.
+  The setup is one guarded block from its first line: whatever
+  step fails is named in the report and the function returns, so
+  the stage execs and runs unconfined for what failed — an
+  exception escaping `preexec_fn` would be the parent's
+  `SubprocessError`, a `not run` where a run and a name were owed
+  (F-SETUP-CLOEXEC). The capability drop keeps its own rule
+  inside: a failed drop names every guarantee the child was asked
+  to enforce. This is how `subprocess` itself reports exec
+  failures; nothing in the stage's own output is ever read as a
+  core message, so a line shaped like a report that a stage prints
+  is framed as its output and decides nothing — the round-1 marker
+  channel through the captured stream was forgeable exactly here.
 
 - **The note line is the stage's own.** Each stage owed a guarantee
   it did not get gets one `stage run: note: <name>: not enforced:

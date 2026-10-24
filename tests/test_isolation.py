@@ -39,17 +39,15 @@ def _spy_setup(monkeypatch: pytest.MonkeyPatch, calls: list[dict[str, object]]) 
     """Record each ``stage_setup`` request and answer a harmless preexec.
 
     The returned callable writes an all-``ok`` report to the run's
-    report pipe and marks it close-on-exec — the wiring is what's
-    tested, so the branch does not depend on whether this machine
-    permits the namespaces. Each call's ``preexec`` key holds the
-    closure the run received.
+    report pipe — the wiring is what's tested, so the branch does not
+    depend on whether this machine permits the namespaces. Each call's
+    ``preexec`` key holds the closure the run received.
     """
 
     def spy(
         *, network: bool, readonly: Path | None, report_fd: int
     ) -> Callable[[], None]:
         def fake_setup() -> None:
-            os.set_inheritable(report_fd, False)
             os.write(report_fd, b"network=ok\nread-only candidate=ok\n")
 
         calls.append({"network": network, "readonly": readonly, "preexec": fake_setup})
@@ -67,8 +65,8 @@ def _setup_report(
     """Run the closure *factory* builds in-process; the report the parent reads.
 
     The write end goes through the same ``os.pipe`` the run creates;
-    the closure's close-on-exec marking is a no-op for an in-process
-    call and the drain sees the report to EOF.
+    closing it after the in-process call lets the drain see the report
+    to EOF.
     """
 
     read_fd, write_fd = os.pipe()
@@ -158,12 +156,10 @@ def test_a_stage_without_declared_network_runs_in_new_user_and_net_namespaces(
         and str(call["argv"][1]).endswith("check.py")
     ]
     assert [call["preexec_fn"] for call in stage_popens] == [calls[0]["preexec"]]
-    # The report pipe's write end is what ``pass_fds`` keeps open in the
-    # child across the spawn's fd closing.
-    assert all(
-        isinstance(call["pass_fds"], tuple) and len(call["pass_fds"]) == 1
-        for call in stage_popens
-    )
+    # The report pipe's write end is deliberately never in ``pass_fds``:
+    # ``os.pipe()`` already returned it close-on-exec (PEP 446) and
+    # ``pass_fds`` would clear that — the spawn's own fd sweep closes it.
+    assert all(not call["pass_fds"] for call in stage_popens)
     captured = capsys.readouterr()
     assert "not enforced" not in captured.out
     assert "not enforced" not in captured.err
@@ -496,7 +492,6 @@ def test_a_setup_step_that_fails_in_the_stage_s_own_child_is_named(
         *, network: bool, readonly: Path | None, report_fd: int
     ) -> Callable[[], None]:
         def failing_setup() -> None:
-            os.set_inheritable(report_fd, False)
             os.write(
                 report_fd,
                 b"network=ok\nread-only candidate=a simulated mount failure\n",
@@ -518,6 +513,85 @@ def test_a_setup_step_that_fails_in_the_stage_s_own_child_is_named(
         "not enforced: read-only candidate (a simulated mount failure)" in captured.err
     )
     assert "not enforced: network" not in captured.err
+
+
+@pytest.mark.skipif(os.name != "posix", reason="preexec_fn is POSIX-only")
+def test_the_report_pipe_s_write_end_is_close_on_exec_before_the_child_starts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The write end is close-on-exec from ``os.pipe()`` — never made inheritable."""
+    _force_probe(monkeypatch)
+    seen: list[tuple[int, bool]] = []
+
+    def spy(
+        *, network: bool, readonly: Path | None, report_fd: int
+    ) -> Callable[[], None]:
+        # The run created the pipe moments ago, in the parent and
+        # before any child exists: the write end must already be
+        # close-on-exec — there is no marking step left to refuse.
+        seen.append((report_fd, os.get_inheritable(report_fd)))
+
+        def fake_setup() -> None:
+            os.write(report_fd, b"network=ok\nread-only candidate=ok\n")
+
+        return fake_setup
+
+    monkeypatch.setattr(isolation, "stage_setup", spy)
+    pass_fds_seen: list[tuple[int, ...]] = []
+    real_popen = subprocess.Popen
+
+    def popen_spy(*args: Any, **kwargs: Any) -> subprocess.Popen[bytes]:
+        argv = args[0] if args else ()
+        if (
+            isinstance(argv, list)
+            and len(argv) > 1
+            and str(argv[1]).endswith("check.py")
+        ):
+            pass_fds_seen.append(tuple(kwargs.get("pass_fds") or ()))
+        return real_popen(*args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", popen_spy)
+    _repo_with_extension(tmp_path, monkeypatch)
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 0
+
+    # ``os.pipe()`` returns non-inheritable descriptors (PEP 446); the
+    # write end is never in ``pass_fds``, which would clear the flag.
+    assert len(seen) == 1
+    write_fd, was_inheritable = seen[0]
+    assert was_inheritable is False
+    assert all(write_fd not in fds for fds in pass_fds_seen)
+    captured = capsys.readouterr()
+    assert "openspec: checked" in captured.out
+
+
+@pytest.mark.skipif(os.name != "posix", reason="preexec_fn is POSIX-only")
+def test_the_setup_s_first_step_failing_still_runs_the_stage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The setup's first call refuses: the stage runs, both guarantees named."""
+
+    def refuse(flags: int) -> None:
+        raise OSError(1, "Operation not permitted")
+
+    _force_probe(monkeypatch)
+    monkeypatch.setattr(os, "unshare", refuse)
+    _repo_with_extension(tmp_path, monkeypatch)
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 0
+
+    captured = capsys.readouterr()
+    # The real setup ran in the stage's real child and its earliest
+    # step refused: the child reported both guarantees and returned,
+    # so the stage exec'd and ran — no SubprocessError, no `not run`.
+    assert "openspec: checked" in captured.out
+    assert "not run" not in captured.out
+    assert "not enforced: network (Operation not permitted)" in captured.err
+    assert "not enforced: read-only candidate (Operation not permitted)" in captured.err
 
 
 def test_a_stage_s_own_output_never_carries_the_setup_s_report(

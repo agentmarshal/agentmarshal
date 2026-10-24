@@ -569,13 +569,15 @@ def _run_stage(
                 "the core has no filesystem sandbox beyond the candidate",
             )
         )
-    # The setup's report channel is a dedicated pipe: ``pass_fds`` keeps
-    # the write end open in the child across the spawn's fd closing, the
-    # child marks it close-on-exec so the instant ``execve`` succeeds it
-    # is closed and the extension's code never holds it — nothing the
-    # stage prints is ever read as a core message. The child writes each
-    # asked-for guarantee's outcome before exec; a report that never
-    # arrives cannot vouch for a guarantee and names it not enforced.
+    # The setup's report channel is a dedicated pipe: ``os.pipe()``
+    # returns the write end close-on-exec already (PEP 446), so it is
+    # never named in ``pass_fds`` — that would clear the flag and keep
+    # it inheritable past ``execve`` — and the spawn's own descriptor
+    # sweep closes it before the stage's code runs: the extension never
+    # holds it, and nothing the stage prints is ever read as a core
+    # message. The child writes each asked-for guarantee's outcome
+    # before exec; a report that never arrives cannot vouch for a
+    # guarantee and names it not enforced.
     report_pipe: tuple[int, int] | None = None
     setup: Callable[[], None] | None = None
     if use_network or use_readonly:
@@ -614,7 +616,6 @@ def _run_stage(
             stderr=subprocess.STDOUT,
             start_new_session=True,
             preexec_fn=setup,
-            pass_fds=() if report_pipe is None else (report_pipe[1],),
         )
     except (OSError, subprocess.SubprocessError) as error:
         if report_pipe is not None:

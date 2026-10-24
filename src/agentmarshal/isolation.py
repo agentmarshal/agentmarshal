@@ -22,11 +22,13 @@ would let the stage itself remount or unmount what was bound.
 
 A setup step that fails in the stage's child is never silent: before
 exec the child writes each requested guarantee's outcome to a dedicated
-report pipe the parent created — the write end close-on-exec, so it is
-closed the instant ``execve`` succeeds and the extension's code never
-holds it — and the run names what the report calls failed not enforced
-the same way the probe's refusals are named; a report that never
-arrives cannot vouch for a guarantee, so it is named the same way.
+report pipe the parent created — the write end close-on-exec from
+``os.pipe()`` already and never in ``pass_fds``, which would clear the
+flag — closed by the spawn's own descriptor sweep before ``execve``, so
+the extension's code never holds it — and the run names what the report
+calls failed not enforced the same way the probe's refusals are named;
+a report that never arrives cannot vouch for a guarantee, so it is
+named the same way.
 Nothing in the stage's own output is ever read as a core message. A
 capability drop that fails names every guarantee the child was asked
 to enforce — it must never exec silently with capabilities. The stage
@@ -40,7 +42,6 @@ import os
 import sys
 import tempfile
 from collections.abc import Callable
-from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -275,15 +276,15 @@ def stage_setup(
     enforcement — so a drop failure is reported on every guarantee
     still standing.
 
-    *report_fd* is the write end of a dedicated pipe the parent created
-    and kept through the spawn's fd closing: the child marks it
-    close-on-exec before anything else — so the instant ``execve``
-    succeeds it is closed and the extension's code never holds it —
-    then, still before exec, writes one ``<guarantee>=<ok|reason>``
-    line per requested guarantee in a single write, the report the
-    parent reads to EOF. Whatever fails is named in the report and the
-    stage runs weakened; the setup itself never raises out of the
-    child.
+    *report_fd* is the write end of a dedicated pipe the parent created:
+    ``os.pipe()`` returns it close-on-exec already (PEP 446) and it is
+    never in ``pass_fds`` — ``pass_fds`` would clear the flag — so the
+    spawn's own descriptor sweep closes it before ``execve`` and the
+    extension's code never holds it. Still before exec the child writes
+    one ``<guarantee>=<ok|reason>`` line per requested guarantee in a
+    single write, the report the parent reads to EOF. Whatever fails is
+    named in the report and the stage runs weakened; the setup itself
+    never raises out of the child.
     """
 
     requested = [
@@ -295,26 +296,44 @@ def stage_setup(
     uid, gid = os.getuid(), os.getgid()
 
     def setup() -> None:
-        os.set_inheritable(report_fd, False)
-        problems: list[tuple[str, BaseException]] = []
-        failed: set[str] = set()
+        # The write end needs no marking here: ``os.pipe()`` returned it
+        # close-on-exec already (PEP 446) and it is not in ``pass_fds``
+        # — ``pass_fds`` would clear the flag — so the spawn's own fd
+        # sweep closes it before ``execve``. And the whole setup is one
+        # guarded block from its first line: whatever step fails names
+        # each asked-for guarantee in the report and the function
+        # returns, so the stage still execs and runs unconfined for
+        # what failed — an exception escaping a ``preexec_fn`` is the
+        # parent's ``SubprocessError``, a ``not run`` where a run and a
+        # name were owed. The capability drop keeps its own rule inside
+        # ``_setup``: a failure there names every guarantee.
         try:
-            _setup(problems, failed)
-        except Exception as error:
-            for label in requested:
-                if label not in failed:
-                    problems.append((label, error))
-                    failed.add(label)
-        reasons = {
-            label: _error_detail(problem).replace("\n", " ")
-            for label, problem in problems
-        }
-        payload = b"".join(
-            f"{label}={reasons.get(label, 'ok')}\n".encode("utf-8", errors="replace")
-            for label in requested
-        )
-        with suppress(OSError):
+            problems: list[tuple[str, BaseException]] = []
+            failed: set[str] = set()
+            try:
+                _setup(problems, failed)
+            except Exception as error:
+                for label in requested:
+                    if label not in failed:
+                        problems.append((label, error))
+                        failed.add(label)
+            reasons = {
+                label: _error_detail(problem).replace("\n", " ")
+                for label, problem in problems
+            }
+            payload = b"".join(
+                f"{label}={reasons.get(label, 'ok')}\n".encode(
+                    "utf-8", errors="replace"
+                )
+                for label in requested
+            )
             os.write(report_fd, payload)
+        except BaseException:
+            # Whatever failed — the setup, the report's build or its
+            # write — what the pipe does not carry cannot vouch for a
+            # guarantee: the parent names each not enforced. The
+            # function always returns, so the stage still execs.
+            pass
 
     def _setup(problems: list[tuple[str, BaseException]], failed: set[str]) -> None:
         flags = _CLONE_NEWUSER
