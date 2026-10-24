@@ -1,0 +1,83 @@
+{
+  "advisory_findings": [
+    "reopened-task-counts-as-fixed",
+    "refusal-branches-without-tests",
+    "gate-argument-is-tag-not-version"
+  ],
+  "artifacts": [
+    {
+      "hash": "3035f4b6a3c28673d3267331a239aa3d7603d654e3a72b59e0363ef680914133",
+      "ref": ".agentmarshal/journal/tasks/CR-232/artifacts/01M5Q3F33JN6Z4D5VY325GS6C3-review.md"
+    }
+  ],
+  "classes": {
+    "gate-argument-is-tag-not-version": "contract-mismatch",
+    "refusal-branches-without-tests": "test-gap",
+    "reopened-task-counts-as-fixed": "correctness"
+  },
+  "created_at": "2026-10-24T14:01:36.626636Z",
+  "evidence": {
+    "gate-argument-is-tag-not-version": "contract acceptance criterion 1 says 'runs .github/scripts/check_release_audit.py <version>'; .github/workflows/release.yml:59-62 passes TAG=${{ github.ref_name }}, and .github/scripts/check_release_audit.py:196 does version = tag.removeprefix('v') with line 199 resolving that argument as a tag ref",
+    "refusal-branches-without-tests": "refusal sites in .github/scripts/check_release_audit.py at lines 199-201, 220, 229-233, 240, 247-252, 154-155, 159, 163 have no matching assertion in tests/test_release_audit_check.py (its tests assert on: missing file, invalid TOML, missing key 'model', version mismatch, allowlist, not-a-commit, not-ancestor, fixed-without-task, deferred-without-reason, unknown disposition, no completed record, unreadable scope, path outside allowed, two passes, main)",
+    "reopened-task-counts-as-fixed": ".github/scripts/check_release_audit.py:116-143 accepts any *-completed.json with record_type 'completed'; src/agentmarshal/journal/attestation.py:76-80 defines reopened as projecting a done task to 'open' (admitted_after_terminal={'done'}), and src/agentmarshal/journal/status.py:123-128 enforces it, so a completed-then-reopened task still satisfies the gate"
+  },
+  "findings": [],
+  "previous_review": "01M5Q31N0WPBNKR4B096K7BBTJ",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "21c763b4d757b43241995a8a26307c432fb177d5",
+  "reviewed_contract": "ba2050088577256a23036b982da8ed5cd1d2375a96b7b670b87d81f14a008c9c",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-232",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "lines 136-145 identical in logic to the script's _covered",
+        "what": "grep -rn 'def scope_covers' -A 30 src/agentmarshal/journal/contracts.py"
+      },
+      {
+        "result": "01M3TT83F306M6A2YHXZH1PVCB-completed.json with \"record_type\": \"completed\" — matches the gate's filename and field checks",
+        "what": "ls .agentmarshal/journal/tasks/CR-116/records/ and head of its completed record"
+      },
+      {
+        "result": "only a test stage; no second publishing path that could bypass the gate",
+        "what": "grep -n 'publish|pypi|uv build|tags' gitflic-ci.yaml"
+      },
+      {
+        "result": "No such file or directory — the audit file is created at release time; nothing in the contract requires it now",
+        "what": "ls -d release"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "the snapshot is not a git repository and this sandbox denies running python/uv; relying on the coordinator's statement that the sequence passed at this commit"
+      }
+    ],
+    "read": [
+      ".github/scripts/check_release_audit.py",
+      ".github/workflows/release.yml",
+      "tests/test_release_audit_check.py",
+      "CONTRIBUTING.md:1-192",
+      "docs/adr/ADR-0001-governance-plane.md",
+      "docs/adr/ADR-0005-evidence-capture-and-format.md",
+      "src/agentmarshal/journal/contracts.py:136-145",
+      "src/agentmarshal/journal/status.py:33-141",
+      "src/agentmarshal/journal/attestation.py:70-82",
+      "src/agentmarshal/journal/records.py:94-103,663-670",
+      ".agentmarshal/journal/tasks/CR-116/records/01M3TT83F306M6A2YHXZH1PVCB-completed.json",
+      "pyproject.toml",
+      "gitflic-ci.yaml"
+    ]
+  }
+}
