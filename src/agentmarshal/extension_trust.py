@@ -884,6 +884,37 @@ def _personal_off_text(
     return text + addition
 
 
+def _personal_on_text(text: str, span: tuple[int, int]) -> str:
+    """The file's new text with the *span* table removed.
+
+    *span* is the ``[switches.<name>]`` table's; its lines are removed
+    whole, every other line kept — and the file's last newline
+    restored when the span carried it. When the removed table was the
+    parent's last child declared under a header — the file carrying no
+    ``[switches]`` line of its own — the implicit parent would vanish
+    from the parse and the file would lose the ``switches`` table the
+    format requires, so an explicit ``[switches]`` header is left where
+    the removed table stood.
+    """
+
+    lines = text.split("\n")
+    kept = lines[: span[0]] + lines[span[1] :]
+    if text.endswith("\n") and kept and kept[-1] != "":
+        kept.append("")  # the removed span carried the file's last newline
+    new_text = "\n".join(kept)
+    try:
+        reparsed = tomllib.loads(new_text)
+    except tomllib.TOMLDecodeError:
+        return new_text  # the verification names it
+    if "switches" in reparsed:
+        return new_text
+    header = "[switches]" + ("\r" if "\r\n" in text else "")
+    kept.insert(span[0], header)
+    if kept[-1] == header and text.endswith("\n"):
+        kept.append("")
+    return "\n".join(kept)
+
+
 def _verify_personal_rewrite(
     new_text: str,
     document: dict[str, Any],
@@ -1151,7 +1182,7 @@ def _run_enable(args: argparse.Namespace, stderr: TextIO) -> int:
     if span is None:
         refusal = "its table could not be bounded on its own lines"
     else:
-        new_text = "\n".join(lines[: span[0]] + lines[span[1] :])
+        new_text = _personal_on_text(text, span)
         checked = _verify_personal_rewrite(
             new_text,
             document,

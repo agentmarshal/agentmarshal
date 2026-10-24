@@ -1614,3 +1614,44 @@ def test_doctor_reports_no_personal_switches_when_the_clone_holds_none(
     assert all(mark not in captured.out for mark in marks)
     assert all(mark not in captured.err for mark in marks)
     assert "no shared extension declares a pre-gate stage" in captured.out
+
+
+def test_enable_on_a_switches_file_with_no_explicit_switches_header(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Not a spec scenario: ``extension enable`` on a file whose
+    ``[switches]`` parent exists only implicitly — ``format = 1`` and
+    one ``[switches.mycheck]`` table — removes the entry and leaves an
+    explicit empty ``[switches]`` table rather than dropping the table
+    the format requires, and disable/enable round-trip on the
+    header-less and the explicit-header file alike.
+    """
+    repo = _project(tmp_path, monkeypatch)
+    _personal_extension(repo)
+    _switches_file(repo).write_text(
+        'format = 1\n\n[switches.mycheck]\nstate = "off"\n',
+        encoding="utf-8",
+    )
+    capsys.readouterr()
+
+    assert main(["extension", "enable", "mycheck"]) == 0
+
+    assert "enabled mycheck" in capsys.readouterr().out
+    text = _switches_file(repo).read_text(encoding="utf-8")
+    assert "[switches]" in text
+    assert tomllib.loads(text) == {"format": 1, "switches": {}}
+
+    # The explicit-header file the enable just wrote takes disable and
+    # enable again, and so does the header-less form once more.
+    for headerless in (False, True):
+        if headerless:
+            _switches_file(repo).write_text(
+                'format = 1\n\n[switches.mycheck]\nstate = "off"\n',
+                encoding="utf-8",
+            )
+        assert main(["extension", "disable", "mycheck"]) == 0
+        parsed = tomllib.loads(_switches_file(repo).read_text(encoding="utf-8"))
+        assert parsed["switches"]["mycheck"]["state"] == "off"
+        assert main(["extension", "enable", "mycheck"]) == 0
+        parsed = tomllib.loads(_switches_file(repo).read_text(encoding="utf-8"))
+        assert parsed["switches"] == {}
