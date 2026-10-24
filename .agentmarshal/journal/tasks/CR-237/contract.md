@@ -5,6 +5,7 @@ title = "The gate and report mark a self-acceptance, and report classifies a com
 scope = [
   "src/agentmarshal/journal/gate.py",
   "src/agentmarshal/journal/report.py",
+  "src/agentmarshal/journal/status_view.py",
   "tests/",
   "openspec/changes/self-acceptance-on-every-surface/",
   "openspec/changes/archive/",
