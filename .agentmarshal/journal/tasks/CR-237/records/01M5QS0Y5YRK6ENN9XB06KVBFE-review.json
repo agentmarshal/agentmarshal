@@ -1,0 +1,113 @@
+{
+  "advisory_findings": [
+    "gate-and-report-compare-different-identities"
+  ],
+  "artifacts": [
+    {
+      "hash": "0debbd9093d6b4ba724bd27541d6a20bdeaaa57dba554a19f3dc1613220da0b0",
+      "ref": ".agentmarshal/journal/tasks/CR-237/artifacts/01M5QS0Y5YRK6ENN9XB06KVBFE-review.md"
+    }
+  ],
+  "classes": {
+    "gate-and-report-compare-different-identities": "contract-mismatch",
+    "report-comment-claims-one-derivation": "claim-accuracy",
+    "unchecked-mark-breaks-byte-identity-carveout": "contract-mismatch"
+  },
+  "created_at": "2026-10-24T20:18:21.502696Z",
+  "evidence": {
+    "gate-and-report-compare-different-identities": "gate: src/agentmarshal/journal/gate.py:1791-1806 over _range_emails(merge_base..resolved_commit) (gate.py:501-505); report: src/agentmarshal/journal/report.py:474-484 delegating to status_view._is_self_accepted on record['accepted_commit'] alone (status_view.py:71-84); qualification texts differ at gate.py:1803-1804 versus status_view.py:807-810; the name-match direction is demonstrated by tests/test_self_acceptance_on_every_surface.py:263-294",
+    "report-comment-claims-one-derivation": "src/agentmarshal/journal/report.py:478-484 claims 'gate, report and status mark the same identities the same way'; gate's set is emails only (src/agentmarshal/journal/gate.py:501-505 'git log --format=%ae%n%ce', used at gate.py:1791-1806) while report/status use names and emails of one commit (src/agentmarshal/journal/status_view.py:56-68 'git show -s --format=%an%n%ae%n%cn%n%ce'); tests/test_self_acceptance_on_every_surface.py:263 parametrizes party=\"Committer\" (a name) and expects report to mark it",
+    "unchecked-mark-breaks-byte-identity-carveout": "openspec/specs/operator-acceptance/spec.md:129-133 ('SHALL be unchanged byte for byte for an acceptance that is not a self-acceptance') versus :321-323 and :344-350 (' self-acceptance-unchecked' where the writers cannot be read); reachable in tests/test_report.py:424-437 — acceptance by 'operator' on commit \"a\"*40 in an embedded repo (tests/test_report.py:30-39) makes report.py:552-556 yield self_accepted=None and report.py:871-874 append '\\tself-acceptance-unchecked', which the assertion at tests/test_report.py:436-437 only tolerates because it tests a substring; tests/test_self_acceptance_on_every_surface.py:296-328 pins that same shape as intended"
+  },
+  "findings": [
+    "unchecked-mark-breaks-byte-identity-carveout",
+    "report-comment-claims-one-derivation"
+  ],
+  "previous_review": "01M5QR9R2KZJD27AEP2HY8QVXJ",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "4bf45b5982cad1bfda0fea77acc97fc254df5cf6",
+  "reviewed_contract": "3f616f4962ee28d06d49bbadff73209d2ec6d90eec5fdac264f059a1115ff146",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-237",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "one derivation in status_view.py:48-84; report.py:482 imports it at call time; no copy elsewhere",
+        "what": "grep -rn \"_is_self_accepted|_declared_commit_writers\" src/ tests/"
+      },
+      {
+        "result": "gate.py:501-505 formats only %ae%n%ce over merge_base..commit — emails of the whole range, no names",
+        "what": "grep -n \"_range_emails|_range_commits\" -A 5 src/agentmarshal/journal/gate.py"
+      },
+      {
+        "result": "assigned once at 1184-1188, so the hoisted writer_emails at 1791 reads the same values the check at 1902 read",
+        "what": "grep -n \"merge_base = |resolved_commit = \" src/agentmarshal/journal/gate.py"
+      },
+      {
+        "result": "complete.py binds report.resolved_commit; migrate.py:409-411 binds Merged-Commit or Reviewed-Commit and writes no acceptance records, so the new binding rule loses no migrated decision",
+        "what": "grep -rn \"create_completed_record\" src/"
+      },
+      {
+        "result": "only build_report and tests/test_display.py:254 — the new parameter has no other caller",
+        "what": "grep -rn \"_task_report\" src/ tests/"
+      },
+      {
+        "result": "operator-acceptance:129-133 is the only clause the mark touches; gate-lanes:47 and leak-scan:696 are feature-relative by convention",
+        "what": "grep -rn \"byte for byte|byte-identical\" openspec/specs/"
+      },
+      {
+        "result": "no unarchived change dir; 2026-10-25-self-acceptance-on-every-surface present with the sibling layout",
+        "what": "ls openspec/changes/ and openspec/changes/archive/"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; uv run agentmarshal validate; uv run pytest; uv run ruff check; uv run ruff format --check; uv run mypy",
+        "why": "uv is not installed in this snapshot and the sandbox refused to run python/pytest; all claims about these checks rest on the coordinator's statement and are unverified here"
+      },
+      {
+        "what": "byte-level diff of the delta's MODIFIED block against openspec/specs/operator-acceptance/spec.md",
+        "why": "no python or process-substitution available; the two blocks were read and compared by eye instead"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/journal/report.py",
+      "src/agentmarshal/journal/gate.py (141-230, 1150-1210, 1640-1960)",
+      "src/agentmarshal/journal/status_view.py (1-210, 772-841)",
+      "src/agentmarshal/journal/placement.py",
+      "src/agentmarshal/journal/records.py (2027-2041, 2485-2544, 2725-2756)",
+      "src/agentmarshal/journal/complete.py (40-100)",
+      "src/agentmarshal/journal/acceptance.py (grep)",
+      "src/agentmarshal/journal/attestation.py (50-155)",
+      "src/agentmarshal/cli.py (1375-1400, 1490-1550, 749-793)",
+      "src/agentmarshal/migrate.py (395-435)",
+      "openspec/specs/operator-acceptance/spec.md",
+      "openspec/changes/archive/2026-10-25-self-acceptance-on-every-surface/{design.md,proposal.md,tasks.md,specs/operator-acceptance/spec.md}",
+      "docs/adr/ADR-0007-operator-acceptance.md",
+      "docs/threat-model.md (95-110)",
+      "docs/quickstart.md (465-500)",
+      "docs/sidecar.md:335",
+      "tests/test_self_acceptance_on_every_surface.py",
+      "tests/test_pause_and_operational_acceptance.py (534-745)",
+      "tests/test_report.py (30-45, 370-437)",
+      "tests/test_acceptance.py (175-230)",
+      "tests/test_gate.py (42-300)",
+      "tests/test_journal.py (44-70)",
+      "tests/test_display.py (240-260)",
+      "pyproject.toml ([tool.ruff])",
+      "AGENTS.md",
+      ".agentmarshal/journal/tasks/CR-237/contract.md"
+    ]
+  }
+}

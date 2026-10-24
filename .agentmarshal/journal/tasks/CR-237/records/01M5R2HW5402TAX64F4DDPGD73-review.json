@@ -1,0 +1,90 @@
+{
+  "advisory_findings": [
+    "SA-2"
+  ],
+  "artifacts": [
+    {
+      "hash": "a259af05f0e2b4575de5851458972e56b3f7446d38a5fe5ec868ce7d85a07add",
+      "ref": ".agentmarshal/journal/tasks/CR-237/artifacts/01M5R2HW5402TAX64F4DDPGD73-review.md"
+    }
+  ],
+  "classes": {
+    "SA-1": "contract-mismatch",
+    "SA-2": "claim-accuracy"
+  },
+  "created_at": "2026-10-24T23:04:53.668906Z",
+  "evidence": {
+    "SA-1": "src/agentmarshal/journal/gate.py:1841 computes identities over merge_base..resolved_commit via _range_writer_identities (gate.py:505-551) and applies the mark at gate.py:1851; src/agentmarshal/journal/report.py:534 computes them with declared_commit_writers over acceptance['accepted_commit'] alone (report.py:516-537). The requirement the change added, openspec/specs/operator-acceptance/spec.md:316-323, binds BOTH surfaces to 'a declared writer of the candidate'. Failing journal: range B..C2 with C1 by alice@x and C2 by bob@x, review(C2, changes_required, F-1), accept C2 --by alice@x, completed C2 -> gate line carries ' (self-accepted: accepting party is a declared author or committer)', report line is 'CR-xxx\\tdone\\treviews=1\\ttokens=0\\tdecision=accepted-over-findings' with no mark. No test covers a multi-commit range with a party who wrote only a non-tip commit: tests/test_self_acceptance_on_every_surface.py builds every gate case from _gate_repo + a single _implement, and the one two-commit case (line 255) uses worker@test.invalid, which tests/test_gate.py:42,99 makes a writer of both commits.",
+    "SA-2": "tests/test_self_acceptance_on_every_surface.py:255-273 docstring claims 'the surviving email half of the identity still earns the mark', but _implement_latin1_author (same file, 110-146) parents the rewritten commit on the _implement commit, whose author is Worker <worker@test.invalid> per _WRITER at tests/test_gate.py:42 used by _commit_all at tests/test_gate.py:99 — so worker@test.invalid is in writer_identities regardless of how the latin-1 commit's fields decode, and the assertion cannot distinguish the two."
+  },
+  "findings": [
+    "SA-1"
+  ],
+  "previous_review": "01M5R1YKW9X4KZBNWAZX902DP1",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "9279604c58c939a80af405b6e24963f1456f39a2",
+  "reviewed_contract": "58eb831c6d19cf445bf167a237e19f74c55117790f6c6d2f05558bf7008dbf7d",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-237",
+  "tool_version": "0.6.0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "operator-acceptance is the only capability spec covering the acceptance line and report decision; docs/threat-model.md and ADR-0022 already state the mark, no doc update owed",
+        "what": "grep -rn 'accepted over findings|accepted-over-findings|self-accepted' over openspec/specs/, docs/, README.md, CHANGELOG.md"
+      },
+      {
+        "result": "no gate transcript fixture contains an acceptance line, so none needed updating",
+        "what": "grep -rn 'accepted over findings' tests/fixtures/ and ls tests/fixtures/gate"
+      },
+      {
+        "result": "status findings-form self-acceptance still pinned at tests/test_status_view.py:283 and tests/test_acceptance.py:199 despite the edit to test_every_output_for_an_acceptance_over_findings_is_unchanged",
+        "what": "grep -rn 'self-accepted|self_accepted' tests/*.py excluding the new file"
+      },
+      {
+        "result": "only tests/test_display.py:254 calls _task_report directly; signature change covered",
+        "what": "grep -rn '_task_report|build_report|format_report' over src/ and tests/"
+      },
+      {
+        "result": "still used at 706 and 719, so the import is not left dangling after _declared_commit_writers moved out",
+        "what": "grep -n 'subprocess' src/agentmarshal/journal/status_view.py"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "no .venv or uv in this sandbox and the snapshot is not a git worktree, so the git-backed tests could not run; the coordinator states the sequence passed on the reviewed commit"
+      },
+      {
+        "what": "live git log --format=%an%x00%ae%x00%cn%x00%ce%x00 to confirm NUL/field alignment empirically",
+        "why": "shell approval for creating a scratch repo was declined; alignment verified by reading the parser against git tformat semantics (each entry emits exactly four NULs, the terminating newline attaches to the next name field and is removed by .strip()), including the empty-range and single-commit cases"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/journal/gate.py (_run_git_bytes/_run_git 293-335, _range_writer_identities 505-551, verdict block 1790-1960, findings-lane acceptance line 198-232)",
+      "src/agentmarshal/journal/report.py (SELF_ACCEPTED_MARK 37-47, TaskReport 146-160, _writers_repository 453-468, declared_commit_writers 470-495, accepting_party_is_declared_writer 497-514, _self_accepted 516-537, _task_report 539-640, format_report 900-935)",
+      "src/agentmarshal/journal/status_view.py (_is_self_accepted/_is_self_acknowledged 53-90, print_task_detail 754-792)",
+      "src/agentmarshal/journal/records.py (_project_root_for 2027-2041, create_completed_record 2193-2223, create_acceptance_record 2485-2525)",
+      "src/agentmarshal/journal/placement.py (resolve_placement 64-98)",
+      "src/agentmarshal/cli.py (_run_report 1380-1400, status print_task_detail call 1525)",
+      "docs/adr/ADR-0007-operator-acceptance.md (decisions 4 and 5)",
+      "openspec/specs/operator-acceptance/spec.md (full file; requirements at 72-168 and 280-404)",
+      "openspec/changes/archive/2026-10-25-self-acceptance-on-every-surface/{proposal.md,design.md,tasks.md,specs/operator-acceptance/spec.md}",
+      "tests/test_self_acceptance_on_every_surface.py (all 638 lines)",
+      "tests/test_pause_and_operational_acceptance.py (640-760)",
+      "tests/test_gate.py (_WRITER 42, _commit_all 97-101, _gate_repo 103-122, _implement 170-174, _require_changes 202-227, _accept 283-302)",
+      "tests/test_journal.py (initialize_status_repo 44-60)",
+      "docs/threat-model.md (95-115)"
+    ]
+  }
+}

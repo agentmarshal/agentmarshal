@@ -1,0 +1,104 @@
+{
+  "advisory_findings": [
+    "ADV-gate-mark-wording",
+    "ADV-report-mark-separator",
+    "ADV-gate-extra-git-log",
+    "ADV-stage-pause-unmarked"
+  ],
+  "artifacts": [
+    {
+      "hash": "efd43514427598eb18df27c5cc641129a862bae604abeaf06e3d99edaddc26b9",
+      "ref": ".agentmarshal/journal/tasks/CR-237/artifacts/01M5QVA6KHXDBWAMGFJW9GHDJW-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-gate-extra-git-log": "other",
+    "ADV-gate-mark-wording": "contract-mismatch",
+    "ADV-report-mark-separator": "claim-accuracy",
+    "ADV-stage-pause-unmarked": "claim-accuracy"
+  },
+  "created_at": "2026-10-24T20:58:22.193401Z",
+  "evidence": {
+    "ADV-gate-extra-git-log": "src/agentmarshal/journal/gate.py:1824-1829 computes writer_identities under 'if latest is not None', beside writer_emails at :1816-1823, but the value is read only at :1835 inside the 'valid_acceptance is not None' branch - two full 'git log' invocations over merge-base..candidate where runs without an acceptance need one",
+    "ADV-gate-mark-wording": "src/agentmarshal/journal/gate.py:1833 emits ' (self-accepted: accepting party is a declared writer of the candidate)' while src/agentmarshal/journal/status_view.py:809 emits ' (self-accepted: accepting party is a declared author or committer)'; the identity set is the new src/agentmarshal/journal/gate.py:509-527 ('log --format=%an%n%ae%n%cn%n%ce'), not the independence check's emails-only src/agentmarshal/journal/gate.py:505-507 ('log --format=%ae%n%ce') that the contract's AC1 parenthetical names",
+    "ADV-report-mark-separator": "openspec/specs/operator-acceptance/spec.md:321 ('`report`'s task line SHALL carry ` self-accepted` after the decision field') and :338 vs src/agentmarshal/journal/report.py:891 ('line += \"\\tself-accepted\"'); the test pins the tab form (tests/test_self_acceptance_on_every_surface.py:263-265)",
+    "ADV-stage-pause-unmarked": "src/agentmarshal/stages.py:1484-1487 prints 'pause accepted by <accepted_by> (<reason>)' with no self-acceptance mark, while openspec/specs/operator-acceptance/spec.md:147-157 has status mark a pause acceptance and :316 heads the new requirement 'every surface marks a self-acceptance'; stages.py is outside the contract's scope"
+  },
+  "findings": [],
+  "previous_review": "01M5QTS6215BMKH1CXATEYVXBT",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "10197420e17fb52a6ced52176b5256a1a379c940",
+  "reviewed_contract": "3f616f4962ee28d06d49bbadff73209d2ec6d90eec5fdac264f059a1115ff146",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-237",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "no output - no other capability spec carries an acceptance-output clause, so the MODIFIED delta's single requirement is the complete set AC3 asks for",
+        "what": "grep -rn 'accepted over findings|decision=accepted-over-findings|decision=approved' openspec/specs/ excluding operator-acceptance"
+      },
+      {
+        "result": "TaskReport.decision is consumed only by format_report (report.py:882-891); _task_report has exactly two callers, build_report (report.py:609) and tests/test_display.py:254 - no other surface inherits the changed semantics",
+        "what": "grep -rn '_task_report|\\.decision\\b|self_accepted' src/ tests/ --include=*.py"
+      },
+      {
+        "result": "only src/agentmarshal/stages.py:1486 - the stage-run pause line, which prints the party with no self-acceptance mark (basis of ADV-stage-pause-unmarked)",
+        "what": "grep -rn 'accepted_by' src/agentmarshal/ excluding report.py, gate.py, status_view.py, records.py"
+      },
+      {
+        "result": "tests/test_report.py:437 (open task, no completed record -> today's rule) and tests/test_pause_and_operational_acceptance.py:707 - both still satisfied by the new derivation",
+        "what": "grep -rn 'accepted-over-findings' tests/ docs/ templates/ excluding the new test file"
+      },
+      {
+        "result": "writers are 'Dev Example <dev@example.com>' while the accepting party is 'operator@example.com' - the quickstart gate transcript stays unmarked, so its pin at tests/test_quickstart.py:163-168 is unaffected",
+        "what": "grep -n 'user.email|GIT_AUTHOR|GIT_COMMITTER' tests/test_quickstart.py and grep -n '--by' docs/quickstart.md"
+      },
+      {
+        "result": "none imports gate or status_view, so gate.py:64's new module-level import of report introduces no cycle; _declared_commit_writers stays a function-local import because status_view imports report",
+        "what": "grep -n '^from agentmarshal' on report.py's module-level dependencies (status.py, placement.py, display.py, records.py)"
+      },
+      {
+        "result": "tests/test_status_view.py:262 and :283 still pin status's self-accepted summary and record-line marker, so the pins dropped from test_pause_and_operational_acceptance.py lose no coverage",
+        "what": "grep -rn 'declared author or committer' tests/"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; uv run agentmarshal validate; uv run pytest; uv run ruff check; uv run ruff format --check; uv run mypy",
+        "why": "no uv and no .venv in the review snapshot, and python execution was declined in this session; the full sequence's result is taken from the coordinator's note on this commit and is not something I verified"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/journal/report.py",
+      "src/agentmarshal/journal/gate.py (lines 290-335, 490-540, 1141-1200, 1740-1960)",
+      "src/agentmarshal/journal/status_view.py (lines 13-200, 772-840)",
+      "src/agentmarshal/journal/placement.py",
+      "src/agentmarshal/journal/records.py (_project_root_for, _validate_binding, create_completed_record)",
+      "src/agentmarshal/cli.py (lines 1495-1535)",
+      "src/agentmarshal/stages.py (lines 1465-1515)",
+      "openspec/specs/operator-acceptance/spec.md (full)",
+      "openspec/changes/archive/2026-10-25-self-acceptance-on-every-surface/ (proposal.md, design.md, tasks.md, specs/operator-acceptance/spec.md)",
+      "docs/adr/ADR-0007-operator-acceptance.md (decisions 4, 5, 6)",
+      "docs/threat-model.md (lines 95-112)",
+      "docs/quickstart.md (lines 430-495)",
+      "tests/test_self_acceptance_on_every_surface.py",
+      "tests/test_pause_and_operational_acceptance.py (lines 530-760)",
+      "tests/test_gate.py (lines 42-300, 1540-1570, 3605-3640)",
+      "tests/test_report.py (lines 400-440)",
+      "tests/test_status_view.py (self-acceptance pins)",
+      "tests/test_quickstart.py (lines 49-185)",
+      "tests/test_display.py (lines 240-260)"
+    ]
+  }
+}

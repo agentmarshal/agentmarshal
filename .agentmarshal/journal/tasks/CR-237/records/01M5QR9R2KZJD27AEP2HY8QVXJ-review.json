@@ -1,0 +1,84 @@
+{
+  "advisory_findings": [
+    "CR237-gate-mark-identity-set-differs",
+    "CR237-unchecked-mark-changes-unrelated-report-lines"
+  ],
+  "artifacts": [
+    {
+      "hash": "fb1436b882a7bd58abca54fd9d463d1afa20a4bec79b4eb76aaed1d7264684c6",
+      "ref": ".agentmarshal/journal/tasks/CR-237/artifacts/01M5QR9R2KZJD27AEP2HY8QVXJ-review.md"
+    }
+  ],
+  "classes": {
+    "CR237-gate-mark-identity-set-differs": "contract-mismatch",
+    "CR237-report-approval-overrides-same-commit-acceptance": "correctness",
+    "CR237-unchecked-mark-changes-unrelated-report-lines": "contract-mismatch"
+  },
+  "created_at": "2026-10-24T20:05:41.587454Z",
+  "evidence": {
+    "CR237-gate-mark-identity-set-differs": "src/agentmarshal/journal/gate.py:501-505 builds the set from `git log --format=%ae%n%ce` (emails only) and gate.py:1805 compares accepted_by against it, while src/agentmarshal/journal/status_view.py:57 uses `git show -s --format=%an%n%ae%n%cn%n%ce` (names and emails); tests/test_self_acceptance_on_every_surface.py:263 parametrizes report with the name \"Committer\" and no gate test uses a name-valued party",
+    "CR237-report-approval-overrides-same-commit-acceptance": "src/agentmarshal/journal/report.py:530 (`if reviews and reviews[-1][\"verdict\"] == \"approved\": decision = \"approved\"`) runs before the acceptance branch at report.py:533-542; src/agentmarshal/journal/status.py:120-125 admits a review recorded before the terminal record, so review(X,changes_required) -> acceptance(X) -> review(X,approved) -> completed(X) is a loadable journal; contradicts docs/adr/ADR-0007-operator-acceptance.md:151-161 and docs/threat-model.md:102, and the second clause of contract acceptance criterion 2",
+    "CR237-unchecked-mark-changes-unrelated-report-lines": "src/agentmarshal/journal/report.py:474-484 returns None for an unreadable commit and report.py:871-875 appends `\\tself-acceptance-unchecked`; tests/test_report.py:432-437 accepts commit \"a\"*40 in a real repo and asserts with `in`, so the added field is invisible to it; openspec/specs/operator-acceptance/spec.md:128-133 and 164-168 still promise a byte-identical report line for a non-self-acceptance"
+  },
+  "findings": [
+    "CR237-report-approval-overrides-same-commit-acceptance"
+  ],
+  "previous_review": "01M5QPAE90TX8W6XJ2NMZX255D",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "4bf45b5982cad1bfda0fea77acc97fc254df5cf6",
+  "reviewed_contract": "3f616f4962ee28d06d49bbadff73209d2ec6d90eec5fdac264f059a1115ff146",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-237",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "only operator-acceptance documents decision=; no contradicting capability spec",
+        "what": "grep for other specs documenting report's decision field (openspec/specs)"
+      },
+      {
+        "result": "gate-lanes pins transcripts by fixture; no fixture in the diff changed",
+        "what": "grep for byte-for-byte output clauses across openspec/specs"
+      },
+      {
+        "result": "each ADDED and MODIFIED scenario has a test whose docstring names it",
+        "what": "grep for docstrings naming every delta scenario in tests/"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "the CI sequence (uv sync/validate/pytest/ruff/mypy) and a python reproduction of the finding",
+        "why": "running python or pytest was not permitted in this read-only session; the finding is derived from the code paths cited, not from execution"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/journal/report.py",
+      "src/agentmarshal/journal/gate.py (lines 180-230, 289-520, 1690-1960)",
+      "src/agentmarshal/journal/status_view.py (lines 1-200, 740-870)",
+      "src/agentmarshal/journal/status.py",
+      "src/agentmarshal/journal/placement.py",
+      "src/agentmarshal/journal/records.py (_project_root_for, create_completed_record)",
+      "src/agentmarshal/cli.py (status and report command paths)",
+      "src/agentmarshal/stages.py (pause-acceptance line)",
+      "docs/adr/ADR-0007-operator-acceptance.md",
+      "docs/threat-model.md (lines 95-115)",
+      "openspec/specs/operator-acceptance/spec.md",
+      "openspec/changes/archive/2026-10-25-self-acceptance-on-every-surface/ (proposal.md, design.md, tasks.md, specs/operator-acceptance/spec.md)",
+      "tests/test_self_acceptance_on_every_surface.py",
+      "tests/test_pause_and_operational_acceptance.py",
+      "tests/test_report.py",
+      "tests/test_gate.py (acceptance-line assertions)",
+      "tests/test_display.py"
+    ]
+  }
+}
