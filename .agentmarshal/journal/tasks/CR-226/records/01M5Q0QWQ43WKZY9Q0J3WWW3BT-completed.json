@@ -1,0 +1,21 @@
+{
+  "advisory_dispositions": {
+    "ADV-REFLOW-002": {
+      "disposition": "rejected",
+      "reason": "Markdown line width is cosmetic and enforced by no tool; the statements are correct"
+    },
+    "ADV-STAGE-NO-LINE-001": {
+      "disposition": "deferred",
+      "reason": "the threat model names the command-level refusals that print no stage line, in the 0.6.0 release documentation task before the freeze"
+    }
+  },
+  "completed_commit": "127cfab49f6b8a23a104f4e677c09a06e16160eb",
+  "created_at": "2026-10-24T13:13:59.268004Z",
+  "record_type": "completed",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "schema": 7,
+  "source": "live",
+  "task": "CR-226",
+  "tool_version": "0.6.0.dev0"
+}
