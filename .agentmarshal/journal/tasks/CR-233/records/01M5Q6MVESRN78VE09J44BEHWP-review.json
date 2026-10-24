@@ -1,0 +1,89 @@
+{
+  "advisory_findings": [
+    "PE-EXT-LEVEL-LINE-IGNORES-PHASE",
+    "PE-ADR-MISCITATION",
+    "PE-DOCTOR-PERSONAL-GATED-BY-SHARED",
+    "PE-STATUS-NOT-EXERCISED"
+  ],
+  "artifacts": [
+    {
+      "hash": "1cba7ac3f2ae5dacf10a6a684a6fd38dbd2918f64925d4e5e648d015638d4ff6",
+      "ref": ".agentmarshal/journal/tasks/CR-233/artifacts/01M5Q6MVESRN78VE09J44BEHWP-review.md"
+    }
+  ],
+  "classes": {
+    "PE-ADR-MISCITATION": "claim-accuracy",
+    "PE-DOCTOR-PERSONAL-GATED-BY-SHARED": "contract-mismatch",
+    "PE-EXT-LEVEL-LINE-IGNORES-PHASE": "contract-mismatch",
+    "PE-STATUS-NOT-EXERCISED": "test-gap",
+    "PE-SWITCHES-REWRITE-DROPS-ENTRIES": "correctness"
+  },
+  "created_at": "2026-10-24T14:57:11.129885Z",
+  "evidence": {
+    "PE-ADR-MISCITATION": "src/agentmarshal/switches.py:20 and src/agentmarshal/extension_trust.py:26 cite 'decision 11'; docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md:192 is 'Local state lives outside the working tree', while the personal switch (--skip-ext, extension disable, .git/agentmarshal/switches.toml) is :269-275, decision 16 — the number the contract itself uses. src/agentmarshal/stages.py:524 attributes 'needs no grant' to decision 10 (:177, footprint) rather than decision 14 (:243-246) and 15(a) (:255-259).",
+    "PE-DOCTOR-PERSONAL-GATED-BY-SHARED": "src/agentmarshal/doctor.py:707-715 returns from _report_extensions and :538-547 returns from _extension_checks when _managed_directory (src/agentmarshal/extension_trust.py:205-220) refuses a symlink at .agentmarshal or .agentmarshal/extensions, both before the personal blocks at :572-598 and :782-844. Failure scenario: a clone whose .agentmarshal/extensions is a symlink gets neither the 'extension <name>: personal scope, ...' lines nor a 'personal extensions: unavailable (...)' line, although personal extensions are present and readable.",
+    "PE-EXT-LEVEL-LINE-IGNORES-PHASE": "src/agentmarshal/stages.py:602-615 appends the collision/disabled/skipped/refused line before any phase check, while the 'stage.phase in modes' filter appears only at :626-628; run_stages:1063-1064 then makes 'personal' non-empty, which defeats the plan_empty returns at :1075 and :1092. Failure scenario: a personal extension declaring only pre-gate-stop, switched off with 'extension disable', makes 'complete' print 'mycheck: disabled (personal)' a second time after the completed record and makes 'stage run --phase post-gate' drop its 'no shared extension declares a post-gate stage' line.",
+    "PE-STATUS-NOT-EXERCISED": "tests/test_personal_extensions.py:1005 is the byte-identity test; it invokes _stage_run, _complete and doctor only, and 'status' appears nowhere in the file, while the scenario it names (openspec/specs/extension-stages/spec.md, 'a clone with no personal extension prints exactly what it prints today') lists 'stage run, complete, doctor and status'.",
+    "PE-SWITCHES-REWRITE-DROPS-ENTRIES": "src/agentmarshal/switches.py:302-303 ('if name not in names: continue') filters stale entries out of the parse result; src/agentmarshal/extension_trust.py:837 and :876 read with that filter, :843 and :889 write the filtered dict back through _write_personal_switches, and _dump_personal_switches (:728-743) emits only 'state' and 'reason'. Failure scenario: disable alpha and beta, move .git/agentmarshal/extensions/beta aside, run 'extension enable alpha' -> the rewritten file holds an empty [switches] table and beta's off switch is gone, so restoring beta silently runs it again."
+  },
+  "findings": [
+    "PE-SWITCHES-REWRITE-DROPS-ENTRIES"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "5b748eef7d4830e196c5b9fc2c275b8819a1bf7f",
+  "reviewed_contract": "03cc242150d34438f2bd1c5705990c9d8a3401e133b2a3a8d2237b9068accea7",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-233",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "no existing test or module creates .git/agentmarshal/extensions, so prior transcripts are unaffected",
+        "what": "grep for other users of the clone's local-state extensions directory across src/ and tests/"
+      },
+      {
+        "result": "parser is built fresh inside main(), so action=append with default=[] cannot leak across invocations",
+        "what": "grep -n for '_build_parser' in src/agentmarshal/cli.py"
+      },
+      {
+        "result": "every scenario has exactly one matching test docstring; no extras",
+        "what": "manual one-to-one comparison of the 37 '#### Scenario:' headings in the delta spec against the 37 'Scenario: ...' docstrings in tests/test_personal_extensions.py"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv run pytest tests/test_personal_extensions.py",
+        "why": "the sandbox refused the command (approval required); no test execution was possible"
+      },
+      {
+        "what": "uv run ruff check / ruff format --check / mypy",
+        "why": "same approval refusal; the coordinator's note that the full CI sequence passed at this commit is taken as given and no tool-failure claim is made"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/stages.py",
+      "src/agentmarshal/switches.py",
+      "src/agentmarshal/extension_trust.py",
+      "src/agentmarshal/doctor.py",
+      "src/agentmarshal/cli.py (complete lane, parser)",
+      "src/agentmarshal/localstate.py",
+      "src/agentmarshal/journal/extensions.py (parse_extension_manifest_text, directory-form helpers)",
+      "tests/test_personal_extensions.py",
+      "openspec/changes/archive/2026-10-25-personal-extensions/{proposal,design,tasks}.md",
+      "openspec/changes/archive/2026-10-25-personal-extensions/specs/extension-stages/spec.md",
+      "openspec/specs/extension-stages/spec.md",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md",
+      "docs/threat-model.md"
+    ]
+  }
+}

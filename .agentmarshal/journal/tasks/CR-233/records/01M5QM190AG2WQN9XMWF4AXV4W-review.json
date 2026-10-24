@@ -1,0 +1,70 @@
+{
+  "artifacts": [
+    {
+      "hash": "b425b66803ee006854d4b0fe6bcb69dcd0695e625bd29242953e5abcd226f06f",
+      "ref": ".agentmarshal/journal/tasks/CR-233/artifacts/01M5QM190AG2WQN9XMWF4AXV4W-review.md"
+    }
+  ],
+  "classes": {
+    "CR233-ENABLE": "correctness"
+  },
+  "created_at": "2026-10-24T18:51:09.706625Z",
+  "evidence": {
+    "CR233-ENABLE": "src/agentmarshal/extension_trust.py:1154 removes the last child table; :915 requires switches={} to remain. Input 'format = 1\\n\\n[switches.mycheck]\\nstate = \"off\"\\n' parses successfully, but _run_enable returns 1: 'the rewrite could not be verified: the rewritten text changed more than the named switch'."
+  },
+  "findings": [
+    "CR233-ENABLE"
+  ],
+  "previous_review": "01M5QJDMECQ5BQAQ6V2GD0TYNS",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "be83392147a0513da2ad4e2c721700e87d7bbc45",
+  "reviewed_contract": "03cc242150d34438f2bd1c5705990c9d8a3401e133b2a3a8d2237b9068accea7",
+  "reviewer": {
+    "email": "auto-review-openai@agent.example.invalid",
+    "model": "gpt-6.1-sol",
+    "role": "reviewer",
+    "vendor": "openai"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-233",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "46 delta scenarios; zero missing matching test docstrings",
+        "what": "Read-only Python scenario/docstring comparison"
+      },
+      {
+        "result": "Valid off switch parsed successfully; enable returned 1 with 'the rewritten text changed more than the named switch'; no write attempted",
+        "what": "In-memory _run_enable reproduction using actual parsing and rewrite logic, with filesystem boundaries mocked"
+      },
+      {
+        "result": "Snapshot has no Git metadata; uv, pytest, ruff and mypy unavailable",
+        "what": "Git metadata and tooling availability checks"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; uv run agentmarshal validate; uv run pytest; uv run ruff check; uv run ruff format --check; uv run mypy",
+        "why": "Required tooling unavailable; coordinator's reported CI pass is acknowledged without claiming an independent rerun"
+      }
+    ],
+    "read": [
+      ".agentmarshal/journal/tasks/CR-233/contract.md",
+      "docs/threat-model.md",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md",
+      "docs/adr/ADR-0014-where-things-live.md",
+      "CONTRIBUTING.md",
+      "Supplied diff and corresponding implementation/test files",
+      "openspec/changes/archive/2026-10-25-personal-extensions/",
+      "openspec/specs/extension-stages/spec.md",
+      "src/agentmarshal/localstate.py",
+      "src/agentmarshal/journal/extensions.py",
+      "src/agentmarshal/record_ext.py"
+    ]
+  }
+}

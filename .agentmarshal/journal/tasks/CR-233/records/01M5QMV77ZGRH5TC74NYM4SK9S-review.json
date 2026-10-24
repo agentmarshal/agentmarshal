@@ -1,0 +1,65 @@
+{
+  "artifacts": [
+    {
+      "hash": "c8258e677c0ba2b5b813c68ea5c27ef5d7788197e75ea74c738c4fa0d5ffd413",
+      "ref": ".agentmarshal/journal/tasks/CR-233/artifacts/01M5QMV77ZGRH5TC74NYM4SK9S-review.md"
+    }
+  ],
+  "created_at": "2026-10-24T19:05:19.871980Z",
+  "findings": [],
+  "previous_review": "01M5QM190AG2WQN9XMWF4AXV4W",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "b790991b5367722aa777d5de3f5e3f7fb0304256",
+  "reviewed_contract": "03cc242150d34438f2bd1c5705990c9d8a3401e133b2a3a8d2237b9068accea7",
+  "reviewer": {
+    "email": "auto-review-openai@agent.example.invalid",
+    "model": "gpt-6.1-sol",
+    "role": "reviewer",
+    "vendor": "openai"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-233",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "Passed",
+        "what": "Read-only Python AST parsing of seven changed Python files"
+      },
+      {
+        "result": "All 46 scenarios matched",
+        "what": "Compare archived delta scenarios with test docstrings"
+      },
+      {
+        "result": "Passed",
+        "what": "In-memory personal switch removal and stale-entry parsing probes"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "Read-only review environment has no uv executable; coordinator reports all checks passed on the reviewed commit."
+      },
+      {
+        "what": "Independent commit-SHA and archive-command verification",
+        "why": "Snapshot contains no Git metadata; archive command is documented in archived tasks.md."
+      }
+    ],
+    "read": [
+      "Supplied CR-233 contract and diff",
+      "CONTRIBUTING.md",
+      "docs/threat-model.md",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md",
+      "docs/adr/ADR-0014-where-things-live.md",
+      "Changed implementation, tests and OpenSpec artifacts",
+      "src/agentmarshal/localstate.py",
+      "src/agentmarshal/journal/extensions.py",
+      "src/agentmarshal/record_ext.py",
+      "Existing stage, complete and doctor regression tests"
+    ]
+  }
+}
