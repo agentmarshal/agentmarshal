@@ -1,0 +1,12 @@
+{
+  "contract": "2188e0770c17d8c736f82217624c5b980cb37358b9c964d26cb36029d278b56c",
+  "created_at": "2026-10-24T12:37:56.264935Z",
+  "reason": "Criterion 3 now says a temporary-directory creation failure gives the stage its own not-run line (decision 7) and a cleanup failure never replaces a computed outcome; other post-gate failures stay one stderr line (coordinator's round-1 instruction contradicted the old wording; review round 2).",
+  "record_type": "amendment",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "schema": 7,
+  "source": "live",
+  "task": "CR-227",
+  "tool_version": "0.6.0.dev0"
+}
