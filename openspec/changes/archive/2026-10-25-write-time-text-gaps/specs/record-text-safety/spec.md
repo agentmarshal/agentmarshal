@@ -7,7 +7,7 @@ of the parse, which accepts any single character as the separator; an
 `artifacts` `ref` SHALL refuse the same through the shared write path.
 Record bytes SHALL encode fully before exclusive creation, so a failure
 leaves nothing behind, and a refused reviewer's output SHALL be kept raw.
-The `ref` refusal SHALL reach no record a read can load.
+Timestamp and `ref` refusals SHALL reach no record a read can load.
 
 #### Scenario: a timestamp carrying a refused character is refused
 - **WHEN** `created_at` or a session's `started_at`, `ended_at` or
@@ -15,7 +15,8 @@ The `ref` refusal SHALL reach no record a read can load.
   newline, a bidirectional mark standing in for the separator, or a lone
   surrogate
 - **THEN** the write is refused before any file is created, and the message
-  names the field
+  names the field, while a record an earlier release wrote still reads and
+  validates, never refused on read
 
 #### Scenario: an artifact ref carrying a refused character is refused at write
 - **WHEN** a record's `artifacts` `ref` contains a character the

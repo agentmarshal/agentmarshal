@@ -601,12 +601,11 @@ def _utc_timestamp(value: str, what: str) -> datetime:
     `ended_at` and `resets_at`. *what* names the field a refusal gives.
 
     `fromisoformat` accepts any single character as the date-time
-    separator, so a newline, a bidirectional mark or a lone surrogate
-    rides the timestamp past the parse: the value is refused first when
-    it carries a character the forgeable-text rule refuses.
+    separator, so a character the forgeable-text rule refuses can ride
+    a timestamp past this parse; the `timestamp-text` rule's refusal
+    lands ahead of it at write time.
     """
 
-    _reject_control_characters(value, what)
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError as error:
@@ -614,6 +613,27 @@ def _utc_timestamp(value: str, what: str) -> datetime:
     if parsed.tzinfo is None or parsed.utcoffset() != UTC.utcoffset(parsed):
         raise JournalRecordError(f"{what} must be a UTC timestamp")
     return parsed
+
+
+@_rule("timestamp-text")
+def _check_timestamp_text(data: Mapping[str, object], _context: _RuleContext) -> None:
+    # The write side of the text boundary for the four timestamps: the
+    # parser below takes any single character as the date-time
+    # separator, so a newline, a bidirectional mark or a lone surrogate
+    # could ride a timestamp into the journal — the refusal lands ahead
+    # of the parse, naming the field. The rule is bound past today's
+    # schemas, so it reaches no record a read can load — a timestamp
+    # history already holds parses as it always did (ADR-0015
+    # decisions 2 and 4).
+    created_at = data.get("created_at")
+    if isinstance(created_at, str):
+        _reject_control_characters(created_at, "record field 'created_at'")
+    if cast(str, data["record_type"]) != "session":
+        return
+    for field in ("started_at", "ended_at", "resets_at"):
+        value = data.get(field)
+        if isinstance(value, str):
+            _reject_control_characters(value, f"session record field {field!r}")
 
 
 @_rule("created-at")
@@ -857,15 +877,14 @@ def _check_session_fields_7(data: Mapping[str, object], _context: _RuleContext) 
         )
     # The time, reset and cost fields of the same family (ADR-0019
     # decisions 1, 3 and 4, ADR-0022 section 2). The three timestamps
-    # follow `created_at`'s UTC ISO-8601 rule — the one parser, reused,
-    # which refuses a character the forgeable-text rule refuses ahead of
-    # the parse, because `fromisoformat` accepts any single character as
-    # the date-time separator — and `created_at` itself stays the write
-    # time, derived from none of them. None of the four registers in the
-    # shared validator tables: each shape below admits no character the
-    # forgeable-text rule refuses, and this rule runs ahead of it, so an
-    # entry would never fire — and the family's five displayed strings
-    # already name every field that rule guards.
+    # follow `created_at`'s UTC ISO-8601 rule — the one parser, reused —
+    # and `created_at` itself stays the write time, derived from none of
+    # them. None of the four registers in the shared validator tables:
+    # the parser accepts any single character as the date-time
+    # separator, so the guard they need is write-time only and ahead of
+    # the parse — the separate `timestamp-text` rule — while the
+    # family's five displayed strings already name every field the
+    # shared forgeable-text rule guards.
     timestamps: dict[str, datetime] = {}
     for field in ("started_at", "ended_at", "resets_at"):
         if field not in data:
@@ -1573,9 +1592,11 @@ _RULE_FROM_SCHEMA: dict[str, int] = {
     "ext-fields-7": 7,
     "provenance": 2,
     # Write-time only: bound to the first schema after today's, so the
-    # rule reaches no record a read can load — `validate` still reports
-    # an artifact reference history holds, as before (ADR-0015).
+    # rules reach no record a read can load — a timestamp history holds
+    # parses as it always did, and `validate` still reports an artifact
+    # reference history holds, as before (ADR-0015).
     "artifact-ref-text": 8,
+    "timestamp-text": 8,
     "recorded-by": 1,
     "finding-binding": 4,
     "task-placement": 1,

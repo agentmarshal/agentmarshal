@@ -238,15 +238,17 @@ def _hand_written_review(
     repo: Path,
     findings: list[str],
     artifacts: list[dict[str, str]] | None = None,
+    schema: int = 2,
+    created_at: str = "2026-08-23T10:00:00.000000Z",
 ) -> None:
     """Write a review record the way an earlier release wrote one: schema 2."""
 
     records = repo / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "records"
     record: dict[str, object] = {
-        "schema": 2,
+        "schema": schema,
         "record_type": "review",
         "task": "CR-001",
-        "created_at": "2026-08-23T10:00:00.000000Z",
+        "created_at": created_at,
         "source": "live",
         "tool_version": "0.1.0",
         "reviewed_commit": "b" * 40,
@@ -317,7 +319,7 @@ def test_the_rule_guards_every_place_that_renders_record_text(
 
 
 def test_a_timestamp_carrying_a_refused_character_is_refused(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Scenario: a timestamp carrying a refused character is refused.
 
@@ -326,7 +328,9 @@ def test_a_timestamp_carrying_a_refused_character_is_refused(
     and `resets_at` could each carry a refused character through the parse —
     a newline for `created_at`, U+200E standing in for `started_at`'s
     separator, U+2028 for `ended_at`'s and a surrogate for `resets_at`.
-    Each refusal names the field and leaves nothing behind.
+    Each refusal names the field and leaves nothing behind — while the
+    rule is write-time only, so a record an earlier release wrote still
+    reads and validates, never refused on read (ADR-0015).
     """
 
     journal_root = tmp_path / "journal"
@@ -360,6 +364,37 @@ def test_a_timestamp_carrying_a_refused_character_is_refused(
             write_record(journal_root, "CR-001", record)
 
     assert not journal_root.exists()
+
+    # The read side (ADR-0015): a record an earlier release wrote — the
+    # refused character riding the separator the parse accepts — still
+    # reads and validates; the rule is bound past today's schemas and
+    # reaches no record a read can load.
+    repo = _project(tmp_path, monkeypatch)
+    _hand_written_review(repo, ["F-001"], schema=3, created_at="2026-10-01\n10:00:00Z")
+    session = create_session_record(
+        "CR-001",
+        "test",
+        "implementer",
+        "agent",
+        "implementation",
+        "provider-limit",
+        1,
+        2,
+        3,
+        started_at="2026-10-01\u200e10:00:00Z",
+        ended_at="2026-10-01T11:00:00Z",
+        resets_at="2026-10-02T00:00:00Z",
+    )
+    records = repo / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "records"
+    (records / f"{generate_ulid()}-session.json").write_text(
+        json.dumps(session, ensure_ascii=False), encoding="utf-8"
+    )
+
+    stored = read_records(repo / ".agentmarshal" / "journal", "CR-001")
+
+    assert stored[-1]["started_at"] == "2026-10-01\u200e10:00:00Z"
+    report = validate_journal(repo)
+    assert report.passed, report.lines
 
 
 def test_an_artifact_ref_carrying_a_refused_character_is_refused_at_write(
