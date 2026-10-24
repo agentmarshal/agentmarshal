@@ -18,6 +18,7 @@ docstring names it.
 from __future__ import annotations
 
 import json
+import math
 import tomllib
 from pathlib import Path
 
@@ -1443,6 +1444,52 @@ def test_a_rewrite_changes_only_the_named_switch_entry(
     out = capsys.readouterr().out
     assert "alpha: checked (personal)" in out
     assert "beta: disabled (personal)" in out
+
+
+def test_a_clone_switches_file_holding_nan_is_disabled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`extension disable` verifies over an unchanged ``nan``: nan equals itself.
+
+    The clone's file carries ``future = nan`` above an existing entry —
+    ``nan != nan`` under ``==``, so the rewrite's verification is the
+    comparison that holds an unchanged value equal to itself.
+    """
+    repo = _project(tmp_path, monkeypatch)
+    _personal_extension(repo)
+    _switches_file(repo).write_text(
+        'format = 1\nfuture = nan\n\n[switches.mycheck]\nstate = "on"\n',
+        encoding="utf-8",
+    )
+
+    assert main(["extension", "disable", "mycheck", "--reason", "loud"]) == 0
+
+    parsed = tomllib.loads(_switches_file(repo).read_text(encoding="utf-8"))
+    assert parsed["switches"]["mycheck"] == {"state": "off", "reason": "loud"}
+    assert math.isnan(parsed["future"])
+
+
+def test_a_clone_switches_file_holding_nan_is_enabled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`extension enable` verifies over an unchanged ``nan`` the same way."""
+    repo = _project(tmp_path, monkeypatch)
+    _personal_extension(repo)
+    _switches_file(repo).write_text(
+        "format = 1\n"
+        "future = nan\n"
+        "\n"
+        "[switches.mycheck]\n"
+        'state = "off"\n'
+        'reason = "too noisy"\n',
+        encoding="utf-8",
+    )
+
+    assert main(["extension", "enable", "mycheck"]) == 0
+
+    parsed = tomllib.loads(_switches_file(repo).read_text(encoding="utf-8"))
+    assert parsed["switches"] == {}
+    assert math.isnan(parsed["future"])
 
 
 # -- doctor when the shared directory refuses --------------------------------------

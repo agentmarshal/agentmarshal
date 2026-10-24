@@ -80,6 +80,7 @@ from agentmarshal.switches import (
     parse_personal_switches,
     personal_extension_names,
     shared_extension_names,
+    toml_values_equal,
 )
 
 TRUST_FORMAT = 1
@@ -930,7 +931,10 @@ def _verify_personal_rewrite(
     the one ``switches`` entry set to *entry* — ``None`` for a removal —
     so an entry the rewrite dropped or a key it lost shows here — and
     the personal parser must accept the file and read the change back.
-    A missing file's old document is the skeleton the command creates.
+    The equality is ``toml_values_equal``'s: an unchanged value compares
+    equal to itself, ``nan`` included, and a change of a value's type
+    alone is a change. A missing file's old document is the skeleton the
+    command creates.
     """
 
     try:
@@ -944,7 +948,7 @@ def _verify_personal_rewrite(
         expected_switches[name] = entry
     expected = dict(document)
     expected["switches"] = expected_switches
-    if new_data != expected:
+    if not toml_values_equal(new_data, expected):
         return "the rewritten text changed more than the named switch"
     try:
         written = parse_personal_switches(

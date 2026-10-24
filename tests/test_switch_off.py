@@ -454,6 +454,42 @@ def test_an_on_entrys_other_keys_are_kept_through_the_rewrite(
     assert entry["extra"] == [["nested", "array"], ["lines"]]
 
 
+def test_an_on_entry_in_a_file_holding_nan_is_switched_off(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A file whose other content is ``nan`` verifies: nan equals itself.
+
+    ``nan != nan`` under ``==``, so the verification compares with the
+    equality that holds an unchanged value equal to itself — an ``on``
+    entry under an untouched ``future = nan`` is rewritten in place and
+    the value comes through as it was.
+    """
+    repo = stage_helpers._project(tmp_path, monkeypatch)
+    _extension(repo)
+    _switches_file(repo).write_text(
+        "format = 1\n"
+        "future = nan\n"
+        "\n"
+        "[switches]\n"
+        "\n"
+        "[switches.openspec]\n"
+        'state = "on"\n'
+        'task = "CR-3"\n',
+        encoding="utf-8",
+    )
+
+    assert _switch_off() == 0
+
+    text = _switches_file(repo).read_text(encoding="utf-8")
+    assert "future = nan" in text
+    (task,) = _task_dirs(repo)
+    assert _switches(repo)["openspec"] == {
+        "state": "off",
+        "task": task.name,
+        "reason": _REASON,
+    }
+
+
 def test_an_on_entry_the_command_cannot_locate_and_bound_on_its_own_lines_is_refused_before_any_task_is_opened(  # noqa: E501
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

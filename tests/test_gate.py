@@ -16,6 +16,7 @@ from agentmarshal.journal import artifacts as artifacts_module
 from agentmarshal.journal import gate as gate_module
 from agentmarshal.journal import review as review_module
 from agentmarshal.journal.contracts import ContractHeader, scope_covers
+from agentmarshal.journal.extensions import ExtensionManifestError
 from agentmarshal.journal.gate import (
     GateError,
     markers_from_tree,
@@ -3425,6 +3426,87 @@ def test_schema_1_manifest_in_the_base_directory_form_is_refused(
     assert not passed
     assert "FAIL: named extension 'openspec' manifest unreadable" in output
     assert "directory form requires a manifest of schema 2" in output
+
+
+@pytest.mark.parametrize(
+    ("body", "named"),
+    [
+        ('[[stage]]\nphase = "post-gate"\ncommand = "bin/x.py"\n', "bin/x.py"),
+        ('[dependencies]\nlock = "lock/uv.lock"\n', "lock/uv.lock"),
+        (
+            '[wraps]\nproduct = "openspec"\nversion = "1.13.2"\n'
+            'ecosystem = "npm"\nlock = "lock/package-lock.json"\n'
+            'runtime = "node >= 20"\nlicense = "MIT"\n',
+            "lock/package-lock.json",
+        ),
+    ],
+)
+def test_single_file_manifest_at_the_base_naming_a_directory_path_is_refused(
+    tmp_path: Path, body: str, named: str
+) -> None:
+    """Scenario: a single-file manifest naming a bin/ or lock/ path is refused.
+
+    The working-tree reader's file-form rule applied at the base: the
+    manifest is committed to a real repository and read back out of its
+    tree, and the refusal is the reader's own — the file form has no
+    extension directory — naming the path.
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "--quiet", "-b", "master")
+    manifest = repo / ".agentmarshal" / "extensions" / "openspec.toml"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(
+        "schema = 2\n"
+        'name = "openspec"\n'
+        'version = "1.0.0"\n'
+        'footprint = ["openspec/"]\n'
+        "documents = []\n" + body,
+        encoding="utf-8",
+    )
+    base = _commit_all(repo, "installed file-form extension")
+
+    with pytest.raises(ExtensionManifestError) as raised:
+        gate_module._manifest_from_tree(repo, base, "openspec")
+
+    assert "single-file form has no extension directory" in str(raised.value)
+    assert named in str(raised.value)
+
+
+def test_single_file_manifest_naming_a_command_at_the_base_fails_the_named_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The file-form refusal at the base lands on the named-extension line.
+
+    A schema-2 file-form manifest declaring a stage ``command`` is one
+    the base-tree reader previously accepted where the working-tree
+    reader refused it; through the gate the same refusal reports on the
+    line every manifest refusal lands on.
+    """
+    repo, _ = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    _write_schema2_contract(repo, ["src/"], extensions=["openspec"])
+    manifest = repo / ".agentmarshal" / "extensions" / "openspec.toml"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(
+        "schema = 2\n"
+        'name = "openspec"\n'
+        'version = "1.0.0"\n'
+        'footprint = ["openspec/"]\n'
+        "documents = []\n"
+        "[[stage]]\n"
+        'phase = "pre-gate-stop"\n'
+        'command = "bin/check.py"\n',
+        encoding="utf-8",
+    )
+    base = _commit_all(repo, "file-form extension with a stage at base")
+    head = _implement(repo, "src/change.py")
+    _approve(repo, head)
+
+    passed, output = _run(repo, head, base, head)
+
+    assert not passed
+    assert "FAIL: named extension 'openspec' manifest unreadable" in output
+    assert "single-file form has no extension directory" in output
 
 
 def test_named_file_form_manifest_reads_exactly_as_before(
