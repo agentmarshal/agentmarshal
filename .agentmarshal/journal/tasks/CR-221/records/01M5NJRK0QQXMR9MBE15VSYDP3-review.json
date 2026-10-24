@@ -1,0 +1,69 @@
+{
+  "artifacts": [
+    {
+      "hash": "eb7fca9d1e5f860a39726a2708ef6417a171a410693ef7583cce081320347564",
+      "ref": ".agentmarshal/journal/tasks/CR-221/artifacts/01M5NJRK0QQXMR9MBE15VSYDP3-review.md"
+    }
+  ],
+  "classes": {
+    "F-ROOT-READONLY": "security"
+  },
+  "created_at": "2026-10-23T23:50:27.607196Z",
+  "evidence": {
+    "F-ROOT-READONLY": "src/agentmarshal/isolation.py:93 identity-maps UID 0 to UID 0; src/agentmarshal/isolation.py:181 creates the user/mount namespaces; src/agentmarshal/isolation.py:219 installs the bind without subsequently dropping capabilities. Local user_namespaces(7) states that namespace capabilities survive exec when UID is 0."
+  },
+  "findings": [
+    "F-ROOT-READONLY"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "df6fb68f4690ca7e548f3e013bafa5d24e89f0fb",
+  "reviewed_contract": "3c93ebd5824324bc9da020c8a26ca6d6bee6eea3cc758409cc99940cb79cf47f",
+  "reviewer": {
+    "email": "auto-review-openai@agent.example.invalid",
+    "model": "gpt-5.6-sol",
+    "role": "code-reviewer",
+    "vendor": "openai"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-221",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "All 26 scenarios were found verbatim.",
+        "what": "Static comparison of archived delta scenario titles against test docstrings"
+      },
+      {
+        "result": "unshare(CLONE_NEWUSER) grants all capabilities in the new namespace; exec preserves them when namespace UID is 0.",
+        "what": "Read local Linux user_namespaces(7) and capabilities(7) documentation"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "Full CI sequence",
+        "why": "uv is unavailable in the read-only review environment; the coordinator supplied the passing result for the exact reviewed commit."
+      },
+      {
+        "what": "Runtime reproduction as UID 0 with usable user and mount namespaces",
+        "why": "The review environment runs as UID 1000 and forbids creating temporary files."
+      }
+    ],
+    "read": [
+      ".agentmarshal/journal/tasks/CR-221/contract.md",
+      "docs/adr/ADR-0001-governance-plane.md",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md",
+      "docs/adr/ADR-0014-where-things-live.md",
+      "docs/threat-model.md",
+      "src/agentmarshal/isolation.py",
+      "src/agentmarshal/stages.py",
+      "tests/test_isolation.py",
+      "tests/test_stages.py",
+      "openspec/changes/archive/2026-10-24-stage-isolation/",
+      "openspec/specs/extension-stages/spec.md"
+    ]
+  }
+}
