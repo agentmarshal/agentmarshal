@@ -1,0 +1,87 @@
+{
+  "advisory_findings": [
+    "CR-224-purpose-stale",
+    "CR-224-lazy-read-untested"
+  ],
+  "artifacts": [
+    {
+      "hash": "808dfb119646023230136d72609a4de368e880d016e524d8de699ab4dacac9d9",
+      "ref": ".agentmarshal/journal/tasks/CR-224/artifacts/01M5PNJFKJ4ZK4XDRGARZXMF7G-review.md"
+    }
+  ],
+  "classes": {
+    "CR-224-lazy-read-untested": "test-gap",
+    "CR-224-purpose-stale": "claim-accuracy"
+  },
+  "created_at": "2026-10-24T09:58:47.666274Z",
+  "evidence": {
+    "CR-224-lazy-read-untested": "requirement clause at openspec/specs/extension-stages/spec.md:1136-1138; no scenario in that requirement covers it (grep -c '^#### Scenario:' = 14, none about opening the journal) and no test in tests/test_stages.py asserts read_records is not called on a run that pauses nothing — tests/test_stages.py:1750-1766 only asserts the absence of the suffix, while the monkeypatch technique that would show it is already used at tests/test_stages.py:1884",
+    "CR-224-purpose-stale": "openspec/specs/extension-stages/spec.md:25-26 ('network isolation, write isolation and pause records are later work, not this capability') vs the new requirement added in the same file at openspec/specs/extension-stages/spec.md:1113; the delta carries no '## Purpose' section (openspec/changes/archive/2026-10-24-stage-run-accepted-pause/specs/extension-stages/spec.md:1 starts at '## ADDED Requirements'), while a Purpose update via delta has precedent at openspec/changes/archive/2026-10-03-extension-manifest-schema-2/specs/extension-manifest/spec.md:1; the same clause is already stale for isolation given openspec/specs/extension-stages/spec.md:879 and :925"
+  },
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "a2c6ede9c6f3eba9fbb40bfccef37ad6552a4e00",
+  "reviewed_contract": "e1a070efdec5b4515d4e9029eb7a9704094406ac83818248420da49e7cac03ea",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-224",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "identical (heading, full text, all 5 existing scenarios)",
+        "what": "diff of the delta's MODIFIED block against openspec/specs/extension-stages/spec.md:376-408"
+      },
+      {
+        "result": "identical, 114 lines each",
+        "what": "diff of the delta's ADDED block against openspec/specs/extension-stages/spec.md:1113-1226"
+      },
+      {
+        "result": "14 scenarios, 14 matching test docstrings; the 5 MODIFIED scenarios keep their tests at lines 1379, 1398, 1413, 1435, 1450",
+        "what": "grep -c '^#### Scenario:' on the ADDED requirement and grep of 'Scenario:' docstrings in tests/test_stages.py"
+      },
+      {
+        "result": "only 'archive' remains; archive/2026-10-24-stage-run-accepted-pause holds proposal.md, design.md, tasks.md and specs/extension-stages/spec.md",
+        "what": "ls openspec/changes and ls -R of the archived change directory"
+      },
+      {
+        "result": "only stages.py (new), cli.py accept, status_view.py, records.py validation — gate and other commands untouched",
+        "what": "grep of accepted_pause consumers across src/"
+      },
+      {
+        "result": "line 26 — the stale Purpose clause",
+        "what": "grep -n 'later work, not this capability' openspec/specs/extension-stages/spec.md"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "neither uv nor pytest is available in this read-only sandbox and python execution is blocked; relying on the coordinator's stated CI result for this commit"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/stages.py (_run_stages, record_event, accepted_pause, _pause_extension, _PHASE_MODES)",
+      "src/agentmarshal/journal/records.py (read_records, create_acceptance_record, _validate_acceptance_record, _check_acceptance_fields_7, generate_ulid, forges_rendered_text, ensure_journal_root_is_real, _RECORD_FILENAME_PATTERN)",
+      "src/agentmarshal/journal/display.py (escape_for_display)",
+      "src/agentmarshal/journal/gate.py (acceptance selection at lines 197-216 and 1749-1800)",
+      "src/agentmarshal/journal/status_view.py (pause acceptance rendering, _is_self_accepted)",
+      "src/agentmarshal/journal/status.py (load_task_status, load_task_for_record)",
+      "src/agentmarshal/journal/placement.py (journal_root)",
+      "openspec/specs/extension-stages/spec.md",
+      "openspec/specs/operator-acceptance/spec.md",
+      "docs/adr/ADR-0007-operator-acceptance.md (decisions 4 and 5)",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md (decisions 5 and 6)",
+      "tests/test_stages.py",
+      "tests/test_pause_and_operational_acceptance.py (test inventory)"
+    ]
+  }
+}
