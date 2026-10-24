@@ -1,0 +1,71 @@
+{
+  "artifacts": [
+    {
+      "hash": "31d2567689a208396b3216f60de3313f67696db76e1106757c064cb0e20a6852",
+      "ref": ".agentmarshal/journal/tasks/CR-236/artifacts/01M5QMFJ1D4TPP1N7XYGP29GG9-review.md"
+    }
+  ],
+  "classes": {
+    "timestamp-read-regression": "contract-mismatch"
+  },
+  "created_at": "2026-10-24T18:58:57.709132Z",
+  "evidence": {
+    "timestamp-read-regression": "src/agentmarshal/journal/records.py:609; created-at remains bound to schema 1 and session-fields-7 to schema 7. Reproduction: schema-3 created_at='2026-10-01\\n10:00:00Z' parses successfully with datetime.fromisoformat, but _validate_record(..., for_write=False, context={}) raises \"record field 'created_at' must not contain control characters\". Historical-read guarantee: docs/threat-model.md:405 and ADR-0015 decisions 3–4."
+  },
+  "findings": [
+    "timestamp-read-regression"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "ace72390c9f62dad123d1f22df0ba2981f700088",
+  "reviewed_contract": "c7182c6569f4233224a6babb433d2162a23a5a04a2bb1e12c1ddad72332f13b7",
+  "reviewer": {
+    "email": "auto-review-openai@agent.example.invalid",
+    "model": "gpt-6.1-sol",
+    "role": "reviewer",
+    "vendor": "openai"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-236",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "The old parser accepted a newline separator; current read validation refused it. Disabling only the new timestamp refusal restored successful validation.",
+        "what": "In-memory historical timestamp read-validation reproduction"
+      },
+      {
+        "result": "All refused with field-specific messages.",
+        "what": "20 timestamp write-validation cases"
+      },
+      {
+        "result": "Preservation received identical raw bytes.",
+        "what": "Invalid UTF-8 verdict rejection with preservation intercepted"
+      },
+      {
+        "result": "Delta matches the main specification; all four scenarios have named test docstrings.",
+        "what": "Archived delta and scenario-docstring comparison"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; uv run agentmarshal validate; uv run pytest; uv run ruff check; uv run ruff format --check; uv run mypy",
+        "why": "Read-only snapshot; uv unavailable. Coordinator reports the complete sequence passed on the reviewed commit."
+      }
+    ],
+    "read": [
+      "Supplied contract and diff",
+      "src/agentmarshal/journal/records.py",
+      "src/agentmarshal/journal/review.py",
+      "src/agentmarshal/project.py",
+      "docs/adr/ADR-0015-a-rule-applies-from-the-schema-that-introduced-it.md",
+      "docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md",
+      "docs/threat-model.md",
+      "CONTRIBUTING.md",
+      "Archived OpenSpec delta, main specification, and relevant tests"
+    ]
+  }
+}
