@@ -5,11 +5,11 @@ line appends ` self-accepted`, and its summary line carries
 ` (self-accepted: accepting party is a declared author or committer)`,
 both derived on display by comparing `accepted_by` — stripped and
 case-folded — against the accepted commit's declared author and
-committer names and emails (`_declared_commit_writers` +
-`_is_self_accepted` in `status_view.py`). The gate's acceptance line and
-`report`'s task line do not mark it, although ADR-0007 decision 4 makes
-the mark mandatory on every surface that reports the task
-(AUD-gate-journal-5).
+committer names and emails (`declared_commit_writers` +
+`accepting_party_is_declared_writer`, which `status_view` calls). The
+gate's acceptance line and `report`'s task line do not mark it,
+although ADR-0007 decision 4 makes the mark mandatory on every surface
+that reports the task (AUD-gate-journal-5).
 
 Separately, `report` derives `accepted-over-findings` from the existence
 of any findings-carrying acceptance in the task — so a task whose
@@ -38,24 +38,27 @@ apart.
 ## Decisions
 
 - **One shared comparison, three surfaces.**
-  `report.accepting_party_is_declared_writer` is the comparison
-  `status_view._is_self_accepted` makes — the accepting party, stripped
-  and case-folded, against the declared author and committer names and
-  emails. The gate applies it over the candidate's commit range — one
-  `git log` of `%an%n%ae%n%cn%n%ce` over `merge-base..candidate` yields
-  both the names-and-emails set the mark needs and the emails-only set
-  the reviewer-independence check keeps (a name in it could only
-  collide with a reviewer identity declared as an address); `report`
-  and `status` apply it to the accepted commit. The mark the gate
-  appends is `report.SELF_ACCEPTED_MARK` — `status`'s wording, byte for
-  byte, held as one constant in the module every surface imports.
+  `report.accepting_party_is_declared_writer` is the one comparison —
+  the accepting party, stripped and case-folded, against the declared
+  author and committer names and emails — and `status_view` calls it
+  as `report` does. The gate applies it over the candidate's commit
+  range — one `git log` of `%an%x00%ae%x00%cn%x00%ce%x00` over
+  `merge-base..candidate`, read as bytes and split on NUL so no byte
+  inside a field can misalign the fields, yields both the
+  names-and-emails set the mark needs and the emails-only set the
+  reviewer-independence check keeps (a name in it could only collide
+  with a reviewer identity declared as an address); names decode with
+  `replace` and emails strictly, so a commit whose author name is not
+  UTF-8 cannot fail the run. `report` and `status` apply it to the
+  accepted commit. The mark the gate appends is
+  `report.SELF_ACCEPTED_MARK` — `status`'s wording, byte for byte,
+  held as one constant in the module every surface imports.
 - **`report` applies the shared comparison over the accepted commit.**
   `_self_accepted` looks the commit's declared writers up through
-  `declared_commit_writers` — the same lookup
-  `status_view._declared_commit_writers` makes, held beside the
-  comparison in the module every surface imports — in the repository
-  the accepted commit lives in, the placement's host root, resolved
-  the way `status` resolves it.
+  `declared_commit_writers` — the lookup `status_view` calls for the
+  same check, held beside the comparison in the module every surface
+  imports — in the repository the accepted commit lives in, the
+  placement's host root, resolved the way `status` resolves it.
 - **`report` marks a confirmed self-acceptance only.** Where the
   accepted commit's writers cannot be read — an absent commit, a
   shallow clone, a journal outside a readable project — the line

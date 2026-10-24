@@ -90,6 +90,45 @@ def _commit(repo: Path, name: str, *, committer: tuple[str, str] | None = None) 
     ).stdout.strip()
 
 
+def _implement_latin1_author(repo: Path, head: str) -> str:
+    """HEAD rewritten with an author name that is not valid UTF-8.
+
+    ``git hash-object`` stores the commit text as given — where
+    ``commit-tree`` would recode the ident — so a latin-1 author name
+    reaches the object with no encoding header, and ``git log`` hands
+    ``%an`` back as bytes no UTF-8 decode survives. The new commit
+    carries the same tree over ``head`` as parent, so the candidate
+    range keeps its diff.
+    """
+
+    tree = subprocess.run(
+        ["git", "rev-parse", f"{head}^{{tree}}"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    commit_text = (
+        f"tree {tree}\nparent {head}\n".encode("ascii")
+        + b"author Andr\xe9 <worker@test.invalid> 1792878322 +0000\n"
+        b"committer Committer <committer@test.invalid> 1792878322 +0000\n"
+        b"\nimplement\n"
+    )
+    rewritten = subprocess.run(
+        ["git", "hash-object", "-w", "-t", "commit", "--stdin"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        input=commit_text,
+    ).stdout.strip()
+    subprocess.run(
+        ["git", "reset", "--quiet", "--hard", rewritten.decode("ascii")],
+        cwd=repo,
+        check=True,
+    )
+    return rewritten.decode("ascii")
+
+
 def _implement_distinct_committer(repo: Path, path: str) -> str:
     """A candidate commit authored by Worker but committed by Committer.
 
@@ -210,6 +249,33 @@ def test_the_gates_acceptance_line_marks_a_committer_self_acceptance(
         f"PASS: accepted over findings F-001 by {party} (self-accepted: "
         "accepting party is a declared author or committer); "
         "not an approving review"
+    ) in output
+
+
+def test_the_gate_runs_over_an_author_name_that_is_not_utf8(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A non-UTF-8 author name cannot fail the gate's writer read.
+
+    The range's ``git log`` is read as bytes and split on NUL: names
+    decode lossily where emails decode as strictly as before, so a
+    commit whose author name is not UTF-8 keeps the gate running — and
+    the surviving email half of the identity still earns the mark.
+    """
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    head = _implement_latin1_author(repo, _implement(repo, "src/module.py"))
+    _require_changes(repo, head, "F-001")
+    _accept(repo, head, accepted_by="worker@test.invalid")
+
+    report = run_gate(repo, "CR-001", head, base, head)
+
+    output = "\n".join(report.lines)
+    assert report.passed, output
+    assert (
+        "PASS: accepted over findings F-001 by worker@test.invalid "
+        "(self-accepted: accepting party is a declared author or "
+        "committer); not an approving review"
     ) in output
 
 

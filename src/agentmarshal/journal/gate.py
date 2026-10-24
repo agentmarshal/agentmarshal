@@ -514,24 +514,40 @@ def _range_writer_identities(
     with a reviewer identity declared as an address. The self-acceptance
     mark's shared comparison ``report.accepting_party_is_declared_writer``
     matches ``accepted_by`` against the names and emails alike — the
-    fields ``status_view._declared_commit_writers`` reads for the
-    accepted commit, case-folded the same way.
+    fields ``report.declared_commit_writers`` reads for the accepted
+    commit, case-folded the same way.
     """
 
-    output = _run_git(
+    output = _run_git_bytes(
         project_root,
-        ["log", "--format=%an%n%ae%n%cn%n%ce", f"{merge_base}..{commit}"],
+        [
+            "log",
+            "--format=%an%x00%ae%x00%cn%x00%ce%x00",
+            f"{merge_base}..{commit}",
+        ],
     )
-    fields = [line.strip() for line in output.splitlines()]
-    identities = {field.casefold() for field in fields if field}
-    # The format writes %an, %ae, %cn, %ce once per commit — four lines,
-    # an empty field's line included — so the emails are the second and
-    # fourth field of each group of four.
-    emails = {
-        field.casefold()
-        for index, field in enumerate(fields)
-        if index % 4 in (1, 3) and field
-    }
+    # The format writes %an, %ae, %cn, %ce once per commit behind NUL
+    # separators — no byte inside a field can misalign the grid — so the
+    # emails are the second and fourth field of each group of four. An
+    # email decodes strictly, as the whole output did before; a name
+    # decodes with ``replace``, so a commit whose author or committer
+    # name is not UTF-8 cannot fail the run.
+    emails: set[str] = set()
+    identities: set[str] = set()
+    for index, field in enumerate(output.split(b"\x00")):
+        if index % 4 in (1, 3):
+            try:
+                decoded = field.decode("utf-8")
+            except UnicodeDecodeError as error:
+                raise GateError(f"git produced non-UTF-8 output: {error}") from error
+        else:
+            decoded = field.decode("utf-8", errors="replace")
+        value = decoded.strip().casefold()
+        if not value:
+            continue
+        identities.add(value)
+        if index % 4 in (1, 3):
+            emails.add(value)
     return emails, identities
 
 

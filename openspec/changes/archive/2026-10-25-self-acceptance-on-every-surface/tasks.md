@@ -5,8 +5,8 @@
   the verdict block, beside the emails-only set the
   reviewer-independence check keeps — verify: pytest.
 - [x] 1.2 The acceptance PASS line appends ` (self-accepted: accepting
-  party is a declared writer of the candidate)` after the party when
-  the shared comparison `report._accepting_party_is_declared_writer`
+  party is a declared author or committer)` after the party when the
+  shared comparison `report.accepting_party_is_declared_writer`
   matches `accepted_by` to the range's names and emails —
   byte-for-byte today for any other party — verify: pytest.
 
@@ -23,13 +23,12 @@
   writers in the placement's host repository, and `format_report`
   appends ` self-accepted` after the decision field — verify: pytest.
 - [x] 2.3 `report.py` applies the shared comparison —
-  `_accepting_party_is_declared_writer` — to the accepted commit's
-  declared writers looked up through
-  `status_view._declared_commit_writers`, imported where it runs since
-  that module imports `report`; the line carries the mark only where
-  the self-acceptance is confirmed — where git cannot answer it prints
-  as for any other acceptance and `status` alone says the check could
-  not run — verify: pytest.
+  `accepting_party_is_declared_writer` — to the accepted commit's
+  declared writers looked up through `declared_commit_writers`, the
+  same two functions `status_view` calls for its check; the line
+  carries the mark only where the self-acceptance is confirmed —
+  where git cannot answer it prints as for any other acceptance and
+  `status` alone says the check could not run — verify: pytest.
 
 ## 3. Scenarios and pins
 

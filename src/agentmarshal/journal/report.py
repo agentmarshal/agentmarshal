@@ -474,9 +474,9 @@ def declared_commit_writers(project_root: Path, commit: str) -> set[str] | None:
     directory that is not a repository. That is distinct from an answer
     of "no match", and the caller must keep the two apart — ``status``
     reports the ``None`` leg as unchecked where ``report`` prints no
-    mark. The same lookup ``status_view._declared_commit_writers`` makes;
-    ``status_view`` imports this module already, so the surfaces read one
-    writer set rather than each keeping its own git call.
+    mark. The one writer lookup the surfaces share: ``status_view``
+    calls this function for the accepted commit, so the mark's writer
+    set is one git call rather than a copy each surface keeps.
     """
 
     try:
@@ -500,11 +500,11 @@ def accepting_party_is_declared_writer(
     """The one self-acceptance comparison — gate, report and status.
 
     The accepting party, stripped and case-folded, against the declared
-    author and committer names and emails — the comparison
-    ``status_view._is_self_accepted`` makes. The gate applies it over
-    the candidate's commit range; ``report`` and ``status`` apply it to
-    the accepted commit. ``writers`` of ``None`` — git could not
-    answer — yields ``None``, the unchecked leg of ``status``'s
+    author and committer names and emails. The gate applies it over the
+    candidate's commit range; ``report`` and ``status`` apply it to the
+    accepted commit — ``status_view`` calls this function as
+    ``report._self_accepted`` does. ``writers`` of ``None`` — git could
+    not answer — yields ``None``, the unchecked leg of ``status``'s
     tri-state.
     """
 
@@ -517,8 +517,9 @@ def _self_accepted(repository: Path | None, acceptance: dict[str, object]) -> bo
     """Whether the accepting party is a declared writer of the commit.
 
     The shared comparison — ``accepting_party_is_declared_writer`` —
-    over the accepted commit's declared writers, looked up the way
-    ``status`` looks them up (ADR-0007 decision 4). ``False`` when the
+    over the accepted commit's declared writers, looked up through
+    ``declared_commit_writers``, the same function ``status`` calls
+    (ADR-0007 decision 4). ``False`` when the
     party matches no writer, when the acceptance binds a finding — a
     binding with no ``accepted_commit`` has no writers to compare —
     and when git cannot read the writers here: ``report`` then prints

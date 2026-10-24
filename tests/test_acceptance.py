@@ -218,7 +218,7 @@ def test_status_says_when_self_acceptance_could_not_be_checked(
     assert _accept(commit) == 0
     capsys.readouterr()
     monkeypatch.setattr(
-        status_view, "_declared_commit_writers", lambda *args, **kwargs: None
+        status_view, "declared_commit_writers", lambda *args, **kwargs: None
     )
 
     assert main(["status", "CR-001"]) == 0
