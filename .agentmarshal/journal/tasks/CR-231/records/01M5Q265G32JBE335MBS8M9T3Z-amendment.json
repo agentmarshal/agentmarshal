@@ -1,0 +1,12 @@
+{
+  "contract": "3fb186fdf55b7895f7e48147f0d5e47bde8f66d2ef2d83486db6462cc1d2d360",
+  "created_at": "2026-10-24T13:39:15.587793Z",
+  "reason": "openspec 1.15.0 --strict turns its new requirement-length warnings into failures on spec text unchanged since 1.13.2 (1.13.2 --strict passes, 1.15.0 non-strict passes 23/23); criterion 3 becomes non-strict validation with the length warnings recorded as pre-existing style for a later task",
+  "record_type": "amendment",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "schema": 7,
+  "source": "live",
+  "task": "CR-231",
+  "tool_version": "0.6.0.dev0"
+}
