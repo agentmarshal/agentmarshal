@@ -24,7 +24,14 @@ written to the
 journal. A ``pre-gate-stop`` stage that failed, did not finish or did not
 run pauses the process before the gate — the command exits 3 — while a
 ``pre-gate-warn`` stage's failure is a loud warning and a ``post-gate``
-stage's only a notification. One exception (ADR-0013 decision 5,
+stage's only a notification. The run itself is ``run_stages``, the one
+function ``stage run`` and ``complete`` both call (ADR-0013 decision 2):
+it takes the placement, the clone's local state, the task, the commit,
+the base and the phase explicitly and returns a ``StageRunResult`` — the
+status the invocation ends with and the ``pre-gate-stop`` pauses that
+stand — so the caller renders the pause: ``stage run`` as the refusal
+its transcript pins, ``complete`` as the refusal or the warning the
+candidate's merge state decides. One exception (ADR-0013 decision 5,
 ADR-0022 section 2): where the task's acceptance records — read from
 the placement's journal through ``read_records``, asked only when a
 pause could stand — carry an ``accepted_pause`` naming the stage's
@@ -728,35 +735,93 @@ def _result_text(outcome: _Outcome) -> str:
     return f"not run ({outcome.reason})"
 
 
-def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
+@dataclass(frozen=True)
+class StageRunResult:
+    """The verdict of one stage invocation, for the caller to render.
+
+    ``status`` is the exit status the invocation ends with — 0, 1 when
+    the run's own machinery refused it, 3 when a ``pre-gate-stop`` stage
+    paused. ``pauses`` carries each pausing stage's ``<name>: <result>``
+    in run order, unprinted: the caller renders the pause — ``stage
+    run`` as the pause lines its transcript pins, ``complete`` as the
+    refusal or the warning the candidate's merge state decides
+    (ADR-0013 decision 2). ``plan_empty`` marks the run that reached the
+    plan and matched no stage: the no-stage line is the caller's to
+    print or withhold.
+    """
+
+    status: int
+    pauses: tuple[str, ...] = ()
+    plan_empty: bool = False
+
+
+def run_stages(
+    placement: Placement,
+    state: LocalState,
+    task_id: str,
+    commit: str,
+    base: str,
+    phase: str,
+    stderr: TextIO,
+    *,
+    quiet: bool = False,
+) -> StageRunResult:
+    """Run every shared extension stage matching *phase*.
+
+    The run writes nothing to the journal.
+
+    The one runner ``stage run`` and ``complete`` both call (ADR-0013
+    decision 2: ``complete`` invokes ``pre-gate`` before its gate check
+    and ``post-gate`` after the ``completed`` record); each stage's
+    result is appended to the process log as an ``extension-event`` —
+    the journal is never touched. The transcript — stage frames, result
+    lines, notes and warnings — keeps the ``stage run`` voice whichever
+    command invoked it; the per-entry pause lines and the no-stage line
+    are the caller's, so a caller the pause does not bind can render it
+    differently.
+
+    ``quiet`` is ``complete``'s invocation: a plan matching no stage
+    prints nothing at all — the no-stage line the caller already
+    withholds and the operational line too, which under it prints only
+    where a stage would otherwise have run — and the run's own refusals
+    and machinery diagnostics are reported under the calling command's
+    prefix rather than ``stage run:``.
+    """
+
+    # The voice a run-level refusal or diagnostic is reported under:
+    # ``stage run``'s own for the command, the calling command's prefix
+    # for a quiet invocation — a ``complete`` refusal never blames the
+    # stage machinery on a project that has none. The stage lines —
+    # frames, result lines, notes, warnings and the operational line —
+    # keep the ``stage run`` voice either way.
+    voice = "complete" if quiet else "stage run"
+    if phase not in _PHASE_MODES:
+        print(f"{voice}: unknown phase {escape_for_display(phase)}", file=stderr)
+        return StageRunResult(1)
     try:
-        validate_task_id(args.task)
+        validate_task_id(task_id)
     except JournalRecordError as error:
-        print(f"stage run: {error}", file=stderr)
-        return 1
-    resolved = _resolve(stderr)
-    if resolved is None:
-        return 1
-    placement, state = resolved
+        print(f"{voice}: {error}", file=stderr)
+        return StageRunResult(1)
     if placement.is_sidecar:
         print(
-            "stage run: a sidecar runs no stages — the base its extensions "
+            f"{voice}: a sidecar runs no stages — the base its extensions "
             "are taken from is a property of the embedded placement",
             file=stderr,
         )
-        return 1
+        return StageRunResult(1)
     project_root = placement.project_root
     try:
-        resolved_commit = _resolve_commit(project_root, args.commit)
-        base_commit = _resolve_commit(project_root, args.base)
+        resolved_commit = _resolve_commit(project_root, commit)
+        base_commit = _resolve_commit(project_root, base)
         merge_base = _run_git(
             project_root, ["merge-base", base_commit, resolved_commit]
         ).strip()
         if (
-            args.phase == "pre-gate"
+            phase == "pre-gate"
             and operational_candidate(
                 project_root,
-                args.task,
+                task_id,
                 merge_base,
                 resolved_commit,
                 _changed_with_status(project_root, merge_base, resolved_commit),
@@ -769,13 +834,34 @@ def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
             # extension-side has run at all. The predicate's own reads —
             # the base's contract, extension names and switches file —
             # are gate inputs, not extension code.
-            print("stage run: pre-gate stages do not run on an operational change")
-            return 0
+            if not quiet:
+                print("stage run: pre-gate stages do not run on an operational change")
+                return StageRunResult(0)
+            # The quiet caller owes the line only where a stage would
+            # otherwise have run — its plan-empty invocation prints
+            # nothing — so the base's manifests are weighed after all.
+            # A manifest the base cannot parse still answers yes rather
+            # than failing the run: the lane exists so a broken extension
+            # cannot block its own switching off, and the line then names
+            # why nothing ran.
+            try:
+                extension_names, declared = _base_extensions(project_root, merge_base)
+            except (GateError, ExtensionManifestError):
+                declared_any = True
+            else:
+                declared_any = any(
+                    stage.phase in _PHASE_MODES[phase]
+                    for manifest in declared.values()
+                    for stage in manifest.stages
+                )
+            if declared_any:
+                print("stage run: pre-gate stages do not run on an operational change")
+            return StageRunResult(0, plan_empty=not declared_any)
         extension_names, manifests = _base_extensions(project_root, merge_base)
     except (GateError, ExtensionManifestError) as error:
-        print(f"stage run: {escape_for_display(str(error))}", file=stderr)
-        return 1
-    modes = _PHASE_MODES[args.phase]
+        print(f"{voice}: {escape_for_display(str(error))}", file=stderr)
+        return StageRunResult(1)
+    modes = _PHASE_MODES[phase]
     plan = [
         (name, manifests[name], stage)
         for name in sorted(manifests)
@@ -792,20 +878,25 @@ def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
     # A refused file blocks the stages of exactly the extensions it
     # names — every stage when its own entries cannot be read, since
     # an unreadable file cannot vouch for any extension being on.
+    if not plan and quiet:
+        # The quiet caller is owed nothing where no stage would run —
+        # not even the switches file's refusal, which is the
+        # extensions' own business: the calling command reads exactly
+        # as it reads without the runner.
+        return StageRunResult(0, plan_empty=True)
     switches: dict[str, Switch] = {}
     blocked_names: frozenset[str] | None = None
     try:
         switches = _base_switches(project_root, merge_base, extension_names)
     except SwitchesError as error:
-        print(f"stage run: {escape_for_display(str(error))}", file=stderr)
+        print(f"{voice}: {escape_for_display(str(error))}", file=stderr)
         blocked_names = (
             error.names
             if error.names is not None
             else frozenset(name for name, _manifest, _stage in plan)
         )
     if not plan:
-        print(f"stage run: no shared extension declares a {args.phase} stage")
-        return 0
+        return StageRunResult(0, plan_empty=True)
     if any(
         manifest.isolation is not None and "PATH" in manifest.isolation.env
         for _name, manifest, _stage in plan
@@ -819,7 +910,7 @@ def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
             "passed through",
             file=stderr,
         )
-    if args.phase == "pre-gate":
+    if phase == "pre-gate":
         # The pre-gate floor the manifest cannot remove: no provider
         # secret reaches the stage even when ``isolation.env`` names it
         # (ADR-0013 decision 8) — named once here, however many
@@ -863,7 +954,7 @@ def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
             # their result lines are owed even now: the loop reports
             # those outcomes and their events and runs nothing else,
             # then the command exits 1.
-            print(f"stage run: {escape_for_display(str(error))}", file=stderr)
+            print(f"{voice}: {escape_for_display(str(error))}", file=stderr)
             grants_unreadable = True
     writer: ProcessLogWriter | None = None
     writer_lost = False
@@ -889,7 +980,7 @@ def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
             except (LocalStateError, ProcessLogError, OSError) as error:
                 writer_lost = True
                 print(
-                    "stage run: cannot open the process log "
+                    f"{voice}: cannot open the process log "
                     f"({escape_for_display(str(error))}); results are "
                     "not recorded as events",
                     file=stderr,
@@ -916,7 +1007,7 @@ def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
                 write_event(
                     writer,
                     "extension-event",
-                    task=args.task,
+                    task=task_id,
                     extension=name,
                     scope="shared",
                     phase=stage.phase,
@@ -929,7 +1020,7 @@ def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
                 write_event(
                     writer,
                     "extension-event",
-                    task=args.task,
+                    task=task_id,
                     extension=name,
                     scope="shared",
                     phase=stage.phase,
@@ -939,7 +1030,7 @@ def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
                 )
         except ProcessLogError as error:
             print(
-                f"stage run: the extension-event for "
+                f"{voice}: the extension-event for "
                 f"{escape_for_display(name)} was not recorded: "
                 f"{escape_for_display(str(error))}",
                 file=stderr,
@@ -962,11 +1053,11 @@ def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
         nonlocal pause_records
         if pause_records is None:
             try:
-                pause_records = read_records(placement.journal_root, args.task)
+                pause_records = read_records(placement.journal_root, task_id)
             except (JournalRecordError, OSError, ValueError) as error:
                 pause_records = []
                 print(
-                    "stage run: the journal cannot be read "
+                    f"{voice}: the journal cannot be read "
                     f"({escape_for_display(str(placement.journal_root))}: "
                     f"{escape_for_display(str(error))}); every pause stands",
                     file=stderr,
@@ -1026,8 +1117,8 @@ def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
                     project_root,
                     resolved_commit,
                     merge_base,
-                    args.task,
-                    args.phase,
+                    task_id,
+                    phase,
                     name,
                     manifest,
                     stage,
@@ -1091,11 +1182,37 @@ def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
             warnings.append(f"{shown}: {result_text}")
     for entry in warnings:
         print(f"stage run: WARNING: extension at pre-gate-warn — {entry}", file=stderr)
-    for entry in paused:
+    # The pause lines themselves are the caller's: the entries come back
+    # in the result so ``stage run`` renders the refusal and ``complete``
+    # the pause-or-warning its merge state decides. A trust file that
+    # could not be read still ends the run at 1 — its refusal was already
+    # named, and whatever pauses the named stages stood come back too.
+    if grants_unreadable:
+        return StageRunResult(1, tuple(paused))
+    return StageRunResult(3 if paused else 0, tuple(paused))
+
+
+def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
+    """The ``stage run`` invocation: resolve, run, render the result.
+
+    A thin wrapper over :func:`run_stages` — it resolves the placement
+    and the clone's local state the way ``extension trust`` does, then
+    prints what the result owes this command's transcript: the no-stage
+    line on an empty plan and the per-entry pause lines.
+    """
+
+    resolved = _resolve(stderr)
+    if resolved is None:
+        return 1
+    placement, state = resolved
+    result = run_stages(
+        placement, state, args.task, args.commit, args.base, args.phase, stderr
+    )
+    if result.plan_empty:
+        print(f"stage run: no shared extension declares a {args.phase} stage")
+    for entry in result.pauses:
         print(
             f"stage run: the process is paused before the gate — {entry}",
             file=stderr,
         )
-    if grants_unreadable:
-        return 1
-    return 3 if paused else 0
+    return result.status
