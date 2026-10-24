@@ -1,0 +1,98 @@
+{
+  "advisory_findings": [
+    "F1",
+    "F2",
+    "F3",
+    "F4",
+    "F5"
+  ],
+  "artifacts": [
+    {
+      "hash": "24edffcff56ade0d9ff30d31243a6fab1876b0eb010455c3ab5df70bdd74e717",
+      "ref": ".agentmarshal/journal/tasks/CR-225/artifacts/01M5PT3FS64X65DPM1XYH77YTH-review.md"
+    }
+  ],
+  "classes": {
+    "F1": "claim-accuracy",
+    "F2": "claim-accuracy",
+    "F3": "correctness",
+    "F4": "test-gap",
+    "F5": "scope"
+  },
+  "created_at": "2026-10-24T11:17:59.206807Z",
+  "evidence": {
+    "F1": "openspec/changes/archive/2026-10-24-complete-runs-stages/proposal.md:26 'while the candidate is not an ancestor of the resolved base the completion is refused' vs the contract amendment of 2026-10-24, design.md's 'Amended 2026-10-24 (review round 1)' block, openspec/specs/extension-stages/spec.md:1359+ and cli.py:1121 (_candidate_merged(..., args.target))",
+    "F2": "stages.py:802 validate_task_id(task_id) now inside run_stages; stages.py:1204 'resolved = _resolve(stderr)' runs first in the wrapper; stages.py:269 prints 'agentmarshal stage run must be run inside an initialized project…'; tests/test_stages.py:372-394 exercises the invalid task id only inside an initialized project",
+    "F3": "cli.py:1200 stages.run_stages(..., 'post-gate', ...) sits after the try/except that ends at cli.py:1153-1174; stages.py:1115 'with tempfile.TemporaryDirectory(prefix=\"agentmarshal-stage-\")' is the one call in the loop not wrapped (contrast _prepare_extension at stages.py:431-442 and _run_stage at stages.py:543 which catch everything, and process_log.write_event which converts OSError to ProcessLogError)",
+    "F4": "tests/test_complete_stages.py:155-185 — docstring 'Scenario: both commands go through the one runner', body calls only _complete(head, base) and asserts calls == ['pre-gate', 'post-gate']; no _stage_run call under the spy",
+    "F5": "docs/self-hosting-workflow.md:43-50 'agentmarshal complete --task <id> --commit <sha> --base <base> … Completion may run before or after the implementation merges' with no --target, against cli.py:1119-1133 where 'args.target is not None and _candidate_merged(...)' is the only path to the warning"
+  },
+  "findings": [],
+  "previous_review": "01M5PREKP1WPXP0KRTZW42G61R",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "4e78bacf4b9efb1d0b2f2e7e84ca3c99a0275875",
+  "reviewed_contract": "4fac466c64331ce40b9d544f2f7983dbbe899cb540a258de5e74558bc7c94878",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-225",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "only cli.py:1109, cli.py:1200, stages.py:254 and the test spy call it — no other command changed",
+        "what": "grep -rn 'run_stages' src/ tests/"
+      },
+      {
+        "result": "the run_gate `base` parameter is used only at gate.py:1184 (_resolve_commit), so passing pre-resolved SHAs is equivalent",
+        "what": "grep -n 'base' src/agentmarshal/journal/gate.py"
+      },
+      {
+        "result": "proposal.md, design.md, tasks.md, specs/extension-stages/spec.md; openspec/changes/ holds only archive/",
+        "what": "find openspec/changes/archive/2026-10-24-complete-runs-stages -type f; ls openspec/changes/"
+      },
+      {
+        "result": "line 26: 'the candidate is not an ancestor of the resolved base' — no mention of --target",
+        "what": "grep -n 'ancestor|target|base' archive/.../proposal.md"
+      },
+      {
+        "result": "210-line delta; openspec/specs/extension-stages/spec.md grew from 1223 to 1433 lines",
+        "what": "wc -l on the delta and live spec"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "no virtualenv or uv in this environment and python execution was not permitted; CI status taken from the coordinator's note for this commit"
+      },
+      {
+        "what": "git diff / git log against the reviewed commit",
+        "why": "the snapshot is not a git repository"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/cli.py (_build_parser complete flags, _candidate_merged, _run_complete, imports)",
+      "src/agentmarshal/stages.py (StageRunResult, run_stages, _run_stages, _resolve, _base_extensions, _base_switches, _prepare_extension, _run_stage)",
+      "src/agentmarshal/journal/complete.py (complete_task, record_commit_completion)",
+      "src/agentmarshal/journal/gate.py (run_gate, _resolve_commit, _manifest_from_tree, _manifest_blob_present)",
+      "src/agentmarshal/journal/status.py (load_task_for_record)",
+      "src/agentmarshal/localstate.py (local_state)",
+      "src/agentmarshal/process_log.py (write_event)",
+      "src/agentmarshal/isolation.py (probe)",
+      "tests/test_complete_stages.py",
+      "tests/test_stages.py (helpers and test_an_invalid_task_identifier_refuses_before_any_stage_is_planned)",
+      "openspec/specs/extension-stages/spec.md",
+      "openspec/changes/archive/2026-10-24-complete-runs-stages/{proposal.md,design.md,tasks.md,specs/extension-stages/spec.md}",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md (decisions 2-5)",
+      "docs/self-hosting-workflow.md, README.md, docs/quickstart.md (complete invocations)"
+    ]
+  }
+}
