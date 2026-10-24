@@ -2087,7 +2087,14 @@ def test_a_stage_whose_teardown_fails_keeps_the_outcome_it_computed(
     captured = capsys.readouterr()
     assert "openspec | warn ran" in captured.out
     assert "openspec: checked" in captured.out
-    assert captured.err.splitlines() == [
+    # The refusal is one line of the run's own voice; whether the
+    # platform can enforce the isolation floors is beside the point, so
+    # the probe's own ``not enforced`` notes are filtered out — they are
+    # pinned by the isolation tests.
+    teardown_notes = [
+        line for line in captured.err.splitlines() if "temporary directory" in line
+    ]
+    assert teardown_notes == [
         "stage run: note: openspec: the stage's temporary directory "
         "could not be removed: cannot remove the stage directory"
     ]
