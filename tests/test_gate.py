@@ -863,6 +863,11 @@ def test_records_of_other_kinds_do_not_warn(
 
     repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
     journal = repo / ".agentmarshal" / "journal"
+    # The session lands on a task open at base: records appended to a task
+    # that has no opened record at all are a different case — the merged
+    # projection refuses them, and the gate now refuses with it.
+    assert main(["open", "--title", "Other task"]) == 0
+    base = _commit_all(repo, "open CR-002")
     write_record(
         journal,
         "CR-002",
@@ -2440,6 +2445,106 @@ def test_gate_refuses_measurements_lane_with_another_tasks_session(
 
     assert not passed
     assert "already closed at base" in output
+
+
+def test_gate_refuses_a_reopening_added_to_another_task_abandoned_at_base(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a reopening added to another task abandoned at base is refused.
+
+    Release-audit finding AUD-gate-journal-1: the gate projected only the
+    named task, so a reopening a candidate for CR-001 appends to CR-002 —
+    abandoned at base — passed the lifecycle check and left the merged
+    journal failing validate. The other task's merged records get the
+    same projection the judged task's get.
+    """
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    journal = repo / ".agentmarshal" / "journal"
+    assert main(["open", "--title", "Other task"]) == 0
+    assert main(["abandon", "--task", "CR-002", "--reason", "Superseded"]) == 0
+    base = _commit_all(repo, "open and abandon CR-002")
+
+    write_record(journal, "CR-002", create_reopened_record("CR-002", "test", "Retry"))
+    head = _commit_all(repo, "reopen CR-002 inside CR-001's transaction")
+
+    passed, output = _run(repo, head, base, head)
+
+    assert not passed
+    assert "FAIL: task CR-002: an abandoned task cannot be reopened" in output
+
+
+def test_gate_refuses_a_reopening_bundled_with_work_on_another_closed_task(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: work bundled with a reopening on another closed task is refused.
+
+    The closed-at-base admission the judged task's diff is held to
+    applies to every task the candidate appends to: a reopening on a
+    task completed at base is admitted, the review bundled with it is
+    not — the same refusal the judged task's candidate would get.
+    """
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    journal = repo / ".agentmarshal" / "journal"
+    assert main(["open", "--title", "Other task"]) == 0
+    write_record(journal, "CR-002", create_completed_record("CR-002", "test", base))
+    base = _commit_all(repo, "open and complete CR-002")
+
+    write_record(journal, "CR-002", create_reopened_record("CR-002", "test", "Retry"))
+    write_record(
+        journal,
+        "CR-002",
+        create_review_record(
+            "CR-002",
+            "test",
+            base,
+            "approved",
+            "qa",
+            "test",
+            "test-model",
+            _REVIEWER_EMAIL,
+            [],
+        ),
+    )
+    head = _commit_all(repo, "reopen and review CR-002")
+
+    passed, output = _run(repo, head, base, head)
+
+    assert not passed
+    assert "FAIL: task CR-002 is already closed at base (candidate state: open)" in (
+        output
+    )
+
+
+def test_records_appended_to_another_task_its_projection_admits_pass(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: records another task's projection admits are not refused.
+
+    A session appended to a task open at base is a measurement on an
+    open task: the merged records project to open and the lifecycle
+    check reports consistent, exactly as it reports it today.
+    """
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    journal = repo / ".agentmarshal" / "journal"
+    assert main(["open", "--title", "Other task"]) == 0
+    base = _commit_all(repo, "open CR-002")
+
+    write_record(
+        journal,
+        "CR-002",
+        create_session_record(
+            "CR-002", "test", "lead", "opus", "implementation", "done", 1, 2, 3
+        ),
+    )
+    head = _commit_all(repo, "a session for CR-002")
+
+    passed, output = _run(repo, head, base, head)
+
+    assert passed, output
+    assert "PASS: task lifecycle records are consistent" in output
 
 
 def test_gate_refuses_artifact_only_append_to_closed_task(
