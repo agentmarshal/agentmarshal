@@ -996,6 +996,32 @@ def _run_gate(args: argparse.Namespace, stderr: TextIO) -> int:
     return 0
 
 
+def _candidate_merged(project_root: Path, commit: str, base: str) -> bool:
+    """Whether the candidate commit is already an ancestor of the base.
+
+    ``git merge-base --is-ancestor`` in the journal's repository, the
+    references resolved with the gate's own ``_resolve_commit`` — the
+    way ``complete`` resolves them for its gate check. ADR-0013 decision
+    2: a ``pre-gate-stop`` pause applies inside ``complete`` only while
+    the candidate is not yet merged. An answer the check cannot produce
+    — a reference that will not resolve, a git that will not run — reads
+    as not merged: the pause stands rather than being silently lifted.
+    """
+
+    try:
+        resolved_commit = _resolve_commit(project_root, commit)
+        resolved_base = _resolve_commit(project_root, base)
+        answer = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", resolved_commit, resolved_base],
+            cwd=project_root,
+            capture_output=True,
+            check=False,
+        )
+    except (GateError, OSError):
+        return False
+    return answer.returncode == 0
+
+
 def _run_complete(args: argparse.Namespace, stderr: TextIO) -> int:
     if args.findings and (args.commit is not None or args.base is not None):
         print(
@@ -1019,6 +1045,10 @@ def _run_complete(args: argparse.Namespace, stderr: TextIO) -> int:
     if args.findings and placement.is_sidecar:
         print(placement.evidence_line)
     pipeline_sha = args.pipeline_sha or os.environ.get("AGENTMARSHAL_PIPELINE_OK_SHA")
+    # The local state the stage runner needs — resolved only on the lane
+    # that invokes stages (the embedded candidate lane); the findings lane
+    # and the sidecar run none.
+    state: LocalState | None = None
     try:
         if args.findings:
             result = complete_findings_task(placement.journal_root, args.task)
@@ -1045,6 +1075,44 @@ def _run_complete(args: argparse.Namespace, stderr: TextIO) -> int:
                     follow_ups=args.follow_up,
                 )
         else:
+            # The task's open state is established first, so a closed
+            # task's refusal still precedes any extension work — then the
+            # declared pre-gate stages run, the same run `stage run`
+            # performs, before the gate check and before anything is
+            # written (ADR-0013 decision 2).
+            load_task_for_record(placement.journal_root, args.task, "completed")
+            state = local_state(placement)
+            stage_run = stages.run_stages(
+                placement,
+                state,
+                args.task,
+                args.commit,
+                args.base,
+                "pre-gate",
+                stderr,
+            )
+            if stage_run.status == 3:
+                if _candidate_merged(placement.project_root, args.commit, args.base):
+                    for entry in stage_run.pauses:
+                        print(
+                            "complete: WARNING: extension at pre-gate-stop — "
+                            f"{entry} — the candidate is already merged into "
+                            "the base",
+                            file=stderr,
+                        )
+                else:
+                    print(
+                        "complete: the completion is paused before the gate — "
+                        + "; ".join(stage_run.pauses),
+                        file=stderr,
+                    )
+                    return 3
+            elif stage_run.status != 0:
+                print(
+                    "complete: pre-gate stage run refused; task not completed",
+                    file=stderr,
+                )
+                return stage_run.status
             result = complete_task(
                 placement.project_root,
                 args.task,
@@ -1060,6 +1128,7 @@ def _run_complete(args: argparse.Namespace, stderr: TextIO) -> int:
         GateError,
         JournalRecordError,
         LifecycleError,
+        LocalStateError,
         OSError,
         TaskStatusError,
         ValueError,
@@ -1094,6 +1163,20 @@ def _run_complete(args: argparse.Namespace, stderr: TextIO) -> int:
         print("completed after advisory checks; decides no merge")
     else:
         print("completed")
+    if state is not None:
+        # The declared post-gate stages run once the ``completed`` record
+        # exists — the same run `stage run` performs, its status informing
+        # nothing: a post-gate stage cannot pause, and its outcome does
+        # not change completion's verdict (ADR-0013 decision 2).
+        stages.run_stages(
+            placement,
+            state,
+            args.task,
+            args.commit,
+            args.base,
+            "post-gate",
+            stderr,
+        )
     return 0
 
 
