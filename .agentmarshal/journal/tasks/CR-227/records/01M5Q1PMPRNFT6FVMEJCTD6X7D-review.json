@@ -1,0 +1,96 @@
+{
+  "advisory_findings": [
+    "ADV-1"
+  ],
+  "artifacts": [
+    {
+      "hash": "49f09250fa6fa1c56cf25862142093af794b926b810a1b18cfcdb86f8bdef211",
+      "ref": ".agentmarshal/journal/tasks/CR-227/artifacts/01M5Q1PMPRNFT6FVMEJCTD6X7D-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-1": "claim-accuracy"
+  },
+  "created_at": "2026-10-24T13:30:46.872367Z",
+  "evidence": {
+    "ADV-1": "src/agentmarshal/stages.py:1146-1149 — '``_prepare_extension`` and ``_run_stage`` hand every failure of theirs back as an outcome' против src/agentmarshal/stages.py:657-661, где слив отчётного пайпа ('os.close(report_pipe[1])', 'while chunk := os.read(report_pipe[0], 65536)', 'os.close(report_pipe[0])') не обёрнут в try, в отличие от Popen (stages.py:626-650) и communicate (stages.py:668-684); такой OSError попадёт в новый except на stages.py:1145 и будет назван 'the stage's own machinery'"
+  },
+  "findings": [],
+  "previous_review": "01M5Q16X2CW20BHZ24NMFAFQP6",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "8d601a283f30ae6d83d04f7077a5a8ea14a271f6",
+  "reviewed_contract": "2188e0770c17d8c736f82217624c5b980cb37358b9c964d26cb36029d278b56c",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-227",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "вызывающих два — cli.py:1109 (pre-gate, quiet) и cli.py:1203 (post-gate, quiet) — плюс обёртка stages.py:1250 и spy в тестах; снятие validate_task_id из run_stages не открывает третьего пути",
+        "what": "grep -rn 'run_stages' src/ tests/"
+      },
+      {
+        "result": "единственный вызов — stages.py:1056 внутри accepted_pause, который зовётся лишь для pre-gate-stop с решением не checked/switched-off (stages.py:1169-1175)",
+        "what": "grep -n 'read_records|journal_root' src/agentmarshal/stages.py"
+      },
+      {
+        "result": "stages.py:1112 и isolation.py:530 — оба с keyword prefix, поэтому стабы refuse_once(prefix)/CleanupRefusal в тестах совместимы и probe получает реальный каталог",
+        "what": "grep -rn 'TemporaryDirectory|mkdtemp' src/agentmarshal/"
+      },
+      {
+        "result": "stages.py:511 выставляет переменную абсолютным путём snapshot-<index>; tests/test_isolation.py:563 берёт её же",
+        "what": "grep -rn 'AGENTMARSHAL_SNAPSHOT' src/ tests/ openspec/specs"
+      },
+      {
+        "result": "требование 313-337 допускает любой 'not run (<reason>)'; сценарий 1302-1308 перечисляет машинные отказы (манифест, trust.toml) и exit 1; 1256 закрепляет голос 'stage run' для note-строк — новая нота и новый not-run им не противоречат",
+        "what": "grep -n 'machinery|not run|note' openspec/specs/extension-stages/spec.md"
+      },
+      {
+        "result": "только archive/ — нового OpenSpec-change нет, как и требует критерий 4",
+        "what": "ls openspec/changes/"
+      },
+      {
+        "result": "тексты ADV-2/3/4 и F2/F3/F4 совпадают с тем, что закрывает диф; F2 прямо говорит, что до CR-225 первым печатался отказ по task id",
+        "what": "чтение .agentmarshal/journal/tasks/CR-223 и CR-225 (review-записи и артефакты)"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "в снапшоте нет venv и uv, запуск python не разрешён; статус CI для 8d601a28 взят из заметки координатора"
+      },
+      {
+        "what": "git diff / git log против ревьюируемого коммита",
+        "why": "снапшот не является git-репозиторием"
+      },
+      {
+        "what": "проверка заголовков glibc (grep ST_NOSUID /usr/include)",
+        "why": "песочница не даёт выходить за рабочий каталог — атрибуция sys/statvfs.h сверена только со знанием glibc"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/stages.py (module docstring, run_stages, _run_stages, _resolve, _prepare_extension, _run_stage, _result_text, _Outcome)",
+      "src/agentmarshal/cli.py (_run_complete целиком)",
+      "src/agentmarshal/isolation.py (docstring, константы ST_*/MS_*, probe, _probe_child)",
+      "src/agentmarshal/journal/status.py (load_task_status, load_task_for_record)",
+      "src/agentmarshal/journal/records.py (validate_task_id)",
+      "tests/test_stages.py (хелперы, тест на невалидный id, три новых теста)",
+      "tests/test_complete_stages.py (хелперы, one-runner тест, два новых теста)",
+      "tests/test_isolation.py:509-592",
+      "openspec/specs/extension-stages/spec.md (требования о task id, result line, notes, одном runner, complete)",
+      "docs/adr/ADR-0013-...md (решения 7 и 8)",
+      ".agentmarshal/journal/tasks/CR-225/{records,artifacts}, .agentmarshal/journal/tasks/CR-223/artifacts",
+      "CHANGELOG.md (0.6.0 раздела ещё нет — запись пишется к релизу, вне scope)"
+    ]
+  }
+}
