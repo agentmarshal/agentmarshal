@@ -1,0 +1,153 @@
+{
+  "advisory_findings": [
+    "ADV-DOC-OPLANE-SCOPE-001",
+    "ADV-DOC-RECORD-TYPES-002"
+  ],
+  "artifacts": [
+    {
+      "hash": "d9ad8f4a7c67b657606f88d7e0c2ecefb5a2de6ec4aa8625f4b2e7efe6a12586",
+      "ref": ".agentmarshal/journal/tasks/CR-234/artifacts/01M5QTCSE346WX6TEZXKJGTH6D-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-DOC-OPLANE-SCOPE-001": "claim-accuracy",
+    "ADV-DOC-RECORD-TYPES-002": "claim-accuracy"
+  },
+  "created_at": "2026-10-24T20:42:18.435604Z",
+  "evidence": {
+    "ADV-DOC-OPLANE-SCOPE-001": "src/agentmarshal/journal/gate.py:1007 — `if contract is None or contract.scope != (switches_module.SWITCHES_RELPATH,): return None`, i.e. the lane needs the contract's scope to be exactly that one file; tests/test_gate_operational.py:164 test_a_contract_declaring_another_scope_does_not_take_the_lane. UPGRADING.md's bullet 'The operational lane carries a switches change' states only the path condition ('A candidate that changes only .agentmarshal/switches.toml and paths inside its own task's journal subtree ... passes the gate without review'); docs/overview.md:138-144 and docs/threat-model.md open question 5 omit it too. src/agentmarshal/switch_off.py:463 writes `scope = [\".agentmarshal/switches.toml\"]`, so the command-generated task is unaffected.",
+    "ADV-DOC-RECORD-TYPES-002": "docs/overview.md:110-112 lists `opened`, `finding`, `review`, `acceptance`, `amendment`, `completed`, `reopened`, `abandoned`, `session` only; src/agentmarshal/journal/records.py:138 ('check'), :147 ('agreement'), :165 ('ext') and the acknowledgement family (src/agentmarshal/acknowledge.py, records.py:239 _ACKNOWLEDGEMENT_RECORD_SCHEMA = 7) are live record types, and CHANGELOG.md:439-441 records them as shipped in 0.5.0."
+  },
+  "findings": [],
+  "previous_review": "01M5QRWVF7STE67DQ6RZ8X26AG",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "7b5386687d6932b75bd5340a7b8d25cd69f68012",
+  "reviewed_contract": "7fa097774ad78fbd1ac080724802e66ef60323c932c1948288357dcb5df72c23",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-234",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "all four read 0.6.0; no 0.6.0.dev0 left outside journal records",
+        "what": "grep -rn version pyproject.toml src/agentmarshal/__init__.py uv.lock tests/test_smoke.py"
+      },
+      {
+        "result": "completed: CR-205..CR-233, CR-235, CR-236; CR-234 and CR-237 only opened — matches the section's coverage and the closing line",
+        "what": "find .agentmarshal/journal/tasks -name '*-completed.json' -printf '%h\\n' | sort -u"
+      },
+      {
+        "result": "every task id in a 0.6.0 heading matches the contract it is attributed to",
+        "what": "grep -m1 '^title' of contracts CR-205..CR-236"
+      },
+      {
+        "result": "gate.py:78 '.agentmarshal/journal/'; gate.py:1252 all(path.startswith(prefix)) — overview.md's journal-only definition confirmed",
+        "what": "grep -n '_JOURNAL_PREFIX\\|journal_only' src/agentmarshal/journal/gate.py"
+      },
+      {
+        "result": "operational_candidate admits switches.toml plus .agentmarshal/journal/tasks/<task>/ and requires contract.scope == (switches,) — basis of ADV-DOC-OPLANE-SCOPE-001",
+        "what": "sed -n '969,1017p' src/agentmarshal/journal/gate.py"
+      },
+      {
+        "result": "gate.py:2274 INFO line on the implementation lane — UPGRADING's 0.4.1->0.5.0 correction confirmed",
+        "what": "grep -n 'changes_required verdicts for' src/agentmarshal/journal/gate.py"
+      },
+      {
+        "result": "lines 80, 92, 96, 308 — all four quoted scenarios exist",
+        "what": "grep -rn scenario names cited by threat-model in openspec/specs/extension-stages/spec.md"
+      },
+      {
+        "result": "spec:249-250 and gate.py:1044 refuse a link at switches.toml — threat-model open question 2 confirmed",
+        "what": "grep -n 'not a file' openspec/specs/gate-lanes/spec.md; sed -n '1040,1048p' src/agentmarshal/journal/gate.py"
+      },
+      {
+        "result": "init writes .agentmarshal/upstream/README.md — README claim confirmed",
+        "what": "sed -n '298,331p' src/agentmarshal/project.py"
+      },
+      {
+        "result": "plan.toml only a path property (localstate.py:70), no carried_approval and no review mode anywhere — 'leaves out' paragraph confirmed",
+        "what": "grep -rn 'plan_file\\|carried_approval\\|\"mode\"' src tests openspec"
+      },
+      {
+        "result": "timestamp-text rule over created_at/started_at/ended_at/resets_at and encode-before-create — CR-236 entry confirmed",
+        "what": "sed -n '585,640p' src/agentmarshal/journal/records.py; sed -n '2092,2125p'"
+      },
+      {
+        "result": "SENT manifest, 'skipped as sent: <n>', leak scan runs on every entry including sent ones — CR-228 entry confirmed",
+        "what": "sed -n '596,730p' src/agentmarshal/outbox.py"
+      },
+      {
+        "result": "not installed in the review sandbox",
+        "what": "which uv pytest"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; uv run agentmarshal validate; uv run pytest; uv run ruff check; uv run ruff format --check; uv run mypy",
+        "why": "read-only review sandbox has neither uv nor pytest installed; the coordinator states the full sequence passed on this commit and I make no independent claim about it"
+      },
+      {
+        "what": "agentmarshal --version at runtime",
+        "why": "package not installed in the sandbox; verified statically through cli.py:131 and tests/test_smoke.py:48,59"
+      }
+    ],
+    "read": [
+      "CHANGELOG.md (0.6.0 section and the 0.5.0 section it refers to)",
+      "UPGRADING.md (0.5.0->0.6.0 and the 0.4.1->0.5.0 note)",
+      "README.md",
+      "docs/overview.md",
+      "docs/self-hosting-workflow.md",
+      "docs/threat-model.md (stage-line refusals, isolation, open questions 2 and 5)",
+      "docs/proposals/README.md (all batch tables)",
+      "docs/README.md",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md",
+      "docs/adr/ADR-0018-governing-the-contract.md",
+      "docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md",
+      "docs/quickstart.md (contract guidance)",
+      "docs/proposals/032-the-journal-has-no-time-axis.md",
+      "openspec/specs/gate-lanes/spec.md",
+      "openspec/specs/extension-stages/spec.md",
+      "openspec/specs/extension-manifest/spec.md",
+      "src/agentmarshal/journal/gate.py",
+      "src/agentmarshal/journal/records.py",
+      "src/agentmarshal/journal/report.py",
+      "src/agentmarshal/journal/status_view.py",
+      "src/agentmarshal/journal/validate.py",
+      "src/agentmarshal/journal/review.py",
+      "src/agentmarshal/journal/status.py",
+      "src/agentmarshal/stages.py",
+      "src/agentmarshal/isolation.py",
+      "src/agentmarshal/extension_trust.py",
+      "src/agentmarshal/switches.py",
+      "src/agentmarshal/switch_off.py",
+      "src/agentmarshal/outbox.py",
+      "src/agentmarshal/record_ext.py",
+      "src/agentmarshal/project.py",
+      "src/agentmarshal/localstate.py",
+      "src/agentmarshal/cli.py",
+      "src/agentmarshal/doctor.py",
+      "templates/journal-transaction.sh",
+      "templates/github/agentmarshal-governance.yml",
+      ".github/workflows/release.yml",
+      ".github/scripts/check_release_audit.py",
+      ".agentmarshal/extensions/openspec.toml",
+      ".agentmarshal/journal/tasks/CR-204..CR-237/contract.md (headers)",
+      "tests/test_smoke.py",
+      "tests/test_gate_operational.py",
+      "tests/test_stages.py",
+      "tests/test_gate.py (count line, acceptance, not-a-file)",
+      "tests/test_journal.py (init outbox)",
+      "tests/test_project.py"
+    ]
+  }
+}
