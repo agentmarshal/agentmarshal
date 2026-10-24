@@ -13,8 +13,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import tempfile
 from pathlib import Path
-from typing import TextIO
+from typing import NoReturn, TextIO
 
 import pytest
 
@@ -159,7 +160,7 @@ def test_both_commands_go_through_the_one_runner(
     repo, base, head = _repo(tmp_path, monkeypatch)
     _review(head)
     _ci(monkeypatch)
-    calls: list[str] = []
+    calls: list[tuple[str, bool]] = []
     original = stages_module.run_stages
 
     def spy(
@@ -173,7 +174,7 @@ def test_both_commands_go_through_the_one_runner(
         *,
         quiet: bool = False,
     ) -> stages_module.StageRunResult:
-        calls.append(phase)
+        calls.append((phase, quiet))
         return original(
             placement, state, task_id, commit, base_ref, phase, stderr, quiet=quiet
         )
@@ -181,8 +182,13 @@ def test_both_commands_go_through_the_one_runner(
     monkeypatch.setattr(stages_module, "run_stages", spy)
     capsys.readouterr()
 
+    assert stage_helpers._stage_run(task="CR-001", commit=head, base=base) == 0
     assert _complete(head, base) == 0
-    assert calls == ["pre-gate", "post-gate"]
+    assert calls == [
+        ("pre-gate", False),
+        ("pre-gate", True),
+        ("post-gate", True),
+    ]
     assert read_records(_journal(repo), "CR-001")[-1]["record_type"] == "completed"
 
 
@@ -678,4 +684,78 @@ def test_a_post_gate_result_changes_neither_the_record_nor_the_exit_status(
     out = capsys.readouterr().out
     assert "openspec | post ran" in out
     assert "openspec: failed (exit 9)" in out
+    assert read_records(_journal(repo), "CR-001")[-1]["record_type"] == "completed"
+
+
+def test_a_post_gate_run_that_raises_leaves_the_completion_untouched(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Not a spec scenario: a post-gate run that raises — the stage's
+    temporary directory is created inside the runner — is reported on one
+    stderr line and changes neither the record nor the exit status
+    (CR-225 F3)."""
+    repo, base, head = _repo(
+        tmp_path,
+        monkeypatch,
+        # Only a post-gate stage: the pre-gate plan is empty, so the run's
+        # temporary directory is first asked for after ``completed``.
+        manifest=_manifest(stages=(("post-gate", "bin/post.py"),)),
+        files={"bin/post.py": "print('post ran')\n"},
+    )
+    _review(head)
+    _ci(monkeypatch)
+
+    def refuse(*_args: object, **_keys: object) -> NoReturn:
+        # An OSError there is now the stage's own ``not run`` line
+        # (CR-227-ADV-2); the run-level report is for a raise the runner
+        # does not handle itself.
+        raise RuntimeError("the runner broke")
+
+    monkeypatch.setattr(tempfile, "TemporaryDirectory", refuse)
+    capsys.readouterr()
+
+    assert _complete(head, base) == 0
+
+    captured = capsys.readouterr()
+    assert captured.out.endswith("completed\n")
+    assert "post ran" not in captured.out
+    assert captured.err.splitlines() == [
+        "complete: the post-gate stage run could not finish (the runner broke)"
+    ]
+    assert read_records(_journal(repo), "CR-001")[-1]["record_type"] == "completed"
+
+
+def test_an_oserror_in_the_post_gate_lane_is_one_stderr_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Not a spec scenario: an OSError in complete's post-gate lane —
+    outside the per-stage machinery the runner owns — is reported on
+    one stderr line; the exit status and the record stand (CR-227
+    review round 2)."""
+    repo, base, head = _repo(
+        tmp_path,
+        monkeypatch,
+        # Only a post-gate stage: the quiet pre-gate run's plan is
+        # empty, so it returns before the switches read and the refusal
+        # meets only the post-gate lane.
+        manifest=_manifest(stages=(("post-gate", "bin/post.py"),)),
+        files={"bin/post.py": "print('post ran')\n"},
+    )
+    _review(head)
+    _ci(monkeypatch)
+
+    def refuse(*_args: object, **_keys: object) -> NoReturn:
+        raise OSError("cannot read the switches")
+
+    monkeypatch.setattr(stages_module, "_base_switches", refuse)
+    capsys.readouterr()
+
+    assert _complete(head, base) == 0
+
+    captured = capsys.readouterr()
+    assert captured.out.endswith("completed\n")
+    assert "post ran" not in captured.out
+    assert captured.err.splitlines() == [
+        "complete: the post-gate stage run could not finish (cannot read the switches)"
+    ]
     assert read_records(_journal(repo), "CR-001")[-1]["record_type"] == "completed"
