@@ -84,21 +84,26 @@ def _review(head: str, task: str = "CR-001") -> None:
 
 
 def _complete(
-    head: str, base: str, task: str = "CR-001", pipeline: str | None = None
+    head: str,
+    base: str,
+    task: str = "CR-001",
+    pipeline: str | None = None,
+    target: str | None = None,
 ) -> int:
-    return main(
-        [
-            "complete",
-            "--task",
-            task,
-            "--commit",
-            head,
-            "--base",
-            base,
-            "--pipeline-sha",
-            head if pipeline is None else pipeline,
-        ]
-    )
+    arguments = [
+        "complete",
+        "--task",
+        task,
+        "--commit",
+        head,
+        "--base",
+        base,
+        "--pipeline-sha",
+        head if pipeline is None else pipeline,
+    ]
+    if target is not None:
+        arguments += ["--target", target]
+    return main(arguments)
 
 
 def _journal(repo: Path) -> Path:
@@ -165,9 +170,13 @@ def test_both_commands_go_through_the_one_runner(
         base_ref: str,
         phase: str,
         stderr: TextIO,
+        *,
+        quiet: bool = False,
     ) -> stages_module.StageRunResult:
         calls.append(phase)
-        return original(placement, state, task_id, commit, base_ref, phase, stderr)
+        return original(
+            placement, state, task_id, commit, base_ref, phase, stderr, quiet=quiet
+        )
 
     monkeypatch.setattr(stages_module, "run_stages", spy)
     capsys.readouterr()
@@ -288,6 +297,68 @@ def test_an_operational_changes_completion_skips_the_pre_gate_stages(
     assert "paused" not in captured.err
     assert captured.out.endswith("completed\n")
     assert read_records(_journal(repo), "CR-001")[-1]["record_type"] == "completed"
+
+
+def test_an_operational_change_with_no_stage_to_skip_prints_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: an operational change with no stage to skip prints nothing."""
+    repo = stage_helpers._project(tmp_path, monkeypatch)
+    # The shared extension's manifest declares no stage at all, so no
+    # pre-gate stage would run even off the operational lane — and the
+    # invocation owes no line at all, not even the operational one.
+    _extension(
+        repo,
+        manifest=(
+            "schema = 2\n"
+            'name = "openspec"\n'
+            'version = "1.0.0"\n'
+            'footprint = ["x/"]\n'
+            "documents = []\n"
+        ),
+        files={},
+    )
+    base = _commit_all(repo, "base")
+    assert main(["extension", "switch", "off", "openspec", "--reason", "unused"]) == 0
+    head = _commit_all(repo, "switch off")
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _complete(head, base) == 0
+
+    captured = capsys.readouterr()
+    assert "stage run:" not in captured.out
+    assert "stage run:" not in captured.err
+    assert "openspec" not in captured.out
+    assert captured.out.endswith("completed\n")
+    assert read_records(_journal(repo), "CR-001")[-1]["record_type"] == "completed"
+
+
+def test_an_unresolvable_ref_is_refused_as_complete_refuses_it_today(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: an unresolvable ref is refused as complete refuses it today."""
+    repo, base, head = _repo(tmp_path, monkeypatch, files=_FAILING)
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _complete("no-such-ref", base) == 1
+    assert _complete(head, "no-such-base") == 1
+
+    captured = capsys.readouterr()
+    # The refusal is the gate's own resolution failure under complete's
+    # voice, before any extension line — the stage machinery is never
+    # reached and nothing is written.
+    lines = captured.err.splitlines()
+    assert lines[0].startswith("git rev-parse --verify no-such-ref^{commit} failed:")
+    assert lines[1].startswith("git rev-parse --verify no-such-base^{commit} failed:")
+    assert "stage run:" not in captured.out
+    assert "stage run:" not in captured.err
+    assert "openspec" not in captured.out
+    assert all(
+        record["record_type"] != "completed"
+        for record in read_records(_journal(repo), "CR-001")
+    )
 
 
 def test_the_findings_lane_invokes_no_stage(
@@ -494,7 +565,9 @@ def test_the_pause_line_names_every_paused_stage(
     _ci(monkeypatch)
     capsys.readouterr()
 
-    assert _complete(head, base) == 3
+    # A ``--target`` that cannot resolve reads as not merged — the pause
+    # stands rather than being silently lifted.
+    assert _complete(head, base, target="no-such-branch") == 3
 
     err = capsys.readouterr().err
     line = next(
@@ -513,14 +586,17 @@ def test_a_pause_on_an_already_merged_candidate_is_a_warning(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Scenario: a pause on an already-merged candidate is a warning."""
-    repo, _base, head = _repo(tmp_path, monkeypatch, files=_FAILING)
-    # The candidate is already on the base: ``master`` is moved onto the
-    # candidate commit, so ``--is-ancestor`` answers yes.
+    repo, base, head = _repo(tmp_path, monkeypatch, files=_FAILING)
+    _review(head)
+    # The candidate is already on the target: ``master`` is moved onto
+    # the candidate commit, so ``--is-ancestor`` answers yes. ``--base``
+    # still names the pre-merge merge base — what the gate diffs
+    # against — which a merge wrapper passes even after the merge.
     _git(repo, "branch", "-f", "master", "candidate")
     _ci(monkeypatch)
     capsys.readouterr()
 
-    assert _complete(head, "master") == 1
+    assert _complete(head, base, target="master") == 0
 
     captured = capsys.readouterr()
     assert "openspec | check ran" in captured.out
@@ -528,16 +604,11 @@ def test_a_pause_on_an_already_merged_candidate_is_a_warning(
     assert (
         "complete: WARNING: extension at pre-gate-stop — "
         "openspec: failed (exit 1) — the candidate is already merged into "
-        "the base" in captured.err
+        "the target" in captured.err
     )
     assert "the completion is paused" not in captured.err
-    # The warning does not stop the completion: it proceeded to the gate,
-    # whose own refusal — an empty candidate range — ends the command.
-    assert "candidate range contains no changes" in captured.err
-    assert all(
-        record["record_type"] != "completed"
-        for record in read_records(_journal(repo), "CR-001")
-    )
+    assert captured.out.endswith("completed\n")
+    assert read_records(_journal(repo), "CR-001")[-1]["record_type"] == "completed"
 
 
 def test_an_accepted_pause_stands_down_in_complete_as_in_stage_run(

@@ -14,15 +14,17 @@
 ## 2. `complete` runs the stages
 
 - [x] 2.1 `src/agentmarshal/cli.py`: `_run_complete`'s embedded branch
-  establishes the task's open state, resolves the clone's local state,
-  runs `run_stages` for `pre-gate` before `complete_task`, refuses a
-  machinery refusal on one `complete:` line, and on a pause decides
-  with `git merge-base --is-ancestor` of the resolved candidate into
-  the resolved base — not an ancestor: one paused line, nothing
-  written, exit 3; an ancestor: one `complete: WARNING:` line per
-  paused stage and the completion proceeds. After `completed` prints,
-  `run_stages` runs for `post-gate`, its status dropped. The findings
-  lane and the sidecar invoke nothing. Verify: pytest.
+  establishes the task's open state, resolves `--commit`/`--base` the
+  gate's own way, resolves the clone's local state, runs `run_stages`
+  for `pre-gate` quiet before `complete_task`, refuses a machinery
+  refusal on one `complete:` line, and on a pause decides with
+  `git merge-base --is-ancestor` of the resolved candidate into the
+  resolved `--target` — not an ancestor, none given or unresolvable:
+  one paused line, nothing written, exit 3; an ancestor: one
+  `complete: WARNING:` line per paused stage and the completion
+  proceeds and writes `completed`. After `completed` prints,
+  `run_stages` runs for `post-gate` quiet, its status dropped. The
+  findings lane and the sidecar invoke nothing. Verify: pytest.
 
 ## 3. Tests
 

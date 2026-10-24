@@ -18,14 +18,24 @@ gate runs, and only a pass writes `completed`. `stage run`'s
 `_run_stages` takes a parsed-args namespace, so nothing but the CLI
 command can invoke it.
 
+Amended 2026-10-24 (review round 1): merged-ness is decided against a
+new `complete --target <ref>` — the branch the candidate merges into —
+not against `--base`: a merge wrapper passes the pre-merge merge base
+as `--base` even after the merge, so the candidate is never its
+ancestor, and passing the target as `--base` makes the gate refuse an
+empty range. And `complete` invokes the runner in a quiet mode: the
+refs are resolved by `complete` itself before the runner is called, a
+plan matching no stage prints nothing at all — no operational line
+either — and the run's own refusals carry `complete`'s prefix.
+
 ## Goals
 
 - `complete --task --commit --base` runs the same checks `stage run`
   runs at `pre-gate`, before the gate check and before anything is
   written.
 - A `pre-gate-stop` pause refuses the completion while the candidate
-  is not an ancestor of the resolved base, and is a warning once it
-  is.
+  is not an ancestor of the resolved `--target` — or no `--target` is
+  given — and is a warning once it is.
 - `post-gate` runs after the `completed` record is written; a
   notification, never a verdict.
 - A project with no stage-declaring extension — the `complete --findings`
@@ -55,23 +65,39 @@ command can invoke it.
   — refusal or warning — without the runner knowing which command
   called it.
 - **`complete` invokes the runner where the task's open state is
-  already established.** In `_run_complete`'s embedded branch,
-  `load_task_for_record` runs first — the closed-task refusal still
-  precedes any extension work, byte for byte — then `local_state`
-  resolves the clone's state, then `run_stages` for `pre-gate` runs
-  before `complete_task` is entered. A run whose machinery refused
+  already established, and quiet.** In `_run_complete`'s embedded
+  branch, `load_task_for_record` runs first — the closed-task refusal
+  still precedes any extension work, byte for byte — then `--commit`
+  and `--base` are resolved with the gate's own `_resolve_commit`, so
+  a reference that does not resolve keeps the refusal `complete` gives
+  it today rather than surfacing under the stage machinery's voice;
+  then `local_state` resolves the clone's state, then `run_stages` for
+  `pre-gate` runs before `complete_task` is entered, handed the
+  resolved SHAs and `quiet=True`. A run whose machinery refused
   (status 1) refuses the completion on one `complete:` line; an empty
   plan prints nothing, which is what keeps a project with no
-  stage-declaring extension byte for byte what it is today.
+  stage-declaring extension byte for byte what it is today — and the
+  same holds on an operational candidate, where the quiet runner
+  prints the operational line only when a stage would otherwise have
+  run (it weighs the base's manifests to learn that; a manifest the
+  base cannot parse still counts as a stage that may exist, since the
+  lane exists so a broken extension cannot block its own switching
+  off). Under quiet the runner's refusals and diagnostics carry the
+  calling command's prefix.
 - **"Merged" is `git merge-base --is-ancestor` of the resolved
-  candidate into the resolved base, in the journal's repository.** The
-  references are resolved with the gate's own `_resolve_commit`, the
-  way `complete_task` resolves them for `run_gate`. Any answer the
-  check cannot produce — a reference gone, a git that will not run —
-  reads as not merged: the fallback keeps the pause rather than
-  silently lifting it. A merged candidate's `merge-base..candidate`
-  range is empty, so the gate then refuses it on its own rule; the
-  warning is what the pause becomes, not a pass.
+  candidate into the resolved `--target`, in the journal's
+  repository.** `--target` names the branch the candidate merges
+  into — distinct from `--base`, which stays the merge base the gate
+  diffs against, because a merge wrapper passes the pre-merge merge
+  base even after the merge. The references are resolved with the
+  gate's own `_resolve_commit`, the way `complete_task` resolves them
+  for `run_gate`. No `--target`, or any answer the check cannot
+  produce — a reference gone, a git that will not run — reads as not
+  merged: the fallback keeps the pause rather than silently lifting
+  it. A merged candidate proceeds to the gate on the `--base` range,
+  which is non-empty exactly because `--base` is the pre-merge merge
+  base — the warning is what the pause becomes, and the completion
+  writes `completed` when the gate passes.
 - **`post-gate` runs after `complete`'s own output.** The call sits
   after `completed` prints, so the notification lands last in the
   transcript; its status is dropped — decision 4.
@@ -82,8 +108,13 @@ command can invoke it.
 
 ## Risks
 
-- [A silent lift of the pause] → the merged check fails closed: any
-  failure to answer reads as not merged and the pause stands.
+- [A silent lift of the pause] → the merged check fails closed: no
+  `--target` and any failure to answer read as not merged and the
+  pause stands.
+- [A bad ref or an operational change gaining stage lines under
+  `complete`] → `complete` resolves the refs itself first, and the
+  quiet mode keeps the no-stage project — ordinary or operational —
+  byte for byte; the existing complete tests pin the transcript.
 - [`stage run`'s transcript drifting from its pin] → the wrapper only
   renders what the result returns; every other line stays inside the
   runner, and the existing `stage run` tests pin the transcript.

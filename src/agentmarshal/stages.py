@@ -763,29 +763,49 @@ def run_stages(
     base: str,
     phase: str,
     stderr: TextIO,
+    *,
+    quiet: bool = False,
 ) -> StageRunResult:
-    """Run every shared extension stage matching *phase*; never writes.
+    """Run every shared extension stage matching *phase*.
+
+    The run writes nothing to the journal.
 
     The one runner ``stage run`` and ``complete`` both call (ADR-0013
     decision 2: ``complete`` invokes ``pre-gate`` before its gate check
-    and ``post-gate`` after the ``completed`` record). The transcript —
-    stage frames, result lines, notes and warnings — keeps the ``stage
-    run`` voice whichever command invoked it; the per-entry pause lines
-    and the no-stage line are the caller's, so a caller the pause does
-    not bind can render it differently.
+    and ``post-gate`` after the ``completed`` record); each stage's
+    result is appended to the process log as an ``extension-event`` —
+    the journal is never touched. The transcript — stage frames, result
+    lines, notes and warnings — keeps the ``stage run`` voice whichever
+    command invoked it; the per-entry pause lines and the no-stage line
+    are the caller's, so a caller the pause does not bind can render it
+    differently.
+
+    ``quiet`` is ``complete``'s invocation: a plan matching no stage
+    prints nothing at all — the no-stage line the caller already
+    withholds and the operational line too, which under it prints only
+    where a stage would otherwise have run — and the run's own refusals
+    and machinery diagnostics are reported under the calling command's
+    prefix rather than ``stage run:``.
     """
 
+    # The voice a run-level refusal or diagnostic is reported under:
+    # ``stage run``'s own for the command, the calling command's prefix
+    # for a quiet invocation — a ``complete`` refusal never blames the
+    # stage machinery on a project that has none. The stage lines —
+    # frames, result lines, notes, warnings and the operational line —
+    # keep the ``stage run`` voice either way.
+    voice = "complete" if quiet else "stage run"
     if phase not in _PHASE_MODES:
-        print(f"stage run: unknown phase {escape_for_display(phase)}", file=stderr)
+        print(f"{voice}: unknown phase {escape_for_display(phase)}", file=stderr)
         return StageRunResult(1)
     try:
         validate_task_id(task_id)
     except JournalRecordError as error:
-        print(f"stage run: {error}", file=stderr)
+        print(f"{voice}: {error}", file=stderr)
         return StageRunResult(1)
     if placement.is_sidecar:
         print(
-            "stage run: a sidecar runs no stages — the base its extensions "
+            f"{voice}: a sidecar runs no stages — the base its extensions "
             "are taken from is a property of the embedded placement",
             file=stderr,
         )
@@ -814,11 +834,32 @@ def run_stages(
             # extension-side has run at all. The predicate's own reads —
             # the base's contract, extension names and switches file —
             # are gate inputs, not extension code.
-            print("stage run: pre-gate stages do not run on an operational change")
-            return StageRunResult(0)
+            if not quiet:
+                print("stage run: pre-gate stages do not run on an operational change")
+                return StageRunResult(0)
+            # The quiet caller owes the line only where a stage would
+            # otherwise have run — its plan-empty invocation prints
+            # nothing — so the base's manifests are weighed after all.
+            # A manifest the base cannot parse still answers yes rather
+            # than failing the run: the lane exists so a broken extension
+            # cannot block its own switching off, and the line then names
+            # why nothing ran.
+            try:
+                extension_names, declared = _base_extensions(project_root, merge_base)
+            except (GateError, ExtensionManifestError):
+                declared_any = True
+            else:
+                declared_any = any(
+                    stage.phase in _PHASE_MODES[phase]
+                    for manifest in declared.values()
+                    for stage in manifest.stages
+                )
+            if declared_any:
+                print("stage run: pre-gate stages do not run on an operational change")
+            return StageRunResult(0, plan_empty=not declared_any)
         extension_names, manifests = _base_extensions(project_root, merge_base)
     except (GateError, ExtensionManifestError) as error:
-        print(f"stage run: {escape_for_display(str(error))}", file=stderr)
+        print(f"{voice}: {escape_for_display(str(error))}", file=stderr)
         return StageRunResult(1)
     modes = _PHASE_MODES[phase]
     plan = [
@@ -837,12 +878,18 @@ def run_stages(
     # A refused file blocks the stages of exactly the extensions it
     # names — every stage when its own entries cannot be read, since
     # an unreadable file cannot vouch for any extension being on.
+    if not plan and quiet:
+        # The quiet caller is owed nothing where no stage would run —
+        # not even the switches file's refusal, which is the
+        # extensions' own business: the calling command reads exactly
+        # as it reads without the runner.
+        return StageRunResult(0, plan_empty=True)
     switches: dict[str, Switch] = {}
     blocked_names: frozenset[str] | None = None
     try:
         switches = _base_switches(project_root, merge_base, extension_names)
     except SwitchesError as error:
-        print(f"stage run: {escape_for_display(str(error))}", file=stderr)
+        print(f"{voice}: {escape_for_display(str(error))}", file=stderr)
         blocked_names = (
             error.names
             if error.names is not None
@@ -907,7 +954,7 @@ def run_stages(
             # their result lines are owed even now: the loop reports
             # those outcomes and their events and runs nothing else,
             # then the command exits 1.
-            print(f"stage run: {escape_for_display(str(error))}", file=stderr)
+            print(f"{voice}: {escape_for_display(str(error))}", file=stderr)
             grants_unreadable = True
     writer: ProcessLogWriter | None = None
     writer_lost = False
@@ -933,7 +980,7 @@ def run_stages(
             except (LocalStateError, ProcessLogError, OSError) as error:
                 writer_lost = True
                 print(
-                    "stage run: cannot open the process log "
+                    f"{voice}: cannot open the process log "
                     f"({escape_for_display(str(error))}); results are "
                     "not recorded as events",
                     file=stderr,
@@ -983,7 +1030,7 @@ def run_stages(
                 )
         except ProcessLogError as error:
             print(
-                f"stage run: the extension-event for "
+                f"{voice}: the extension-event for "
                 f"{escape_for_display(name)} was not recorded: "
                 f"{escape_for_display(str(error))}",
                 file=stderr,
@@ -1010,7 +1057,7 @@ def run_stages(
             except (JournalRecordError, OSError, ValueError) as error:
                 pause_records = []
                 print(
-                    "stage run: the journal cannot be read "
+                    f"{voice}: the journal cannot be read "
                     f"({escape_for_display(str(placement.journal_root))}: "
                     f"{escape_for_display(str(error))}); every pause stands",
                     file=stderr,
