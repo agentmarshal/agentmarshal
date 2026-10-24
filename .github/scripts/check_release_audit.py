@@ -200,6 +200,27 @@ def _check_findings(
     return refusals, fixed_tasks
 
 
+def _is_timestamp(value: Any) -> bool:
+    """Whether ``value`` names a moment unambiguously: an aware date-time.
+
+    TOML decodes an offset date-time to an aware ``datetime``; a string is
+    accepted only when ``datetime.fromisoformat`` parses it to an aware
+    ``datetime`` too. A bare date, a local (naive) date-time and free text
+    are not timestamps — without an offset the moment is ambiguous.
+    """
+
+    if isinstance(value, str):
+        try:
+            parsed = datetime.datetime.fromisoformat(value)
+        except ValueError:
+            return False
+    elif isinstance(value, datetime.datetime):
+        parsed = value
+    else:
+        return False
+    return parsed.utcoffset() is not None
+
+
 def audit_release(tag: str, repo: Path) -> list[str]:
     """Return every refusal cause for releasing ``tag`` from ``repo``.
 
@@ -260,10 +281,7 @@ def audit_release(tag: str, repo: Path) -> list[str]:
             )
 
     audited_at = data.get("audited_at")
-    if "audited_at" in data and not (
-        isinstance(audited_at, datetime.date)
-        or (isinstance(audited_at, str) and audited_at)
-    ):
+    if "audited_at" in data and not _is_timestamp(audited_at):
         refusals.append(f"{audit_path}: 'audited_at' must be a timestamp")
 
     finding_refusals, fixed_tasks = _check_findings(audit_path, data)

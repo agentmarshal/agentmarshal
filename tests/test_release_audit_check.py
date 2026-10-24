@@ -303,6 +303,108 @@ def test_invalid_audited_at_refuses(tmp_path: Path) -> None:
     assert refusals == ["release/audit-1.0.0.toml: 'audited_at' must be a timestamp"]
 
 
+def test_free_text_audited_at_refuses(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    audited = _base_commit(repo)
+    # A non-empty string is not a timestamp: the value must parse to an
+    # aware date-time, and this one does not parse at all.
+    _write(
+        repo,
+        "release/audit-1.0.0.toml",
+        'version = "1.0.0"\n'
+        f'audited_commit = "{audited}"\n'
+        'model = "gpt-6-astra"\n'
+        'audited_at = "last Thursday, probably"\n',
+    )
+    _commit_all(repo, "audit file")
+    _git(repo, "tag", "v1.0.0")
+
+    refusals = _audit(repo)
+
+    assert refusals == ["release/audit-1.0.0.toml: 'audited_at' must be a timestamp"]
+
+
+def test_naive_audited_at_refuses(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    audited = _base_commit(repo)
+    # A TOML local date-time decodes to a naive datetime: without an offset
+    # the moment is ambiguous, so only an offset date-time counts.
+    _write(
+        repo,
+        "release/audit-1.0.0.toml",
+        'version = "1.0.0"\n'
+        f'audited_commit = "{audited}"\n'
+        'model = "gpt-6-astra"\n'
+        "audited_at = 2026-10-24T00:00:00\n",
+    )
+    _commit_all(repo, "audit file")
+    _git(repo, "tag", "v1.0.0")
+
+    refusals = _audit(repo)
+
+    assert refusals == ["release/audit-1.0.0.toml: 'audited_at' must be a timestamp"]
+
+
+def test_date_audited_at_refuses(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    audited = _base_commit(repo)
+    # A TOML local date names a day, not a moment.
+    _write(
+        repo,
+        "release/audit-1.0.0.toml",
+        'version = "1.0.0"\n'
+        f'audited_commit = "{audited}"\n'
+        'model = "gpt-6-astra"\n'
+        "audited_at = 2026-10-24\n",
+    )
+    _commit_all(repo, "audit file")
+    _git(repo, "tag", "v1.0.0")
+
+    refusals = _audit(repo)
+
+    assert refusals == ["release/audit-1.0.0.toml: 'audited_at' must be a timestamp"]
+
+
+def test_timezoneless_string_audited_at_refuses(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    audited = _base_commit(repo)
+    # The string parses as a date-time but carries no offset; the rule for
+    # a string is the same as for a native TOML value.
+    _write(
+        repo,
+        "release/audit-1.0.0.toml",
+        'version = "1.0.0"\n'
+        f'audited_commit = "{audited}"\n'
+        'model = "gpt-6-astra"\n'
+        'audited_at = "2026-10-24T00:00:00"\n',
+    )
+    _commit_all(repo, "audit file")
+    _git(repo, "tag", "v1.0.0")
+
+    refusals = _audit(repo)
+
+    assert refusals == ["release/audit-1.0.0.toml: 'audited_at' must be a timestamp"]
+
+
+def test_string_audited_at_passes(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    audited = _base_commit(repo)
+    # The string form of an offset date-time is accepted alongside the
+    # native TOML value.
+    _write(
+        repo,
+        "release/audit-1.0.0.toml",
+        'version = "1.0.0"\n'
+        f'audited_commit = "{audited}"\n'
+        'model = "gpt-6-astra"\n'
+        'audited_at = "2026-10-24T00:00:00Z"\n',
+    )
+    _commit_all(repo, "audit file")
+    _git(repo, "tag", "v1.0.0")
+
+    assert _audit(repo) == []
+
+
 def test_audited_commit_not_a_commit_refuses(tmp_path: Path) -> None:
     repo = _repo(tmp_path)
     _base_commit(repo)
@@ -497,6 +599,34 @@ def test_reopened_fix_task_refuses(tmp_path: Path) -> None:
     assert refusals == [
         "release/audit-1.0.0.toml: task CR-7 is listed as fixing a finding"
         " but was reopened in the tagged tree's journal"
+    ]
+
+
+def test_abandoned_fix_task_refuses(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    audited = _base_commit(repo)
+    # CR-7 was completed, then abandoned: the last lifecycle record is the
+    # abandonment, so the fix does not count as done.
+    _journal_task(repo, "CR-7", ("src/foo.py",))
+    _write(
+        repo,
+        ".agentmarshal/journal/tasks/CR-7/records/02TEST-abandoned.json",
+        json.dumps({"record_type": "abandoned", "task": "CR-7"}) + "\n",
+    )
+    _write(repo, "src/foo.py", "x = 2\n")
+    _audit_file(
+        repo,
+        audited_commit=audited,
+        findings=({"id": "F-1", "disposition": "fixed", "task": "CR-7"},),
+    )
+    _commit_all(repo, "fix and audit file")
+    _git(repo, "tag", "v1.0.0")
+
+    refusals = _audit(repo)
+
+    assert refusals == [
+        "release/audit-1.0.0.toml: task CR-7 is listed as fixing a finding"
+        " but was abandoned in the tagged tree's journal"
     ]
 
 
