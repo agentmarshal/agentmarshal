@@ -143,8 +143,11 @@ some v1 transport:
 - Openings and completions are journal-only and take the gate's
   deterministic lane, and a candidate that changes only
   `.agentmarshal/switches.toml` and anything inside its task's own
-  journal subtree takes the operational lane — neither requires a
-  review; implementation candidates take the full review-bound lane.
+  journal subtree takes the operational lane — provided the task's
+  contract declares scope exactly `[".agentmarshal/switches.toml"]`
+  and the base's switches file reads and parses, else the candidate
+  takes the review-bound lane — neither requires a review;
+  implementation candidates take the full review-bound lane.
 - The GitHub template reads the task identifier from the pull request head
   reference. Every branch it gates, including a journal-only opening or
   completion branch, must therefore include its `CR-<number>` identifier.

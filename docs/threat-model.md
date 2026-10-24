@@ -559,17 +559,21 @@ stop short, and this document does not resolve them.
 5. **A shared extension switched off without review.** The operational
    lane admits a diff touching only `.agentmarshal/switches.toml` and
    the inside of the task's own journal subtree — its records and an
-   amended contract alike — requires no review, and skips the
-   extensions' `pre-gate` stages; the reason is mandatory and `status`
-   and `doctor` show the switch — "easy, but not silent" (gate-lanes
-   specification, "an operational change takes its own gate lane" and
-   "pre-gate stages do not run on an operational change";
-   extension-stages specification, "`status` names each switched-off
-   shared extension" and "`doctor` shows each switched-off shared
-   extension"). That file is the one exception to the rule that
-   configuration is reviewed, and whether its visibility substitutes for
-   review is not assessed. (ADR-0013, decisions 16 and 17, header and
-   "Consequences"; ADR-0010, decision 2.)
+   amended contract alike — and only while the task's contract
+   declares `scope` exactly `[".agentmarshal/switches.toml"]` and the
+   base's switches file reads and parses; a candidate failing either
+   takes the regular lane and needs a review. On the lane no review
+   is required and the extensions' `pre-gate` stages are skipped; the
+   reason is mandatory and `status` and `doctor` show the switch —
+   "easy, but not silent" (gate-lanes specification, "an operational
+   change takes its own gate lane" and "pre-gate stages do not run on
+   an operational change"; extension-stages specification, "`status`
+   names each switched-off shared extension" and "`doctor` shows each
+   switched-off shared extension"). That file is the one exception to
+   the rule that configuration is reviewed, and whether its
+   visibility substitutes for review is not assessed. (ADR-0013,
+   decisions 16 and 17, header and "Consequences"; ADR-0010,
+   decision 2.)
 
 6. **`next` reads local, forgeable inputs.** `next` — decided, not yet
    implemented — reads the process log for an open step and for an

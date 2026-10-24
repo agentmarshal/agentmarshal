@@ -28,9 +28,13 @@ rule — upgrade each checkout, CI job and merge wrapper when it suits you.
   task's journal subtree — its records and an amended contract alike —
   passes the gate without review —
   `PASS: operational transaction (operational lane; review not required)`
-  — and pre-gate stages do not run on it.
-  `agentmarshal extension switch off <name> --reason <text>` opens such
-  a task itself.
+  — and pre-gate stages do not run on it. The lane also requires the
+  task's contract to declare scope exactly
+  `[".agentmarshal/switches.toml"]` and the base's switches file to
+  read and parse; a candidate failing either takes the review-bound
+  lane. `agentmarshal extension switch off <name> --reason <text>`
+  opens such a task itself, its generated contract declaring that
+  scope.
 - **`complete` runs the declared stages.** The pre-gate stages run before
   the gate check — a `pre-gate-stop` stage that fails or does not run
   pauses the completion — and the post-gate stages run after the

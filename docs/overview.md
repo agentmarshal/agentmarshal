@@ -108,7 +108,8 @@ rather than decides, the findings lane excepted.
   completely removed.
 - **Record** — one append-only JSON evidence file: `opened`, `finding`,
   `review`, `acceptance`, `amendment`, `completed`, `reopened`, `abandoned`,
-  or a `session` (measurement). Written once, never edited. A review may pin
+  `check`, `agreement`, `acknowledgement`, `ext`, or a `session`
+  (measurement). Written once, never edited. A review may pin
   the reviewer's prose by SHA-256 as an artifact beside the task's records,
   when the project's capture policy sets its `reviews` level to `commit`.
 - **Projection / state** — a task's status computed from its records, never
@@ -141,7 +142,10 @@ rather than decides, the findings lane excepted.
   amendment or a reopening — needs no review; an **operational** transaction —
   one that changes only `.agentmarshal/switches.toml` and anything inside
   its own task's journal subtree, the lane `extension switch off` opens a
-  task onto — needs no review either and runs no pre-gate stage; an
+  task onto — needs no review either and runs no pre-gate stage; the lane
+  holds only while the task's contract declares scope exactly
+  `[".agentmarshal/switches.toml"]` and the base's switches file reads
+  and parses, else the candidate takes the review-bound lane; an
   **implementation** candidate takes the full review-bound diff lane; and
   an empty-scope research task offered with `--findings` takes the
   no-candidate findings lane, bound to its latest hash-pinned finding.
