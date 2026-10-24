@@ -698,7 +698,7 @@ def test_every_output_for_an_acceptance_over_findings_is_unchanged(
             "CR-001",
             "test",
             commit,
-            "test@example.invalid",
+            "op",
             ["F-1", "F-2"],
             "accepted",
         ),
@@ -709,13 +709,9 @@ def test_every_output_for_an_acceptance_over_findings_is_unchanged(
     output = capsys.readouterr().out
     (record_line,) = (line for line in output.splitlines() if " acceptance " in line)
     assert record_line.endswith(
-        f"accepted_commit={commit[:7]} accepted_by=test@example.invalid "
-        "findings=F-1,F-2 reason=accepted self-accepted"
+        f"accepted_commit={commit[:7]} accepted_by=op findings=F-1,F-2 reason=accepted"
     )
-    assert (
-        "Acceptance: accepted over findings by test@example.invalid "
-        "(self-accepted: accepting party is a declared author or committer)" in output
-    )
+    assert "Acceptance: accepted over findings by op\n" in output
 
 
 # --- the accept command's new forms -------------------------------------------

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -10,7 +11,12 @@ from pathlib import Path
 from typing import cast
 
 from agentmarshal.journal.display import escape_for_display
-from agentmarshal.journal.records import JournalRecordError, _utc_timestamp
+from agentmarshal.journal.placement import PlacementError, resolve_placement
+from agentmarshal.journal.records import (
+    JournalRecordError,
+    _project_root_for,
+    _utc_timestamp,
+)
 from agentmarshal.journal.status import (
     TaskStatus,
     TaskStatusError,
@@ -130,6 +136,11 @@ class TaskReport:
     artifacts: int = 0
     usage_provenance: str | None = None
     decision: str | None = None
+    # True when the acceptance the decision derives from was recorded by
+    # a declared writer of the accepted commit — the `self-accepted` mark
+    # status prints, carried here so no surface reports a self-acceptance
+    # as someone else's (ADR-0007 decision 4).
+    self_accepted: bool = False
     phases: tuple[PhaseBoundary, ...] = ()
     rounds: tuple[ReviewRound, ...] = ()
     lead_time: timedelta | None = None
@@ -426,7 +437,70 @@ def _rejected_commits(records: Iterable[dict[str, object]]) -> int:
     )
 
 
-def _task_report(status: TaskStatus) -> TaskReport:
+def _declared_commit_writers(repository: Path, commit: str) -> set[str] | None:
+    """The commit's declared author and committer names and emails, or ``None``.
+
+    The same query and the same reading of it ``status`` makes for its
+    self-acceptance mark — ``_declared_commit_writers`` in
+    ``status_view.py`` — spelled out here because that module imports
+    this one. ``None`` when git cannot answer — an absent commit, a
+    shallow clone, a directory that is not a repository — and the caller
+    keeps it distinct from "no match": an undecidable mark prints no
+    mark rather than a false "not self-accepted".
+    """
+
+    try:
+        result = subprocess.run(
+            ["git", "show", "-s", "--format=%an%n%ae%n%cn%ce", commit],
+            cwd=repository,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return None
+        output = result.stdout.decode("utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    return {line.strip().casefold() for line in output.splitlines() if line.strip()}
+
+
+def _writers_repository(journal_root: Path) -> Path | None:
+    """The repository a self-acceptance check reads commit writers in.
+
+    An accepted commit lives in the repository its candidate does — the
+    placement's host root, which for an embedded journal is the project
+    root itself; ``status`` resolves the same root before it derives the
+    mark. A journal whose project file cannot be read yields ``None``,
+    and the mark then prints nowhere rather than guessing.
+    """
+
+    try:
+        return resolve_placement(_project_root_for(journal_root)).host_root
+    except PlacementError:
+        return None
+
+
+def _self_accepted(repository: Path | None, acceptance: dict[str, object]) -> bool:
+    """Whether the accepting party is a declared writer of the commit.
+
+    The same identity comparison ``status`` makes — the ``accepted_by``
+    string against the accepted commit's declared author and committer
+    names and emails, both sides stripped and case-folded — applied to
+    the acceptance a decision derives from (ADR-0007 decision 4). A
+    finding-bound acceptance carries no ``accepted_commit`` and cannot
+    be checked; like an unanswerable git query it simply prints no mark.
+    """
+
+    if repository is None or "accepted_commit" not in acceptance:
+        return False
+    writers = _declared_commit_writers(repository, str(acceptance["accepted_commit"]))
+    return (
+        writers is not None
+        and str(acceptance["accepted_by"]).strip().casefold() in writers
+    )
+
+
+def _task_report(status: TaskStatus, repository: Path | None) -> TaskReport:
     records = status.records
     review_cycles = sum(record["record_type"] == "review" for record in records)
     artifacts = sum(
@@ -440,34 +514,60 @@ def _task_report(status: TaskStatus) -> TaskReport:
         if record["record_type"] == "session" and not _is_unmeasured(record)
     )
     decision = None
-    if any(
-        record["record_type"] == "acceptance" and "findings" in record
-        for record in records
-    ):
-        decision = "accepted-over-findings"
-    else:
-        completed = next(
-            (
-                record
-                for record in reversed(records)
-                if record["record_type"] == "completed"
-            ),
-            None,
-        )
-        if completed is not None:
-            binding = (
-                ("reviewed_finding", completed["completed_finding"])
-                if "completed_finding" in completed
-                else ("reviewed_commit", completed["completed_commit"])
-            )
-            reviews = [
+    decisive_acceptance: dict[str, object] | None = None
+    completed = next(
+        (
+            record
+            for record in reversed(records)
+            if record["record_type"] == "completed"
+        ),
+        None,
+    )
+    if completed is not None:
+        # The decision is read off the review and the acceptance that
+        # apply to the completed record's own binding — its
+        # `completed_commit`, or its `completed_finding` on the findings
+        # lane — so an acceptance an earlier commit earned cannot mark a
+        # task the completed commit closed on approval (ADR-0007
+        # decision 5; release-audit finding AUD-gate-journal-4). As at
+        # the gate, the latest review decides and only an acceptance
+        # carrying `findings` counts.
+        if "completed_finding" in completed:
+            review_key, acceptance_key = "reviewed_finding", "accepted_finding"
+            bound = completed["completed_finding"]
+        else:
+            review_key, acceptance_key = "reviewed_commit", "accepted_commit"
+            bound = completed["completed_commit"]
+        reviews = [
+            record
+            for record in records
+            if record["record_type"] == "review" and record.get(review_key) == bound
+        ]
+        if reviews and reviews[-1]["verdict"] == "approved":
+            decision = "approved"
+        else:
+            acceptances = [
                 record
                 for record in records
-                if record["record_type"] == "review"
-                and record.get(binding[0]) == binding[1]
+                if record["record_type"] == "acceptance"
+                and "findings" in record
+                and record.get(acceptance_key) == bound
             ]
-            if reviews and reviews[-1]["verdict"] == "approved":
-                decision = "approved"
+            if acceptances:
+                decision = "accepted-over-findings"
+                decisive_acceptance = acceptances[-1]
+    else:
+        acceptances = [
+            record
+            for record in records
+            if record["record_type"] == "acceptance" and "findings" in record
+        ]
+        if acceptances:
+            decision = "accepted-over-findings"
+            decisive_acceptance = acceptances[-1]
+    self_accepted = decisive_acceptance is not None and _self_accepted(
+        repository, decisive_acceptance
+    )
     phases = _phases(records)
     cost_sums = _cost_sums(records)
     return TaskReport(
@@ -478,6 +578,7 @@ def _task_report(status: TaskStatus) -> TaskReport:
         artifacts=artifacts,
         usage_provenance=_usage_provenance(records),
         decision=decision,
+        self_accepted=self_accepted,
         phases=phases,
         rounds=_rounds(records, phases[1]),
         lead_time=_lead_time(status.state, phases),
@@ -500,7 +601,8 @@ def build_report(journal_root: Path, task_id: str | None = None) -> JournalRepor
             statuses = [load_task_status(journal_root, task_id)]
         else:
             statuses = list_task_statuses(journal_root)
-        tasks = tuple(_task_report(status) for status in statuses)
+        repository = _writers_repository(journal_root)
+        tasks = tuple(_task_report(status, repository) for status in statuses)
     except (JournalRecordError, TaskStatusError, OSError, ValueError) as error:
         raise ReportError(str(error)) from error
     lead_times = sorted(
@@ -775,6 +877,11 @@ def format_report(
             line += f"\tusage={escape_for_display(task.usage_provenance)}"
         if task.decision is not None:
             line += f"\tdecision={task.decision}"
+            if task.self_accepted:
+                # The mark status's acceptance lines carry, on the line
+                # whose decision the acceptance earned (ADR-0007
+                # decision 4); `unmeasured` keeps the last field.
+                line += "\tself-accepted"
         if task.unmeasured:
             line += f"\tunmeasured={task.unmeasured}"
         lines.append(line)

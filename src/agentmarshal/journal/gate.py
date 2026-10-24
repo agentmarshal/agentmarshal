@@ -1781,12 +1781,32 @@ def run_gate(
         # decision 1).
         if latest is not None and (approved or valid_acceptance is not None):
             resolved_review = cast(str, latest["id"])
+        # The candidate's declared writer emails — the set the reviewer
+        # independence check below compares against — also answer whether an
+        # acceptance is a self-acceptance (ADR-0007 decision 4): the mark the
+        # acceptance line carries is derived from the same set, computed once
+        # for both. A valid acceptance implies a latest review, so the set is
+        # always present where the line needs it.
+        writer_emails = (
+            {
+                email.strip().casefold()
+                for email in _range_emails(project_root, merge_base, resolved_commit)
+            }
+            if latest is not None
+            else set()
+        )
         if valid_acceptance is not None:
             accepted_by, accepted_findings = valid_acceptance
             findings = ", ".join(accepted_findings)
+            mark = (
+                " (self-accepted: accepting party is a declared writer of the "
+                "candidate)"
+                if accepted_by.strip().casefold() in writer_emails
+                else ""
+            )
             say(
-                f"PASS: accepted over findings {findings} by {accepted_by}; "
-                "not an approving review"
+                f"PASS: accepted over findings {findings} by {accepted_by}"
+                f"{mark}; not an approving review"
             )
         elif acceptance is not None and latest is not None and not approved:
             # An operator who has just recorded an acceptance and sees only
@@ -1878,10 +1898,6 @@ def run_gate(
                 if isinstance(reviewer_email, str)
                 else ""
             )
-            writer_emails = {
-                email.strip().casefold()
-                for email in _range_emails(project_root, merge_base, resolved_commit)
-            }
             check(
                 bool(normalized_reviewer) and normalized_reviewer not in writer_emails,
                 "declared reviewer identity differs from the candidate's "
