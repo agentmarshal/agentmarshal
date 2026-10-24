@@ -1,0 +1,125 @@
+{
+  "advisory_findings": [
+    "purpose-still-contradicts-its-own-requirements",
+    "install-comment-1150-commands-unconfirmed",
+    "skills-and-validate-run-unconfirmed"
+  ],
+  "artifacts": [
+    {
+      "hash": "b68c605d60afb38edf84b8f06a9b688d53616fc722716882cc13f21dbeb0a87e",
+      "ref": ".agentmarshal/journal/tasks/CR-231/artifacts/01M5Q39GW1SC35P2DG0X5XFMVK-review.md"
+    }
+  ],
+  "classes": {
+    "install-comment-1150-commands-unconfirmed": "claim-accuracy",
+    "purpose-still-contradicts-its-own-requirements": "claim-accuracy",
+    "skills-and-validate-run-unconfirmed": "claim-accuracy"
+  },
+  "created_at": "2026-10-24T13:58:34.113034Z",
+  "evidence": {
+    "install-comment-1150-commands-unconfirmed": ".agentmarshal/extensions/openspec.toml:4-11 (comment) and :34 (remove names .claude/commands/opsx); `curl -sS -m 15 https://registry.npmjs.org/@fission-ai/openspec/1.15.0` → refused, 'This command requires approval' — the claim cannot be checked here",
+    "purpose-still-contradicts-its-own-requirements": "openspec/specs/extension-stages/spec.md:25 ('network isolation, write isolation and pause records are later work, not this capability') against :879, :925, :1113 in the same file; no openspec/changes/extension-stages-purpose/ and no such entry among the 91 archive directories; fallback corroborated by .agents/skills/openspec-sync-specs/SKILL.md:158-160 and .agents/skills/openspec-archive-change/SKILL.md:156-157",
+    "skills-and-validate-run-unconfirmed": "criterion 2 and 3 in .agentmarshal/journal/tasks/CR-231/contract.md:14-15; no npx/network (see not_run). Negative evidence for hand editing only: identical boilerplate across the six SKILL.md and consistent cross-references (openspec-update-change/SKILL.md:62,106 → step 4 at :68; openspec-explore/SKILL.md:160 → changeRoot at :171)"
+  },
+  "findings": [],
+  "previous_review": "01M5Q2XT48ZH8F1AXCZ091FWRB",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "a289b9d7eea53fcfb21e694df606dc0a7e32b372",
+  "reviewed_contract": "3fb186fdf55b7895f7e48147f0d5e47bde8f66d2ef2d83486db6462cc1d2d360",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-231",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "six openspec-*/SKILL.md plus .agents/skills/.openspec-target — matches the manifest footprint exactly",
+        "what": "find .agents/skills -type f -o -type l | sort"
+      },
+      {
+        "result": "all six carry generatedBy: \"1.15.0\" at line 10",
+        "what": "grep -n generatedBy over the six SKILL.md"
+      },
+      {
+        "result": "1 in each of six; allowed-tools: Bash(openspec:*) present",
+        "what": "grep -c 'license: MIT' over the six SKILL.md"
+      },
+      {
+        "result": "23 — matches the amendment's 23/23",
+        "what": "ls openspec/specs | wc -l"
+      },
+      {
+        "result": "only archive/ (91 entries); no non-archived change, no extension-stages-purpose anywhere",
+        "what": "ls openspec/changes/ and ls openspec/changes/archive | wc -l"
+      },
+      {
+        "result": "Purpose at :25 calls all three later work while requirements exist at :879, :925, :1113",
+        "what": "grep -n -i 'network|write isolation|pause' openspec/specs/extension-stages/spec.md"
+      },
+      {
+        "result": "byte-identical boilerplate in all six (lines 26-40) — no sign of hand editing",
+        "what": "grep -n 'never create the root as a side effect' over the six SKILL.md"
+      },
+      {
+        "result": "3fb186fdf55b7895f7e48147f0d5e47bde8f66d2ef2d83486db6462cc1d2d360 — equals the amendment record's pinned contract hash",
+        "what": "sha256sum .agentmarshal/journal/tasks/CR-231/contract.md"
+      },
+      {
+        "result": "eight hits, all synthetic manifests in temp repos; no test reads the repository's own manifest",
+        "what": "grep -rn 'extensions/openspec.toml' tests/"
+      },
+      {
+        "result": "no stale live reference to 1.13.2 outside the ADR-0013 [wraps] example and append-only journal/archive text",
+        "what": "grep -rn '1.13.2|1.15.0|1.12.0' across py/md/toml/yaml"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "OPENSPEC_TELEMETRY=0 npx -y @fission-ai/openspec@1.15.0 init --tools claude,codex --no-animation . (to diff the generated skills)",
+        "why": "no network in this sandbox; curl to registry.npmjs.org requires approval that a non-interactive session cannot grant"
+      },
+      {
+        "what": "OPENSPEC_TELEMETRY=0 npx -y @fission-ai/openspec@1.15.0 validate --specs / --changes",
+        "why": "same — the openspec CLI cannot be fetched or run here"
+      },
+      {
+        "what": "the 1.15.0 archive command on a Purpose-only delta",
+        "why": "same; corroborated instead from the generated sync/archive skills shipped in this diff"
+      },
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff; mypy",
+        "why": "read-only review; the coordinator states the sequence passed on this commit, and the diff touches no Python or test file"
+      }
+    ],
+    "read": [
+      ".agentmarshal/extensions/openspec.toml",
+      ".agents/skills/openspec-apply-change/SKILL.md",
+      ".agents/skills/openspec-archive-change/SKILL.md",
+      ".agents/skills/openspec-explore/SKILL.md",
+      ".agents/skills/openspec-propose/SKILL.md",
+      ".agents/skills/openspec-sync-specs/SKILL.md",
+      ".agents/skills/openspec-update-change/SKILL.md",
+      ".agents/skills/.openspec-target",
+      "openspec/specs/extension-stages/spec.md",
+      "openspec/config.yaml",
+      ".gitignore",
+      "docs/adr/ADR-0010-process-extensions.md",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md",
+      "src/agentmarshal/journal/extensions.py",
+      "src/agentmarshal/journal/contracts.py",
+      ".agentmarshal/journal/tasks/CR-231/contract.md",
+      ".agentmarshal/journal/tasks/CR-231/records/01M5Q265G32JBE335MBS8M9T3Z-amendment.json",
+      "AGENTS.md",
+      "CHANGELOG.md"
+    ]
+  }
+}
