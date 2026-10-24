@@ -318,7 +318,9 @@ Where an acceptance's `accepted_by` matches a declared writer of the
 candidate — the case-insensitive comparison the surface already makes —
 the gate's acceptance line SHALL carry ` (self-accepted: accepting party
 is a declared writer of the candidate)` and `report`'s task line SHALL
-carry ` self-accepted` after the decision field (ADR-0007 decision 4).
+carry ` self-accepted` after the decision field, or
+` self-acceptance-unchecked` where the accepted commit's writers cannot
+be read — never a silent "not self-accepted" (ADR-0007 decision 4).
 
 #### Scenario: the gate's acceptance line marks a self-acceptance
 - **WHEN** the acceptance over findings the gate judges carries an
@@ -335,9 +337,17 @@ carry ` self-accepted` after the decision field (ADR-0007 decision 4).
 
 #### Scenario: an acceptance by another party prints unmarked
 - **WHEN** an acceptance's `accepted_by` matches no declared writer of
-  the candidate — or git cannot answer for the accepted commit
+  the candidate
 - **THEN** the gate's acceptance line and the `report` task line print
   exactly what they print today, with no mark
+
+#### Scenario: report's task line says when the check cannot run
+- **WHEN** the acceptance a `decision` derives from binds a commit whose
+  declared writers git cannot read — or no repository answers for the
+  journal at all
+- **THEN** the `report` line carries ` self-acceptance-unchecked` after
+  the `decision=accepted-over-findings` field — the tri-state `status`
+  uses, never a silent "not self-accepted"
 
 ### Requirement: `report` derives a completed task's decision from the completed record's binding
 A completed task's `decision` SHALL come from the review and the

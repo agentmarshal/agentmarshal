@@ -43,15 +43,20 @@ apart.
   acceptance line derives the mark from that same set, hoisted ahead of
   the verdict block so both read it once. The qualification names what
   the set is: `accepting party is a declared writer of the candidate`.
-- **`report` derives the mark the way `status` does.** The comparison
-  runs against the accepted commit's declared author and committer
-  names and emails, in the repository the accepted commit lives in —
-  the placement's host root, resolved the way `status` resolves it. The
-  helpers are spelled out in `report.py` because `status_view.py`
-  imports this module; `report` cannot import it back.
-- **An unanswerable check prints no mark on `report`.** A commit git
-  cannot read, or a journal outside a readable project, derives no
-  mark — the line keeps the shape it has today.
+- **`report` derives the mark the way `status` does — by calling it.**
+  `_self_accepted` in `report.py` delegates to
+  `status_view._is_self_accepted`, imported where it runs rather than
+  copied: `status_view.py` imports `report`, so a module-level import
+  back would cycle. The comparison runs against the accepted commit's
+  declared author and committer names and emails, in the repository
+  the accepted commit lives in — the placement's host root, resolved
+  the way `status` resolves it.
+- **An unanswerable check is said on `report`, not hidden.** A commit
+  git cannot read, or a journal outside a readable project, marks the
+  task line `self-acceptance-unchecked` — the tri-state `status` uses —
+  rather than a line indistinguishable from "not self-accepted". The
+  findings lane still prints no mark: an `accepted_finding` binding has
+  no commit whose writers could be compared.
 - **The decision binds to the completed record.** For a completed task
   the latest review of the `completed_commit` (or `completed_finding`)
   decides: `approved` wins, else a latest findings-carrying acceptance

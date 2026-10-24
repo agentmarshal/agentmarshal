@@ -22,7 +22,9 @@ distinguish how the completed commit actually closed.
   a latest acceptance carrying `findings` bound to it reports
   `accepted-over-findings`, and where that acceptance's `accepted_by`
   is a declared writer of the accepted commit the task line carries
-  ` self-accepted` — the mark `status` prints.
+  ` self-accepted` — the mark `status` prints — or
+  ` self-acceptance-unchecked` where the commit's writers cannot be
+  read.
 - A journal holding no self-acceptance and no acceptance bound to an
   earlier commit prints byte-for-byte what it prints today.
 
@@ -35,8 +37,10 @@ distinguish how the completed commit actually closed.
 `gate.py` computes the candidate's writer-emails set once, ahead of the
 verdict block, so the acceptance line and the independence check read
 the same set. `report.py` derives the decision per completed binding,
-adds the commit-writers query `status` makes for the mark (the
-repository resolves through the placement, as `status` resolves it),
-and carries a `self_accepted` flag on `TaskReport` rendered as
-` self-accepted` after the decision field. `status` is untouched — it
-already marks.
+reuses the commit-writers check `status` makes for the mark —
+`status_view._is_self_accepted`, called where it runs since
+`status_view` imports `report` — resolving the repository through the
+placement as `status` resolves it, and carries a tri-state
+`self_accepted` on `TaskReport` rendered as ` self-accepted` or
+` self-acceptance-unchecked` after the decision field. `status` is
+untouched — it already marks.

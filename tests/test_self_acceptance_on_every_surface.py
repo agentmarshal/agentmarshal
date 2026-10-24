@@ -8,6 +8,7 @@ binding actually closed (release-audit findings AUD-gate-journal-5 and
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -22,6 +23,7 @@ from agentmarshal.journal.records import (
     create_review_record,
     write_record,
 )
+from agentmarshal.journal.report import build_report, format_report
 from test_gate import _accept, _gate_repo, _implement, _require_changes
 from test_journal import initialize_status_repo
 
@@ -49,10 +51,18 @@ def _report_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path,
     return repo, journal_root
 
 
-def _commit(repo: Path, name: str) -> str:
-    """Commit a file as Test <test@example.invalid> and return its id."""
+def _commit(repo: Path, name: str, *, committer: tuple[str, str] | None = None) -> str:
+    """Commit a file as Test <test@example.invalid> and return its id.
+
+    ``committer`` — a ``(name, email)`` pair — overrides the commit's
+    committer identity through ``GIT_COMMITTER_*``, so a test can stand
+    a commit whose committer differs from its author.
+    """
 
     (repo / name).write_text(f"{name}\n", encoding="utf-8")
+    env = dict(os.environ)
+    if committer is not None:
+        env["GIT_COMMITTER_NAME"], env["GIT_COMMITTER_EMAIL"] = committer
     subprocess.run(["git", "add", name], cwd=repo, check=True)
     subprocess.run(
         [
@@ -68,6 +78,48 @@ def _commit(repo: Path, name: str) -> str:
         ],
         cwd=repo,
         check=True,
+        env=env,
+    )
+    return subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def _implement_distinct_committer(repo: Path, path: str) -> str:
+    """A candidate commit authored by Worker but committed by Committer.
+
+    ``GIT_COMMITTER_*`` overrides only the committer half, so the
+    commit's declared author and committer identities differ — the case
+    where the writer set must still find the committing party.
+    """
+
+    target = repo / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("code\n", encoding="utf-8")
+    subprocess.run(["git", "add", path], cwd=repo, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=Worker",
+            "-c",
+            "user.email=worker@test.invalid",
+            "commit",
+            "--quiet",
+            "-m",
+            "implement",
+        ],
+        cwd=repo,
+        check=True,
+        env={
+            **os.environ,
+            "GIT_COMMITTER_NAME": "Committer",
+            "GIT_COMMITTER_EMAIL": "committer@test.invalid",
+        },
     )
     return subprocess.run(
         ["git", "rev-parse", "HEAD"],
@@ -126,6 +178,31 @@ def test_the_gates_acceptance_line_marks_a_self_acceptance(
     ) in output
 
 
+def test_the_gates_acceptance_line_marks_a_committer_self_acceptance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: the gate's acceptance line marks a self-acceptance.
+
+    The accepting party is the commit's committer, not its author — the
+    writer-emails set must still find it.
+    """
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    head = _implement_distinct_committer(repo, "src/module.py")
+    _require_changes(repo, head, "F-001")
+    _accept(repo, head, accepted_by="committer@test.invalid")
+
+    report = run_gate(repo, "CR-001", head, base, head)
+
+    output = "\n".join(report.lines)
+    assert report.passed, output
+    assert (
+        "PASS: accepted over findings F-001 by committer@test.invalid "
+        "(self-accepted: accepting party is a declared writer of the "
+        "candidate); not an approving review"
+    ) in output
+
+
 def test_an_acceptance_by_another_party_prints_unmarked(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -150,28 +227,10 @@ def test_an_acceptance_by_another_party_prints_unmarked(
 
     journal = repo / ".agentmarshal" / "journal"
     write_record(journal, "CR-001", create_completed_record("CR-001", "test", head))
-    # A second task whose accepted commit git cannot read answers no mark
-    # either — an unanswerable check is not a false "self-accepted".
-    assert main(["open", "--title", "Unreadable"]) == 0
-    write_record(
-        journal,
-        "CR-002",
-        create_acceptance_record(
-            "CR-002",
-            "test",
-            "a" * 40,
-            "worker@test.invalid",
-            ["F-1"],
-            "accepted",
-        ),
-    )
     capsys.readouterr()
 
     assert _report_line(capsys, "CR-001") == (
         "CR-001\tdone\treviews=1\ttokens=0\tdecision=accepted-over-findings"
-    )
-    assert _report_line(capsys, "CR-002") == (
-        "CR-002\topen\treviews=0\ttokens=0\tdecision=accepted-over-findings"
     )
 
 
@@ -198,6 +257,73 @@ def test_reports_task_line_marks_a_self_acceptance(
     assert _report_line(capsys, "CR-001") == (
         "CR-001\tdone\treviews=1\ttokens=0"
         "\tdecision=accepted-over-findings\tself-accepted"
+    )
+
+
+@pytest.mark.parametrize("party", ["committer@test.invalid", "Committer"])
+def test_reports_task_line_marks_a_committer_self_acceptance(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    party: str,
+) -> None:
+    """Scenario: report's task line marks a self-acceptance.
+
+    The accepted commit's author is Test; the accepting party is its
+    committer — by email and by name alike, since the declared writers
+    are the names and emails of both.
+    """
+
+    repo, journal = _report_repo(tmp_path, monkeypatch)
+    commit = _commit(
+        repo, "tracked.py", committer=("Committer", "committer@test.invalid")
+    )
+    write_record(journal, "CR-001", _review(commit, "changes_required", "F-1"))
+    write_record(
+        journal,
+        "CR-001",
+        create_acceptance_record("CR-001", "test", commit, party, ["F-1"], "accepted"),
+    )
+    write_record(journal, "CR-001", create_completed_record("CR-001", "test", commit))
+    capsys.readouterr()
+
+    assert _report_line(capsys, "CR-001") == (
+        "CR-001\tdone\treviews=1\ttokens=0"
+        "\tdecision=accepted-over-findings\tself-accepted"
+    )
+
+
+def test_reports_task_line_says_when_the_check_cannot_run(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: report's task line says when the check cannot run."""
+
+    repo, journal = _report_repo(tmp_path, monkeypatch)
+    # The accepted commit exists nowhere in the journal's repository —
+    # the line says the check was not made rather than reading as
+    # "not self-accepted".
+    write_record(
+        journal,
+        "CR-001",
+        create_acceptance_record(
+            "CR-001", "test", "a" * 40, "worker@test.invalid", ["F-1"], "accepted"
+        ),
+    )
+    capsys.readouterr()
+
+    assert _report_line(capsys, "CR-001") == (
+        "CR-001\topen\treviews=0\ttokens=0"
+        "\tdecision=accepted-over-findings\tself-acceptance-unchecked"
+    )
+
+    # And when no repository answers for the journal at all.
+    (repo / ".agentmarshal" / "project.json").unlink()
+    report = build_report(journal)
+    assert format_report(report)[0] == (
+        "CR-001\topen\treviews=0\ttokens=0"
+        "\tdecision=accepted-over-findings\tself-acceptance-unchecked"
     )
 
 
@@ -352,12 +478,13 @@ def test_a_task_with_no_completed_record_keeps_todays_decision_rule(
 ) -> None:
     """Scenario: a task with no completed record keeps today's decision rule."""
 
-    _repo, journal = _report_repo(tmp_path, monkeypatch)
-    write_record(journal, "CR-001", _review("a" * 40, "changes_required", "F-1"))
+    repo, journal = _report_repo(tmp_path, monkeypatch)
+    commit = _commit(repo, "tracked.py")
+    write_record(journal, "CR-001", _review(commit, "changes_required", "F-1"))
     write_record(
         journal,
         "CR-001",
-        create_acceptance_record("CR-001", "test", "a" * 40, "op", ["F-1"], "accepted"),
+        create_acceptance_record("CR-001", "test", commit, "op", ["F-1"], "accepted"),
     )
     capsys.readouterr()
 

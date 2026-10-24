@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import subprocess
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -139,8 +138,11 @@ class TaskReport:
     # True when the acceptance the decision derives from was recorded by
     # a declared writer of the accepted commit — the `self-accepted` mark
     # status prints, carried here so no surface reports a self-acceptance
-    # as someone else's (ADR-0007 decision 4).
-    self_accepted: bool = False
+    # as someone else's (ADR-0007 decision 4). The tri-state is status's
+    # too: None when the commit's declared writers cannot be read here —
+    # printed `self-acceptance-unchecked`, never a silent "not
+    # self-accepted".
+    self_accepted: bool | None = False
     phases: tuple[PhaseBoundary, ...] = ()
     rounds: tuple[ReviewRound, ...] = ()
     lead_time: timedelta | None = None
@@ -437,33 +439,6 @@ def _rejected_commits(records: Iterable[dict[str, object]]) -> int:
     )
 
 
-def _declared_commit_writers(repository: Path, commit: str) -> set[str] | None:
-    """The commit's declared author and committer names and emails, or ``None``.
-
-    The same query and the same reading of it ``status`` makes for its
-    self-acceptance mark — ``_declared_commit_writers`` in
-    ``status_view.py`` — spelled out here because that module imports
-    this one. ``None`` when git cannot answer — an absent commit, a
-    shallow clone, a directory that is not a repository — and the caller
-    keeps it distinct from "no match": an undecidable mark prints no
-    mark rather than a false "not self-accepted".
-    """
-
-    try:
-        result = subprocess.run(
-            ["git", "show", "-s", "--format=%an%n%ae%n%cn%ce", commit],
-            cwd=repository,
-            capture_output=True,
-            check=False,
-        )
-        if result.returncode != 0:
-            return None
-        output = result.stdout.decode("utf-8")
-    except (OSError, UnicodeDecodeError):
-        return None
-    return {line.strip().casefold() for line in output.splitlines() if line.strip()}
-
-
 def _writers_repository(journal_root: Path) -> Path | None:
     """The repository a self-acceptance check reads commit writers in.
 
@@ -471,7 +446,7 @@ def _writers_repository(journal_root: Path) -> Path | None:
     placement's host root, which for an embedded journal is the project
     root itself; ``status`` resolves the same root before it derives the
     mark. A journal whose project file cannot be read yields ``None``,
-    and the mark then prints nowhere rather than guessing.
+    and the line then reports the check unchecked rather than guessing.
     """
 
     try:
@@ -480,24 +455,33 @@ def _writers_repository(journal_root: Path) -> Path | None:
         return None
 
 
-def _self_accepted(repository: Path | None, acceptance: dict[str, object]) -> bool:
+def _self_accepted(
+    repository: Path | None, acceptance: dict[str, object]
+) -> bool | None:
     """Whether the accepting party is a declared writer of the commit.
 
-    The same identity comparison ``status`` makes — the ``accepted_by``
-    string against the accepted commit's declared author and committer
-    names and emails, both sides stripped and case-folded — applied to
-    the acceptance a decision derives from (ADR-0007 decision 4). A
-    finding-bound acceptance carries no ``accepted_commit`` and cannot
-    be checked; like an unanswerable git query it simply prints no mark.
+    The check ``status`` makes — ``_is_self_accepted`` in
+    ``status_view.py``, applied to the acceptance a decision derives
+    from (ADR-0007 decision 4). ``None`` — printed
+    ``self-acceptance-unchecked`` — when a commit-bound acceptance's
+    declared writers cannot be read here, so an unanswerable check is
+    never shown as "not self-accepted". ``False`` when the party
+    matches no writer, and also when the acceptance binds a finding:
+    a binding with no ``accepted_commit`` has no writers to compare,
+    and ``status`` prints no mark on one either.
     """
 
-    if repository is None or "accepted_commit" not in acceptance:
+    if "accepted_commit" not in acceptance:
         return False
-    writers = _declared_commit_writers(repository, str(acceptance["accepted_commit"]))
-    return (
-        writers is not None
-        and str(acceptance["accepted_by"]).strip().casefold() in writers
-    )
+    if repository is None:
+        return None
+    # Imported where it runs rather than copied: status_view imports
+    # this module, so a module-level import back would cycle. One
+    # lookup and one comparison — gate, report and status mark the
+    # same identities the same way.
+    from agentmarshal.journal.status_view import _is_self_accepted
+
+    return _is_self_accepted(repository, acceptance)
 
 
 def _task_report(status: TaskStatus, repository: Path | None) -> TaskReport:
@@ -565,8 +549,10 @@ def _task_report(status: TaskStatus, repository: Path | None) -> TaskReport:
         if acceptances:
             decision = "accepted-over-findings"
             decisive_acceptance = acceptances[-1]
-    self_accepted = decisive_acceptance is not None and _self_accepted(
-        repository, decisive_acceptance
+    self_accepted = (
+        _self_accepted(repository, decisive_acceptance)
+        if decisive_acceptance is not None
+        else False
     )
     phases = _phases(records)
     cost_sums = _cost_sums(records)
@@ -882,6 +868,11 @@ def format_report(
                 # whose decision the acceptance earned (ADR-0007
                 # decision 4); `unmeasured` keeps the last field.
                 line += "\tself-accepted"
+            elif task.self_accepted is None:
+                # Status's unchecked form: the accepted commit's writers
+                # could not be read, so the line says the check was not
+                # made rather than reading as "not self-accepted".
+                line += "\tself-acceptance-unchecked"
         if task.unmeasured:
             line += f"\tunmeasured={task.unmeasured}"
         lines.append(line)

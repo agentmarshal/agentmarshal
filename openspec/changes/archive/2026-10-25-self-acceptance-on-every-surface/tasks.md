@@ -20,6 +20,12 @@
   acceptance's `accepted_by` against the accepted commit's declared
   writers in the placement's host repository, and `format_report`
   appends ` self-accepted` after the decision field — verify: pytest.
+- [x] 2.3 `report.py` reuses `status`'s writer lookup and comparison —
+  `status_view._is_self_accepted`, imported where it runs since that
+  module imports `report` — so the mark is one derivation, carries the
+  tri-state through `TaskReport.self_accepted`, and prints
+  ` self-acceptance-unchecked` where git cannot answer — verify:
+  pytest.
 
 ## 3. Scenarios and pins
 
