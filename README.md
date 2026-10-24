@@ -124,7 +124,8 @@ full configuration reference:
 ```sh
 agentmarshal init                                     # write .agentmarshal/
 agentmarshal open --title "Add greeting" --scope src/ # -> task CR-001 + contract
-git add .agentmarshal && git commit -m "open CR-001"
+# a journal transaction stages one task's directory — never all of .agentmarshal/
+git add .agentmarshal/journal/tasks/CR-001 && git commit -m "open CR-001"
 BASE=$(git rev-parse HEAD)
 
 git switch -c feat/CR-001                              # do the work in scope
@@ -147,6 +148,15 @@ AGENTMARSHAL_PIPELINE_OK_SHA="$IMPL" \
 agentmarshal status CR-001   # -> done, with the SHA-bound review evidence
 agentmarshal validate        # -> whole-journal integrity check (run this in CI)
 ```
+
+A journal transaction stages one task's directory and nothing else under the
+journal — with several tasks in flight, a wider `git add` would sweep every
+task's uncommitted records into this one's commit. `init`'s own
+`project.json` is housekeeping, not journal evidence, and lands in a separate
+commit. When your base branch refuses direct commits,
+`templates/journal-transaction.sh` stages exactly that directory on a branch
+named for the task, pushes it, and leaves the pull request to your provider's
+tooling — copy it and adapt the marked line.
 
 The gate only decides; performing the merge is your provider's job. Wiring it
 to block merges is covered in
