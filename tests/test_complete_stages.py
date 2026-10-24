@@ -723,3 +723,39 @@ def test_a_post_gate_run_that_raises_leaves_the_completion_untouched(
         "complete: the post-gate stage run could not finish (the runner broke)"
     ]
     assert read_records(_journal(repo), "CR-001")[-1]["record_type"] == "completed"
+
+
+def test_an_oserror_in_the_post_gate_lane_is_one_stderr_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Not a spec scenario: an OSError in complete's post-gate lane —
+    outside the per-stage machinery the runner owns — is reported on
+    one stderr line; the exit status and the record stand (CR-227
+    review round 2)."""
+    repo, base, head = _repo(
+        tmp_path,
+        monkeypatch,
+        # Only a post-gate stage: the quiet pre-gate run's plan is
+        # empty, so it returns before the switches read and the refusal
+        # meets only the post-gate lane.
+        manifest=_manifest(stages=(("post-gate", "bin/post.py"),)),
+        files={"bin/post.py": "print('post ran')\n"},
+    )
+    _review(head)
+    _ci(monkeypatch)
+
+    def refuse(*_args: object, **_keys: object) -> NoReturn:
+        raise OSError("cannot read the switches")
+
+    monkeypatch.setattr(stages_module, "_base_switches", refuse)
+    capsys.readouterr()
+
+    assert _complete(head, base) == 0
+
+    captured = capsys.readouterr()
+    assert captured.out.endswith("completed\n")
+    assert "post ran" not in captured.out
+    assert captured.err.splitlines() == [
+        "complete: the post-gate stage run could not finish (cannot read the switches)"
+    ]
+    assert read_records(_journal(repo), "CR-001")[-1]["record_type"] == "completed"

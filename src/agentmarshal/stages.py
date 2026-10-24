@@ -1109,10 +1109,9 @@ def run_stages(
             # afresh and the grant check recomputed on it for every stage,
             # and the copy goes away with the stage's own context.
             try:
-                with tempfile.TemporaryDirectory(
-                    prefix="agentmarshal-stage-"
-                ) as temporary:
-                    temp_root = Path(temporary)
+                temporary = tempfile.TemporaryDirectory(prefix="agentmarshal-stage-")
+                try:
+                    temp_root = Path(temporary.name)
                     prepared = _prepare_extension(
                         project_root, merge_base, name, temp_root, ci, grants
                     )
@@ -1129,6 +1128,20 @@ def run_stages(
                         temp_root / f"snapshot-{index}",
                         probe_once,
                     )
+                finally:
+                    try:
+                        temporary.cleanup()
+                    except OSError as error:
+                        # The teardown's refusal never rewrites the
+                        # outcome the stage computed — it ran, and its
+                        # result line stands; the refusal is named on
+                        # one stderr line like the run's other notes.
+                        print(
+                            f"stage run: note: {escape_for_display(name)}: "
+                            "the stage's temporary directory could not be "
+                            f"removed: {escape_for_display(str(error))}",
+                            file=stderr,
+                        )
             except OSError as error:
                 # ``_prepare_extension`` and ``_run_stage`` hand every
                 # failure of theirs back as an outcome, so an OS-level

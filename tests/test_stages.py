@@ -2054,3 +2054,42 @@ def test_a_stage_whose_temporary_directory_fails_is_not_run_and_the_run_goes_on(
     assert "paused before the gate" in captured.err
     events = [event for event in _events(repo) if event["event"] == "extension-event"]
     assert [event["decision"] for event in events] == ["not-run", "checked"]
+
+
+def test_a_stage_whose_teardown_fails_keeps_the_outcome_it_computed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Not a spec scenario: a teardown refusal after the stage ran is
+    named on one stderr line and never replaces the outcome the stage
+    computed — the stage stays ``checked`` (CR-227 review round 2)."""
+    repo, _base, _candidate = _repo_with_extension(
+        tmp_path,
+        monkeypatch,
+        manifest=_manifest(stages=(("pre-gate-warn", "bin/warn.py"),)),
+        files={"bin/warn.py": "print('warn ran')\n"},
+    )
+
+    class CleanupRefusal(tempfile.TemporaryDirectory[str]):
+        """A real temporary directory — only the stage's own teardown
+        refuses."""
+
+        def cleanup(self) -> None:
+            super().cleanup()
+            if Path(self.name).name.startswith("agentmarshal-stage-"):
+                raise OSError("cannot remove the stage directory")
+
+    monkeypatch.setattr(tempfile, "TemporaryDirectory", CleanupRefusal)
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 0
+
+    captured = capsys.readouterr()
+    assert "openspec | warn ran" in captured.out
+    assert "openspec: checked" in captured.out
+    assert captured.err.splitlines() == [
+        "stage run: note: openspec: the stage's temporary directory "
+        "could not be removed: cannot remove the stage directory"
+    ]
+    events = [event for event in _events(repo) if event["event"] == "extension-event"]
+    assert [event["decision"] for event in events] == ["checked"]
