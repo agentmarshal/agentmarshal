@@ -83,9 +83,10 @@ the `outbox` group cannot pass `outbox check`, because every file but
 runs the same check first, refuses a directory that mixes sent
 findings with new ones.
 
-The shared theme is a convention that has no shape in the tool: the
-reporter's wrappers each invented a marker — a documented zero, a file
-copied by hand — for facts the tool could not record or could not see.
+The shared theme is a convention that has no shape in the tool: an
+executor wrapper's documented zero says "not measured" where the record
+cannot, and a file the operator copied by hand says "sent" where the
+outbox cannot see it.
 
 | # | Theme | Reporter | Disposition | Where |
 |---|---|---|---|---|
