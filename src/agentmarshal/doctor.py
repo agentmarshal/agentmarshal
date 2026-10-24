@@ -19,6 +19,7 @@ from agentmarshal.extension_trust import (
     _hash_directory,
     _managed_directory,
     _read_grants,
+    read_personal_manifest,
 )
 from agentmarshal.journal.actors import SOURCE_GIT_IDENTITY, resolve_recorded_by
 from agentmarshal.journal.display import escape_for_display
@@ -55,8 +56,11 @@ from agentmarshal.steps import (
 )
 from agentmarshal.switches import (
     SWITCHES_RELPATH,
+    PersonalSwitch,
     Switch,
     SwitchesError,
+    personal_extension_names,
+    read_personal_switches,
     read_switches,
     shared_extension_names,
 )
@@ -396,6 +400,24 @@ def _check_extension_manifest(start: Path, name: str) -> tuple[bool, str]:
     return True, f"{form} form, manifest schema {manifest.schema}"
 
 
+def _check_personal_manifest(directory: Path, name: str) -> tuple[bool, str]:
+    """Read one personal extension's manifest the clone-side way.
+
+    The same clone-side read ``run_stages`` plans from — the directory
+    form alone under the clone's ``LocalState.extensions``, the
+    forbidden-fields bound and the shared parser's rules — so a
+    personal manifest the run would refuse fails this check naming
+    the same reason; the check's ``(personal)`` mark keeps it from
+    ever reading as a shared extension's.
+    """
+
+    try:
+        manifest = read_personal_manifest(directory, name)
+    except ExtensionManifestError as error:
+        return False, escape_for_display(str(error))
+    return True, f"directory form, manifest schema {manifest.schema}"
+
+
 def _check_extension_runtime(
     name: str, runtime: str, resolver: ExecutableResolver
 ) -> tuple[bool, str]:
@@ -547,6 +569,33 @@ def _extension_checks(start: Path, resolver: ExecutableResolver) -> list[DoctorC
         checks.append(
             DoctorCheck(f"extension runtime {escape_for_display(name)}", run_runtime)
         )
+    # The personal scope: one manifest check per extension the clone's
+    # local state enumerates, its name marked ``(personal)`` so it never
+    # reads as a shared extension's check. Local state that cannot be
+    # resolved or enumerated adds no check — the report section names
+    # the reason instead.
+    personal_names: list[str] = []
+    personal_root: Path | None = None
+    try:
+        personal_root = local_state(resolve_placement(project_root)).extensions
+        personal_names = sorted(personal_extension_names(personal_root))
+    except Exception:
+        personal_root = None
+    if personal_root is not None:
+        for name in personal_names:
+            directory = personal_root / name
+
+            def run_personal(
+                directory: Path = directory, name: str = name
+            ) -> tuple[bool, str]:
+                return _check_personal_manifest(directory, name)
+
+            checks.append(
+                DoctorCheck(
+                    f"extension manifest {escape_for_display(name)} (personal)",
+                    run_personal,
+                )
+            )
     return checks
 
 
@@ -677,60 +726,122 @@ def _report_extensions(
         switches_reason = escape_for_display(str(error))
     if not names:
         print("extensions: none", file=stderr)
-        if switches_reason is not None:
-            print(f"switches: unavailable ({switches_reason})", file=stderr)
-        return
-    grants: dict[str, Grant] | None = None
-    grants_reason = "the clone's local state is unavailable"
-    if state is None:
-        if state_error:
-            grants_reason = state_error
     else:
-        try:
-            grants = _read_grants(state.trust_file)
-        except Exception as error:
-            grants_reason = str(error)
-    for name in names:
-        # The grant covers the directory's contents, not the manifest's
-        # health: a real <name>/ is hashed for its state even when the
-        # manifest cannot be read — a link never is.
-        directory = managed / name
-        grant: str | None = None
-        if directory.is_dir() and not directory.is_symlink():
-            grant = _grant_state(directory, grants, grants_reason)
-        switch = switches.get(name)
-        switch_text = (
-            f"switched off since {switch.task} ({switch.reason})"
-            if switch is not None and switch.state == "off"
-            else None
-        )
-        try:
-            manifest = read_extension_manifest(project_root, name)
-        except ExtensionManifestError as error:
-            line = f"extension {name}: {error}"
+        grants: dict[str, Grant] | None = None
+        grants_reason = "the clone's local state is unavailable"
+        if state is None:
+            if state_error:
+                grants_reason = state_error
+        else:
+            try:
+                grants = _read_grants(state.trust_file)
+            except Exception as error:
+                grants_reason = str(error)
+        for name in names:
+            # The grant covers the directory's contents, not the manifest's
+            # health: a real <name>/ is hashed for its state even when the
+            # manifest cannot be read — a link never is.
+            directory = managed / name
+            grant: str | None = None
+            if directory.is_dir() and not directory.is_symlink():
+                grant = _grant_state(directory, grants, grants_reason)
+            switch = switches.get(name)
+            switch_text = (
+                f"switched off since {switch.task} ({switch.reason})"
+                if switch is not None and switch.state == "off"
+                else None
+            )
+            try:
+                manifest = read_extension_manifest(project_root, name)
+            except ExtensionManifestError as error:
+                line = f"extension {name}: {error}"
+                if grant is not None:
+                    line += f", grant: {grant}"
+                if switch_text is not None:
+                    line += f", {switch_text}"
+                print(escape_for_display(line), file=stderr)
+                continue
+            form = "directory" if manifest.directory is not None else "file"
+            stages_text = ", ".join(stage.phase for stage in manifest.stages) or "none"
+            parts = [
+                f"{form} form",
+                f"manifest schema {manifest.schema}",
+                f"stages: {stages_text}",
+                f"ext kinds: {', '.join(manifest.record_kinds) or 'none'}",
+            ]
             if grant is not None:
-                line += f", grant: {grant}"
+                parts.append(f"grant: {grant}")
             if switch_text is not None:
-                line += f", {switch_text}"
-            print(escape_for_display(line), file=stderr)
-            continue
-        form = "directory" if manifest.directory is not None else "file"
-        parts = [
-            f"{form} form",
-            f"manifest schema {manifest.schema}",
-            f"stages: {', '.join(stage.phase for stage in manifest.stages) or 'none'}",
-            f"ext kinds: {', '.join(manifest.record_kinds) or 'none'}",
-        ]
-        if grant is not None:
-            parts.append(f"grant: {grant}")
-        if switch_text is not None:
-            parts.append(switch_text)
-        print(
-            escape_for_display(f"extension {name}: {', '.join(parts)}"),
-            file=stderr,
-        )
+                parts.append(switch_text)
+            print(
+                escape_for_display(f"extension {name}: {', '.join(parts)}"),
+                file=stderr,
+            )
     if switches_reason is not None:
         print(f"switches: unavailable ({switches_reason})", file=stderr)
+    # The personal scope's lines follow the shared block — each of the
+    # clone's own extensions under ``LocalState.extensions``, named with
+    # its scope and ``disabled`` when the clone's switch is off. Local
+    # state that did not resolve, a directory that cannot be enumerated
+    # and a switches file the parse refuses are each named on one line,
+    # never a check — and a clone with no personal extension owes no
+    # line at all.
+    if state is None:
+        if state_error:
+            print(
+                f"personal extensions: unavailable ({escape_for_display(state_error)})",
+                file=stderr,
+            )
+    else:
+        try:
+            personal_names = sorted(personal_extension_names(state.extensions))
+        except OSError as error:
+            print(
+                f"personal extensions: unavailable "
+                f"({escape_for_display(error.strerror or str(error))})",
+                file=stderr,
+            )
+        else:
+            personal_switches: dict[str, PersonalSwitch] = {}
+            personal_switches_reason: str | None = None
+            try:
+                personal_switches = read_personal_switches(
+                    state.switches_file, personal_names
+                )
+            except SwitchesError as error:
+                personal_switches_reason = escape_for_display(str(error))
+            for name in personal_names:
+                personal_switch = personal_switches.get(name)
+                disabled = (
+                    personal_switch is not None and personal_switch.state == "off"
+                )
+                try:
+                    manifest = read_personal_manifest(state.extensions / name, name)
+                except ExtensionManifestError as error:
+                    line = f"extension {name}: personal scope, {error}"
+                    if disabled:
+                        line += ", disabled"
+                    print(escape_for_display(line), file=stderr)
+                    continue
+                parts = [
+                    "personal scope",
+                    "directory form",
+                    f"manifest schema {manifest.schema}",
+                    "stages: "
+                    + (", ".join(stage.phase for stage in manifest.stages) or "none"),
+                    "ext kinds: " + (", ".join(manifest.record_kinds) or "none"),
+                ]
+                if disabled:
+                    parts.append("disabled")
+                print(
+                    escape_for_display(f"extension {name}: {', '.join(parts)}"),
+                    file=stderr,
+                )
+            if personal_switches_reason is not None:
+                print(
+                    f"personal switches: unavailable ({personal_switches_reason})",
+                    file=stderr,
+                )
 
 
 def _report_locations_and_steps(

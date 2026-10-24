@@ -21,6 +21,16 @@ none writes the journal.
 The ``switch`` group — ``extension switch off <name> --reason <text>``,
 the operational switch-off of decisions 16 and 17 — is registered here
 under the same ``extension`` group; its logic lives in ``switch_off.py``.
+
+``extension disable <name>`` and ``extension enable <name>`` are the
+personal switch of decision 11: they write and clear a ``state = "off"``
+entry under ``[switches.<name>]`` in the clone's ``switches.toml``
+(``LocalState.switches_file``) for a personal extension — one declared
+under the clone's ``LocalState.extensions`` — and refuse a name any
+shared extension declares, which an operational task alone may switch.
+``disable`` takes an optional ``--reason`` under the shared field's rule.
+``read_personal_manifest`` is the clone-side manifest reader both they
+and ``doctor`` use.
 """
 
 from __future__ import annotations
@@ -30,16 +40,24 @@ import hashlib
 import os
 import tempfile
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TextIO
 
 from agentmarshal.journal.actors import resolve_recorded_by
+from agentmarshal.journal.contracts import (
+    JournalContractError,
+    reject_control_characters,
+)
 from agentmarshal.journal.display import escape_for_display
 from agentmarshal.journal.extensions import (
+    ExtensionManifest,
     ExtensionManifestError,
+    _manifest_directory_paths,
+    _require_existing_directory_file,
     _validate_name,
+    parse_extension_manifest_text,
 )
 from agentmarshal.journal.placement import (
     Placement,
@@ -49,6 +67,14 @@ from agentmarshal.journal.placement import (
 from agentmarshal.localstate import LocalState, LocalStateError, local_state
 from agentmarshal.process_log import ProcessLogError, open_writer, write_event
 from agentmarshal.project import find_project_root
+from agentmarshal.switches import (
+    REASON_CHAR_LIMIT,
+    PersonalSwitch,
+    SwitchesError,
+    personal_extension_names,
+    read_personal_switches,
+    shared_extension_names,
+)
 
 TRUST_FORMAT = 1
 
@@ -110,6 +136,17 @@ def register(
     off_parser.add_argument(
         "--reason", required=True, help="the mandatory switch-off reason"
     )
+    disable_parser = extension_commands.add_parser(
+        "disable", help="switch a personal extension off in this clone"
+    )
+    disable_parser.add_argument("name", help="personal extension name")
+    disable_parser.add_argument(
+        "--reason", help="a note recorded in the clone's switches file"
+    )
+    enable_parser = extension_commands.add_parser(
+        "enable", help="switch a disabled personal extension back on"
+    )
+    enable_parser.add_argument("name", help="personal extension name")
 
 
 def run(args: argparse.Namespace, stderr: TextIO) -> int:
@@ -128,6 +165,10 @@ def run(args: argparse.Namespace, stderr: TextIO) -> int:
         from agentmarshal import switch_off
 
         return switch_off.run(args, stderr)
+    if args.extension_command == "disable":
+        return _run_disable(args, stderr)
+    if args.extension_command == "enable":
+        return _run_enable(args, stderr)
     print(f"extension: unknown command {args.extension_command}", file=stderr)
     return 1
 
@@ -211,6 +252,88 @@ def _extension_directory(managed: Path, name: str) -> Path:
     raise ExtensionTrustError(
         f"extension {name!r} is missing: {directory} does not exist"
     )
+
+
+def read_personal_manifest(directory: Path, name: str) -> ExtensionManifest:
+    """Read and validate one personal extension's manifest from the clone.
+
+    A personal extension is a directory ``<name>/`` under the clone's
+    ``LocalState.extensions`` carrying ``manifest.toml`` — the directory
+    form alone (ADR-0013 decision 9), read from that directory and never
+    the base. The same refusal rules as the shared directory form apply:
+    a link at the directory or the manifest is refused as a link, schema
+    2 is required, and every path the manifest names under ``bin/`` or
+    ``lock/`` must exist inside the directory as a regular file. On top
+    of those, decision 10's bound is checked on the raw table before the
+    shared parser sees the text: a personal manifest carries no
+    ``footprint``, ``documents`` or ``artifacts`` — a personal extension
+    has no footprint in the repository — and the parser is handed the
+    text with the two mandatory arrays supplied empty, so every other
+    rule (stages, isolation, wraps, records) applies unchanged.
+
+    The returned manifest exposes its directory, as the shared
+    directory-form read does.
+    """
+
+    if directory.is_symlink():
+        raise ExtensionManifestError(f"refusing to read through a symlink: {directory}")
+    manifest_lexical = directory / "manifest.toml"
+    if manifest_lexical.is_symlink():
+        raise ExtensionManifestError(
+            f"refusing to read through a symlink: {manifest_lexical}"
+        )
+    try:
+        root = directory.resolve(strict=True)
+    except FileNotFoundError:
+        raise ExtensionManifestError(
+            f"extension manifest {name!r} is missing: {manifest_lexical}"
+        ) from None
+    except (NotADirectoryError, OSError, RuntimeError) as error:
+        raise ExtensionManifestError(
+            f"cannot resolve extension manifest {name!r}: {error}"
+        ) from error
+    source = root / "manifest.toml"
+    try:
+        resolved = source.resolve(strict=True)
+    except FileNotFoundError:
+        raise ExtensionManifestError(
+            f"extension manifest {name!r} is missing: {source}"
+        ) from None
+    except (NotADirectoryError, OSError, RuntimeError) as error:
+        raise ExtensionManifestError(
+            f"cannot resolve extension manifest {name!r}: {error}"
+        ) from error
+    if resolved != source:
+        raise ExtensionManifestError(f"refusing to read through a symlink: {source}")
+    try:
+        text = source.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as error:
+        raise ExtensionManifestError(
+            f"cannot read extension manifest {name!r}: {error}"
+        ) from error
+    try:
+        raw = tomllib.loads(text)
+    except tomllib.TOMLDecodeError as error:
+        raise ExtensionManifestError(
+            f"invalid TOML extension manifest: {source}"
+        ) from error
+    for field in ("footprint", "documents", "artifacts"):
+        if field in raw:
+            raise ExtensionManifestError(
+                f"extension manifest field {field!r} is not allowed in a "
+                f"personal manifest: {source}"
+            )
+    manifest = parse_extension_manifest_text(
+        "footprint = []\ndocuments = []\n" + text, name, source
+    )
+    if manifest.schema != 2:
+        raise ExtensionManifestError(
+            "the directory form requires a manifest of schema 2; "
+            f"{name!r} declares schema {manifest.schema}: {source}"
+        )
+    for relpath in _manifest_directory_paths(manifest):
+        _require_existing_directory_file(root, relpath)
+    return replace(manifest, directory=root)
 
 
 def _hash_directory(directory: Path) -> dict[str, str]:
@@ -599,4 +722,174 @@ def _run_list(args: argparse.Namespace, stderr: TextIO) -> int:
             print(
                 f"{name}: changed after approval: {escape_for_display(path)} ({kind})"
             )
+    return 0
+
+
+def _dump_personal_switches(switches: dict[str, PersonalSwitch]) -> str:
+    """Serialize the personal switches table — the one shape the file holds.
+
+    The ``[switches]`` header is always written, so a file whose last
+    entry was removed still holds the table the parser requires.
+    """
+
+    lines = ["format = 1", "", "[switches]", ""]
+    for name in sorted(switches):
+        switch = switches[name]
+        lines.append(f"[switches.{_toml_string(name)}]")
+        lines.append(f"state = {_toml_string(switch.state)}")
+        if switch.reason is not None:
+            lines.append(f"reason = {_toml_string(switch.reason)}")
+        lines.append("")
+    return "\n".join(lines).rstrip("\n") + "\n"
+
+
+def _write_personal_switches(
+    state: LocalState, switches: dict[str, PersonalSwitch]
+) -> None:
+    """Write the clone's ``switches.toml`` atomically, the grants file's way."""
+
+    root = state.ensure_directory(state.root)
+    descriptor, staging_name = tempfile.mkstemp(
+        dir=root, prefix=".switches-", suffix=".tmp"
+    )
+    staging = Path(staging_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(_dump_personal_switches(switches))
+        os.replace(staging, state.switches_file)
+    except Exception:
+        staging.unlink(missing_ok=True)
+        raise
+
+
+def _shared_name_refusal(command: str, name: str) -> str:
+    """The one line every personal switch prints for a shared extension."""
+
+    return (
+        f"extension {command}: {escape_for_display(name)}: a shared "
+        "extension is switched off only by an operational task "
+        "(extension switch off)"
+    )
+
+
+def _personal_names(
+    command: str, state: LocalState, stderr: TextIO
+) -> frozenset[str] | None:
+    """Enumerate the clone's personal extensions, or print why not."""
+
+    try:
+        return personal_extension_names(state.extensions)
+    except OSError as error:
+        print(
+            f"extension {command}: cannot enumerate {state.extensions}: "
+            f"{escape_for_display(error.strerror or str(error))}",
+            file=stderr,
+        )
+        return None
+
+
+def _run_disable(args: argparse.Namespace, stderr: TextIO) -> int:
+    try:
+        _validate_name(args.name)
+    except ExtensionManifestError as error:
+        print(f"extension disable: {error}", file=stderr)
+        return 1
+    reason: str | None = args.reason
+    if reason is not None:
+        if not reason or len(reason) > REASON_CHAR_LIMIT:
+            print(
+                f"extension disable: --reason must be a non-empty string of "
+                f"at most {REASON_CHAR_LIMIT} characters",
+                file=stderr,
+            )
+            return 1
+        try:
+            reject_control_characters(reason, "extension disable field 'reason'")
+        except JournalContractError as error:
+            print(
+                f"extension disable: {escape_for_display(str(error))}",
+                file=stderr,
+            )
+            return 1
+    resolved = _resolve(stderr)
+    if resolved is None:
+        return 1
+    placement, state = resolved
+    try:
+        managed = _managed_directory(placement.project_root)
+    except ExtensionTrustError as error:
+        print(f"extension disable: {escape_for_display(str(error))}", file=stderr)
+        return 1
+    if args.name in shared_extension_names(managed):
+        print(_shared_name_refusal("disable", args.name), file=stderr)
+        return 1
+    names = _personal_names("disable", state, stderr)
+    if names is None:
+        return 1
+    if args.name not in names:
+        print(
+            f"extension disable: {escape_for_display(args.name)} is not a "
+            "personal extension",
+            file=stderr,
+        )
+        return 1
+    try:
+        switches = read_personal_switches(state.switches_file, names)
+    except SwitchesError as error:
+        print(f"extension disable: {escape_for_display(str(error))}", file=stderr)
+        return 1
+    switches[args.name] = PersonalSwitch(state="off", reason=reason)
+    try:
+        _write_personal_switches(state, switches)
+    except (LocalStateError, OSError) as error:
+        print(f"extension disable: {escape_for_display(str(error))}", file=stderr)
+        return 1
+    print(state.switches_file)
+    print(f"disabled {escape_for_display(args.name)}")
+    return 0
+
+
+def _run_enable(args: argparse.Namespace, stderr: TextIO) -> int:
+    try:
+        _validate_name(args.name)
+    except ExtensionManifestError as error:
+        print(f"extension enable: {error}", file=stderr)
+        return 1
+    resolved = _resolve(stderr)
+    if resolved is None:
+        return 1
+    placement, state = resolved
+    try:
+        managed = _managed_directory(placement.project_root)
+    except ExtensionTrustError as error:
+        print(f"extension enable: {escape_for_display(str(error))}", file=stderr)
+        return 1
+    if args.name in shared_extension_names(managed):
+        print(_shared_name_refusal("enable", args.name), file=stderr)
+        return 1
+    names = _personal_names("enable", state, stderr)
+    if names is None:
+        return 1
+    try:
+        # `names | {name}`: an entry may outlive its extension — the
+        # switch of a deleted personal extension is still removable.
+        switches = read_personal_switches(state.switches_file, names | {args.name})
+    except SwitchesError as error:
+        print(f"extension enable: {escape_for_display(str(error))}", file=stderr)
+        return 1
+    switch = switches.get(args.name)
+    if switch is None or switch.state != "off":
+        print(
+            f"extension enable: {escape_for_display(args.name)} is not disabled",
+            file=stderr,
+        )
+        return 1
+    del switches[args.name]
+    try:
+        _write_personal_switches(state, switches)
+    except (LocalStateError, OSError) as error:
+        print(f"extension enable: {escape_for_display(str(error))}", file=stderr)
+        return 1
+    print(state.switches_file)
+    print(f"enabled {escape_for_display(args.name)}")
     return 0
