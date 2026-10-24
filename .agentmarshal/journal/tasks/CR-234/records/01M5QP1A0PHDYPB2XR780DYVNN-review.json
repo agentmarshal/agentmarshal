@@ -1,0 +1,151 @@
+{
+  "advisory_findings": [
+    "ADV-CODE-SPAN-LINE-WRAP",
+    "ADV-EXTENSION-LIST-SCOPE"
+  ],
+  "artifacts": [
+    {
+      "hash": "ec31effa4a9a6ebecf75e62b5e02782dd0e85369127b5fa09a1c5cf75d65c0ad",
+      "ref": ".agentmarshal/journal/tasks/CR-234/artifacts/01M5QP1A0PHDYPB2XR780DYVNN-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-CODE-SPAN-LINE-WRAP": "style",
+    "ADV-EXTENSION-LIST-SCOPE": "claim-accuracy",
+    "BLK-OPENSPEC-MANIFEST-PATH": "claim-accuracy",
+    "BLK-PROPOSAL-040-NOT-SHIPPED": "claim-accuracy",
+    "BLK-PROPOSALS-STALE-ROWS": "contract-mismatch",
+    "BLK-REPORT-UNMEASURED-RENDERING": "claim-accuracy",
+    "BLK-SESSION-ID-ALREADY-SHIPPED": "claim-accuracy",
+    "BLK-SWITCH-OFF-CONTRACT-SCOPE": "claim-accuracy"
+  },
+  "created_at": "2026-10-24T19:26:07.894585Z",
+  "evidence": {
+    "ADV-CODE-SPAN-LINE-WRAP": "CHANGELOG.md:164-165 (`` `.agentmarshal/journal/\\ntasks/<task-id>/` ``) and CHANGELOG.md:194-195 (`` `.agentmarshal/extensions/openspec/\\nmanifest.toml` ``) — inline code spanning a newline renders with a space inside the path",
+    "ADV-EXTENSION-LIST-SCOPE": "CHANGELOG.md:30-34 (\"per shared extension\") vs src/agentmarshal/extension_trust.py:719-742, where `if not entry.is_dir(): continue` (724-725) skips a file-form extension such as .agentmarshal/extensions/openspec.toml, and extension_trust.py:13-15 scopes `list` to \"each directory-form extension's state\"",
+    "BLK-OPENSPEC-MANIFEST-PATH": "CHANGELOG.md:193-196 names `.agentmarshal/extensions/openspec/manifest.toml`; `ls .agentmarshal/extensions/` -> `openspec.toml` only, and `.agentmarshal/extensions/openspec.toml:18-20` is schema = 1 / name = \"openspec\" / version = \"1.15.0\"",
+    "BLK-PROPOSAL-040-NOT-SHIPPED": "docs/proposals/README.md:155 (\"the checkout-free write shipped in 0.6.0\") vs docs/proposals/040-…md:59-64 (\"without switching the user's working tree … so parallel tasks do not contend on one checkout\") and templates/journal-transaction.sh:64-65 (refuses unless on the default branch) and :116 (`git switch -c \"$branch\"`)",
+    "BLK-PROPOSALS-STALE-ROWS": "docs/proposals/README.md:175 (026: \"`record-session --if-missing` and the per-file leak scan accepted, not yet shipped\"; the `evidence` field) vs cli.py:463, records.py:270 and the same file's row :152 (037) which says the leak scan shipped in 0.5.0; :116 (041 \"report finished session flag … not shipped yet\") vs records.py:209 + cli.py:426; :117 (042 \"the session-id field … not shipped yet\") vs records.py:208 + cli.py:424; :174 (025 \"mechanism undecided\") vs docs/adr/ADR-0015-…md:1-17 and CHANGELOG.md:250-256",
+    "BLK-REPORT-UNMEASURED-RENDERING": "CHANGELOG.md:185-186 vs src/agentmarshal/journal/report.py:730-734 (`unmeasured_field = f\"\\tunmeasured={sums.unmeasured_without_cost}\"`), :742 (`lines.append(line + unmeasured_field)`), :779, :812, and openspec/specs/session-activity/spec.md:506,648 (\"`unmeasured=<n>` as its last field and nothing more\"); `unmeasured_without_cost` is printed nowhere and report.py has no json output",
+    "BLK-SESSION-ID-ALREADY-SHIPPED": "CHANGELOG.md:218-220 vs docs/adr/ADR-0022-…md:133 (`cli_session` — the CLI session id a resume needs | proposal 042), src/agentmarshal/journal/records.py:208,520,2288,2335, src/agentmarshal/cli.py:424 (`--cli-session`) and CHANGELOG.md:336-338 (0.5.0: \"`commit`, `model`, `trace`, `cli_session`, `report_ready` and `fallback_reason`. `record-session` writes them all through new flags\")",
+    "BLK-SWITCH-OFF-CONTRACT-SCOPE": "CHANGELOG.md:77-79 vs src/agentmarshal/switch_off.py:463 (`scope = [{json.dumps(SWITCHES_RELPATH)}]`, the only scope line, SWITCHES_RELPATH = \".agentmarshal/switches.toml\" per switches.py:49) and openspec/specs/gate-lanes/spec.md:177-178,188-190 (`declares scope exactly [\".agentmarshal/switches.toml\"]`; any other scope takes the lane it takes today)"
+  },
+  "findings": [
+    "BLK-OPENSPEC-MANIFEST-PATH",
+    "BLK-SWITCH-OFF-CONTRACT-SCOPE",
+    "BLK-SESSION-ID-ALREADY-SHIPPED",
+    "BLK-PROPOSAL-040-NOT-SHIPPED",
+    "BLK-PROPOSALS-STALE-ROWS",
+    "BLK-REPORT-UNMEASURED-RENDERING"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "f1f8af8df098a009b0dfad3b24413e183033eaf0",
+  "reviewed_contract": "7fa097774ad78fbd1ac080724802e66ef60323c932c1948288357dcb5df72c23",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-234",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "only openspec.toml (file form); line 20 version = \"1.15.0\"; no openspec/manifest.toml directory exists",
+        "what": "ls .agentmarshal/extensions/ and grep version in .agentmarshal/extensions/openspec.toml"
+      },
+      {
+        "result": "line 463: scope = [\".agentmarshal/switches.toml\"] — the only scope line in the generated contract",
+        "what": "grep -n scope src/agentmarshal/switch_off.py"
+      },
+      {
+        "result": "records.py:208,209,520,521,840,848,2288,2289,2335,2336; cli.py:424 --cli-session, cli.py:426 --report-ready",
+        "what": "grep -rn 'cli_session|report_ready' src/agentmarshal/journal/records.py src/agentmarshal/cli.py"
+      },
+      {
+        "result": "lines 64-65 refuse unless on the default branch; line 116 git switch -c \"$branch\" switches the working tree",
+        "what": "read templates/journal-transaction.sh"
+      },
+      {
+        "result": "cli.py:463 --if-missing; records.py:270 review optional fields include 'evidence'",
+        "what": "grep -rn 'if-missing' src/agentmarshal/cli.py; grep -n evidence src/agentmarshal/journal/records.py"
+      },
+      {
+        "result": "report.py:730-747,778-779,811-812 append \\tunmeasured=<n> to existing lines; 'unmeasured_without_cost' appears only as a dataclass field name; no json/asdict in the module",
+        "what": "read _cost_lines and format_report in src/agentmarshal/journal/report.py"
+      },
+      {
+        "result": "gate.py:1352,1355 the two PASS lines verbatim; gate.py:2262-2276 the WARN/INFO count lines",
+        "what": "grep -rn 'operational transaction|journal-only transaction|changes_required verdicts' src/agentmarshal"
+      },
+      {
+        "result": "all scenario titles the threat model cites exist verbatim (lines 80, 92, 96, 276, 308, 476); gate-lanes requirement at 241 with 'a link or a non-blob at the file's path refuses as not a file' at 249-250",
+        "what": "grep -n '^### |^#### ' openspec/specs/extension-stages/spec.md and gate-lanes/spec.md"
+      },
+      {
+        "result": "every quoted result line in the notes matches the code: stages.py:507,514,961,962,1388; extension_trust.py:733,741; outbox.py:723; status_view.py:317,684,692; cli.py:1445",
+        "what": "grep -n 'not granted|changed after approval|switched off (|shared switches file unreadable|skipped as sent|tokens=unmeasured|Reviewed commit' across src/"
+      },
+      {
+        "result": "CR-233 and CR-235 carry completed records; CR-236 and CR-237 carry only opened — so CR-235 is the last completed task before CR-234",
+        "what": "ls .agentmarshal/journal/tasks/CR-2*/records to find the last completed task"
+      },
+      {
+        "result": "pyproject.toml:3, __init__.py:3, uv.lock:10 and tests/test_smoke.py:48 all 0.6.0; no 0.6.0.dev0 outside append-only journal records",
+        "what": "grep -rn '0\\.6\\.0' pyproject.toml src/agentmarshal/__init__.py uv.lock tests/test_smoke.py"
+      },
+      {
+        "result": "docs/adr/ADR-0013-…md, docs/adr/ADR-0018-…md, docs/proposals/044-…md, docs/proposals/045-…md, UPGRADING.md all exist",
+        "what": "existence check of every link added by the diff"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "read-only review of a snapshot that is not a git repository; the coordinator states the full sequence passed on the reviewed commit and the diff is documentation plus a version bump"
+      }
+    ],
+    "read": [
+      "CHANGELOG.md (0.6.0 section and 0.5.0 section)",
+      "UPGRADING.md",
+      "README.md",
+      "docs/threat-model.md",
+      "docs/proposals/README.md",
+      "docs/README.md",
+      "docs/overview.md",
+      "docs/self-hosting-workflow.md",
+      "src/agentmarshal/stages.py",
+      "src/agentmarshal/switch_off.py",
+      "src/agentmarshal/extension_trust.py",
+      "src/agentmarshal/outbox.py",
+      "src/agentmarshal/journal/gate.py (lanes, lifecycle, warn and count blocks)",
+      "src/agentmarshal/journal/report.py",
+      "src/agentmarshal/journal/status_view.py",
+      "src/agentmarshal/journal/records.py (schema constants and field registries)",
+      "src/agentmarshal/project.py (outbox scaffold)",
+      "src/agentmarshal/record_ext.py",
+      "src/agentmarshal/journal/validate.py",
+      "src/agentmarshal/cli.py (accept, complete, status --base, record-session)",
+      "templates/journal-transaction.sh",
+      ".github/scripts/check_release_audit.py",
+      ".github/workflows/release.yml",
+      "openspec/specs/extension-stages/spec.md",
+      "openspec/specs/gate-lanes/spec.md",
+      "openspec/specs/session-activity/spec.md (unmeasured requirements)",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md",
+      "docs/adr/ADR-0018-governing-the-contract.md",
+      "docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md",
+      "docs/proposals/040-in-flight-steps-are-invisible-and-journal-writes-contend-on-one-checkout.md",
+      "docs/proposals/042-liveness-of-an-unattended-loop-is-watched-by-hand.md",
+      "docs/proposals/025-validate-refused-records-an-earlier-release-wrote.md",
+      "tests/test_smoke.py",
+      "tests/test_unmeasured_session_usage.py"
+    ]
+  }
+}

@@ -1,0 +1,114 @@
+{
+  "advisory_findings": [
+    "ADV-PROPOSALS-PROTOCOL-002",
+    "ADV-CHANGELOG-DOCTOR-003",
+    "ADV-CHANGELOG-VALIDATE-WARN-004",
+    "ADV-README-PIN-005",
+    "ADV-SELFHOSTING-WRAP-006"
+  ],
+  "artifacts": [
+    {
+      "hash": "49e5d507a9c8aae8a6d5938c2f947c3bd253d6a946988111b5532cede9bf86f7",
+      "ref": ".agentmarshal/journal/tasks/CR-234/artifacts/01M5QR009HAN1VJ2ZWPTN2TFGN-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-CHANGELOG-DOCTOR-003": "claim-accuracy",
+    "ADV-CHANGELOG-VALIDATE-WARN-004": "claim-accuracy",
+    "ADV-PROPOSALS-PROTOCOL-002": "claim-accuracy",
+    "ADV-README-PIN-005": "claim-accuracy",
+    "ADV-SELFHOSTING-WRAP-006": "style",
+    "BLOCK-PROPOSALS-032-001": "claim-accuracy"
+  },
+  "created_at": "2026-10-24T20:00:22.321440Z",
+  "evidence": {
+    "ADV-CHANGELOG-DOCTOR-003": "CHANGELOG.md, раздел 'Extension results and declarations are read' ('... grant state — under an `extension manifest <name>` check per extension') против src/agentmarshal/doctor.py:399-400 (check возвращает только '<form> form, manifest schema <n>') и src/agentmarshal/doctor.py:775-789 (секция 'extension <name>: ..., stages: ..., ext kinds: ..., grant: ...'), tests/test_doctor_extensions.py:152 ('-- the section --'), :172",
+    "ADV-CHANGELOG-VALIDATE-WARN-004": "CHANGELOG.md ('`agentmarshal validate` warns `<kind>: addressee not found`') против src/agentmarshal/journal/validate.py:188-191 (f\"WARN: {task_id}: ext record {record_id} kind {kind!r}: addressee not found\") и tests/test_validate_addressee.py:105",
+    "ADV-PROPOSALS-PROTOCOL-002": "docs/proposals/README.md:66-69 ('A command that reads your outbox, hashes each finding and reports its state back to you is proposed in 023 and accepted for a later release') против docs/proposals/README.md:220 (строка 023: 'the command — the `outbox` group — shipped in 0.5.0') и src/agentmarshal/outbox.py:125-141 (send/status --index), docs/proposals/023-upstream-outbox-has-no-transaction.md:61-67",
+    "ADV-README-PIN-005": "README.md:95-99 ('Install the published release: pip install agentmarshal==0.6.0') против CHANGELOG.md:11 ('## 0.6.0 — unreleased') и .github/workflows/release.yml:53-65 (аудит-гейт и build/publish выполняются только по тегу, после этого коммита)",
+    "ADV-SELFHOSTING-WRAP-006": "docs/self-hosting-workflow.md:40 — длина 103 символа ('that commit, and the evidence records are append-only and consistent. The `am-merge` host wrapper runs'), при свёртке остального файла на ~72; grep на 80+ символов по изменённым prose-файлам даёт эту строку как единственную новую",
+    "BLOCK-PROPOSALS-032-001": "docs/proposals/README.md:148 (строка 032: '... exposure to the required check went with the journal-transactions work of 019 and 035, shipped in 0.6.0') против docs/proposals/032-the-journal-has-no-time-axis.md:90-96 ('a required check cannot ask for that answer without running the whole gate ... The accepted part is exposing the lane the gate already has to the required check'); src/agentmarshal/cli.py:298-346 (у gate нет флага/режима для раннего ответа о lane); templates/github/agentmarshal-governance.yml:78 ('agentmarshal gate --attestation ci-required --without-review'); src/agentmarshal/journal/gate.py:1352 (строка deterministic lane, этим diff не менялась); templates/journal-transaction.sh:8-12 (ветка с task id + literal pathspec — и ничего больше)"
+  },
+  "findings": [
+    "BLOCK-PROPOSALS-032-001"
+  ],
+  "previous_review": "01M5QP1A0PHDYPB2XR780DYVNN",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "f5fbc8c3cce45baf6739b662867ba20b75fe92cf",
+  "reviewed_contract": "7fa097774ad78fbd1ac080724802e66ef60323c932c1948288357dcb5df72c23",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-234",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "нет команды next; gate без флага раннего ответа о lane; complete --target, accept --pause/--operational, extension trust/untrust/list/switch/disable/enable, stage run --phase/--task/--commit/--base/--skip-ext, outbox check/send/status --index присутствуют",
+        "what": "grep -n \"add_parser(\" src/agentmarshal/cli.py и по остальным модулям — полный список команд и флагов"
+      },
+      {
+        "result": "строки совпадают с CHANGELOG: stages.py:950-962, 913-919, 507, 514-515, 1388; extension_trust.py:631-741",
+        "what": "grep -n \"not run|switched off|failed (exit|did not finish|pause accepted|not granted|changed after approval\" src/agentmarshal/stages.py src/agentmarshal/extension_trust.py"
+      },
+      {
+        "result": "gate.py:78 = \".agentmarshal/journal/\", 1251 journal_only = all(...), 1352 и 1355 — обе строки вердиктов как в overview.md/self-hosting-workflow.md",
+        "what": "grep -n \"_JOURNAL_PREFIX = |journal-only transaction|operational transaction\" src/agentmarshal/journal/gate.py"
+      },
+      {
+        "result": "Cost-строка несёт unmeasured_without_cost (report.py:731), task-строка и Summary — unmeasured (779, 812): совпадает с формулировкой CHANGELOG",
+        "what": "grep -n \"unmeasured=\" src/agentmarshal/journal/report.py"
+      },
+      {
+        "result": "_SUPPORTED_SCHEMAS = {1..7} (192), оба новых правила привязаны к схеме 8 (1598-1599) — write-time only, как заявлено",
+        "what": "grep -n \"_SUPPORTED_SCHEMAS|artifact-ref-text|timestamp-text\" src/agentmarshal/journal/records.py"
+      },
+      {
+        "result": "аудит-гейт (строка 62) исполняется до uv build (65); модель из ALLOWED_MODELS, ancestry через merge-base --is-ancestor, диспозиции fixed/deferred/rejected, ALWAYS_ALLOWED — журнал, release/, CHANGELOG, UPGRADING, pyproject, uv.lock, __init__.py",
+        "what": "grep -n \"check_release_audit|uv build\" .github/workflows/release.yml и чтение .github/scripts/check_release_audit.py"
+      },
+      {
+        "result": "required check запускает полный gate (строка 78); скрипт лишь создаёт ветку с task id и стейджит :(literal) каталог задачи — ничего, что открывало бы lane проверке заранее",
+        "what": "grep -n по шаблонам и workflow на предмет раннего сигнала lane: templates/github/agentmarshal-governance.yml, templates/journal-transaction.sh"
+      },
+      {
+        "result": "dev0 — только в исторических записях журнала; единственная новая строка >=80 символов: docs/self-hosting-workflow.md:40 (103)",
+        "what": "grep по дереву на 0.6.0.dev0 и длинные строки в затронутых prose-файлах"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; uv run agentmarshal validate; uv run pytest; ruff check; ruff format --check; mypy",
+        "why": "read-only review в sandbox, исполнение пакета и uv недоступно; координатор сообщил о прохождении полной последовательности на f5fbc8c3"
+      },
+      {
+        "what": "agentmarshal --version",
+        "why": "запуск модуля требует одобрения в этой сессии; проверено чтением cli.py:129-131 и src/agentmarshal/__init__.py:3"
+      }
+    ],
+    "read": [
+      "CHANGELOG.md (разделы 0.6.0 и 0.5.0)",
+      "UPGRADING.md (0.5.0 -> 0.6.0 и правка 0.4.1 -> 0.5.0)",
+      "README.md:50-166",
+      "docs/overview.md:135-180",
+      "docs/threat-model.md:240-275, 440-530",
+      "docs/proposals/README.md (все таблицы и вводные абзацы)",
+      "docs/README.md:84-90",
+      "docs/self-hosting-workflow.md:30-50, 139-150",
+      "docs/proposals/019, 023, 032, 039, 040 (разделы Where)",
+      "docs/adr/ADR-0013 (таблица scope, решения 14-17), ADR-0018:25-40, ADR-0022 (разделы 2-4, 7)",
+      "openspec/specs/extension-stages/spec.md (цитируемые требования), openspec/specs/gate-lanes/spec.md:241-290",
+      "src/agentmarshal/stages.py, extension_trust.py, switch_off.py, outbox.py, doctor.py, record_ext.py, isolation.py (частично), project.py, cli.py, journal/gate.py, journal/records.py, journal/validate.py, journal/report.py, journal/status_view.py, journal/review.py, journal/complete.py",
+      "tests/test_smoke.py, test_doctor_extensions.py, test_validate_addressee.py, test_record_text_safety.py, test_unmeasured_session_usage.py, test_gate_operational.py, test_complete_stages.py, test_personal_extensions.py, test_journal_transaction.py, test_status_base.py, test_status_candidate_session.py, test_outbox.py (имена тестов)",
+      ".agentmarshal/journal/tasks/CR-205..CR-237 (contract.md title, наличие completed-записей)"
+    ]
+  }
+}
