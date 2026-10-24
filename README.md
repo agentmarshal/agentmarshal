@@ -9,11 +9,11 @@ rather than of someone's memory: task contracts, review verdicts bound to
 exact commits, and merge gates — with the evidence living in git, not in
 an ephemeral session log.
 
-**Trust boundary (0.5.0):** the merge gate enforces that a review's recorded
+**Trust boundary (0.6.0):** the merge gate enforces that a review's recorded
 reviewer email differs from the commit authors', and binds the verdict to the
 exact commit SHA. It does **not** cryptographically authenticate who recorded
 a review or which checkout was gated — the recorder and the reviewed tree are
-operator-trusted. Signing/provenance is roadmap, not a 0.5.0 guarantee.
+operator-trusted. Signing/provenance is roadmap, not a 0.6.0 guarantee.
 
 One consequence is worth stating outright, because the gate's output can read
 like more than it is: **a `human` reviewer is a self-declaration.** The gate
@@ -43,7 +43,7 @@ historical 0.1.0 boundary and note what has changed since:
 - [ADR-0004](docs/adr/ADR-0004-journal-data-model.md) and
   [ADR-0005](docs/adr/ADR-0005-evidence-capture-and-format.md) mark planned
   supplementary-artifact capture policy, the private store, and the
-  in-toto/attestation projection as roadmap. They remain inactive in 0.5.0;
+  in-toto/attestation projection as roadmap. They remain inactive in 0.6.0;
   ADR-0005 separately records the advisory leak-scan that has shipped.
 - [docs/migration-v1-to-v2.md](docs/migration-v1-to-v2.md) records what the
   v1→v2 migration lost (contract prose) and that the machine-readable
@@ -54,10 +54,17 @@ To see how the project actually evolved, token spend and all, read the journal.
 
 ## Status
 
-**Pre-alpha.** Version 0.5.0 ships the governed loop end to end: task
+**Pre-alpha.** Version 0.6.0 ships the governed loop end to end: task
 contracts, review and operator-acceptance evidence, lifecycle repair, the
 fail-closed gate, completion, reporting, validation, advisory leak scanning,
-and local pruning. New in 0.5.0: the record model moves to schema 7 in one
+and local pruning. New in 0.6.0: shared extensions run their declared stages
+under local workstation grants — `stage run` and `complete` plan them from the
+base, switches switch them off at the base, the operational lane carries a
+switches change without review, and a `pre-gate-stop` pause can be answered
+with `accept --pause` — while personal extensions run clone-locally under
+`.git/agentmarshal/extensions/`; `complete --target` names the branch a
+candidate merged into; and the outbox skips files already sent. New in
+0.5.0: the record model moves to schema 7 in one
 transition — 0.5.0 reads every record a 0.4.x journal holds, and a 0.4.x
 reader refuses the new records, so every clone and CI job upgrades before
 the first 0.5.0 write ([UPGRADING.md](UPGRADING.md)); contracts pin their
@@ -88,7 +95,7 @@ from.
 Install the published release:
 
 ```sh
-pip install agentmarshal==0.5.0
+pip install agentmarshal==0.6.0
 agentmarshal --version
 ```
 
@@ -122,7 +129,7 @@ The whole loop, inside a git repository — see
 full configuration reference:
 
 ```sh
-agentmarshal init                                     # write .agentmarshal/
+agentmarshal init                                     # write .agentmarshal/ (project.json + the outbox's README)
 agentmarshal open --title "Add greeting" --scope src/ # -> task CR-001 + contract
 # a journal transaction stages one task's directory — never all of .agentmarshal/
 git add .agentmarshal/journal/tasks/CR-001 && git commit -m "open CR-001"
@@ -151,9 +158,12 @@ agentmarshal validate        # -> whole-journal integrity check (run this in CI)
 
 A journal transaction stages one task's directory and nothing else under the
 journal — with several tasks in flight, a wider `git add` would sweep every
-task's uncommitted records into this one's commit. `init`'s own
-`project.json` is housekeeping, not journal evidence, and lands in a separate
-commit. When your base branch refuses direct commits,
+task's uncommitted records into this one's commit. `init`'s own writes are
+housekeeping, not journal evidence — `project.json`, and
+`.agentmarshal/upstream/README.md`, the outbox where findings about
+AgentMarshal itself are drafted one file at a time and sent upstream as a
+batch — and land in a separate commit. When your base branch refuses direct
+commits,
 `templates/journal-transaction.sh` stages exactly that directory on a branch
 named for the task, pushes it, and leaves the pull request to your provider's
 tooling — copy it and adapt the marked line.

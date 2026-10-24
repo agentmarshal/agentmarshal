@@ -84,6 +84,8 @@
 - [proposals/041-the-next-step-of-a-task-is-decided-outside-the-tool.md](proposals/041-the-next-step-of-a-task-is-decided-outside-the-tool.md) — review the finding on the next step of a task decided outside the tool.
 - [proposals/042-liveness-of-an-unattended-loop-is-watched-by-hand.md](proposals/042-liveness-of-an-unattended-loop-is-watched-by-hand.md) — review the finding on the liveness of an unattended loop watched by hand, and the offered watchdog and monitor.
 - [proposals/043-review-before-integration-makes-every-merge-stale.md](proposals/043-review-before-integration-makes-every-merge-stale.md) — review the finding on review before integration making every merge stale.
+- [proposals/044-unmeasured-usage-is-written-as-zeros.md](proposals/044-unmeasured-usage-is-written-as-zeros.md) — review the finding on unmeasured usage recorded as zeros.
+- [proposals/045-outbox-check-refuses-an-outbox-that-predates-it.md](proposals/045-outbox-check-refuses-an-outbox-that-predates-it.md) — review the finding on `outbox check` refusing an outbox that predates it.
 
 ## Contribute a change
 
