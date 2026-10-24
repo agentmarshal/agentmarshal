@@ -1,6 +1,6 @@
 # 044 — Unmeasured usage is written as zeros
 
-- **Reporter:** Adopter A (Python web service on Linux) · **Observed on:** 0.4.1, rechecked on 0.5.0 · **Source:** `sha256:816c7ff8e0ad09bd1bc55f0030897758eba0a539c0da556744de745a76e57b0d` · **Disposition:** accepted
+- **Reporter:** Adopter A (Python web service on Linux) · **Observed on:** 0.4.1, rechecked on 0.5.0 · **Source:** `sha256:816c7ff8e0ad09bd1bc55f0030897758eba0a539c0da556744de745a76e57b0d` · **Disposition:** accepted *(reading side in 0.6.0; write side with the next record schema)*
 
 ## Finding
 
@@ -70,20 +70,26 @@ encoding the fact in `outcome` (`completed:unmeasured`) — which mixes
 how the run ended with whether its cost is known, two independent facts
 in one field.
 
-## Disposition — accepted; the reading side in 0.6.0, the write side with the next record schema in 0.7.0
+## Disposition — accepted; the reading side in 0.6.0, the write side with the next record schema
 
 **The reading side** is accepted for 0.6.0: `status` and `report` show a
 session whose usage was not measured as unmeasured rather than folding
 its zeros into the totals. For records written before the marker
-exists, the signals are the ones the finding names — the three counts
-at zero and no `usage` object. `report` already reads the second of
-them, as `usage=unrecorded`, and already shows the shape the rest of
-the reading takes: sessions carrying no `cost` are counted apart, as
+exists, the signal they read is the one the finding names — the three
+counts at zero and no `usage` object — and that signal is not
+unambiguous. The quickstart tells the operator to omit the usage flags
+whenever the provenance is unavailable, so a genuinely measured zero
+recorded without them reads as unmeasured too. The acceptance takes
+that trade knowingly: an agent session that ran consumes tokens, so a
+real zero is the rare case, and only the write-side marker removes the
+ambiguity. `report` already reads the absent `usage` object as
+`usage=unrecorded`, and already shows the shape the rest of the
+reading takes: sessions carrying no `cost` are counted apart, as
 `sessions_without_cost`, never averaged as zero.
 
 **The write side** — token counts that default to absent, and the
-explicit unmeasured marker — is accepted with the next record schema, in
-0.7.0. Today it cannot be written at all: `create_session_record` always
+explicit unmeasured marker — is accepted with the next record schema.
+Today it cannot be written at all: `create_session_record` always
 writes the three counts, the `session-tokens` rule refuses a session
 record without them, and `--usage-method` takes `reported` or `measured`,
 paired with `--usage-provider`. Making `tokens` optional and extending
@@ -100,4 +106,4 @@ actor in the journal.
 The reading side — `status` and `report` showing an unmeasured session
 as unmeasured — is accepted for 0.6.0. The write side — optional token
 counts with an explicit unmeasured marker — is accepted with the next
-record schema, for 0.7.0. Neither is shipped yet.
+record schema. Neither is shipped yet.

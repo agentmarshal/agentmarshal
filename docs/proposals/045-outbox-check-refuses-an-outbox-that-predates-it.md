@@ -1,6 +1,6 @@
 # 045 — `outbox check` refuses an outbox that predates it
 
-- **Reporter:** Adopter A (Python web service on Linux) · **Observed on:** 0.5.0 · **Source:** `sha256:a819341cbe9022523a08b200c6ee92e687335c6b83fd4b12a88b22b35a411008` · **Disposition:** accepted
+- **Reporter:** Adopter A (Python web service on Linux) · **Observed on:** 0.5.0 · **Source:** `sha256:a819341cbe9022523a08b200c6ee92e687335c6b83fd4b12a88b22b35a411008` · **Disposition:** accepted *(the upgrade note overtaken by the fix itself)*
 
 ## Finding
 
