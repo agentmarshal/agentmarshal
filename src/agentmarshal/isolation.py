@@ -69,7 +69,7 @@ _MS_REC = 0x4000
 _MS_PRIVATE = 0x40000
 _MS_RELATIME = 0x200000
 
-#: The ``statvfs`` ``f_flag`` bits (``sys/vfs.h``) for the mount flags a
+#: The ``statvfs`` ``f_flag`` bits (``sys/statvfs.h``) for the mount flags a
 #: user namespace may not clear. They are not the ``MS_*`` values —
 #: ``ST_RELATIME`` is 4096 where ``MS_RELATIME`` is ``1 << 21`` — so the
 #: remount's flags come from a mapping, never from copying ``f_flag``.

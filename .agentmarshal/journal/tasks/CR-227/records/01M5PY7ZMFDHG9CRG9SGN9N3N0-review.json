@@ -1,0 +1,103 @@
+{
+  "advisory_findings": [
+    "ADV-1",
+    "ADV-2",
+    "ADV-3"
+  ],
+  "artifacts": [
+    {
+      "hash": "d69a63d56a3680c68d8c840a94c1bca5fffeccb1155e33d2a53b8000c38075aa",
+      "ref": ".agentmarshal/journal/tasks/CR-227/artifacts/01M5PY7ZMFDHG9CRG9SGN9N3N0-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-1": "correctness",
+    "ADV-2": "contract-mismatch",
+    "ADV-3": "claim-accuracy"
+  },
+  "created_at": "2026-10-24T12:30:20.815673Z",
+  "evidence": {
+    "ADV-1": "src/agentmarshal/stages.py:1111 'try:' wraps the whole 'with tempfile.TemporaryDirectory(' block (:1112-1130), so the except at :1132 also catches TemporaryDirectory.__exit__/cleanup; outcome assigned by _run_stage at :1117 is overwritten at :1142-1146 with _Outcome('not-run', ..., b''), which then drives the printed lines (:1150-1156), record_event (:1197) and the pause bookkeeping (:1198-1203). CPython 3.12 tempfile.TemporaryDirectory.cleanup -> _rmtree(ignore_errors=False); its onexc only retries PermissionError and ignores FileNotFoundError",
+    "ADV-2": "contract AC3 'including creating the stage's temporary directory — is caught and reported on one stderr line'; the OSError path is handled at src/agentmarshal/stages.py:1132-1146 and surfaces as the stdout result line built at :1158-1166, never reaching src/agentmarshal/cli.py:1213-1219; tests/test_complete_stages.py:713-716 monkeypatches tempfile.TemporaryDirectory to raise RuntimeError ('An OSError there is now the stage's own `not run` line'), so no test forces an OSError in complete's post-gate lane",
+    "ADV-3": "src/agentmarshal/stages.py:1133-1137 claims _prepare_extension and _run_stage 'hand every failure of theirs back as an outcome'; _prepare_extension does (except Exception at :439, :449, :453), but _run_stage leaves os.close(report_pipe[1]) / os.read / os.close at :657-661 and process.communicate at :669 and :677 unguarded against OSError"
+  },
+  "findings": [],
+  "previous_review": "01M5PWRD7MD8JFJCYV9MSFYWMD",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "defae9e69448b88eed3fa45313f979460df99693",
+  "reviewed_contract": "0e1d816bc1a5c11f5af0e6812fc2785be4effb8dfd615c0fde29781b9c28532a",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-227",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "only src/agentmarshal/stages.py:254 (_run_stages), :1237, src/agentmarshal/cli.py:1109 and :1203, plus the test spy — every caller validates the task id first",
+        "what": "grep -rn 'run_stages' --include=*.py ."
+      },
+      {
+        "result": "line 147-150 calls validate_task_id and re-raises as TaskStatusError, so complete's lane refuses a bad id before run_stages",
+        "what": "grep -rn 'def load_task_status' -A 10 src/agentmarshal/journal/status.py"
+      },
+      {
+        "result": "set at src/agentmarshal/stages.py:511 to str(snapshot) = temp_root/snapshot-<index>, the read-only candidate; tests/test_isolation.py:563 now reads it",
+        "what": "grep -rn 'AGENTMARSHAL_SNAPSHOT' src/ tests/ openspec/specs/"
+      },
+      {
+        "result": "stages.py:1112 and isolation.py:530 both pass prefix= as a keyword, so the refuse_once(prefix) stub in tests/test_stages.py:2030 is compatible with the probe's own call",
+        "what": "grep -rn 'TemporaryDirectory|mkdtemp' src/agentmarshal/"
+      },
+      {
+        "result": "line 24 — the stage_helpers alias the amended test uses was already imported",
+        "what": "grep -n 'import test_stages as stage_helpers' tests/test_complete_stages.py"
+      },
+      {
+        "result": "only archive/ — no working change directory, as the contract requires",
+        "what": "ls openspec/changes/"
+      },
+      {
+        "result": "3.12 / >=3.12 — TemporaryDirectory cleanup errors propagate by default, which is what ADV-1 relies on",
+        "what": "cat .python-version; grep -n requires-python pyproject.toml"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "no uv or virtualenv in this read-only snapshot; CI status for this commit taken from the coordinator's note"
+      },
+      {
+        "what": "grep -rl ST_RELATIME /usr/include",
+        "why": "the sandbox refused reads outside the project, so the ADV-4 header attribution is confirmed from glibc's documented layout rather than from this machine"
+      },
+      {
+        "what": "git diff / git log",
+        "why": "the snapshot is not a git repository"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/stages.py (_resolve, _prepare_extension, _stage_env, _run_stage, _result_text, StageRunResult, run_stages, _run_stages)",
+      "src/agentmarshal/cli.py (_run_complete, escape_for_display import)",
+      "src/agentmarshal/isolation.py (MS_/ST_ flag constants, probe's TemporaryDirectory)",
+      "src/agentmarshal/journal/status.py (load_task_status, load_task_for_record)",
+      "src/agentmarshal/journal/records.py (validate_task_id)",
+      "src/agentmarshal/journal/display.py (escape_for_display)",
+      "tests/test_stages.py (helpers _manifest/_extension/_repo_with_extension/_stage_run/_events, the two new tests, the existing invalid-task-id scenario)",
+      "tests/test_complete_stages.py (header imports, _repo, the amended one-runner test, the new post-gate raise test)",
+      "tests/test_isolation.py (the read-only end-to-end test)",
+      "openspec/specs/extension-stages/spec.md (not-run reasons, the shared-runner requirements at 1228-1310)",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md (decision 7)",
+      ".agentmarshal/journal/tasks/CR-223/artifacts/01M5PKPDXN1GW6S57H7SZ9Z40E-review.md (ADV-2/3/4)",
+      ".agentmarshal/journal/tasks/CR-225/records/01M5PT3FS64X65DPM1XYH77YTH-review.json and its artifact (F2/F3/F4)"
+    ]
+  }
+}
