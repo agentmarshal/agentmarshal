@@ -1,0 +1,99 @@
+{
+  "advisory_findings": [
+    "ADV-FINDINGS-LANE-STAGE-LINE"
+  ],
+  "artifacts": [
+    {
+      "hash": "36e6b0b2a61b25fcc49a0ab8792324583fb39a1e00ecee49deca6401e3895b22",
+      "ref": ".agentmarshal/journal/tasks/CR-226/artifacts/01M5PWTDZST15X39CGYB45KKG9-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-FINDINGS-LANE-STAGE-LINE": "claim-accuracy"
+  },
+  "created_at": "2026-10-24T12:05:28.185303Z",
+  "evidence": {
+    "ADV-FINDINGS-LANE-STAGE-LINE": "docs/threat-model.md:259-266 joins the stage result-line vocabulary to the findings-lane clause, while openspec/specs/extension-stages/spec.md:1293-1294 says the findings lane and the sidecar invoke no stage at all (tests/test_complete_stages.py:364 test_the_findings_lane_invokes_no_stage)"
+  },
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "2cffdc090e9ffa5158c308d8db9331ad6ace8b20",
+  "reviewed_contract": "0ee0eaf166e335493b509d07c77e6c961dacb79a2fe1fc05c81e8e41009bface",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-226",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "only archive/ present; no extension-stages-purpose anywhere — AC4 removal holds",
+        "what": "ls openspec/changes openspec/changes/archive"
+      },
+      {
+        "result": "every requirement title the diff quotes exists verbatim, including gate-lanes:170 and gate-lanes:344",
+        "what": "grep -rn '^### Requirement' over gate-lanes, process-log, leak-scan, review-evidence, extension-records, session-activity, record-schema specs"
+      },
+      {
+        "result": "present in stages.py, status_view.py, records.py, cli.py; absent from journal/gate.py — 'read by the stage runner, never by the gate' holds",
+        "what": "grep -rn 'accepted_pause' src/"
+      },
+      {
+        "result": "no match; gate.py:1749-1755 filters acceptances by 'findings' in record — neither pause nor operational reaches the verdict checks",
+        "what": "grep -n '\"operational\"' src/agentmarshal/journal/gate.py"
+      },
+      {
+        "result": "--target on complete, _candidate_merged via git merge-base --is-ancestor, refusal with joined pauses + exit 3, WARNING per pause when merged, post-gate run after the completed record",
+        "what": "grep -n 'target' src/agentmarshal/cli.py; read cli.py:1004-1135, 1194-1208"
+      },
+      {
+        "result": "stages.py:551-554 — not run for a symlinked or missing command, as the threat model now states",
+        "what": "grep -n 'is_symlink|does not exist' src/agentmarshal/stages.py"
+      },
+      {
+        "result": "records.py:522 registers ('session','fallback_reason') under _FORGEABLE_TEXT_FIELDS; status_view.py:419-424 prints it",
+        "what": "grep -n 'fallback_reason' src/"
+      },
+      {
+        "result": "all relative link targets exist; the diff adds no new link",
+        "what": "grep -o '](...)' over the three changed docs and existence check of each target"
+      },
+      {
+        "result": "no stale extension-execution claim left outside the threat model",
+        "what": "grep -rn 'not yet implemented' README.md docs/overview.md docs/quickstart.md docs/known-defects.md SECURITY.md"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "read-only review and the sandbox refused the uv invocation; relying on the coordinator's statement that the sequence passed on 2cffdc0"
+      }
+    ],
+    "read": [
+      "openspec/specs/extension-stages/spec.md (full)",
+      "src/agentmarshal/isolation.py (full)",
+      "src/agentmarshal/stages.py (480-600, register)",
+      "src/agentmarshal/cli.py (340-365, 1000-1210)",
+      "src/agentmarshal/journal/gate.py (1740-1790)",
+      "src/agentmarshal/journal/status_view.py (130-200, 760-780)",
+      "src/agentmarshal/journal/records.py (490-540)",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md (decisions 5, 6, 7, 8, 17)",
+      "docs/threat-model.md (80-112, 174-280, 320-345, 396-470, 515-545)",
+      "docs/self-hosting-workflow.md (30-90)",
+      "README.md (110-175)",
+      "docs/quickstart.md (310-345)",
+      "templates/journal-transaction.sh",
+      "openspec/specs/session-activity/spec.md (58-100)",
+      "openspec/specs/operator-acceptance/spec.md (48-130)",
+      "tests/test_isolation.py, tests/test_complete_stages.py, tests/test_journal_transaction.py (test names)"
+    ]
+  }
+}

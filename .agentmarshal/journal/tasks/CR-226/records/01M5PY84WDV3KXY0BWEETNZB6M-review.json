@@ -1,0 +1,95 @@
+{
+  "advisory_findings": [
+    "ADV-CITE-001"
+  ],
+  "artifacts": [
+    {
+      "hash": "322a6cc77658568685d48b0be460f4548018990952ec7e3ce2555368fc45ab3e",
+      "ref": ".agentmarshal/journal/tasks/CR-226/artifacts/01M5PY84WDV3KXY0BWEETNZB6M-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-CITE-001": "claim-accuracy"
+  },
+  "created_at": "2026-10-24T12:30:26.189858Z",
+  "evidence": {
+    "ADV-CITE-001": "docs/threat-model.md:253 cites 'ADR-0013, decisions 5, 6 and 7' with no 'decided, not yet implemented' marker; docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md:113-117 lists 'addressee not found' and 'not run (changed after approval, dependencies do not match the lock)' among the result lines; src/agentmarshal/stages.py:725-734 and openspec/specs/extension-stages/spec.md:313-349 define only checked / failed (exit <n>) / did not finish (timeout) / not run (<reason>) / switched off (<reason>); the diff deleted the sole 'ADR-0013, decision 7 — decided, not yet implemented' marker from the findings-lane paragraph; the convention is stated at docs/threat-model.md:12-16"
+  },
+  "findings": [],
+  "previous_review": "01M5PXA2M654ZG4Y5CH1A82MFW",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "77c7b2b2877e51dc1e1fdad767101e5718d91def",
+  "reviewed_contract": "0ee0eaf166e335493b509d07c77e6c961dacb79a2fe1fc05c81e8e41009bface",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-226",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "only lines 13, 107, 198, 205, 550 — none about extension execution",
+        "what": "grep -n 'not yet implemented' docs/threat-model.md"
+      },
+      {
+        "result": "only .agentmarshal/journal/tasks/CR-226/contract.md; openspec/changes/ holds only archive/",
+        "what": "grep -rn 'extension-stages-purpose' --exclude-dir=.git ."
+      },
+      {
+        "result": "all 30 requirement titles cited in the diff exist verbatim",
+        "what": "grep -n '^### ' on extension-stages, gate-lanes, process-log, leak-scan, extension-records, review-evidence, record-schema, session-activity specs"
+      },
+      {
+        "result": "src/agentmarshal/stages.py:1003,1153 — suffix exists as documented",
+        "what": "grep -rn 'pause accepted by' src/"
+      },
+      {
+        "result": "status_view.py:141 emits ' (not a declared actor)' — the status marking the diff claims",
+        "what": "grep -rn 'not a declared actor' src/agentmarshal/journal/status_view.py"
+      },
+      {
+        "result": "records.py:521 in _FORGEABLE_TEXT_FIELDS, status_view.py:419-424 prints it — both halves of the claim hold",
+        "what": "grep -rn 'fallback_reason' src/"
+      },
+      {
+        "result": "stages.py:734 'switched off (<reason>)' — only five result forms exist, no 'addressee not found'",
+        "what": "grep -rn 'switched off' src/agentmarshal/stages.py"
+      },
+      {
+        "result": "backing tests exist for every isolation and --target statement the diff makes",
+        "what": "grep -n '^def test' tests/test_isolation.py tests/test_complete_stages.py"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; uv run agentmarshal validate; uv run pytest; uv run ruff check; uv run ruff format --check; uv run mypy",
+        "why": "command execution was refused by the sandbox; relying on the coordinator's statement that the full CI sequence passed on 77c7b2b2877e51dc1e1fdad767101e5718d91def"
+      }
+    ],
+    "read": [
+      "docs/threat-model.md",
+      "README.md",
+      "docs/self-hosting-workflow.md",
+      "docs/quickstart.md (lines 310-350)",
+      "templates/journal-transaction.sh",
+      "openspec/specs/extension-stages/spec.md",
+      "openspec/specs/gate-lanes/spec.md (requirement list)",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md (decisions 7, 8, 15, 16, 17, 18)",
+      "src/agentmarshal/isolation.py (module docstring and constants)",
+      "src/agentmarshal/cli.py (complete handler, _candidate_merged, --target)",
+      "src/agentmarshal/stages.py (result vocabulary, provider-secret withholding)",
+      "src/agentmarshal/journal/gate.py (acceptance filtering, operational lane)",
+      "src/agentmarshal/journal/status_view.py (acceptance lines, fallback_reason, declared actor)",
+      "src/agentmarshal/journal/records.py (schema-7 fields, forgeable-text fields)",
+      ".agentmarshal/journal/tasks/CR-226/contract.md"
+    ]
+  }
+}
