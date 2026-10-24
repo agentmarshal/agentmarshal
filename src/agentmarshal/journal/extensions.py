@@ -522,6 +522,29 @@ def _manifest_directory_paths(manifest: ExtensionManifest) -> tuple[str, ...]:
     return tuple(paths)
 
 
+def _refuse_single_file_directory_paths(
+    manifest: ExtensionManifest, name: str, source: str | Path
+) -> None:
+    """Refuse a file-form manifest that names a path under a directory.
+
+    A manifest read from the file form — a single ``<name>.toml`` — has
+    no extension directory, so a path it names under ``bin/`` or
+    ``lock/`` — a ``[[stage]]`` ``command``, ``[dependencies].lock`` or
+    ``[wraps].lock`` — names a file in nothing and is refused naming the
+    first of them. The one check the working-tree reader applies to its
+    candidate and the gate's base-tree reader applies to the blob it
+    read, so a single-file manifest is weighed the same way from either
+    source.
+    """
+
+    named = _manifest_directory_paths(manifest)
+    if named:
+        raise ExtensionManifestError(
+            f"extension manifest {name!r} names {named[0]!r}, but the "
+            f"single-file form has no extension directory: {source}"
+        )
+
+
 def _require_existing_directory_file(directory: Path, relpath: str) -> None:
     """The named path exists inside the directory as a regular file.
 
@@ -631,10 +654,5 @@ def read_extension_manifest(project_root: Path, name: str) -> ExtensionManifest:
         for relpath in _manifest_directory_paths(manifest):
             _require_existing_directory_file(directory, relpath)
         return replace(manifest, directory=directory)
-    named = _manifest_directory_paths(manifest)
-    if named:
-        raise ExtensionManifestError(
-            f"extension manifest {name!r} names {named[0]!r}, but the "
-            f"single-file form has no extension directory: {candidate}"
-        )
+    _refuse_single_file_directory_paths(manifest, name, candidate)
     return manifest

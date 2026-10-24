@@ -76,6 +76,7 @@ from agentmarshal.switches import (
     SwitchesError,
     parse_switches,
     shared_extension_names,
+    toml_values_equal,
 )
 
 _COMMAND = "extension switch off"
@@ -406,11 +407,14 @@ def _verify_rewrite(
     off entry's ``state``, ``task`` and ``reason`` — so a key the
     rewrite dropped shows here — and the shared parser must accept
     the file and read that entry back as ``off`` with *task_id* and
-    *reason*. A missing file's old text is the empty document, checked
-    against the skeleton the command creates. A mis-detected span, an
-    ``on`` entry with no header to find, a rewritten value that is not
-    what the lines claimed — anything that makes the new text differ
-    where the switch does not reach — is named here.
+    *reason*. The equality is ``toml_values_equal``'s: an unchanged
+    value compares equal to itself, ``nan`` included, and a change of
+    a value's type alone is a change. A missing file's old text is the
+    empty document, checked against the skeleton the command creates.
+    A mis-detected span, an ``on`` entry with no header to find, a
+    rewritten value that is not what the lines claimed — anything that
+    makes the new text differ where the switch does not reach — is
+    named here.
     """
 
     try:
@@ -423,7 +427,7 @@ def _verify_rewrite(
     expected_entry = dict(expected.get("switches", {}).get(name) or {})
     expected_entry.update({"state": "off", "task": task_id, "reason": reason})
     expected.setdefault("switches", {})[name] = expected_entry
-    if new_data != expected:
+    if not toml_values_equal(new_data, expected):
         return "the rewritten text changed more than the switch"
     try:
         written = parse_switches(new_text.encode("utf-8"), switches_file, names).get(

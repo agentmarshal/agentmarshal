@@ -1,0 +1,57 @@
+{
+  "artifacts": [
+    {
+      "hash": "373efa8a6440d2a0410a8d6cb2fadf617bb7747e46681c6ffbab512baf7cf0e4",
+      "ref": ".agentmarshal/journal/tasks/CR-239/artifacts/01M5R3CHK0TAEVTHN2JBBF82NV-review.md"
+    }
+  ],
+  "created_at": "2026-10-24T23:19:27.584293Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "4f11e156190296ff82e213032b2cf048434b209d",
+  "reviewed_contract": "ffc619e3586479951d96637c9d0909a2004b2de505353dbf47d42fffdb258e33",
+  "reviewer": {
+    "email": "auto-review-openai@agent.example.invalid",
+    "model": "gpt-6.1-sol",
+    "role": "reviewer",
+    "vendor": "openai"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-239",
+  "tool_version": "0.6.0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "Passed",
+        "what": "Direct invocation of the existing TOML equality regression test"
+      },
+      {
+        "result": "All passed",
+        "what": "Direct NaN rewrite-verification checks for switch off, disable, and enable"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; uv run agentmarshal validate; uv run pytest; uv run ruff check; uv run ruff format --check; uv run mypy",
+        "why": "uv is unavailable; pytest is also unavailable. Coordinator reports the full sequence passed on the reviewed commit."
+      },
+      {
+        "what": "Independent verification of the snapshot commit SHA",
+        "why": "The supplied snapshot has no Git metadata."
+      }
+    ],
+    "read": [
+      "Supplied CR-239 contract and diff",
+      "All changed source files and regression tests",
+      "Existing transcript and rewrite-preservation tests",
+      "CONTRIBUTING.md",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md",
+      "docs/threat-model.md",
+      "openspec/specs/extension-manifest/spec.md"
+    ]
+  }
+}

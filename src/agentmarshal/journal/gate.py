@@ -51,6 +51,7 @@ from agentmarshal.journal.extensions import (
     ExtensionManifest,
     ExtensionManifestError,
     ExtensionManifestMissing,
+    _refuse_single_file_directory_paths,
     extension_directory_manifest_path,
     extension_manifest_path,
     parse_extension_manifest_text,
@@ -640,8 +641,11 @@ def _manifest_from_tree(
     manifest path, or at the ``<name>`` directory itself, is refused as a
     link — in a tree a link resolves to nothing, so the directory entry is
     examined before absence is decided; an entry at a manifest path that
-    is not a blob is refused as not a file; and the directory form holds
-    only a schema-2 manifest.
+    is not a blob is refused as not a file; the directory form holds
+    only a schema-2 manifest; and a manifest in the file form names no
+    path under ``bin/`` or ``lock/`` — the working-tree reader's own
+    refusal that a single file has no extension directory, applied
+    through the shared check so the two readers refuse alike.
     """
 
     file_path = extension_manifest_path(name)
@@ -690,6 +694,8 @@ def _manifest_from_tree(
             "the directory form requires a manifest of schema 2; "
             f"{name!r} declares schema {manifest.schema}: {source}"
         )
+    if file_present:
+        _refuse_single_file_directory_paths(manifest, name, source)
     return manifest
 
 
