@@ -25,6 +25,10 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The audit gate checks the audited commit's ancestry and what
+          # changed since it; a depth-1 tag checkout holds neither.
+          fetch-depth: 0
       - name: Verify tag matches project version
         # PyPI versions are immutable; refuse to publish if the pushed tag
         # does not equal v<pyproject version> so a stray tag cannot ship a
@@ -46,6 +50,16 @@ jobs:
               exit 1
               ;;
           esac
+      - name: Check release audit
+        # Release gate (see CONTRIBUTING.md): refuse to build or publish a
+        # version with no recorded full-project audit whose blocking findings
+        # were each dealt with, or where anything but those fixes and the
+        # release notes landed after the audit. Runs before uv sync on the
+        # runner's Python — the script needs only the standard library and
+        # git, so the gate does not depend on the package it guards.
+        env:
+          TAG: ${{ github.ref_name }}
+        run: python3 .github/scripts/check_release_audit.py "$TAG"
       - uses: astral-sh/setup-uv@v5
       - name: Build sdist and wheel
         run: uv build
