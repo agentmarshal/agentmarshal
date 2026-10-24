@@ -233,11 +233,24 @@ run` reads the switches from the base and reports a switched-off
 extension" and "on a workstation a stage runs only under a matching
 grant"). A candidate the operational lane admits runs no `pre-gate`
 stage at all (gate-lanes specification, "pre-gate stages do not run on
-an operational change"), and an `accepted_pause` acceptance naming the
-extension at the resolved commit stands a `pre-gate-stop` pause down
-(extension-stages specification, "an accepted pause stands down a
-pre-gate-stop stage's pause for the accepted extension and commit").
-(ADR-0010, decisions 4 and 6; ADR-0013, decisions 5 and 6; ADR-0012,
+an operational change"), and the findings lane and the sidecar invoke
+no stage at all (extension-stages specification, "`stage run` invokes
+the declared stages of the base's shared extensions" and "`complete`
+runs the `pre-gate` stages before its gate check"). Every extension
+stage gets exactly one result line — `checked`, `failed (exit <n>)`,
+`did not finish (timeout)`, `switched off (<task>, <reason>)` or `not
+run (<reason>)` — and the extension's own output a frame that cannot
+read as a result line or as another extension's; those lines are the
+stage runner's, printed in the `stage run` voice whichever command
+invoked it, never the gate's (extension-stages specification, "every
+stage gets exactly one result line and its output a frame", "`stage
+run` reads the switches from the base and reports a switched-off
+extension" and "the stage run is one function both commands call").
+An `accepted_pause` acceptance naming the extension at the resolved
+commit stands a `pre-gate-stop` pause down (extension-stages
+specification, "an accepted pause stands down a pre-gate-stop stage's
+pause for the accepted extension and commit").
+(ADR-0010, decisions 4 and 6; ADR-0013, decisions 5, 6 and 7; ADR-0012,
 decision 7.)
 
 **The gate reads nothing local.** The gate reads neither the process log
@@ -257,18 +270,11 @@ Asked to judge what does not depend on a review, the
 gate reports the review-bound checks as not examined, with the reason —
 and the mode never weakens a candidate that has been reviewed. The
 findings lane prints each check it cannot run as not examined with the
-reason, and every extension stage gets exactly one result line —
-`checked`, `failed (exit <n>)`, `did not finish (timeout)`, `switched
-off (<task>, <reason>)` or `not run (<reason>)` — with its output in a
-frame that cannot read as a result line or as another extension's
-(extension-stages specification, "every stage gets exactly one result
-line and its output a frame" and "`stage run` reads the switches from
-the base and reports a switched-off extension"). (ADR-0006, decision 2;
+reason. (ADR-0006, decision 2;
 ADR-0008,
 decisions 5 and 6; gate-lanes specification, "The gate can be asked to
 judge what does not depend on a review" and "The mode never weakens a
-candidate that has been reviewed"; ADR-0009, decisions 3 and 4; ADR-0013,
-decision 7.)
+candidate that has been reviewed"; ADR-0009, decisions 3 and 4.)
 
 ## What the tool does not protect against
 
