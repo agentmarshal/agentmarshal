@@ -69,6 +69,30 @@ command that reads your outbox, hashes each finding and reports its state back
 to you is proposed in [023](023-upstream-outbox-has-no-transaction.md) and
 accepted for a later release.
 
+## Batch of 2026-10-24
+
+Two files from Adopter A — one of the first batch's three reporters and
+the reporter of the 2026-09-24 batch. The first was observed on 0.4.1
+and rechecked on 0.5.0: a session that ends without a usage figure is
+written with all-zero token counts — `report` reads the missing
+provenance as `usage=unrecorded`, but the zeros still sum into the
+totals like a run that cost nothing, and the record cannot say "not
+measured". The second was observed on 0.5.0: an outbox that predates
+the `outbox` group cannot pass `outbox check`, because every file but
+`README.md` it holds is judged as a draft — so `outbox send`, which
+runs the same check first, refuses a directory that mixes sent
+findings with new ones.
+
+The shared theme is a convention that has no shape in the tool: an
+executor wrapper's documented zero says "not measured" where the record
+cannot, and a file the operator copied by hand says "sent" where the
+outbox cannot see it.
+
+| # | Theme | Reporter | Disposition | Where |
+|---|---|---|---|---|
+| [044](044-unmeasured-usage-is-written-as-zeros.md) | Unmeasured usage is written as zeros | A | accepted *(reading side in 0.6.0; write side with the next record schema)* | the reading side — `status` and `report` show such a session as unmeasured — in 0.6.0; the write side — optional token counts and an explicit unmeasured marker — with the next record schema; not shipped yet |
+| [045](045-outbox-check-refuses-an-outbox-that-predates-it.md) | `outbox check` refuses an outbox that predates it | A | accepted *(the upgrade note overtaken by the fix itself)* | `outbox check` and `outbox send` skip the draft-form check for files already sent — a sent manifest `send` writes, or the index `outbox status` takes; the leak scan still covers every file `send` stages — in 0.6.0; not shipped yet |
+
 ## Batch of 2026-10-03
 
 Three files from Adopter D — the reporter of the 2026-09-16, 2026-09-18

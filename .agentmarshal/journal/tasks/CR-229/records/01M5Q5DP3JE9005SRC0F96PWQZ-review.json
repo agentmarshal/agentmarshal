@@ -1,0 +1,98 @@
+{
+  "advisory_findings": [
+    "ADV-IMPORTED-ZERO-TOKENS-READ-AS-UNMEASURED",
+    "ADV-SPEC-COST-UNMEASURED-SELF-CONTRADICTION"
+  ],
+  "artifacts": [
+    {
+      "hash": "b6e4f4ca9fc1546140caac734fb463bbd7a345550af0abf010fd8dd9ee6062c2",
+      "ref": ".agentmarshal/journal/tasks/CR-229/artifacts/01M5Q5DP3JE9005SRC0F96PWQZ-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-IMPORTED-ZERO-TOKENS-READ-AS-UNMEASURED": "correctness",
+    "ADV-SPEC-COST-UNMEASURED-SELF-CONTRADICTION": "claim-accuracy"
+  },
+  "created_at": "2026-10-24T14:35:47.698442Z",
+  "evidence": {
+    "ADV-IMPORTED-ZERO-TOKENS-READ-AS-UNMEASURED": "src/agentmarshal/journal/backfill.py:150-171 builds a session record with `source: SOURCE_IMPORTED` and a `host-stat:` artifact ref but no `usage` key; `cache_read_input_tokens`/`cache_creation_input_tokens` are absent from _REQUIRED_STAT_FIELDS (backfill.py:52-63) and default to 0 in `_require_int` (backfill.py:69-74); src/agentmarshal/journal/report.py:205-212 therefore returns True for such an all-zero imported record, and openspec/changes/archive/2026-10-25-unmeasured-session-usage/design.md:5-7 claims the missing `usage` block is 'the only trace'",
+    "ADV-SPEC-COST-UNMEASURED-SELF-CONTRADICTION": "openspec/specs/session-activity/spec.md:829-831 ('An unmeasured session SHALL be no counted member of the `Cost` sums' scope: it is no `sessions_without_cost` session and no `Cost` line's `unmeasured=<n>` counts it.') against spec.md:834-837 ('Only an unmeasured session carrying no `cost` is left out of these sums — wherever `Cost` lines print, such sessions SHALL be named by `unmeasured=<n>` …'); the narrower reading is the one the scenario at spec.md:850-855 fixes, and the one src/agentmarshal/journal/report.py:366-372 and 716-735 implement"
+  },
+  "findings": [],
+  "previous_review": "01M5Q3J08V6DV719NJ4ZRAQWAS",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "cb1fa8eac6dedc67a798c96c2c261916c9308309",
+  "reviewed_contract": "efed53ae34a29329ff331b6d8b5cb0f92794e1f1785c9476b036bbb004f4c811",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-229",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "only reviewer-adapter/spec.md:36,40 — no pre-existing requirement states how token totals are summed, so the contract's MODIFIED clause does not trigger there",
+        "what": "grep -rn \"token\" openspec/specs/ (excluding session-activity)"
+      },
+      {
+        "result": "two token sums only — report.py:421-424 (per task, now filtered by `not _is_unmeasured`) and report.py:511 (`sum(task.tokens for task in tasks)`)",
+        "what": "grep -n \"tokens\" src/agentmarshal/journal/report.py"
+      },
+      {
+        "result": "only cli.py:1376-1378 and journal/__init__.py re-exports consume the report — no other command reads the changed fields",
+        "what": "grep -rn \"\\.sessions\\b|sessions_without_cost|\\.tokens\\b|build_report|format_report\" src/ --include=*.py"
+      },
+      {
+        "result": "single consumer at status_view.py:827; adding the \"session\" key affects nothing else",
+        "what": "grep -rn \"_RECORD_RENDERERS\" src/ tests/"
+      },
+      {
+        "result": "only tests/test_journal.py:694 (record-validation, no view output) and the new test file — no existing status/report test asserts output for a zero-token no-usage session",
+        "what": "grep -rn \"0, 0, 0\" tests/ and inspection of the hits"
+      },
+      {
+        "result": "helpers write 10/5/0, 1/2/3, 4/5/6 — measured, so existing expectations are unaffected",
+        "what": "grep -rn \"create_session_record(\" tests/test_report.py tests/test_report_cost_checks_findings.py tests/test_status_view.py"
+      },
+      {
+        "result": "found at tests/test_status_candidate_session.py:298, tests/test_report_lead_time.py:405, tests/test_report_cost_checks_findings.py:245,359,501",
+        "what": "grep -rn docstring scenario names in tests/ for the five restated MODIFIED scenarios"
+      },
+      {
+        "result": "only `archive/`, holding 2026-10-25-unmeasured-session-usage — the live change directory is gone and the delta is merged into openspec/specs/session-activity/spec.md",
+        "what": "ls openspec/changes/ and openspec/changes/archive/"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; uv run agentmarshal validate; uv run pytest; uv run ruff check; uv run ruff format --check; uv run mypy",
+        "why": "no uv in this read-only review environment; the coordinator states the full sequence passed on the reviewed commit"
+      },
+      {
+        "what": "openspec archive / openspec validate",
+        "why": "no npx/node available; archive was verified by its result instead — the change directory moved under archive/ and the delta is present in openspec/specs/session-activity/spec.md"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/journal/report.py (dataclasses, _is_unmeasured, _cost_sums, _task_report, build_report, _cost_lines, format_report)",
+      "src/agentmarshal/journal/status_view.py (renderer table, _render_session_line, record print loop at 824-835, _implementer_session_line)",
+      "src/agentmarshal/journal/records.py:2272-2346 (create_session_record — `usage` omitted when no flags, `tokens` always a three-int dict)",
+      "src/agentmarshal/journal/backfill.py:40-195 (session_record_from_stat — no `usage` block, source imported, host-stat artifact)",
+      "src/agentmarshal/cli.py:1365-1385, 407-409",
+      "openspec/specs/session-activity/spec.md (requirement list and the new/modified requirements)",
+      "openspec/changes/archive/2026-10-25-unmeasured-session-usage/{proposal.md,design.md,tasks.md,specs/session-activity/spec.md}",
+      "docs/adr/ADR-0019-accounting-time-quota-resets-money.md (decision 4)",
+      "docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md",
+      "tests/test_unmeasured_session_usage.py",
+      "tests/test_report_cost_checks_findings.py, tests/test_status_view.py, tests/test_journal.py (session helpers)"
+    ]
+  }
+}

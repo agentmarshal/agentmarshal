@@ -1,0 +1,104 @@
+{
+  "advisory_findings": [
+    "advisory-stale-no-cost-scenarios",
+    "advisory-unchanged-output-invariant",
+    "advisory-spec-line-wrap"
+  ],
+  "artifacts": [
+    {
+      "hash": "8f9242bb01163f42d1763660b954d368935931179a9f5796a50b5873114b5459",
+      "ref": ".agentmarshal/journal/tasks/CR-229/artifacts/01M5Q0THZ6XN50Z8E48KM52S6R-review.md"
+    }
+  ],
+  "classes": {
+    "advisory-spec-line-wrap": "style",
+    "advisory-stale-no-cost-scenarios": "contract-mismatch",
+    "advisory-unchanged-output-invariant": "contract-mismatch"
+  },
+  "created_at": "2026-10-24T13:15:26.566960Z",
+  "evidence": {
+    "advisory-spec-line-wrap": "openspec/specs/session-activity/spec.md:505, :509-510, :514, :550, :552-553 exceed the ~72-column wrap every neighbouring line in the file keeps; the diff hunk shows the cause — 'measured ' inserted into an already wrapped line ('-session `cost` objects sum to, sorted by currency code, carrying the' -> '+measured session `cost` objects sum to, sorted by currency code, carrying the')",
+    "advisory-stale-no-cost-scenarios": "openspec/specs/session-activity/spec.md:539-542 and :569-571 (same text at openspec/changes/archive/2026-10-24-unmeasured-session-usage/specs/session-activity/spec.md:148-151 and :178-180) say 'the task's sessions carrying no `cost`' / 'prints their count', against the revised prose at :509-510 and :552-553 ('measured sessions ... at least one measured session') and the ADDED requirement at :780-806; src/agentmarshal/journal/report.py:704 prints the line only when the measured count is non-zero",
+    "advisory-unchanged-output-invariant": "openspec/specs/session-activity/spec.md:485-489 and :619-623 ('Every line `report` and `report --task` print today SHALL print first and unchanged') versus src/agentmarshal/journal/report.py:738-739 (task line), :768-769 (Summary line) and :695-707 (every Cost line) appending `unmeasured=<n>` to those same lines; the change's own carve-out is only openspec/specs/session-activity/spec.md:808-816"
+  },
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "5cf5f228d8a5aaf50bf9e99a087ae4c0de3be6ae",
+  "reviewed_contract": "96c36b1df25bfd0a83719f6f8ee10e716bba80ccb50205b8f63f275cf1066b4e",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-229",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "only report.py and status_view.py carry the predicate and the field; no doc or template states the changed format",
+        "what": "grep -rn 'unmeasured|_is_unmeasured' src/ docs/ templates/ README.md CHANGELOG.md"
+      },
+      {
+        "result": "no output — no consumer outside report.py reads the fields whose meaning changed",
+        "what": "grep -rn '\\.sessions\\b|sessions_without_cost|\\.unmeasured\\b' src/ excluding report.py"
+      },
+      {
+        "result": "only _run_report at cli.py:1367-1368; include_summary=task_id is None",
+        "what": "grep -n 'format_report|build_report' src/agentmarshal/cli.py"
+      },
+      {
+        "result": "print_task_detail only from cli.py:1501; doctor.py imports print_paths only",
+        "what": "grep -rn 'status_view import|print_task_detail' src/"
+      },
+      {
+        "result": "no output — no pre-existing requirement states how token totals are summed, so no MODIFIED was owed for the token sums",
+        "what": "grep -rn 'tokens' openspec/specs/ excluding session-activity/spec.md"
+      },
+      {
+        "result": "every existing status/report fixture is measured (non-zero tokens, a usage block, or no tokens key), so the pinned outputs are unaffected",
+        "what": "grep -rn 'record_type\": \"session\"' tests/ and reads of each existing session fixture"
+      },
+      {
+        "result": "records.py:778-794 requires exactly input/output/cache as non-negative ints, so the predicate's isinstance guard never fires on a journal record",
+        "what": "grep -n 'tokens' src/agentmarshal/journal/records.py (session-tokens rule)"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "read-only review and no command execution for python/uv in this sandbox; the coordinator reports the full CI sequence green on 5cf5f228d8a5aaf50bf9e99a087ae4c0de3be6ae and I show no failing line"
+      },
+      {
+        "what": "openspec validate --strict on the archived change",
+        "why": "npx/openspec not runnable here; the delta's MODIFIED headings and scenario sets were compared by hand against openspec/specs/session-activity/spec.md:502-577"
+      }
+    ],
+    "read": [
+      "openspec/changes/archive/2026-10-24-unmeasured-session-usage/proposal.md",
+      "openspec/changes/archive/2026-10-24-unmeasured-session-usage/design.md",
+      "openspec/changes/archive/2026-10-24-unmeasured-session-usage/tasks.md",
+      "openspec/changes/archive/2026-10-24-unmeasured-session-usage/specs/session-activity/spec.md",
+      "openspec/specs/session-activity/spec.md",
+      "src/agentmarshal/journal/report.py",
+      "src/agentmarshal/journal/status_view.py",
+      "src/agentmarshal/journal/display.py",
+      "src/agentmarshal/journal/records.py (session rules and create_session_record)",
+      "src/agentmarshal/cli.py (_run_report)",
+      "tests/test_unmeasured_session_usage.py",
+      "tests/test_report_cost_checks_findings.py",
+      "tests/test_status_base.py",
+      "tests/test_status_view.py",
+      "tests/test_status_candidate_session.py",
+      "tests/test_display.py",
+      "docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md",
+      "docs/sidecar.md",
+      "AGENTS.md"
+    ]
+  }
+}

@@ -1,0 +1,95 @@
+{
+  "advisory_findings": [
+    "audit-gate-ignores-unreadable-journal-records",
+    "abandoned-fix-task-refusal-untested",
+    "audited-at-accepts-any-nonempty-string"
+  ],
+  "artifacts": [
+    {
+      "hash": "82972839dda4e2bcf65dde3ade28ce421f78f80dbbb7add25ee1a1c9a3cd57e0",
+      "ref": ".agentmarshal/journal/tasks/CR-232/artifacts/01M5Q4SQY7JE78QNTR1PTA5BSE-review.md"
+    }
+  ],
+  "classes": {
+    "abandoned-fix-task-refusal-untested": "test-gap",
+    "audit-gate-ignores-unreadable-journal-records": "claim-accuracy",
+    "audited-at-accepts-any-nonempty-string": "claim-accuracy"
+  },
+  "created_at": "2026-10-24T14:24:54.215416Z",
+  "evidence": {
+    "abandoned-fix-task-refusal-untested": ".github/scripts/check_release_audit.py:278-279; grep -rn 'abandoned' tests/test_release_audit_check.py → no match",
+    "audit-gate-ignores-unreadable-journal-records": ".github/scripts/check_release_audit.py:125-127,143-157 vs src/agentmarshal/journal/status.py:112 and src/agentmarshal/journal/records.py:2703-2705",
+    "audited-at-accepts-any-nonempty-string": ".github/scripts/check_release_audit.py:262-267 (isinstance(audited_at, str) and audited_at) vs CONTRIBUTING.md:170 and tests/test_release_audit_check.py:test_invalid_audited_at_refuses"
+  },
+  "findings": [],
+  "previous_review": "01M5Q3F33JN6Z4D5VY325GS6C3",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "b188aaa52286764617949935e0f803d90fed042e",
+  "reviewed_contract": "ba2050088577256a23036b982da8ed5cd1d2375a96b7b670b87d81f14a008c9c",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-232",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "\"record_type\": \"completed\" — real journal records carry the key the script reads",
+        "what": "grep -o '\"record_type\"[^,]*' .agentmarshal/journal/tasks/CR-231/records/01M5Q3B2SG0CHYEQ8V4V5W5167-completed.json"
+      },
+      {
+        "result": "only script hits (:54, :278, :279); no test mentions abandoned",
+        "what": "grep -rn 'abandoned' tests/test_release_audit_check.py .github/scripts/check_release_audit.py"
+      },
+      {
+        "result": "status.py:112 raises TaskStatusError; records.py:2703,2705 raise JournalRecordError — the product fails closed where the gate skips",
+        "what": "grep -n 'record has no status projection' src/agentmarshal/journal/status.py; grep -n 'invalid JSON record|record must contain a JSON object' src/agentmarshal/journal/records.py"
+      },
+      {
+        "result": "gate.py:1589-1598 adds extension footprints; contracts.py:136-145 is the matcher the script mirrors",
+        "what": "grep -rn 'effective_scope|scope_covers' src/agentmarshal"
+      },
+      {
+        "result": "357 / 663 / 199 / 69 lines — snapshot matches the supplied diff",
+        "what": "wc -l on the four changed files"
+      },
+      {
+        "result": "no pattern ignores release/, so the audit file can be committed",
+        "what": "cat .gitignore"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "the review sandbox denies running python3/uv/git commands; the coordinator states the sequence passed on b188aaa"
+      },
+      {
+        "what": "git-based verification that the diff is the whole change",
+        "why": "the snapshot is not a git repository, so the supplied diff was taken as given"
+      }
+    ],
+    "read": [
+      ".github/scripts/check_release_audit.py",
+      ".github/workflows/release.yml",
+      "CONTRIBUTING.md",
+      "tests/test_release_audit_check.py",
+      "src/agentmarshal/journal/contracts.py",
+      "src/agentmarshal/journal/status.py",
+      "src/agentmarshal/journal/records.py (read_records)",
+      "src/agentmarshal/journal/attestation.py (RECORD_TYPES)",
+      "src/agentmarshal/journal/gate.py (effective scope)",
+      "docs/adr/ADR-0001-governance-plane.md",
+      "docs/adr/ADR-0005-evidence-capture-and-format.md",
+      "pyproject.toml",
+      ".gitignore"
+    ]
+  }
+}
