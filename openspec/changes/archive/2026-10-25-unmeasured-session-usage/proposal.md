@@ -17,9 +17,11 @@ schema; this task fixes the reading side now.
 - `status <task>` shows an unmeasured session's tokens as `unmeasured`
   on its record line, never as zeros.
 - `report` and `report --task` leave unmeasured sessions out of every
-  token sum and every cost sum and count, and print, wherever such a
-  sum or count is printed — the task line, the summary line and every
-  `Cost` line — how many sessions were left out as unmeasured.
+  token sum; a `cost` one records sums per currency and source exactly
+  as today (ADR-0019 decision 4), and only an unmeasured session
+  carrying no `cost` is left out of a cost sum or count. Wherever such
+  a sum is printed — the task line, the summary line and every `Cost`
+  line — the report prints how many sessions it left out as unmeasured.
 - A journal holding no unmeasured session prints byte-for-byte what it
   prints today. No record is written or rewritten, and no record rule
   changes — the write side's explicit marker waits for the next record
@@ -32,8 +34,10 @@ schema; this task fixes the reading side now.
 ## Impact
 
 `report.py` gains the shared unmeasured predicate, leaves such sessions
-out of the token and cost sums it already builds, and names their count
-on the task line, the summary line and every `Cost` line.
+out of the token sums it already builds, sums a `cost` one records as a
+measured session's, leaves only an unmeasured session carrying no
+`cost` out of the `Cost` block, and names each left-out count on the
+task line, the summary line and every `Cost` line.
 `status_view.py` gains a session record renderer that appends
 `tokens=unmeasured` under the same predicate. `records.py`, every
 writer and every record rule are untouched.

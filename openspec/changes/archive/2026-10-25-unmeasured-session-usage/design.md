@@ -37,16 +37,21 @@ type and time line.
   already imports `status.py`'s projection. A second definition in
   `status_view.py` would drift.
 - **Exclusion is silent nowhere a sum prints.** Wherever `report`
-  prints a token or cost sum the omitted sessions were eligible for —
-  the task line, the summary line, each `Cost` line — it appends
+  prints a sum the omitted sessions were left out of — the task line's
+  and the summary line's token sums and each `Cost` line — it appends
   `unmeasured=<n>` as the last field, only when the count is non-zero.
   A journal without unmeasured sessions prints byte-for-byte today.
-- **A `Cost` line prints only for measured sessions.** An unmeasured
-  session is no measured session: it counts toward neither the currency
-  sums nor `sessions_without_cost`, so a task holding only unmeasured
-  sessions prints no `Cost` line — the no-cost count means sessions
-  that ran measured and carried no cost, not sessions that measured
-  nothing.
+- **A recorded cost sums; only an unmeasured session carrying none is
+  left out.** The token sums and the `Cost` block leave different
+  sessions out: a `cost` an unmeasured session recorded sums per
+  currency and source exactly as a measured session's does — a sum in
+  one currency is a figure the journal holds, and dropping it would
+  silently lose money (ADR-0019 decision 4). Only an unmeasured session
+  carrying no `cost` is left out of the `Cost` block: it counts in no
+  `sessions_without_cost` — the count means sessions that ran measured
+  and carried no cost — and the `unmeasured=<n>` a `Cost` line carries
+  counts those sessions alone, so a task whose sessions are all
+  unmeasured carrying no `cost` prints no `Cost` line.
 - **`status` keeps the generic line and marks it.** The session
   renderer prints the same `- <id> session <created_at>` the fallback
   prints today and appends ` tokens=unmeasured` only under the

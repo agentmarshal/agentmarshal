@@ -92,10 +92,14 @@ class CostSum:
 class TaskReport:
     """Measured work and terminal status for one task.
 
-    ``sessions``, ``sessions_without_cost`` and ``costs`` run over the
-    task's measured sessions alone — an unmeasured session, zero tokens
-    and no ``usage`` block, is no measured session and counts in
-    ``unmeasured`` and nowhere else.
+    ``unmeasured`` counts the task's unmeasured sessions — zero tokens
+    and no ``usage`` block — the sessions the token sum left out. The
+    cost sums admit every session but an unmeasured one carrying no
+    ``cost``: a ``cost`` an unmeasured session recorded sums exactly as
+    a measured session's does (ADR-0019 decision 4), ``sessions``
+    counting the admitted sessions and ``sessions_without_cost`` the
+    measured ones carrying no ``cost``. ``unmeasured_without_cost``
+    counts the sessions the cost sums left out.
     """
 
     task_id: str
@@ -112,6 +116,7 @@ class TaskReport:
     sessions_without_cost: int = 0
     costs: tuple[CostSum, ...] = ()
     unmeasured: int = 0
+    unmeasured_without_cost: int = 0
     rejected_commits: int = 0
 
 
@@ -124,9 +129,10 @@ class JournalReport:
     ``lead_maximum`` run over their ``completed`` minus ``opened`` spans
     alone, and ``lead_unknown`` counts the rest — counted, never
     averaged in (ADR-0019 decision 2). As on ``TaskReport``,
-    ``sessions``, ``sessions_without_cost`` and ``costs`` run over the
-    journal's measured sessions alone, ``unmeasured`` counting the
-    sessions they left out.
+    ``unmeasured`` counts the journal's unmeasured sessions, the cost
+    sums admit every session but an unmeasured one carrying no ``cost``,
+    and ``unmeasured_without_cost`` counts the sessions those sums left
+    out.
     """
 
     tasks: tuple[TaskReport, ...]
@@ -142,6 +148,7 @@ class JournalReport:
     sessions_without_cost: int = 0
     costs: tuple[CostSum, ...] = ()
     unmeasured: int = 0
+    unmeasured_without_cost: int = 0
     rejected_commits: int = 0
 
 
@@ -323,20 +330,24 @@ def _lead_time(state: str, phases: tuple[PhaseBoundary, ...]) -> timedelta | Non
 
 def _cost_sums(
     records: Iterable[dict[str, object]],
-) -> tuple[tuple[CostSum, ...], int, int, int]:
+) -> tuple[tuple[CostSum, ...], int, int, int, int]:
     """Sum session costs per currency and count sessions carrying none.
 
     Returns the per-currency sums sorted by currency code, the count of
-    measured session records carrying no ``cost``, the measured session
-    count, and the count of unmeasured sessions. An unmeasured session —
-    zero tokens and no ``usage`` block — is left out of every sum and
-    count here: its ``cost`` is summed nowhere and it is no measured
-    session, so the unmeasured count carries what the lines would
-    otherwise lose. The record holds ``amount`` as a string so a sum is
-    exact — the sums are ``Decimal``, never floats — and ``reported``
-    and ``estimated`` keep separate sums: the provenance of a figure
-    stays with it, and a conversion would assert a rate the journal does
-    not hold (ADR-0019 decision 4).
+    measured session records carrying no ``cost``, the count of sessions
+    the sums admit, and two unmeasured counts: every unmeasured session
+    and, of them, the ones carrying no ``cost``. A ``cost`` an
+    unmeasured session — zero tokens and no ``usage`` block — recorded
+    sums exactly as a measured session's does: the sum holds the figure,
+    and leaving it out would silently drop money the journal holds
+    (ADR-0019 decision 4). Only an unmeasured session carrying no
+    ``cost`` is left out of these sums — it is no measured session and
+    no ``sessions_without_cost`` session — so the second count carries
+    what the lines would otherwise lose. The record holds ``amount`` as
+    a string so a sum is exact — the sums are ``Decimal``, never floats
+    — and ``reported`` and ``estimated`` keep separate sums: the
+    provenance of a figure stays with it, and a conversion would assert
+    a rate the journal does not hold (ADR-0019 decision 4).
     """
 
     reported: dict[str, Decimal] = {}
@@ -344,6 +355,7 @@ def _cost_sums(
     sessions = 0
     without_cost = 0
     unmeasured = 0
+    unmeasured_without_cost = 0
     # An amount runs to more digits than the default context's 28; under
     # the maximum precision the addition of the recorded finite decimals
     # is exact, and a sum that still cannot be represented fails on the
@@ -354,11 +366,13 @@ def _cost_sums(
         for record in records:
             if record["record_type"] != "session":
                 continue
+            cost = record.get("cost")
             if _is_unmeasured(record):
                 unmeasured += 1
-                continue
+                if not isinstance(cost, dict):
+                    unmeasured_without_cost += 1
+                    continue
             sessions += 1
-            cost = record.get("cost")
             if not isinstance(cost, dict):
                 without_cost += 1
                 continue
@@ -374,6 +388,7 @@ def _cost_sums(
         without_cost,
         sessions,
         unmeasured,
+        unmeasured_without_cost,
     )
 
 
@@ -438,7 +453,9 @@ def _task_report(status: TaskStatus) -> TaskReport:
             if reviews and reviews[-1]["verdict"] == "approved":
                 decision = "approved"
     phases = _phases(records)
-    costs, sessions_without_cost, sessions, unmeasured = _cost_sums(records)
+    costs, sessions_without_cost, sessions, unmeasured, unmeasured_without_cost = (
+        _cost_sums(records)
+    )
     return TaskReport(
         status.task_id,
         status.state,
@@ -454,6 +471,7 @@ def _task_report(status: TaskStatus) -> TaskReport:
         sessions_without_cost=sessions_without_cost,
         costs=costs,
         unmeasured=unmeasured,
+        unmeasured_without_cost=unmeasured_without_cost,
         rejected_commits=_rejected_commits(records),
     )
 
@@ -484,8 +502,8 @@ def build_report(journal_root: Path, task_id: str | None = None) -> JournalRepor
             if len(lead_times) % 2
             else (lead_times[middle - 1] + lead_times[middle]) / 2
         )
-    costs, sessions_without_cost, sessions, unmeasured = _cost_sums(
-        record for status in statuses for record in status.records
+    costs, sessions_without_cost, sessions, unmeasured, unmeasured_without_cost = (
+        _cost_sums(record for status in statuses for record in status.records)
     )
     return JournalReport(
         tasks,
@@ -505,6 +523,7 @@ def build_report(journal_root: Path, task_id: str | None = None) -> JournalRepor
         sessions_without_cost=sessions_without_cost,
         costs=costs,
         unmeasured=unmeasured,
+        unmeasured_without_cost=unmeasured_without_cost,
         rejected_commits=sum(task.rejected_commits for task in tasks),
     )
 
@@ -694,11 +713,11 @@ def _cost_lines(
     A currency's ``reported`` and ``estimated`` sums print as decimals
     in plain notation — the record's own spelling (``f`` keeps a small
     sum ``0.000000001`` rather than ``1E-9``) — and the count prints
-    whenever the scope holds a measured session, so "no cost" reads as a
-    count rather than a zero sum (ADR-0019 decision 4). Every line the
-    block prints carries ``unmeasured=<n>`` as its last field whenever
-    the scope left sessions out of these sums as unmeasured — the count
-    says what the sums would otherwise silently lose.
+    whenever the scope holds a session the sums admit, so "no cost"
+    reads as a count rather than a zero sum (ADR-0019 decision 4). Every
+    line the block prints carries ``unmeasured=<n>`` as its last field
+    whenever the scope left sessions out of these sums as unmeasured —
+    the count says what the sums would otherwise silently lose.
     """
 
     unmeasured_field = f"\tunmeasured={unmeasured}" if unmeasured else ""
@@ -754,7 +773,7 @@ def format_report(
                     task.costs,
                     task.sessions,
                     task.sessions_without_cost,
-                    task.unmeasured,
+                    task.unmeasured_without_cost,
                 )
             )
             lines.extend(_check_lines(task.rejected_commits))
@@ -788,7 +807,7 @@ def format_report(
             report.costs,
             report.sessions,
             report.sessions_without_cost,
-            report.unmeasured,
+            report.unmeasured_without_cost,
         )
     )
     lines.extend(_check_lines(report.rejected_commits))

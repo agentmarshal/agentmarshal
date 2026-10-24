@@ -5,10 +5,13 @@ indistinguishable from a free run, the only trace that nothing was
 measured being a missing ``usage`` block (digest 044's finding). One
 predicate — every token count zero and no ``usage`` block — reads such a
 session as unmeasured: ``status`` shows its tokens as ``unmeasured``, and
-``report`` leaves it out of every token and cost sum, naming the count
-wherever such a sum prints. A session with a ``usage`` block, or any
-non-zero token count, reads exactly as today. Every scenario the delta
-spec names is exercised by one test whose docstring names it.
+``report`` leaves it out of every token sum, naming the count wherever
+such a sum prints. A ``cost`` it records sums exactly as a measured
+session's does; only an unmeasured session carrying no ``cost`` is left
+out of a cost sum, the ``unmeasured=<n>`` on a ``Cost`` line counting
+those alone. A session with a ``usage`` block, or any non-zero token
+count, reads exactly as today. Every scenario the delta spec names is
+exercised by one test whose docstring names it.
 """
 
 from __future__ import annotations
@@ -202,6 +205,34 @@ def test_a_measured_sessions_line_is_unchanged(
     ]
 
 
+def test_an_unmeasured_sessions_record_line_gains_the_unmeasured_mark_and_nothing_more(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: an unmeasured session's record line gains the
+    unmeasured mark and nothing more."""
+
+    repo = tmp_path / "repo"
+    journal = _initialize_repo(repo, monkeypatch)
+    _open(journal, "CR-001")
+    session = _session("CR-001")
+    session["created_at"] = "2026-01-01T00:00:00Z"
+    path = write_record(journal, "CR-001", session)
+    capsys.readouterr()
+
+    # Today's lines print unchanged but the session's record line, which
+    # gains ` tokens=unmeasured` after the `created_at` — the mark is
+    # the only line in the view the word appears on.
+    assert main(["status", "CR-001"]) == 0
+    output = capsys.readouterr().out
+    record_id = path.name.removesuffix("-session.json")
+    assert f"- {record_id} session 2026-01-01T00:00:00Z tokens=unmeasured" in (
+        output.splitlines()
+    )
+    assert [line for line in output.splitlines() if "unmeasured" in line] == [
+        f"- {record_id} session 2026-01-01T00:00:00Z tokens=unmeasured"
+    ]
+
+
 def test_the_task_line_names_the_unmeasured_sessions_it_left_out(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -243,35 +274,43 @@ def test_the_summary_names_the_unmeasured_sessions_it_left_out(
     assert summary.endswith("\tunmeasured=2")
 
 
-def test_a_task_holding_only_unmeasured_sessions_prints_no_cost_lines(
+def test_a_lone_unmeasured_session_with_a_cost_prints_its_cost_lines_as_today(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Scenario: a task holding only unmeasured sessions prints no cost lines."""
+    """Scenario: a task whose only session is unmeasured but records a
+    cost prints its Cost lines as today."""
 
     repo = tmp_path / "repo"
     journal = _initialize_repo(repo, monkeypatch)
     _open(journal, "CR-001")
-    write_record(journal, "CR-001", _session("CR-001"))
     write_record(
         journal,
         "CR-001",
         _session(
             "CR-001",
-            cost={"amount": "1.00", "currency": "USD", "source": "reported"},
+            cost={"amount": "9.99", "currency": "USD", "source": "reported"},
         ),
     )
     capsys.readouterr()
 
+    # The recorded cost is money the journal holds (ADR-0019 decision
+    # 4): the `Cost` block prints as it does for a session today — the
+    # currency sum and the no-cost count — with no `unmeasured` field,
+    # the session itself counting on the task line's token sum alone.
     assert main(["report", "--task", "CR-001"]) == 0
     lines = capsys.readouterr().out.splitlines()
-    assert not any(line.startswith("Cost\t") for line in lines)
-    assert lines[0].endswith("\tunmeasured=2")
+    assert lines[0].endswith("\tunmeasured=1")
+    assert [line for line in lines if line.startswith("Cost\t")] == [
+        "Cost\tUSD\treported=9.99",
+        "Cost\tsessions_without_cost=0",
+    ]
 
 
-def test_an_unmeasured_sessions_cost_is_left_out_of_the_sums(
+def test_an_unmeasured_sessions_recorded_cost_joins_the_per_currency_sums(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Scenario: an unmeasured session's cost is left out of the sums."""
+    """Scenario: an unmeasured session's recorded cost joins the
+    per-currency sums."""
 
     repo = tmp_path / "repo"
     journal = _initialize_repo(repo, monkeypatch)
@@ -297,14 +336,15 @@ def test_an_unmeasured_sessions_cost_is_left_out_of_the_sums(
 
     assert main(["report", "--task", "CR-001"]) == 0
     lines = capsys.readouterr().out.splitlines()
-    assert "Cost\tUSD\treported=0.01\tunmeasured=1" in lines
-    assert not any("9.99" in line for line in lines)
+    assert "Cost\tUSD\treported=10.00" in lines
+    assert not any("unmeasured" in line for line in lines if line.startswith("Cost\t"))
 
 
-def test_every_cost_line_names_the_sessions_left_out(
+def test_an_unmeasured_session_carrying_no_cost_is_left_out_of_the_cost_sums_and_named(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Scenario: every Cost line names the sessions left out."""
+    """Scenario: an unmeasured session carrying no cost is left out of
+    the cost sums and named."""
 
     repo = tmp_path / "repo"
     journal = _initialize_repo(repo, monkeypatch)
@@ -331,6 +371,9 @@ def test_every_cost_line_names_the_sessions_left_out(
     )
     capsys.readouterr()
 
+    # The unmeasured session is in no sum and no `sessions_without_cost`
+    # count; every `Cost` line names it in `unmeasured=<n>` — the
+    # currency lines and the no-cost count alike.
     assert main(["report", "--task", "CR-001"]) == 0
     lines = capsys.readouterr().out.splitlines()
     assert [line for line in lines if line.startswith("Cost\t")] == [
@@ -340,16 +383,44 @@ def test_every_cost_line_names_the_sessions_left_out(
     ]
 
 
-def test_the_aggregate_leaves_unmeasured_sessions_out_and_names_them(
+def test_a_task_holding_only_unmeasured_sessions_carrying_no_cost_prints_no_cost_lines(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Scenario: the aggregate leaves unmeasured sessions out and names them."""
+    """Scenario: a task holding only unmeasured sessions carrying no
+    cost prints no cost lines."""
+
+    repo = tmp_path / "repo"
+    journal = _initialize_repo(repo, monkeypatch)
+    _open(journal, "CR-001")
+    write_record(journal, "CR-001", _session("CR-001"))
+    write_record(journal, "CR-001", _session("CR-001"))
+    capsys.readouterr()
+
+    assert main(["report", "--task", "CR-001"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert not any(line.startswith("Cost\t") for line in lines)
+    assert lines[0].endswith("\tunmeasured=2")
+
+
+def test_the_aggregate_sums_a_recorded_cost_and_names_the_sessions_left_out(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: the aggregate sums a recorded cost and names the
+    sessions left out."""
 
     repo = tmp_path / "repo"
     journal = _initialize_repo(repo, monkeypatch)
     _open(journal, "CR-001")
     _open(journal, "CR-002")
     write_record(journal, "CR-001", _session("CR-001"))
+    write_record(
+        journal,
+        "CR-001",
+        _session(
+            "CR-001",
+            cost={"amount": "5.00", "currency": "USD", "source": "reported"},
+        ),
+    )
     write_record(journal, "CR-002", _session("CR-002"))
     write_record(
         journal,
@@ -362,9 +433,12 @@ def test_the_aggregate_leaves_unmeasured_sessions_out_and_names_them(
     )
     capsys.readouterr()
 
+    # CR-001's second session is unmeasured but records a cost: the
+    # aggregate sums it exactly as a measured session's, and each `Cost`
+    # line names only the unmeasured sessions carrying none.
     assert main(["report"]) == 0
     lines = capsys.readouterr().out.splitlines()
-    assert "Cost\tUSD\treported=1.00\tunmeasured=2" in lines
+    assert "Cost\tUSD\treported=6.00\tunmeasured=2" in lines
     assert "Cost\tsessions_without_cost=0\tunmeasured=2" in lines
 
 
