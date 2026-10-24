@@ -11,7 +11,8 @@
 
 - [x] 2.1 `extension_trust.py`: `read_personal_manifest(directory, name)`
       — link refusal at directory and manifest, forbidden `footprint` /
-      `documents` / `artifacts` checked on the raw table, then
+      `documents` / `artifacts` checked on the raw table, the raw
+      `schema` naming itself when a known schema other than 2, then
       `parse_extension_manifest_text` on the text with the empty arrays
       supplied; schema-2 and referenced-files rules from the directory
       form.
@@ -20,10 +21,14 @@
 
 - [x] 3.1 Move the `ci` computation up; plan personal entries on a
       workstation only — per name: collision line, disabled, skipped,
-      manifest refusal, else its stage matching the phase modes.
+      manifest refusal, else its stage matching the phase modes; each
+      extension-level line owed only at a phase the manifest declares
+      (a refused manifest's phases read from the raw table where they
+      can be established).
 - [x] 3.2 `_prepare_personal_extension` — copy the clone directory into
       the per-stage temporary directory (`symlinks=True`); reuse
-      `_run_stage` unchanged.
+      `_run_stage` — its `personal` flag launching the command directly
+      as a program, a file without the executable bit `not run`.
 - [x] 3.3 Parameterize the per-stage body by scope — shared first, then
       personal; `(personal)` mark on the result string; `scope` on the
       `extension-event`; extension-level lines at the name's sorted
@@ -39,15 +44,18 @@
 - [x] 4.1 `complete --skip-ext` — pass to both `run_stages` calls;
       refuse with `--findings`.
 - [x] 4.2 `extension disable` / `extension enable` under the `extension`
-      group — personal-name validation, shared-name refusal, atomic
-      write of `switches.toml`, `--reason` on disable.
+      group — personal-name validation, shared-name refusal, textual
+      rewrite of `switches.toml` changing only the named entry (stale
+      entries and extra keys preserved), atomic write, `--reason` on
+      disable.
 
 ## 5. Doctor
 
 - [x] 5.1 Personal lines after the shared ones (`personal scope`,
       `disabled` when switched off); `extension manifest <name>
       (personal)` checks; `personal extensions: unavailable` /
-      `personal switches: unavailable` lines.
+      `personal switches: unavailable` lines; the personal block owed
+      even when the shared extensions directory refuses enumeration.
 
 ## 6. Tests
 

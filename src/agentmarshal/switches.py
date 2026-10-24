@@ -17,7 +17,7 @@ run nor switch one back on), and ``doctor`` reads it from the working
 tree.
 
 The personal switch is the same idea on the clone's side (ADR-0013
-decision 11): ``extension disable`` writes ``state = "off"`` for a
+decision 16): ``extension disable`` writes ``state = "off"`` for a
 personal extension into the clone's ``switches.toml`` —
 ``LocalState.switches_file`` — and ``extension enable`` removes it.
 ``PersonalSwitch`` is one such entry: a ``state`` plus an optional

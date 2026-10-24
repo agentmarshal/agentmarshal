@@ -70,18 +70,25 @@ never stops the stage: it runs weakened and one
 why; a declared ``writes`` is enforced nowhere beyond the candidate and
 is named the same way.
 
-The personal scope (ADR-0013 decisions 9, 10 and 11) rides the same run on a
-workstation: directory-form manifests under the clone's
+The personal scope (ADR-0013 decisions 9, 10, 11 and 16) rides the same
+run on a workstation: directory-form manifests under the clone's
 ``.git/agentmarshal/extensions/<name>/`` — ``LocalState.extensions`` —
 read from that directory and never the base, needing no grant, each
-stage run through the same ``_run_stage`` path, its result line marked
-``(personal)`` and its ``extension-event`` scoped ``personal``. A
-personal extension named like a shared one does not run — the shared
-extension wins — and one whose manifest carries a ``footprint``,
-``documents`` or ``artifacts``, or cannot be read at all, is named on
-one ``not run`` line; an extension switched off in the clone's
+stage run through the same ``_run_stage`` path — except that its
+``command`` runs directly as a program, never under the core's
+interpreter (decision 13 as amended: a personal extension may be
+written in any language) — its result line marked ``(personal)`` and
+its ``extension-event`` scoped ``personal``. A personal extension named
+like a shared one does not run — the shared extension wins — and one
+whose manifest carries a ``footprint``, ``documents`` or ``artifacts``,
+or cannot be read at all, is named on one ``not run`` line; an
+extension switched off in the clone's
 ``.git/agentmarshal/switches.toml`` prints ``disabled (personal)``, and
 one named in ``--skip-ext`` prints ``skipped for this run (personal)``.
+Each of those lines is owed only at a phase the extension's manifest
+declares a stage for — a pre-gate-only extension prints nothing at
+post-gate — and a grant concerns shared stages alone, so a trust file
+that cannot be read fails nothing where no shared stage is planned.
 In CI nothing personal is planned or printed, and a clone with no
 personal extension gets exactly the transcript it always got.
 """
@@ -95,6 +102,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import tomllib
 from collections.abc import Callable, Collection
 from contextlib import suppress
 from dataclasses import dataclass
@@ -521,8 +529,10 @@ def _prepare_personal_extension(
     stage's command runs from the copy: the stage cannot scribble on
     its own source, and a copy an earlier stage made is never reused
     (decision 14's "before each run" the personal way). A personal
-    extension needs no grant — decision 10 runs the author's own code —
-    so preparation ends at the link check.
+    extension needs no grant — the grant is the shared scope's approval
+    (decision 14), and a personal extension carries no authority a
+    grant could bound (decision 15a) — so preparation ends at the link
+    check.
     """
 
     destination = temp_root / "personal" / name
@@ -542,6 +552,35 @@ def _prepare_personal_extension(
             None, f"symlink in extension directory: {escape_for_display(linked)}"
         )
     return _Prepared(destination, None)
+
+
+def _personal_phases(directory: Path) -> frozenset[str] | None:
+    """The phases a refused manifest's raw table still names — or ``None``.
+
+    Only the raw table is read — a manifest the clone-side reader
+    refuses can still carry the ``[[stage]]`` phases the phase gate
+    needs, and those decide the line. ``None`` when no declared phase
+    can be established at all — the manifest does not parse, cannot be
+    read or holds a stage entry that names no phase: the extension's
+    declarations are then unknown, and its refusal line is owed at
+    every invocation rather than suppressed by a guess.
+    """
+
+    try:
+        raw = tomllib.loads((directory / "manifest.toml").read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    stages = raw.get("stage")
+    if stages is None:
+        return frozenset()
+    if not isinstance(stages, list):
+        return None
+    phases: set[str] = set()
+    for entry in stages:
+        if not isinstance(entry, dict) or not isinstance(entry.get("phase"), str):
+            return None
+        phases.add(entry["phase"])
+    return frozenset(phases)
 
 
 def _personal_entries(
@@ -565,6 +604,13 @@ def _personal_entries(
       ``not run (<reason>)`` — a forbidden ``footprint``/``documents``/
       ``artifacts``, an unreadable file, a link;
     - anything else contributes one entry per stage whose phase matches.
+
+    Every extension-level line is owed only at a phase the extension
+    declares a stage for — a pre-gate-only extension prints nothing at
+    post-gate — so the manifest is weighed first; a refused manifest's
+    declared phases are the ones its raw table still names, and where
+    they cannot be established at all its refusal line is owed at every
+    invocation.
 
     The clone's switches file is read only where the directory holds a
     name: a file the parse refuses is named on one note line and leaves
@@ -600,6 +646,21 @@ def _personal_entries(
         )
     skipped = frozenset(skip)
     for name in sorted(names):
+        try:
+            manifest = read_personal_manifest(state.extensions / name, name)
+        except ExtensionManifestError as error:
+            phases = _personal_phases(state.extensions / name)
+            if phases is not None and phases.isdisjoint(modes):
+                continue
+            entries.append(
+                _PersonalEntry(
+                    name,
+                    line=f"not run ({escape_for_display(str(error))})",
+                )
+            )
+            continue
+        if not any(stage.phase in modes for stage in manifest.stages):
+            continue
         if name in shared_names:
             entries.append(
                 _PersonalEntry(
@@ -612,16 +673,6 @@ def _personal_entries(
             continue
         if name in skipped:
             entries.append(_PersonalEntry(name, line="skipped for this run"))
-            continue
-        try:
-            manifest = read_personal_manifest(state.extensions / name, name)
-        except ExtensionManifestError as error:
-            entries.append(
-                _PersonalEntry(
-                    name,
-                    line=f"not run ({escape_for_display(str(error))})",
-                )
-            )
             continue
         for stage in manifest.stages:
             if stage.phase in modes:
@@ -703,8 +754,18 @@ def _run_stage(
     prepared: _Prepared,
     snapshot: Path,
     probe: Callable[[], isolation.Probe],
+    *,
+    personal: bool = False,
 ) -> _Outcome:
-    """Run one stage and report its outcome; never raises for the stage itself."""
+    """Run one stage and report its outcome; never raises for the stage itself.
+
+    *personal* is the one scope difference at the launch: a personal
+    stage's ``command`` runs directly as a program — a personal
+    extension may be written in any language (ADR-0013 decision 13 as
+    amended) — where a shared stage's runs under the core's
+    interpreter; a command file without the executable bit is
+    ``not run`` naming why.
+    """
 
     if prepared.reason is not None:
         return _Outcome(
@@ -716,6 +777,8 @@ def _run_stage(
         return _Outcome("not-run", f"command {stage.command} is a symbolic link", b"")
     if not command.is_file():
         return _Outcome("not-run", f"command {stage.command} does not exist", b"")
+    if personal and not os.access(command, os.X_OK):
+        return _Outcome("not-run", f"command {stage.command} is not executable", b"")
     try:
         _extract_snapshot(project_root, resolved_commit, snapshot)
     except Exception as error:
@@ -725,7 +788,7 @@ def _run_stage(
             f"{escape_for_display(str(error))}",
             b"",
         )
-    argv = [sys.executable, str(command)]
+    argv = [str(command)] if personal else [sys.executable, str(command)]
     # The guarantees the stage is owed: the network floor unless the
     # manifest declared ``network = true``, and the pre-gate floor — the
     # candidate read-only. The probe, cached for the run, says what this
@@ -1145,7 +1208,11 @@ def run_stages(
 
     grants: dict[str, Grant] = {}
     grants_unreadable = False
-    if not ci:
+    # A grant concerns shared stages alone — a personal stage runs
+    # regardless — so the file is consulted only where a shared stage
+    # is planned: with none, its unreadability changes nothing about
+    # the run, exactly as it did before the personal scope existed.
+    if not ci and plan:
         try:
             grants = _read_grants(state.trust_file)
         except ExtensionTrustError as error:
@@ -1359,6 +1426,7 @@ def run_stages(
                         prepared,
                         temp_root / f"snapshot-{index_token}",
                         probe_once,
+                        personal=scope == "personal",
                     )
                 finally:
                     try:

@@ -1,6 +1,6 @@
 """The clone's personal extensions and personal switches (CR-233).
 
-ADR-0013 decisions 9, 10 and 11: directory-form manifests under the clone's
+ADR-0013 decisions 9, 10, 11 and 16: directory-form manifests under the clone's
 ``.git/agentmarshal/extensions/<name>/`` — ``LocalState.extensions`` —
 run on a workstation through the same ``_run_stage`` path a shared stage
 takes, no grant asked, each result line marked ``(personal)`` and each
@@ -78,11 +78,14 @@ def _personal_extension(
         encoding="utf-8",
     )
     if files is None:
-        files = {"bin/check.py": "print('check ran')\n"}
+        files = {"bin/check.py": "#!/usr/bin/env python3\nprint('check ran')\n"}
     for relpath, content in files.items():
         path = directory / relpath
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
+        if relpath.startswith("bin/"):
+            # A personal command runs directly as a program.
+            path.chmod(0o755)
     return directory
 
 
@@ -227,7 +230,9 @@ def test_the_clones_directory_is_what_runs_never_the_base(
     assert "mycheck | check ran" in capsys.readouterr().out
     # And it is the directory the clone holds, reread each run: an edit
     # lands on the next invocation without any commit.
-    (directory / "bin" / "check.py").write_text("print('v2')\n", encoding="utf-8")
+    (directory / "bin" / "check.py").write_text(
+        "#!/usr/bin/env python3\nprint('v2')\n", encoding="utf-8"
+    )
     assert _stage_run(commit="candidate", base="master") == 0
     assert "mycheck | v2" in capsys.readouterr().out
 
@@ -244,7 +249,7 @@ def test_a_personal_stage_is_invoked_at_the_phase_its_manifest_declares(
     _personal_extension(
         repo,
         manifest=_personal_manifest(stages=(("post-gate", "bin/post.py"),)),
-        files={"bin/post.py": "print('post ran')\n"},
+        files={"bin/post.py": "#!/usr/bin/env python3\nprint('post ran')\n"},
     )
     _workstation(monkeypatch)
     capsys.readouterr()
@@ -297,8 +302,8 @@ def test_complete_runs_the_personal_stages_through_the_shared_runner(
             )
         ),
         files={
-            "bin/stop.py": "print('stop ran')\n",
-            "bin/post.py": "print('post ran')\n",
+            "bin/stop.py": "#!/usr/bin/env python3\nprint('stop ran')\n",
+            "bin/post.py": "#!/usr/bin/env python3\nprint('post ran')\n",
         },
     )
     _review(head)
@@ -422,7 +427,10 @@ def test_a_failed_personal_stages_line_is_marked_personal(
     """Scenario: a failed personal stage's line is marked personal."""
     repo = _project(tmp_path, monkeypatch)
     _commit_all(repo, "base")
-    _personal_extension(repo, files={"bin/check.py": "import sys\nsys.exit(4)\n"})
+    _personal_extension(
+        repo,
+        files={"bin/check.py": "#!/usr/bin/env python3\nimport sys\nsys.exit(4)\n"},
+    )
     _workstation(monkeypatch)
     capsys.readouterr()
 
@@ -440,7 +448,10 @@ def test_a_pausing_personal_pre_gate_stop_stage_pauses_the_local_run_marked_pers
     _git(repo, "checkout", "--quiet", "-b", "candidate")
     (repo / "x.txt").write_text("x\n", encoding="utf-8")
     candidate = _commit_all(repo, "candidate")
-    _personal_extension(repo, files={"bin/check.py": "import sys\nsys.exit(2)\n"})
+    _personal_extension(
+        repo,
+        files={"bin/check.py": "#!/usr/bin/env python3\nimport sys\nsys.exit(2)\n"},
+    )
     _workstation(monkeypatch)
     capsys.readouterr()
 
@@ -474,7 +485,7 @@ def test_a_personal_pre_gate_warn_failure_warns_marked_personal(
     _personal_extension(
         repo,
         manifest=_personal_manifest(stages=(("pre-gate-warn", "bin/warn.py"),)),
-        files={"bin/warn.py": "import sys\nsys.exit(9)\n"},
+        files={"bin/warn.py": "#!/usr/bin/env python3\nimport sys\nsys.exit(9)\n"},
     )
     _workstation(monkeypatch)
     capsys.readouterr()
@@ -495,7 +506,10 @@ def test_a_personal_pause_refuses_complete_while_the_candidate_is_not_merged(
 ) -> None:
     """Scenario: a personal pause refuses complete while the candidate is not merged."""
     repo, base, head = _repo_for_complete(tmp_path, monkeypatch)
-    _personal_extension(repo, files={"bin/check.py": "import sys\nsys.exit(1)\n"})
+    _personal_extension(
+        repo,
+        files={"bin/check.py": "#!/usr/bin/env python3\nimport sys\nsys.exit(1)\n"},
+    )
     _review(head)
     _workstation(monkeypatch)
     capsys.readouterr()
@@ -675,8 +689,8 @@ def test_complete_skip_ext_skips_a_personal_extension_for_that_run(
             )
         ),
         files={
-            "bin/stop.py": "print('stop ran')\n",
-            "bin/post.py": "print('post ran')\n",
+            "bin/stop.py": "#!/usr/bin/env python3\nprint('stop ran')\n",
+            "bin/post.py": "#!/usr/bin/env python3\nprint('post ran')\n",
         },
     )
     _review(head)
@@ -1039,6 +1053,11 @@ def test_a_clone_with_no_personal_extension_prints_exactly_what_it_prints_today(
     assert all(mark not in captured.err for mark in marks)
     assert "extensions: none" in captured.err
 
+    assert main(["status"]) == 0
+    captured = capsys.readouterr()
+    assert all(mark not in captured.out for mark in marks)
+    assert all(mark not in captured.err for mark in marks)
+
 
 def test_the_personal_scope_adds_no_mark_to_a_shared_stages_line(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
@@ -1070,7 +1089,7 @@ def test_a_personal_extension_declaring_no_matching_stage_prints_nothing(
     _personal_extension(
         repo,
         manifest=_personal_manifest(stages=(("post-gate", "bin/post.py"),)),
-        files={"bin/post.py": "print('post ran')\n"},
+        files={"bin/post.py": "#!/usr/bin/env python3\nprint('post ran')\n"},
     )
     _workstation(monkeypatch)
     capsys.readouterr()
@@ -1177,6 +1196,282 @@ def test_a_personal_stage_writes_nothing_to_the_journal(
     assert event["scope"] == "personal"
 
 
+# -- extension-level lines follow the declared phases -----------------------------
+#
+# The delta's "the extension-level line" requirement gates a collision,
+# disabled, skipped or refused-manifest line on a stage the extension
+# actually declares in the phase being run.
+
+
+def test_an_extension_level_line_prints_only_at_a_phase_the_extension_declares(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: an extension-level line is owed only at a declared phase."""
+    repo = _project(tmp_path, monkeypatch)
+    _commit_all(repo, "base")
+    _personal_extension(repo)  # a pre-gate-stop stage only
+    assert main(["extension", "disable", "mycheck"]) == 0
+    _workstation(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(phase="post-gate", commit="HEAD", base="master") == 0
+
+    captured = capsys.readouterr()
+    assert "mycheck" not in captured.out
+    assert "mycheck" not in captured.err
+    assert "no shared extension declares a post-gate stage" in captured.out
+
+    assert _stage_run(commit="HEAD", base="master") == 0
+    assert "mycheck: disabled (personal)" in capsys.readouterr().out
+
+    # An invocation skip gates the same way.
+    assert main(["extension", "enable", "mycheck"]) == 0
+    capsys.readouterr()
+    assert (
+        _stage_run_skip("mycheck", phase="post-gate", commit="HEAD", base="master") == 0
+    )
+    captured = capsys.readouterr()
+    assert "mycheck" not in captured.out
+    assert _stage_run_skip("mycheck", commit="HEAD", base="master") == 0
+    assert "mycheck: skipped for this run (personal)" in capsys.readouterr().out
+
+
+def test_a_refused_manifests_line_follows_the_phases_its_raw_table_names(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a refused manifest's line follows the phases its raw table names."""
+    repo = _project(tmp_path, monkeypatch)
+    _commit_all(repo, "base")
+    # Refused for a forbidden field; its raw table still names post-gate,
+    # so the line is owed at post-gate and silent at pre-gate.
+    _personal_extension(
+        repo,
+        name="footext",
+        manifest=(
+            "schema = 2\n"
+            'name = "footext"\n'
+            'version = "1.0.0"\n'
+            'footprint = ["x/"]\n'
+            "\n"
+            "[[stage]]\n"
+            'phase = "post-gate"\n'
+            'command = "bin/c.py"\n'
+        ),
+        files={"bin/c.py": "#!/usr/bin/env python3\nprint(1)\n"},
+    )
+    # Unparseable: the phases cannot be established, so the refusal
+    # stands at every invocation rather than being silently dropped.
+    _personal_extension(repo, name="broken", manifest="this is not = toml [\n")
+    _workstation(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="HEAD", base="master") == 0
+
+    out = capsys.readouterr().out
+    assert "footext" not in out
+    assert "broken: not run (" in out
+
+    assert _stage_run(phase="post-gate", commit="HEAD", base="master") == 0
+
+    out = capsys.readouterr().out
+    assert "footext: not run (" in out
+    assert "'footprint'" in out
+    assert "broken: not run (" in out
+
+
+def test_a_personal_manifest_of_schema_1_is_refused_naming_the_schema(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a personal manifest of schema 1 is refused naming the schema."""
+    repo = _project(tmp_path, monkeypatch)
+    _commit_all(repo, "base")
+    # The stage entry makes the raw phase peek return pre-gate-stop, so
+    # the refusal is printed there — and it names the declared schema,
+    # not the schema-2 fields the shared parser would call missing.
+    _personal_extension(
+        repo,
+        manifest=(
+            "schema = 1\n"
+            'name = "mycheck"\n'
+            'version = "1.0.0"\n'
+            "\n"
+            "[[stage]]\n"
+            'phase = "pre-gate-stop"\n'
+            'command = "bin/check.py"\n'
+        ),
+        files={"bin/check.py": "#!/usr/bin/env python3\nprint(1)\n"},
+    )
+    _workstation(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="HEAD", base="master") == 0
+
+    out = capsys.readouterr().out
+    assert (
+        "mycheck: not run (the directory form requires a manifest of "
+        "schema 2; 'mycheck' declares schema 1" in out
+    )
+    assert "artifacts" not in out
+
+
+# -- the command's launch form ----------------------------------------------------
+
+
+def test_a_personal_stages_command_runs_directly_as_a_program(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a personal stage's command runs directly as a program."""
+    repo = _project(tmp_path, monkeypatch)
+    _commit_all(repo, "base")
+    directory = _personal_extension(
+        repo,
+        manifest=_personal_manifest(stages=(("pre-gate-stop", "bin/check.sh"),)),
+        files={"bin/check.sh": "#!/bin/sh\nexit 0\n"},
+    )
+    (directory / "bin" / "check.sh").chmod(0o755)
+    _workstation(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="HEAD", base="master") == 0
+
+    # A shell script fed to the core's interpreter would fail; checked
+    # means the file itself was the program.
+    assert "mycheck: checked (personal)" in capsys.readouterr().out
+
+
+def test_a_personal_command_file_that_is_not_executable_is_not_run_naming_why(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a non-executable personal command file is not run naming why."""
+    repo = _project(tmp_path, monkeypatch)
+    _commit_all(repo, "base")
+    directory = _personal_extension(
+        repo,
+        manifest=_personal_manifest(stages=(("pre-gate-stop", "bin/check.sh"),)),
+        files={"bin/check.sh": "#!/bin/sh\nexit 0\n"},
+    )
+    (directory / "bin" / "check.sh").chmod(0o644)
+    _workstation(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="HEAD", base="master") == 3
+
+    captured = capsys.readouterr()
+    assert (
+        "mycheck: not run (command bin/check.sh is not executable) (personal)"
+        in captured.out
+    )
+
+
+def test_an_unreadable_trust_file_changes_nothing_when_no_shared_stage_is_planned(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: an unreadable trust file does not fail a personal-only run."""
+    repo = _project(tmp_path, monkeypatch)
+    _commit_all(repo, "base")
+    _personal_extension(repo)
+    trust = repo / ".git" / "agentmarshal" / "trust.toml"
+    trust.parent.mkdir(parents=True, exist_ok=True)
+    trust.write_text("format = 2\n", encoding="utf-8")
+    _workstation(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="HEAD", base="master") == 0
+
+    captured = capsys.readouterr()
+    assert "mycheck: checked (personal)" in captured.out
+    assert "trust" not in captured.err
+
+
+def test_an_unreadable_trust_file_still_fails_the_run_when_a_shared_stage_is_planned(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: an unreadable trust file still fails a run planning a shared stage."""
+    repo, _base, _candidate = _repo_with_extension(tmp_path, monkeypatch)
+    _personal_extension(repo)
+    trust = repo / ".git" / "agentmarshal" / "trust.toml"
+    trust.write_text("format = 2\n", encoding="utf-8")
+    _workstation(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 1
+
+    captured = capsys.readouterr()
+    assert "trust.toml" in captured.err
+    assert "mycheck: checked (personal)" in captured.out
+    # The shared stage owes no line once the grants cannot be read.
+    assert "openspec" not in captured.out
+
+
+# -- what a rewrite keeps ---------------------------------------------------------
+
+
+def test_a_rewrite_changes_only_the_named_switch_entry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a rewrite changes only the named switch entry."""
+    repo = _project(tmp_path, monkeypatch)
+    _commit_all(repo, "base")
+    _personal_extension(repo, name="alpha")
+    beta = _personal_extension(repo, name="beta")
+    capsys.readouterr()
+
+    assert main(["extension", "disable", "alpha"]) == 0
+    assert main(["extension", "disable", "beta", "--reason", "loud"]) == 0
+    # A key the format does not name survives on the entry.
+    text = _switches_file(repo).read_text(encoding="utf-8")
+    _switches_file(repo).write_text(
+        text.replace('reason = "loud"', 'reason = "loud"\nnote = "kept"'),
+        encoding="utf-8",
+    )
+    # Beta's directory moved aside: its entry is now one for an
+    # extension the clone no longer holds.
+    aside = beta.with_name("beta-away")
+    beta.rename(aside)
+
+    assert main(["extension", "enable", "alpha"]) == 0
+
+    parsed = tomllib.loads(_switches_file(repo).read_text(encoding="utf-8"))
+    assert parsed["switches"] == {
+        "beta": {"state": "off", "reason": "loud", "note": "kept"},
+    }
+    # Restored, beta's own switch still holds.
+    aside.rename(beta)
+    _workstation(monkeypatch)
+    assert _stage_run(commit="HEAD", base="master") == 0
+    out = capsys.readouterr().out
+    assert "alpha: checked (personal)" in out
+    assert "beta: disabled (personal)" in out
+
+
+# -- doctor when the shared directory refuses --------------------------------------
+
+
+def test_doctor_lists_personal_extensions_when_the_shared_directory_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: doctor lists personal extensions when the shared directory refuses."""
+    repo = _project(tmp_path, monkeypatch)
+    _preconditions(repo, monkeypatch)
+    _personal_extension(repo)
+    # A link at .agentmarshal/extensions refuses the shared enumeration.
+    managed = repo / ".agentmarshal" / "extensions"
+    if managed.is_dir() and not managed.is_symlink():
+        managed.rmdir()
+    target = tmp_path / "elsewhere"
+    target.mkdir()
+    managed.symlink_to(target, target_is_directory=True)
+    capsys.readouterr()
+
+    assert main(["doctor"]) == 1
+
+    captured = capsys.readouterr()
+    assert "extensions: unavailable (" in captured.err
+    assert "FAIL: extension manifests" in captured.out
+    assert "extension mycheck: personal scope, directory form" in captured.err
+    assert "OK: extension manifest mycheck (personal)" in captured.out
+
+
 # -- not a spec scenario --------------------------------------------------------
 
 
@@ -1199,12 +1494,13 @@ def test_an_earlier_personal_stage_cannot_rewrite_a_later_stages_command(
         ),
         files={
             "bin/first.py": (
+                "#!/usr/bin/env python3\n"
                 "from pathlib import Path\n"
                 "target = Path(__file__).resolve().parents[1] / 'bin' / 'second.py'\n"
                 "target.write_text(\"print('REWRITTEN')\\n\", encoding='utf-8')\n"
                 "print('first ran')\n"
             ),
-            "bin/second.py": "print('SOURCE SECOND')\n",
+            "bin/second.py": "#!/usr/bin/env python3\nprint('SOURCE SECOND')\n",
         },
     )
     _workstation(monkeypatch)

@@ -1438,16 +1438,47 @@ refused gate, a standing pause — SHALL not invoke it.
 the clone's personal extensions' declared stages: directory-form
 manifests under `.git/agentmarshal/extensions/<name>/`, located through
 `LocalState.extensions`, read from that directory and never the base,
-needing no grant, under the same `_run_stage` path — argv, snapshot,
-timeout, isolation. In CI (`CI` equals `true`) no personal stage is
-planned and nothing personal is printed.
+needing no grant, under the same `_run_stage` path — snapshot, timeout,
+isolation — its `command` launched directly as a program, since a
+personal extension may be written in any language (ADR-0013 decision 13
+as amended); a command file without the executable bit SHALL be `not
+run` naming why. A trust file that cannot be read SHALL matter only
+where a shared stage is planned — grants concern shared stages alone —
+and change nothing about a run of personal stages alone. In CI (`CI`
+equals `true`) no personal stage is planned and nothing personal is
+printed.
 
 #### Scenario: a personal extension's stage runs on a workstation without a grant
 
 On a workstation, a personal extension with a `pre-gate` stage declared
-runs it under the same argv, snapshot, timeout and isolation rules as a
+runs it under the same snapshot, timeout and isolation rules as a
 shared stage — no trust grant is asked — and its frames and result line
 print at its name-sorted slot after the shared stages.
+
+#### Scenario: a personal stage's command runs directly as a program
+
+A personal stage's `command` — an executable shell script, say — is
+exec'd itself, not fed to the core's interpreter; a script that would
+fail under that interpreter prints `checked (personal)`.
+
+#### Scenario: a non-executable personal command file is not run naming why
+
+A personal stage whose `command` file lacks the executable bit prints
+`<name>: not run (command <path> is not executable) (personal)` and —
+a `pre-gate-stop` — pauses the run the usual way.
+
+#### Scenario: an unreadable trust file does not fail a personal-only run
+
+With only personal stages planned, a `trust.toml` the grants parser
+refuses prints nothing about the trust file: the personal stages run
+and the run's outcome is decided by them alone.
+
+#### Scenario: an unreadable trust file still fails a run planning a shared stage
+
+With a shared stage planned, the same refusal prints the one
+`stage run: <trust file>: <reason>` line, the shared stage owes no
+result line, and the command exits 1 — the personal stages still
+running, a grant never asked of them.
 
 #### Scenario: the clone's directory is what runs, never the base
 
@@ -1493,6 +1524,13 @@ path that is no directory or cannot be listed SHALL be named on one
 A personal directory holding no `manifest.toml` — or one that does not
 parse — prints `<name>: not run (<reason>) (personal)` and the run
 continues past it to the other stages.
+
+#### Scenario: a personal manifest of schema 1 is refused naming the schema
+
+A personal manifest declaring `schema = 1` prints `<name>: not run
+(the directory form requires a manifest of schema 2; '<name>' declares
+schema 1: <path>) (personal)` — the reason naming the declared schema,
+not the schema-2 fields a shared parse would call missing.
 
 #### Scenario: an extensions directory that cannot be enumerated is named on one note line
 
@@ -1552,6 +1590,30 @@ prints `openspec: not run (a shared extension of this name wins)
 (personal)` at its sorted slot and runs no stage — whether the shared
 extension runs, is switched off or is ungranted.
 
+### Requirement: an extension-level line is owed only at a declared phase
+
+An extension-level line — the collision line, `disabled`, `skipped for
+this run`, the refused-manifest `not run` — SHALL print only when the
+extension declares a stage in the phase being run: an extension with
+no stage for the phase owes no line at all. For a manifest the reader
+refuses, the phases SHALL be taken from the raw manifest table where
+they can be established; where they cannot, the refusal line stands at
+every invocation rather than being silently dropped.
+
+#### Scenario: an extension-level line is owed only at a declared phase
+
+A personal extension declaring only a `pre-gate-stop` stage, disabled
+or named in `--skip-ext`, prints its `disabled (personal)` or `skipped
+for this run (personal)` line at a `pre-gate` invocation and nothing
+at `post-gate`; the same holds for the collision line.
+
+#### Scenario: a refused manifest's line follows the phases its raw table names
+
+A refused manifest whose raw `[[stage]]` entries still read prints its
+`not run (<reason>) (personal)` line only where one of those phases is
+invoked; a manifest whose table does not parse at all prints the line
+at every invocation.
+
 ### Requirement: a personal manifest carries no footprint, documents or artifacts
 
 A personal manifest SHALL carry no `footprint`, `documents` or
@@ -1578,7 +1640,9 @@ skip a personal extension for that run, printing `<name>: skipped for
 this run (personal)`; `extension disable <name>` SHALL write `state =
 "off"` under `[switches.<name>]` in the clone's
 `.git/agentmarshal/switches.toml` and `extension enable <name>` SHALL
-remove the entry; a disabled extension prints `<name>: disabled
+remove the entry — a rewrite changing only the named entry, other
+entries and keys the format does not name standing as they were; a
+disabled extension prints `<name>: disabled
 (personal)` and does not run.
 
 #### Scenario: stage run --skip-ext skips a personal extension for that run
@@ -1610,6 +1674,14 @@ at its slot, runs no stage of it, and does not pause.
 `extension enable mycheck` removes the entry, names the file, prints
 `enabled mycheck`, and the next run runs the stage; `enable` on an
 extension that is not disabled refuses on one line and writes nothing.
+
+#### Scenario: a rewrite changes only the named switch entry
+
+With `alpha` and `beta` switched off — `beta`'s entry also carrying a
+key the format does not name — `extension enable alpha` rewrites the
+file so that, parsed, it differs only in `alpha`'s entry: `beta`'s
+state, reason and extra key stand, and an entry for an extension the
+clone no longer holds stands untouched.
 
 ### Requirement: the personal switches file
 
@@ -1694,6 +1766,14 @@ scope, directory form, manifest schema 2, stages: <modes>, ext kinds:
 A malformed `switches.toml` prints `personal switches: unavailable
 (<reason>)` after the extension lines, keeps every extension shown as
 not disabled, and fails no check for it.
+
+#### Scenario: doctor lists personal extensions when the shared directory refuses
+
+A `.agentmarshal/extensions/` the enumeration refuses — a link, say —
+prints `extensions: unavailable (<reason>)` and the one failing
+`extension manifests` check, and the personal lines and the `(personal)`
+checks still follow: the personal scope is the clone's own and owes
+nothing to the shared enumeration.
 
 ### Requirement: a clone with no personal extension prints exactly what it prints today
 
