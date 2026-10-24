@@ -31,11 +31,28 @@
   manifest claiming unsent files — verify: the test named after the
   scenario.
 
-## 3. Closeout
+## 3. Review-round hardening
 
-- [x] 3.1 Full CI sequence green from the worktree root — verify:
+- [x] 3.1 The leak scan covers the manifest's next content — the bytes
+  `send` stages under `SENT` — so a hit refuses the run like any other
+  — verify: `test_the_manifests_next_content_goes_through_the_leak_scan`.
+- [x] 3.2 A file name that could add a line to the manifest is refused,
+  named escaped, in `check`/`send`; the manifest parses strictly — one
+  `<64 hex>  <name>` line each, name without line-forging characters —
+  verify: `test_a_file_whose_name_could_add_a_line_to_the_manifest_is_refused`,
+  `test_a_manifest_line_in_another_shape_lists_nothing`.
+- [x] 3.3 `send` refuses "no drafts to send" before touching the index
+  when every entry is already sent — a sent draft renamed leaves the
+  operator's staged rename exactly as found — verify:
+  `test_send_refuses_a_rename_of_an_already_sent_draft`.
+- [x] 3.4 design.md states what the code does on the name/digest
+  matching; the delta notes the manifest is bookkeeping, not a finding.
+
+## 4. Closeout
+
+- [x] 4.1 Full CI sequence green from the worktree root — verify:
   `uv run agentmarshal validate; uv run pytest -q; uv run ruff check;
   uv run ruff format --check; uv run mypy`.
-- [x] 3.2 Archive the change with `openspec archive` — verify:
+- [x] 4.2 Archive the change with `openspec archive` — verify:
   `openspec/specs/outbox/spec.md` carries each requirement exactly once
   and the change sits under `openspec/changes/archive/`.

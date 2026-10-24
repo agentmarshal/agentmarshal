@@ -45,16 +45,24 @@ unchanged. A draft that is not UTF-8 text SHALL be named as such.
 optional `--index <file>` — the same index file `outbox status` parses —
 and SHALL treat as already sent, and not check, a regular file whose
 sha256 is listed in the outbox's sent manifest — the file `SENT` in the
-outbox, one `<sha256>  <name>` line each, lowercase hex — or claimed by a
-`Source:` line of the index when `--index` is given. A skipped file is
-still read and still goes through the leak scan — it leaves with the
-batch like every file — it is only not judged as a draft; and it is
-never the manifest or the README, which are not drafts either. Each
-command SHALL print one line `skipped as sent: <n>` when it skipped any,
-so skipping is never silent. A file whose name a manifest line carries
+outbox — or claimed by a `Source:` line of the index when `--index` is
+given. The manifest is the tool's record of what was sent — bookkeeping
+the outbox keeps beside the findings, not a finding itself — and it is
+parsed strictly: one `<sha256>  <name>` line each, 64 lowercase hex
+digits, exactly two spaces, a name free of the characters that could
+add a line; a line in any other shape lists nothing — it neither skips
+a file nor names one changed after sending. A skipped file is still
+read and still goes through the leak scan — it leaves with the batch
+like every file — it is only not judged as a draft; and it is never
+the manifest or the README, which are not drafts either. Each command
+SHALL print one line `skipped as sent: <n>` when it skipped any, so
+skipping is never silent. A file whose name a manifest line carries
 beside a different sha256 is not skipped — its bytes changed since it
 was sent — so it is checked like a draft and the check SHALL name it as
-changed after sending: an annotation, not a refusal.
+changed after sending: an annotation, not a refusal. A regular file
+whose name could add a line to the manifest — a newline or another
+character a line of text cannot hold — SHALL be named in escaped
+printable form and refused: such a name is never written to `SENT`.
 
 #### Scenario: a file the sent manifest lists is not checked as a draft
 - **WHEN** the outbox holds a file whose sha256 a `SENT` line lists —
@@ -96,6 +104,19 @@ changed after sending: an annotation, not a refusal.
 - **THEN** `outbox send` refuses saying there are no drafts to send, and
   commits nothing
 
+#### Scenario: a manifest line in another shape lists nothing
+- **WHEN** a `SENT` line is not exactly `<64 lowercase hex>  <name>`
+  with a name free of line-forging characters — one space, an
+  uppercase digest, a control character in the name
+- **THEN** the line lists no file: it neither skips one nor names one
+  changed after sending
+
+#### Scenario: a file whose name could add a line to the manifest is refused
+- **WHEN** a regular file in the outbox has a name carrying a newline or
+  another control character
+- **THEN** the check names it in escaped printable form and refuses, and
+  `send` writes no manifest line for it
+
 ### Requirement: `outbox send` records the batch in the sent manifest
 
 `agentmarshal outbox send` SHALL add to the outbox's sent manifest, in
@@ -106,7 +127,10 @@ without an index. The manifest update SHALL be pinned by the same
 checked bytes as every file the batch carries: the content committed is
 the content the passing check computed, staged under
 `.agentmarshal/upstream/SENT` and verified against the staged blobs
-like every pinned path. A batch that would stage only the manifest is
+like every pinned path — and the leak scan SHALL cover those same
+bytes: the manifest's next content is scanned like every file the batch
+carries, and a hit refuses the run before `send` stages a byte. A batch
+that would stage only the manifest is
 nothing to send and SHALL be refused as an empty batch is. A refused
 send SHALL leave the manifest's bytes as it found them — or absent
 when there was none — as it leaves the index, so a failed commit never
@@ -127,3 +151,10 @@ leaves a manifest claiming files it did not land.
 - **WHEN** `git commit` fails after the manifest was written
 - **THEN** `SENT` holds the bytes it held before — or is absent when
   there was none — and no draft is skipped by it afterward
+
+#### Scenario: the manifest's next content goes through the leak scan
+- **WHEN** a draft's name makes the manifest's next content match a
+  signature — the name trips nothing alone but does beside the line
+  break
+- **THEN** the check reports the hit on `SENT` and refuses, and `send`
+  stages nothing

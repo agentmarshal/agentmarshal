@@ -42,8 +42,19 @@ not a draft and is not checked.
   like the README it is not a draft but still leaves with the batch,
   so it is still read, pinned and scanned. The name on a line is the
   escaped printable form every command prints — the manifest is a text
-  file and a non-UTF-8 name has no other writable form; matching never
-  uses it, only the digest does.
+  file and a non-UTF-8 name has no other writable form. The sent-skip
+  itself matches only the digest; the name serves one purpose, the
+  `changed after sending` annotation below — a line names a file and
+  the digest beside it is what it was sent as.
+- **A name that could add a line is refused, never written.** A file
+  name carrying a newline or another character a line of text cannot
+  hold — the set `forges_rendered_text` refuses — can take no manifest
+  line and can forge one: the check names the file in escaped
+  printable form and refuses, for a draft and for an already-sent
+  file alike. The read side is strict to match: only a line of
+  exactly `<64 lowercase hex>  <name>` with a name free of those
+  characters is a manifest entry — a line in any other shape lists
+  nothing.
 - **A file is already sent when its sha256 is listed.** The check
   hashes each regular outbox file — it reads every one for the scan
   anyway — and a draft is a regular file that is not the README, not
@@ -70,7 +81,11 @@ not a draft and is not checked.
   bytes, the same `hash-object --stdin --path` pin every file gets.
   `send` writes exactly those bytes before the add, so the staged
   manifest blob is the pinned one and the same batch commit carries
-  drafts and manifest together.
+  drafts and manifest together. The leak scan covers those bytes too —
+  the manifest's next content is scanned like every file the batch
+  carries, because a name that trips nothing alone can match once it
+  sits on a manifest line (a signature whose match spans the line
+  break) — a hit refuses the run before `send` stages a byte.
 - **A manifest with nothing to add does not make a batch.** When the
   only thing the add stages is `SENT` — every draft already committed
   and unchanged — there is nothing to send and the send refuses as

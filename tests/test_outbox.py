@@ -200,8 +200,7 @@ def test_a_freshly_scaffolded_draft_is_unfilled(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Scenario: a freshly scaffolded draft is unfilled in Symptom,
-    Measurements and Expected."""
+    """Scenario: a freshly scaffolded draft is unfilled in Symptom, Measurements and Expected."""  # noqa: E501
     _project(tmp_path, monkeypatch)
     main(["outbox", "new", "gate hangs"])
 
@@ -1356,8 +1355,7 @@ def test_a_manifest_listed_file_whose_bytes_changed_is_checked_and_named(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Scenario: a manifest-listed file whose bytes changed is checked and
-    named as changed after sending."""
+    """Scenario: a manifest-listed file whose bytes changed is checked and named as changed after sending."""  # noqa: E501
     repo = _project(tmp_path, monkeypatch)
     outbox = _outbox(repo)
     sent = outbox / "0007-note.md"
@@ -1590,3 +1588,122 @@ def test_check_index_refuses_an_unreadable_index(
     missing = tmp_path / "missing.txt"
     assert main(["outbox", "check", "--index", str(missing)]) == 1
     assert "cannot read the index" in capsys.readouterr().err
+
+
+def test_send_refuses_a_rename_of_an_already_sent_draft(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A draft renamed after the batch that sent it is already sent —
+    `send` refuses it as no drafts to send before touching the index,
+    so the operator's staged rename is left exactly as found and nothing
+    is committed."""
+    repo = _project(tmp_path, monkeypatch)
+    _conforming_draft(_outbox(repo))
+    assert main(["outbox", "send"]) == 0
+    _git(
+        repo,
+        "mv",
+        ".agentmarshal/upstream/0001-filled.md",
+        ".agentmarshal/upstream/0002-renamed.md",
+    )
+    capsys.readouterr()
+
+    assert main(["outbox", "send"]) == 1
+
+    captured = capsys.readouterr()
+    assert "skipped as sent: 1" in captured.out
+    assert "no drafts to send" in captured.err
+    assert _git_out(repo, "rev-list", "--count", "HEAD") == "1"
+    # The index is exactly as `send` found it: the operator's staged
+    # rename stands — the refusal staged nothing and unstaged nothing.
+    staged = _git_out(repo, "diff", "--cached", "--name-status")
+    assert "R100" in staged
+    assert ".agentmarshal/upstream/0001-filled.md" in staged
+    assert ".agentmarshal/upstream/0002-renamed.md" in staged
+
+
+def test_a_file_whose_name_could_add_a_line_to_the_manifest_is_refused(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a file whose name could add a line to the manifest is refused."""
+    repo = _project(tmp_path, monkeypatch)
+    outbox = _outbox(repo)
+    forged = outbox / "one\ntwo.md"
+    forged.write_text(_CONFORMING, encoding="utf-8")
+    _conforming_draft(outbox, "0009-fine.md")
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    assert main(["outbox", "check"]) == 1
+
+    captured = capsys.readouterr()
+    assert (
+        "one\\ntwo.md: a name that could add a line to the sent manifest"
+        in captured.out
+    )
+    assert "one\ntwo.md" not in captured.out
+    assert "one\ntwo.md" not in captured.err
+    capsys.readouterr()
+
+    assert main(["outbox", "send"]) == 1
+
+    captured = capsys.readouterr()
+    assert "one\\ntwo.md" in captured.out
+    # The name never reached the manifest — none was ever written.
+    assert not (outbox / "SENT").exists()
+    assert _git_out(repo, "rev-list", "--count", "--all") == "0"
+
+
+def test_a_manifest_line_in_another_shape_lists_nothing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a manifest line in another shape lists nothing."""
+    repo = _project(tmp_path, monkeypatch)
+    outbox = _outbox(repo)
+    sent = outbox / "old-one.md"
+    sent.write_text(_CONFORMING, encoding="utf-8")
+    digest = _sha256(sent)
+    manifest = outbox / "SENT"
+    manifest.write_text(
+        f"{digest} old-one.md\n"
+        f"{digest.upper()}  old-one.md\n"
+        f"{digest}  old-one.md\x07\n",
+        encoding="utf-8",
+    )
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    assert main(["outbox", "check"]) == 0
+
+    out = capsys.readouterr().out
+    assert "skipped as sent" not in out
+    assert "changed after sending" not in out
+    assert "1 draft(s) checked" in out
+
+
+def test_the_manifests_next_content_goes_through_the_leak_scan(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: the manifest's next content goes through the leak scan."""
+    repo = _project(tmp_path, monkeypatch)
+    outbox = _outbox(repo)
+    # Alone the name trips nothing: the `authorization-header` signature
+    # needs a non-space after `bearer`. On the manifest line the next
+    # line's digest supplies it, so the staged `SENT` bytes are the hit.
+    _conforming_draft(outbox, "authorization: bearer")
+    _conforming_draft(outbox, "zzzz.md")
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    assert main(["outbox", "send"]) == 1
+
+    captured = capsys.readouterr()
+    assert "SENT: authorization-header" in captured.out
+    assert not (outbox / "SENT").exists()
+    assert _git_out(repo, "rev-list", "--count", "--all") == "0"
+    assert _git_out(repo, "diff", "--cached", "--name-only") == ""

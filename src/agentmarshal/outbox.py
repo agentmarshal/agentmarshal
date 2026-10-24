@@ -43,7 +43,9 @@ from agentmarshal.journal.capture import (
     safe_path,
     scan_for_leaks,
 )
+from agentmarshal.journal.display import escape_for_display
 from agentmarshal.journal.gate import GateError, markers_from_config
+from agentmarshal.journal.records import forges_rendered_text
 from agentmarshal.project import PROJECT_DIR_NAME, find_project_root
 
 _UPSTREAM_DIR = "upstream"
@@ -53,7 +55,11 @@ _README = "README.md"
 # of a batch can become it by hand. The name cannot be mistaken for a
 # draft: no `.md` suffix, no `NNNN-` number, uppercase like the README.
 _SENT = "SENT"
-_SENT_LINE = re.compile(r"^([0-9A-Fa-f]{64})\s+(\S.*?)\s*$")
+# The manifest is parsed strictly: 64 lowercase hex digits, exactly two
+# spaces, then the name — which must be free of the characters that could
+# forge a line, so one line is one entry and a name can never inject a
+# second one. A line in any other shape lists nothing.
+_SENT_LINE = re.compile(r"^([0-9a-f]{64})  (.+)$")
 # The outbox as a repository-relative path and as the prefix staged paths
 # carry: `.agentmarshal/upstream` — the README's exclude pathspec applied
 # the other way.
@@ -211,6 +217,19 @@ def _shown_name(name: str | bytes | os.PathLike[str]) -> str:
     """
 
     return os.fsencode(name).decode("utf-8", errors="backslashreplace")
+
+
+def _display_name(name: str | bytes | os.PathLike[str]) -> str:
+    """The shown name with every line-forging character as a visible escape.
+
+    ``escape_for_display`` renders a newline as ``\\n``, every other
+    control character as ``\\uXXXX`` — so a name can never add a line to
+    what the command prints or writes. Names carrying none pass through
+    unchanged, which is every name ``_shown_name`` used to produce for a
+    UTF-8-clean outbox.
+    """
+
+    return escape_for_display(_shown_name(name))
 
 
 def _markers(
@@ -396,7 +415,7 @@ def _name_hits(name: str, markers: tuple[str, ...]) -> list[LeakHit]:
     marker's position or the signature's identifier.
     """
 
-    return _scan_hits(safe_path(name, markers), name, markers)
+    return _scan_hits(safe_path(escape_for_display(name), markers), name, markers)
 
 
 def _draft_hits(name: str, text: str, markers: tuple[str, ...]) -> list[LeakHit]:
@@ -408,7 +427,7 @@ def _draft_hits(name: str, text: str, markers: tuple[str, ...]) -> list[LeakHit]
     nothing else.
     """
 
-    safe_name = safe_path(name, markers)
+    safe_name = safe_path(escape_for_display(name), markers)
     return _name_hits(name, markers) + _scan_hits(safe_name, text, markers)
 
 
@@ -503,8 +522,8 @@ def _check(stderr: TextIO, *, pin: bool, index: Path | None) -> _CheckResult:
             return _CheckResult(1, {}, [], None, b"")
         for line in manifest_old.decode("utf-8", errors="replace").split("\n"):
             match = _SENT_LINE.match(line)
-            if match:
-                sent_digests.add(match.group(1).lower())
+            if match and not forges_rendered_text(match.group(2)):
+                sent_digests.add(match.group(1))
                 manifest_names.add(match.group(2))
     if index is not None:
         # The same parse `outbox status` runs on the same kind of file —
@@ -519,7 +538,7 @@ def _check(stderr: TextIO, *, pin: bool, index: Path | None) -> _CheckResult:
     except OSError as error:
         print(
             f"outbox check: cannot read the outbox at "
-            f"{safe_path(_shown_name(outbox), markers)}: {_os_error_text(error)}",
+            f"{safe_path(_display_name(outbox), markers)}: {_os_error_text(error)}",
             file=stderr,
         )
         return _CheckResult(1, {}, [], None, b"")
@@ -533,15 +552,18 @@ def _check(stderr: TextIO, *, pin: bool, index: Path | None) -> _CheckResult:
     for entry in entries:
         # The escaped printable form of the name — a surrogate-carrying
         # non-UTF-8 name used to crash the print below (CR-156's carried
-        # advisory); this form is also what the name scan and the masking
-        # see.
+        # advisory); this form is also what the name scan, the masking
+        # and the manifest's name matching see. The display form adds
+        # escapes for the characters that could add a line, so nothing
+        # printed below can carry one.
         name = _shown_name(entry.name)
+        display = escape_for_display(name)
         if not _is_regular(entry):
             # Not a draft and not checkable, but a later send would stage
             # it unchecked — nothing in the outbox passes in silence.
             refused = True
             hits.extend(_name_hits(name, markers))
-            print(f"{safe_path(name, markers)}: not a draft, not checked")
+            print(f"{safe_path(display, markers)}: not a draft, not checked")
             continue
         # The README init writes and the manifest send writes are not
         # drafts; a file whose sha256 a manifest line — or a `Source:`
@@ -551,6 +573,10 @@ def _check(stderr: TextIO, *, pin: bool, index: Path | None) -> _CheckResult:
         is_draft = entry.name != _README and entry.name != _SENT
         problems: list[str] = []
         notes: list[str] = []
+        # A manifest line is one line — a name that could add one is
+        # never written there. The escaped display form names it.
+        if forges_rendered_text(name):
+            problems.append("a name that could add a line to the sent manifest")
         text = ""
         try:
             raw = entry.read_bytes()
@@ -602,10 +628,20 @@ def _check(stderr: TextIO, *, pin: bool, index: Path | None) -> _CheckResult:
             refused = True
         report = problems + notes
         if report:
-            print(f"{safe_path(name, markers)}: {'; '.join(report)}")
+            print(f"{safe_path(display, markers)}: {'; '.join(report)}")
     # The manifest's next content is computed even when nothing pins it —
-    # a check that passes hands send the exact bytes to write.
+    # a check that passes hands send the exact bytes to write. Those
+    # bytes are staged like every file, so the scan covers them too: a
+    # name that trips nothing alone can match once it sits on a manifest
+    # line — a signature whose match spans the line break.
     manifest_new = _manifest_next(manifest_old, drafts)
+    hits.extend(
+        _scan_hits(
+            safe_path(_SENT, markers),
+            manifest_new.decode("utf-8", errors="replace"),
+            markers,
+        )
+    )
     if pin:
         relative = f"{_OUTBOX_PREFIX}{_SENT}"
         try:
@@ -700,13 +736,13 @@ def _staged_paths(project_root: Path) -> set[str]:
         if status in "RC":
             if index + 2 >= len(tokens):
                 raise _OutboxGitError("unparseable rename in the staged list")
-            paths.add(_shown_name(tokens[index + 1]))
-            paths.add(_shown_name(tokens[index + 2]))
+            paths.add(_display_name(tokens[index + 1]))
+            paths.add(_display_name(tokens[index + 2]))
             index += 3
         else:
             if index + 1 >= len(tokens):
                 raise _OutboxGitError("unparseable entry in the staged list")
-            paths.add(_shown_name(tokens[index + 1]))
+            paths.add(_display_name(tokens[index + 1]))
             index += 2
     return paths
 
@@ -773,7 +809,7 @@ def _batch_mismatch(project_root: Path, expected: dict[bytes, bytes]) -> list[st
         path for path, blob in expected.items() if staged.get(path) != [(blob, b"0")]
     ]
     bad.extend(path for path in staged if path not in expected)
-    return sorted(_shown_name(path) for path in bad)
+    return sorted(_display_name(path) for path in bad)
 
 
 def _restore_manifest(sent_path: Path, manifest_old: bytes | None) -> str | None:
@@ -940,7 +976,7 @@ def _index_claims(
     except OSError as error:
         print(
             f"outbox {command}: cannot read the index "
-            f"{safe_path(_shown_name(index_path), markers)}: "
+            f"{safe_path(_display_name(index_path), markers)}: "
             f"{_os_error_text(error)}",
             file=stderr,
         )
@@ -970,7 +1006,7 @@ def _run_status(index_path: Path, stderr: TextIO) -> int:
     except OSError as error:
         print(
             f"outbox status: cannot read the outbox at "
-            f"{safe_path(_shown_name(outbox), markers)}: {_os_error_text(error)}",
+            f"{safe_path(_display_name(outbox), markers)}: {_os_error_text(error)}",
             file=stderr,
         )
         return 1
@@ -978,7 +1014,7 @@ def _run_status(index_path: Path, stderr: TextIO) -> int:
     refused = False
     claimed: set[str] = set()
     for entry in entries:
-        name = safe_path(_shown_name(entry.name), markers)
+        name = safe_path(_display_name(entry.name), markers)
         if not _is_regular(entry):
             # Not a file and not hashable — the check's "nothing passes in
             # silence" rule, applied to the channel's other direction.
