@@ -2057,6 +2057,144 @@ def test_the_gate_checks_added_records_by_the_current_rules(
     assert {"session", "completed"} <= read_types
 
 
+def _add_nested_record(repo: Path, task: str) -> str:
+    """Drop a valid session record one directory below a task's records/.
+
+    Returns the repo-relative path. ``write_record`` cannot be used — it
+    only writes the flat records/<file> shape — so the file is written by
+    hand, precisely because the nested path is the one the gate must
+    refuse (AUD-whole-project-1).
+    """
+
+    directory = repo / ".agentmarshal" / "journal" / "tasks" / task / "records" / "sub"
+    directory.mkdir(parents=True)
+    record = create_session_record(
+        task, "test", "role", "actor", "implementation", "done", 1, 2, 3
+    )
+    path = directory / f"{generate_ulid()}-session.json"
+    path.write_text(json.dumps(record), encoding="utf-8")
+    return path.relative_to(repo).as_posix()
+
+
+def test_gate_refuses_a_record_nested_below_another_tasks_records(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a nested record below another task's records/ is refused.
+
+    AUD-whole-project-1's journal-only candidate: the record file itself
+    is valid — the check used to see its file name only — while
+    read_records refuses the directory after the merge, past repair
+    through the append-only check.
+    """
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    assert main(["open", "--title", "Other task"]) == 0
+    base = _commit_all(repo, "open second task on master")
+    added: list[str] = []
+
+    def add_nested() -> None:
+        added.append(_add_nested_record(repo, "CR-002"))
+
+    head = _candidate_head(repo, "nested-other", base, add_nested)
+    passed, output = _run(repo, head, base, head)
+
+    assert not passed
+    assert (
+        f"FAIL: invalid added records: {added[0]}: "
+        "only tasks/<id>/records/<file> is a record path"
+    ) in output
+
+
+def test_gate_fails_a_record_nested_below_the_judged_tasks_records(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a nested record below the judged task's records/ fails by name.
+
+    Not as an unlabelled error: the gate is run the way the merge wrapper
+    runs it — on the candidate's own checkout — so the nested directory
+    is in the working tree and the task's records cannot even be read.
+    The refusal names the added path on a FAIL line; before the shape
+    check this surfaced as read_records' bare error.
+    """
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    _git(repo, "switch", "--quiet", "-c", "nested-own", base)
+    nested = _add_nested_record(repo, "CR-001")
+    head = _commit_all(repo, "record nested under the task's records")
+    capsys.readouterr()
+
+    code = main(_gate_arguments(base, head))
+    transcript = capsys.readouterr()
+
+    assert code == 1
+    assert (
+        f"FAIL: invalid added records: {nested}: "
+        "only tasks/<id>/records/<file> is a record path"
+    ) in transcript.out
+    assert "Traceback" not in transcript.out + transcript.err
+    assert "record path is not a file" not in transcript.err
+
+
+def test_gate_refuses_a_nested_record_on_the_implementation_lane(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: the implementation lane refuses another task's nested record.
+
+    The nested path is outside the contract scope too — what this asserts
+    is that it is also refused by name as an invalid added record.
+    """
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    assert main(["open", "--title", "Other task"]) == 0
+    base = _commit_all(repo, "open second task on master")
+    added: list[str] = []
+
+    def implement_with_nested() -> None:
+        (repo / "src").mkdir(exist_ok=True)
+        (repo / "src" / "module.py").write_text("code\n", encoding="utf-8")
+        added.append(_add_nested_record(repo, "CR-002"))
+
+    head = _candidate_head(repo, "nested-impl", base, implement_with_nested)
+    _approve(repo, head)
+    passed, output = _run(repo, head, base, head)
+
+    assert not passed
+    assert (
+        f"FAIL: invalid added records: {added[0]}: "
+        "only tasks/<id>/records/<file> is a record path"
+    ) in output
+
+
+def test_gate_refuses_the_judged_tasks_nested_record_on_the_implementation_lane(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: the implementation lane refuses the judged task's nested record.
+
+    The working tree is master's, so the task still loads and the refusal
+    comes from the added-records check in its usual transcript place.
+    """
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    added: list[str] = []
+
+    def implement_with_nested() -> None:
+        (repo / "src").mkdir(exist_ok=True)
+        (repo / "src" / "module.py").write_text("code\n", encoding="utf-8")
+        added.append(_add_nested_record(repo, "CR-001"))
+
+    head = _candidate_head(repo, "nested-own-impl", base, implement_with_nested)
+    _approve(repo, head)
+    passed, output = _run(repo, head, base, head)
+
+    assert not passed
+    assert (
+        f"FAIL: invalid added records: {added[0]}: "
+        "only tasks/<id>/records/<file> is a record path"
+    ) in output
+
+
 def test_gate_reports_malformed_base_contract_without_traceback(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

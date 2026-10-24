@@ -83,6 +83,11 @@ from agentmarshal.settings import changes_required_threshold, require_agreement
 
 _JOURNAL_PREFIX = ".agentmarshal/journal/"
 _EXTENSIONS_PREFIX = ".agentmarshal/extensions/"
+# The reason an added path is refused for not being a record path at all
+# (AUD-whole-project-1): a record lives only at tasks/<id>/records/<file>,
+# the one shape read_records accepts; anything deeper under records/ is a
+# directory the reader refuses after the merge.
+_NON_RECORD_PATH_REASON = "only tasks/<id>/records/<file> is a record path"
 # Twenty, because this line is one line of a document people read: a marker
 # present in two hundred files used to render as one category token and now
 # renders as two hundred records. Enough hits to act on are shown and the rest
@@ -393,6 +398,25 @@ def _record_type_from_record_path(path: str) -> str:
         .removesuffix(".json")
         .rsplit("-", maxsplit=1)[-1]
     )
+
+
+def _record_path_task(path: str) -> str | None:
+    """Return the task a record path belongs to, or None when it is not one.
+
+    Only ``tasks/<id>/records/<file>`` names a record — the one shape
+    ``read_records`` accepts. ``_is_record_path`` stays wider on purpose,
+    so a file nested deeper under ``records/`` is still held to the
+    evidence checks instead of escaping them; the added-records check
+    then refuses it by name (AUD-whole-project-1).
+    """
+
+    tasks_prefix = f"{_JOURNAL_PREFIX}tasks/"
+    if not path.startswith(tasks_prefix):
+        return None
+    parts = path.removeprefix(tasks_prefix).split("/")
+    if len(parts) != 3 or parts[1] != "records" or not parts[0] or not parts[2]:
+        return None
+    return parts[0]
 
 
 def _is_append_only_evidence_path(path: str) -> bool:
@@ -1227,11 +1251,19 @@ def run_gate(
         journal_root = project_root / ".agentmarshal" / "journal"
     # load_task_status validates that the post-candidate journal is
     # well-formed (single opened record, no record after a terminal one,
-    # contract id matches); it raises on an inconsistent projection.
+    # contract id matches); it raises on an inconsistent projection. The
+    # failure is held rather than raised at once: a candidate adding a
+    # record file one directory under a records/ breaks this very read
+    # for the judged task, and that refusal belongs on a FAIL line
+    # naming each path — produced once the candidate's added paths are
+    # known below — not in this unlabelled error (AUD-whole-project-1).
+    # A failure the diff does not explain is raised there as it was here.
     try:
         task = load_task_status(journal_root, task_id)
+        task_error = None
     except (OSError, TaskStatusError, ValueError) as error:
-        raise GateError(str(error)) from error
+        task = None
+        task_error = error
 
     review_not_examined = False
     resolved_review: str | None = None
@@ -1248,6 +1280,11 @@ def run_gate(
     )
     changed = list(dict.fromkeys(path for _status, path in changes_with_status))
     if not changed:
+        # A journal whose own tree could not be read keeps that failure:
+        # it precedes the empty-range refusal, as it did when the load
+        # raised above.
+        if task_error is not None:
+            raise GateError(str(task_error)) from task_error
         raise GateError("candidate range contains no changes")
 
     # NUL-separated, as the diff listings are: git C-quotes a path with a
@@ -1303,6 +1340,32 @@ def run_gate(
         record_changes = []
         added_records = []
         base_tree = {path for path in base_tree if not path.startswith(_JOURNAL_PREFIX)}
+    if task is None:
+        # The judged task's records could not be read. When the
+        # candidate's own added paths explain why — a file nested under
+        # a records/ directory is a path read_records refuses — the
+        # refusal is the FAIL line naming each path, not the load's
+        # unlabelled error. Anything else raises as it did at the top of
+        # the gate.
+        non_record_paths = sorted(
+            path for path in added_records if _record_path_task(path) is None
+        )
+        if non_record_paths:
+            say(
+                f"NOT EXAMINED: task {task_id} status and the checks "
+                f"beyond it (its records could not be read: {task_error})"
+            )
+            check(
+                False,
+                "invalid added records: "
+                + "; ".join(
+                    f"{path}: {_NON_RECORD_PATH_REASON}" for path in non_record_paths
+                ),
+            )
+            return GateReport(
+                passed=False, lines=lines, resolved_commit=resolved_commit
+            )
+        raise GateError(str(task_error)) from task_error
     journal_only = all(path.startswith(_JOURNAL_PREFIX) for path in changed)
     if sidecar:
         # The deterministic lane exists because a journal-only change carries no
@@ -2083,14 +2146,20 @@ def run_gate(
 
     invalid: list[str] = []
     for path in added_records:
+        # Only the shape read_records accepts is a record path; a file
+        # nested deeper under records/ is refused by name before its
+        # bytes are even read (AUD-whole-project-1).
+        path_task = _record_path_task(path)
+        if path_task is None:
+            invalid.append(f"{path}: {_NON_RECORD_PATH_REASON}")
+            continue
         try:
             content = _run_git(project_root, ["show", f"{resolved_commit}:{path}"])
             record = validate_record_content(Path(path).name, content)
         except (GateError, JournalRecordError) as error:
             invalid.append(f"{path}: {error}")
             continue
-        expected_task = path.removeprefix(f"{_JOURNAL_PREFIX}tasks/").split("/", 1)[0]
-        if record.get("task") != expected_task:
+        if record.get("task") != path_task:
             invalid.append(f"{path}: record task does not match its directory")
     if invalid:
         check(False, f"invalid added records: {'; '.join(sorted(invalid))}")
