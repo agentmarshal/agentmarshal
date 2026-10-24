@@ -236,20 +236,39 @@ stage at all (gate-lanes specification, "pre-gate stages do not run on
 an operational change"), and the findings lane and the sidecar invoke
 no stage at all (extension-stages specification, "`stage run` invokes
 the declared stages of the base's shared extensions" and "`complete`
-runs the `pre-gate` stages before its gate check"). Every extension
-stage gets exactly one result line — `checked`, `failed (exit <n>)`,
-`did not finish (timeout)`, `switched off (<task>, <reason>)` or `not
-run (<reason>)` — and the extension's own output a frame that cannot
-read as a result line or as another extension's; those lines are the
-stage runner's, printed in the `stage run` voice whichever command
-invoked it, never the gate's (extension-stages specification, "every
-stage gets exactly one result line and its output a frame", "`stage
-run` reads the switches from the base and reports a switched-off
-extension" and "the stage run is one function both commands call").
-An `accepted_pause` acceptance naming the extension at the resolved
-commit stands a `pre-gate-stop` pause down (extension-stages
-specification, "an accepted pause stands down a pre-gate-stop stage's
-pause for the accepted extension and commit").
+runs the `pre-gate` stages before its gate check"). The result lines
+the runner prints today are `checked`, `failed (exit <n>)`, `did not
+finish (timeout)`, `not run (<reason>)` and `switched off (<task>,
+<reason>)`; a pausing `pre-gate-stop` stage's line keeps its outcome
+with a `pause accepted by <party> (<reason>)` suffix where a matching
+acceptance stands, and the extension's own output gets a frame that
+cannot read as a result line or as another extension's. Those lines
+are the stage runner's, printed in the `stage run` voice whichever
+command invoked it, never the gate's (extension-stages specification,
+"every stage gets exactly one result line and its output a frame",
+"`stage run` reads the switches from the base and reports a
+switched-off extension", "an accepted pause stands down a
+pre-gate-stop stage's pause for the accepted extension and commit" and
+"the stage run is one function both commands call"). One case gives a
+stage no line: where the clone's trust file cannot be read on a
+workstation the command fails naming the file, and a stage that would
+have been grant-checked is skipped without one — the lines still owed
+go to the stages never grant-checked, a switched-off stage's
+`switched off (<task>, <reason>)` and the `not run (shared switches
+file unreadable)` of a stage a refused switches file names
+(extension-stages specification, "on a workstation a stage runs only
+under a matching grant" and "`stage run` reads the switches from the
+base and reports a switched-off extension"). ADR-0013 decision 7's
+list runs past what the runner prints: `addressee not found` as a
+stage line and a `not run` reason of dependencies not matching the
+lock are decided, not yet implemented — `addressee not found` lives
+today on `validate`'s warning for an `ext` record kind no manifest
+declares (extension-records specification, "`validate` warns
+"addressee not found" on an ext record whose kind no manifest
+declares"). An `accepted_pause` acceptance naming the extension at
+the resolved commit stands a `pre-gate-stop` pause down
+(extension-stages specification, "an accepted pause stands down a
+pre-gate-stop stage's pause for the accepted extension and commit").
 (ADR-0010, decisions 4 and 6; ADR-0013, decisions 5, 6 and 7; ADR-0012,
 decision 7.)
 
