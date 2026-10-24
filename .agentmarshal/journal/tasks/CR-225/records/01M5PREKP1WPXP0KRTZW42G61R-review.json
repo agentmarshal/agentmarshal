@@ -1,0 +1,87 @@
+{
+  "advisory_findings": [
+    "F2-merged-warning-never-completes",
+    "F3-run-stages-never-writes-docstring",
+    "F4-operational-line-in-complete"
+  ],
+  "artifacts": [
+    {
+      "hash": "013415c020ab18b874b3c75af093c078e7daa73ddc93a64bc52048be229fc8df",
+      "ref": ".agentmarshal/journal/tasks/CR-225/artifacts/01M5PREKP1WPXP0KRTZW42G61R-review.md"
+    }
+  ],
+  "classes": {
+    "F1-complete-refs-blamed-on-stage-run": "contract-mismatch",
+    "F2-merged-warning-never-completes": "contract-mismatch",
+    "F3-run-stages-never-writes-docstring": "claim-accuracy",
+    "F4-operational-line-in-complete": "contract-mismatch"
+  },
+  "created_at": "2026-10-24T10:49:06.497678Z",
+  "evidence": {
+    "F1-complete-refs-blamed-on-stage-run": "src/agentmarshal/cli.py:1084-1115 calls stages.run_stages before any gate work; src/agentmarshal/stages.py:793-822 resolves the refs first and returns StageRunResult(1) after printing 'stage run: <GateError>' (src/agentmarshal/journal/gate.py:298-302 raises it for a failed rev-parse); the empty-plan return that is supposed to keep a no-stage project silent is only reached later at src/agentmarshal/stages.py:851. grep over tests/ for 'does not resolve' shows no complete-lane test.",
+    "F2-merged-warning-never-completes": "src/agentmarshal/cli.py:1095-1103 (warning, then fall through to complete_task) vs src/agentmarshal/journal/gate.py:1184-1195 ('candidate range contains no changes' when merge_base == candidate); tests/test_complete_stages.py:~470 asserts `_complete(head, 'master') == 1` and no completed record.",
+    "F3-run-stages-never-writes-docstring": "src/agentmarshal/stages.py:767 'never writes' vs src/agentmarshal/stages.py:925-985 record_event/write_event appending extension-event, and the module docstring's precise wording at src/agentmarshal/stages.py:21-23 ('nothing is written to the journal').",
+    "F4-operational-line-in-complete": "src/agentmarshal/stages.py:806-818 prints the operational line before manifests are read and before the empty-plan return at src/agentmarshal/stages.py:851; tests/test_complete_stages.py asserts that line in complete's stdout in test_an_operational_changes_completion_skips_the_pre_gate_stages, while acceptance criterion 4 and openspec/specs/extension-stages/spec.md:1291-1295 promise a no-stage project reads exactly as complete reads today."
+  },
+  "findings": [
+    "F1-complete-refs-blamed-on-stage-run"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "80ff1fdaf395f12c626826d15955f5f98c5298a0",
+  "reviewed_contract": "a5707d68fd96435e73b25b3a7c64bcca5643a2f3bf0ca8e10be46e4d25f656cd",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-225",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "only archive/ remains; 2026-10-24-complete-runs-stages present with proposal.md, design.md, tasks.md, specs/",
+        "what": "ls openspec/changes; ls openspec/changes/archive"
+      },
+      {
+        "result": "15 / 15 / 15",
+        "what": "grep -c '^#### Scenario:' delta spec; grep -c '^def test_' and docstring count in tests/test_complete_stages.py"
+      },
+      {
+        "result": "no existing test completes an operational change and none pins complete's transcript for an unresolvable ref",
+        "what": "grep -rn 'complete' tests/test_gate_operational.py tests/test_switch_off.py; grep -rn 'does not resolve' tests/*.py"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "this session may not execute interpreters or package tools (bash calls to python3/uv are refused); CI result taken from the coordinator's note"
+      },
+      {
+        "what": "git show / diff against the parent commit",
+        "why": "the snapshot is not a git repository"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/cli.py:996-1180 (_candidate_merged, _run_complete)",
+      "src/agentmarshal/stages.py:1-170 (module docstring, imports)",
+      "src/agentmarshal/stages.py:403-470, 530-580 (_prepare_extension, _run_stage)",
+      "src/agentmarshal/stages.py:737-1171 (StageRunResult, run_stages, _run_stages)",
+      "src/agentmarshal/journal/complete.py:46-78 (complete_task)",
+      "src/agentmarshal/journal/gate.py:288-342, 968-1016, 1180-1196",
+      "src/agentmarshal/journal/status.py:164-185 (load_task_for_record)",
+      "src/agentmarshal/localstate.py:1-120 (local_state creates nothing)",
+      "tests/test_complete_stages.py (all 15 tests)",
+      "tests/test_stages.py:1-200, 365-395 (helpers, invalid task id)",
+      "openspec/specs/extension-stages/spec.md:1224-1390",
+      "openspec/changes/archive/2026-10-24-complete-runs-stages/{proposal.md,design.md,tasks.md,specs/extension-stages/spec.md}",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md:60-90, 275-288",
+      "CHANGELOG.md:1-60, docs/threat-model.md:161-176"
+    ]
+  }
+}
