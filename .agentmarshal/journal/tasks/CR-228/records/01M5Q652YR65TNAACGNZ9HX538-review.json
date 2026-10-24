@@ -1,0 +1,91 @@
+{
+  "advisory_findings": [
+    "F2",
+    "F3",
+    "F4",
+    "F5"
+  ],
+  "artifacts": [
+    {
+      "hash": "2f0ee9ceada7aa501eba5839c430de0e52678a3f884780ea793e0bcf3c28f9b7",
+      "ref": ".agentmarshal/journal/tasks/CR-228/artifacts/01M5Q652YR65TNAACGNZ9HX538-review.md"
+    }
+  ],
+  "classes": {
+    "F1": "contract-mismatch",
+    "F2": "claim-accuracy",
+    "F3": "scope",
+    "F4": "style",
+    "F5": "scope"
+  },
+  "created_at": "2026-10-24T14:48:34.520285Z",
+  "evidence": {
+    "F1": "openspec/specs/outbox/spec.md:178 ('it SHALL refuse, saying there are no drafts to send, when the outbox holds no finding draft') contradicts openspec/specs/outbox/spec.md:366 ('When send finds no new draft it SHALL still commit a change the outbox holds to a file already sent'); the code follows the latter at src/agentmarshal/outbox.py:966-978 and tests/test_outbox.py:1599 (test_send_commits_a_rename_of_a_file_already_sent) asserts the commit; the delta carried only the check requirement as MODIFIED (openspec/changes/archive/2026-10-25-outbox-skips-sent/specs/outbox/spec.md, '## MODIFIED Requirements' holds one requirement)",
+    "F2": "src/agentmarshal/outbox.py:486 claims 'The rebuilt lines are byte-identical to what was read'; src/agentmarshal/outbox.py:547-549 drops at most one trailing empty element so a manifest without a final newline parses, and src/agentmarshal/outbox.py:495 always emits a trailing newline, so manifest_new != manifest_old for unchanged content",
+    "F3": "src/agentmarshal/project.py:234 'Findings about **AgentMarshal itself** go here — one file per finding'; no occurrence of SENT in project.py's _OUTBOX_README (lines 232-277), and grep over docs/, CONTRIBUTING.md, README.md, templates/ finds no mention of the manifest",
+    "F4": "src/agentmarshal/outbox.py:560-563 prints only f'{_printable(_SENT, markers)}: line {line_number} does not parse'; openspec/changes/archive/2026-10-25-outbox-skips-sent/design.md decision 2 claims 'a typo restores the very refusal digest 045 reported unless it is diagnosed'; tests/test_outbox.py:1719 (test_a_manifest_line_ending_in_a_carriage_return_refuses_the_check) encodes the CRLF case as a refusal",
+    "F5": "src/agentmarshal/outbox.py:1094 is now `name = _printable(entry.name, markers)` where the diff's '-' line was `name = safe_path(_shown_name(entry.name), markers)`; _printable adds escape_for_display (src/agentmarshal/outbox.py:238), so outbox status escapes control characters it previously printed raw, while the contract's last criterion says 'no other command changes'"
+  },
+  "findings": [
+    "F1"
+  ],
+  "previous_review": "01M5Q3T5551ZDYYGSNGAP0WBA2",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "fc66a5b2e7f55a0b8fb2d51198a1eae53651d52f",
+  "reviewed_contract": "225448956b4b7950bf077097c3274ac5d0643644b5ccf6f0a94861485527bc5d",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-228",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "each requirement appears exactly once; the MODIFIED check requirement keeps its five scenarios at lines 68-89",
+        "what": "grep -n '^### Requirement:|^#### Scenario:' openspec/specs/outbox/spec.md"
+      },
+      {
+        "result": "line 178 'SHALL refuse, saying there are no drafts to send, when the outbox holds no finding draft' vs line 366 'When send finds no new draft it SHALL still commit a change the outbox holds to a file already sent'",
+        "what": "sed -n '174,182p;352,368p' openspec/specs/outbox/spec.md"
+      },
+      {
+        "result": "no adopter-facing document mentions SENT or --index; the outbox README lives in src/agentmarshal/project.py:232",
+        "what": "grep -rn 'outbox check|outbox send|outbox status' over docs, CONTRIBUTING.md, README.md, templates, CHANGELOG.md"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; uv run agentmarshal validate; uv run pytest; uv run ruff check; uv run ruff format --check; uv run mypy",
+        "why": "uv is not installed in this environment and interpreter invocations were not permitted in this non-interactive session; the coordinator's note that the sequence passed on this commit is taken as given"
+      },
+      {
+        "what": "openspec archive / openspec validate",
+        "why": "the openspec CLI could not be run for the same reason; the archive's shape was checked by reading the files"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/outbox.py",
+      "tests/test_outbox.py",
+      "openspec/specs/outbox/spec.md",
+      "openspec/changes/archive/2026-10-25-outbox-skips-sent/proposal.md",
+      "openspec/changes/archive/2026-10-25-outbox-skips-sent/design.md",
+      "openspec/changes/archive/2026-10-25-outbox-skips-sent/specs/outbox/spec.md",
+      "openspec/changes/archive/2026-10-25-outbox-skips-sent/tasks.md",
+      "docs/adr/ADR-0020-the-outbox-command-group.md",
+      "src/agentmarshal/journal/display.py",
+      "src/agentmarshal/journal/records.py",
+      "src/agentmarshal/journal/capture.py",
+      "src/agentmarshal/project.py",
+      "CHANGELOG.md",
+      "AGENTS.md"
+    ]
+  }
+}

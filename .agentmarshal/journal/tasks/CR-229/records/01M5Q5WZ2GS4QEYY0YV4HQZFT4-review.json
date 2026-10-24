@@ -1,0 +1,97 @@
+{
+  "advisory_findings": [
+    "F-1",
+    "F-2"
+  ],
+  "artifacts": [
+    {
+      "hash": "f7f61e2866b0cb6f68234abf12b9bb53eb2b638bdb9d03470c46628a3f9cc66d",
+      "ref": ".agentmarshal/journal/tasks/CR-229/artifacts/01M5Q5WZ2GS4QEYY0YV4HQZFT4-review.md"
+    }
+  ],
+  "classes": {
+    "F-1": "style",
+    "F-2": "style"
+  },
+  "created_at": "2026-10-24T14:44:08.400891Z",
+  "evidence": {
+    "F-1": "src/agentmarshal/journal/report.py:766 and :796 append unmeasured=task.unmeasured / report.unmeasured (every unmeasured session), while src/agentmarshal/journal/report.py:723 builds the Cost lines' field from unmeasured_without_cost; for the journal in tests/test_unmeasured_session_usage.py:449-487 (three unmeasured sessions, one of them carrying a cost) the Cost lines are pinned at unmeasured=2 (tests/test_unmeasured_session_usage.py:496-497) and the Summary line, which the same code path gives unmeasured=3, is not asserted",
+    "F-2": "src/agentmarshal/journal/report.py:386-391 returns (costs, without_cost, sessions, unmeasured, unmeasured_without_cost); src/agentmarshal/journal/report.py:706-709 declares _cost_lines(costs, sessions, sessions_without_cost, unmeasured) — positions 2 and 3 are swapped between the two signatures and all four values are plain ints, so a mis-ordered unpack or call type-checks"
+  },
+  "findings": [],
+  "previous_review": "01M5Q5DP3JE9005SRC0F96PWQZ",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "cb1fa8eac6dedc67a798c96c2c261916c9308309",
+  "reviewed_contract": "efed53ae34a29329ff331b6d8b5cb0f92794e1f1785c9476b036bbb004f4c811",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-229",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "matches only in openspec/specs/session-activity/spec.md — no other capability states how token totals are summed",
+        "what": "grep -rn \"tokens\" openspec/specs/"
+      },
+      {
+        "result": "only report.py:421-424 (task line sum) and report.py:511 (aggregate) sum session tokens; status_view.py:315-317 is the new mark; no other command sums tokens",
+        "what": "grep -rn \"tokens\" --include=*.py src/"
+      },
+      {
+        "result": "single caller: cli.py:1376 in _run_report; --findings uses build_findings_report",
+        "what": "grep -rn \"build_report|format_report\" --include=*.py src/"
+      },
+      {
+        "result": "all five construction sites pass the new fields by keyword; tests construct with keywords only, so inserting fields before rejected_commits breaks nothing",
+        "what": "grep -rn \"TaskReport(|JournalReport(\" tests/ src/"
+      },
+      {
+        "result": "every pinned session record carries non-zero tokens (1/2/3, 4/5/6, 10/5/0) or no 'tokens' key at all, so _is_unmeasured leaves them measured and the pins stay byte-for-byte",
+        "what": "grep -n \"def _session\" -A 25 on tests/test_status_base.py, tests/test_report_cost_checks_findings.py, tests/test_status_candidate_session.py and sed on tests/test_status_view.py:188-245"
+      },
+      {
+        "result": "only docs/sidecar.md:335 and docs/adr/ADR-0019 line 43 — both describe a measured session, so no doc transcript goes stale",
+        "what": "grep -rn \"sessions_without_cost|tokens=\" docs/ README.md CHANGELOG.md"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; uv run agentmarshal validate; uv run pytest; uv run ruff check; uv run ruff format --check; uv run mypy",
+        "why": "the sandbox refused every command that executes uv or python3, so no check could be run; the coordinator states the full sequence passed on this commit and I report no tool failure"
+      },
+      {
+        "what": "observing the aggregate Summary line of the journal built in tests/test_unmeasured_session_usage.py:449-487",
+        "why": "pytest could not be executed; the Summary=3 vs Cost=2 figure behind F-1 is derived from reading report.py:723 and report.py:796"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/journal/report.py",
+      "src/agentmarshal/journal/status_view.py",
+      "src/agentmarshal/journal/display.py",
+      "src/agentmarshal/journal/records.py (session field set at 110-126, _check_session_tokens at 778-793, _check_session_usage, create_session_record at 2272-2346)",
+      "tests/test_unmeasured_session_usage.py",
+      "tests/test_report.py",
+      "tests/test_report_cost_checks_findings.py",
+      "tests/test_status_view.py",
+      "tests/test_status_base.py",
+      "tests/test_status_candidate_session.py",
+      "tests/test_display.py",
+      "openspec/specs/session-activity/spec.md",
+      "openspec/changes/archive/2026-10-25-unmeasured-session-usage/ (proposal.md, design.md, tasks.md, specs/session-activity/spec.md)",
+      "docs/adr/ADR-0019-accounting-time-quota-resets-money.md",
+      "docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md",
+      "CONTRIBUTING.md",
+      "docs/quickstart.md (record-session section)",
+      "docs/sidecar.md (status/report transcripts)"
+    ]
+  }
+}

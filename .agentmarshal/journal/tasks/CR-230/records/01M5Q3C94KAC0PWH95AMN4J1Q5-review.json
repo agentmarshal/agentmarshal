@@ -1,0 +1,135 @@
+{
+  "advisory_findings": [
+    "ADV-readme-wrappers-overstated"
+  ],
+  "artifacts": [
+    {
+      "hash": "6564ae7020dba828ba497a17bfbdc99847fb3debaf847430183cdd4480c3b6c3",
+      "ref": ".agentmarshal/journal/tasks/CR-230/artifacts/01M5Q3C94KAC0PWH95AMN4J1Q5-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-readme-wrappers-overstated": "claim-accuracy",
+    "BLK-044-write-side-release-unnamed": "contract-mismatch"
+  },
+  "created_at": "2026-10-24T14:00:04.499898Z",
+  "evidence": {
+    "ADV-readme-wrappers-overstated": "docs/proposals/README.md:86-88 'the reporter's wrappers each invented a marker — a documented zero, a file copied by hand'; `grep -n wrapper docs/proposals/044-*.md docs/proposals/045-*.md docs/proposals/README.md` → 044-...md:31 'an executor wrapper writes a per-run usage line', 044-...md:33 'a convention the wrapper documents', README.md:87; no match in 045-...md, where delivery is a hand copy (045-...md:38-39 'The pending finding was delivered by copying the file', :63 'continuing to deliver by copy').",
+    "BLK-044-write-side-release-unnamed": "Contract acceptance 1 requires the write side 'with the next record schema in 0.7.0'; docs/proposals/044-unmeasured-usage-is-written-as-zeros.md:3, :73, :91, :107-109 and docs/proposals/README.md:92 all say only 'with the next record schema'. `grep -rn \"0\\.7\\.0\" .` (journal excluded) returns no hit in the repository, so the release cannot be derived: ADR-0022 names no successor schema release and pyproject.toml:3 is version = \"0.6.0.dev0\", while docs/proposals/README.md:63-65 defines the Where column as naming the release a proposal became and 045-...md:76,111 names the unreleased 0.6.0."
+  },
+  "findings": [
+    "BLK-044-write-side-release-unnamed"
+  ],
+  "previous_review": "01M5Q301J6NSHK2TVCZDXMCX1Q",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "b9ff7ff5bcbea8b0ac8da430988333c8a6c76d83",
+  "reviewed_contract": "63d60e31e012b8ca10659b43f6af36cb08220da3b62c18921aac8b696bffb839",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-230",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "only .agentmarshal/journal/tasks/CR-230/contract.md:11; no occurrence in docs/proposals/044-*.md, docs/proposals/README.md or any ADR",
+        "what": "grep -rn \"0\\.7\\.0\" over the repository (md/toml/py, journal excluded)"
+      },
+      {
+        "result": "816c7ff8e0ad09bd1bc55f0030897758eba0a539c0da556744de745a76e57b0d and a819341cbe9022523a08b200c6ee92e687335c6b83fd4b12a88b22b35a411008 match the contract exactly",
+        "what": "grep -o \"sha256:[0-9a-f]{64}\" over both new digests and the contract"
+      },
+      {
+        "result": "cli.py:407-409 default=0 for all three; cli.py:410-411 --usage-provider and --usage-method choices=(reported, measured); cli.py:1308-1313 the pairing refusal",
+        "what": "grep -n \"input-tokens|output-tokens|cache-tokens|usage-method|usage-provider\" src/"
+      },
+      {
+        "result": "session-tokens requires a dict of exactly input/output/cache, each type int and >= 0; create_session_record always writes the tokens object; usage written only when usage_provider is supplied",
+        "what": "read src/agentmarshal/journal/records.py:778-823 and 2272-2346"
+      },
+      {
+        "result": "report.py:174-179 absent usage reads as 'unrecorded', rendered as usage= at :691 and :716; tokens summed over every session record at :364-365; sessions_without_cost printed at :663",
+        "what": "grep -n \"unrecorded|sessions_without_cost|tokens\" src/agentmarshal/journal/report.py"
+      },
+      {
+        "result": "_check treats every regular file but README.md as a draft needing the five '## <Field>' headings, prints 'not a draft, not checked' and refuses for non-regular entries, scans every entry for leaks; _run_send runs _check then 'add --force -- .agentmarshal/upstream'; status hashes files and matches Source: lines from --index; check and send register no arguments",
+        "what": "read src/agentmarshal/outbox.py:30-113, 315-350, 396-520, 655-720, 767-835"
+      },
+      {
+        "result": "CHANGELOG.md:150-158 inside the 0.5.0 section ships the group; UPGRADING.md:75 lists 'the agentmarshal outbox group (new, check, send, status)' as what the new version adds",
+        "what": "grep -n \"outbox\" CHANGELOG.md UPGRADING.md"
+      },
+      {
+        "result": "three link targets only (025-..., 026-..., ../adr/ADR-0020-the-outbox-command-group.md); all three files exist",
+        "what": "grep -oE '\\]\\([^)]+\\)' over both new digests, then ls docs/proposals and docs/adr"
+      },
+      {
+        "result": "only AgentMarshal's own files: cli.py, journal/records.py, src/agentmarshal/outbox.py",
+        "what": "grep -nE 'CR-[0-9]+|[0-9A-HJKMNP-TV-Z]{26}|\\.sh\\b|\\.py\\b|\\.yaml\\b' over both new digests"
+      },
+      {
+        "result": "non-ASCII limited to em dash and middle dot; no Cyrillic, English only",
+        "what": "LC_ALL=C grep -n '[^ -~]' over both new digests"
+      },
+      {
+        "result": "044-...md:31,33 (one executor wrapper); no match in 045-...md; README.md:87 says 'wrappers each'",
+        "what": "grep -n \"wrapper\" over both digests and the index"
+      },
+      {
+        "result": "only tests/test_project.py:31-44 (the outbox README's pointers); no test covers digest content or the proposals index",
+        "what": "grep -rn \"proposals\" tests/"
+      },
+      {
+        "result": "new table header and separator identical to the 2026-10-03 batch table; both new rows carry all five columns",
+        "what": "sed -n '90,93p' and '113,114p' docs/proposals/README.md"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "read-only review of a docs-only diff; the coordinator states the full sequence passed on this commit"
+      },
+      {
+        "what": "git diff / git status to confirm no files outside the diff changed",
+        "why": "the snapshot is not a git repository; judged from the supplied diff, which touches only the three scope paths"
+      },
+      {
+        "what": "comparison of each digest against the reporter's original files",
+        "why": "the originals are staged privately and are not in the repository"
+      }
+    ],
+    "read": [
+      "docs/proposals/044-unmeasured-usage-is-written-as-zeros.md",
+      "docs/proposals/045-outbox-check-refuses-an-outbox-that-predates-it.md",
+      "docs/proposals/README.md",
+      ".agentmarshal/journal/tasks/CR-230/contract.md",
+      "docs/adr/ADR-0020-the-outbox-command-group.md",
+      "docs/adr/ADR-0009-research-findings-lifecycle.md",
+      "docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md",
+      "docs/quickstart.md",
+      "src/agentmarshal/cli.py",
+      "src/agentmarshal/journal/records.py",
+      "src/agentmarshal/journal/report.py",
+      "src/agentmarshal/outbox.py",
+      "src/agentmarshal/project.py",
+      "tests/test_project.py",
+      "CHANGELOG.md",
+      "UPGRADING.md",
+      "pyproject.toml",
+      "docs/proposals/025-validate-refused-records-an-earlier-release-wrote.md",
+      "docs/proposals/026-reviewer-facts-round-convergence-and-two-gaps.md",
+      "docs/proposals/010-executor-artifacts-lifecycle.md",
+      "docs/proposals/024-provider-quota-stop-cannot-be-recorded.md",
+      "docs/proposals/042-liveness-of-an-unattended-loop-is-watched-by-hand.md",
+      "docs/proposals/043-review-before-integration-makes-every-merge-stale.md"
+    ]
+  }
+}

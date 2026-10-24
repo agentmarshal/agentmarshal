@@ -1,0 +1,96 @@
+{
+  "advisory_findings": [
+    "CR-229-F2",
+    "CR-229-F3"
+  ],
+  "artifacts": [
+    {
+      "hash": "544f56b6e9fd1135c526d8674b963c59aa417f9c4ee8bb03f6dcb8522f49b12b",
+      "ref": ".agentmarshal/journal/tasks/CR-229/artifacts/01M5Q32CKNJZY5DCS8Q52CPARV-review.md"
+    }
+  ],
+  "classes": {
+    "CR-229-F1": "contract-mismatch",
+    "CR-229-F2": "correctness",
+    "CR-229-F3": "contract-mismatch"
+  },
+  "created_at": "2026-10-24T13:54:40.373469Z",
+  "evidence": {
+    "CR-229-F1": "src/agentmarshal/journal/report.py:357-359 — `if _is_unmeasured(record): unmeasured += 1; continue` runs before `cost = record.get(\"cost\")` at :361, so a recorded cost is summed nowhere; src/agentmarshal/cli.py:441-453 (cost flags) are independent of :407-411 (token and usage flags), so the record shape is reachable from the shipped CLI; tests/test_unmeasured_session_usage.py:271-301 pins it (`assert not any(\"9.99\" in line for line in lines)`); contradicts ADR-0019 decision 4 (docs/adr/ADR-0019-accounting-time-quota-resets-money.md, '### 4. A session can carry a cost': '`report` sums cost per currency and converts nothing — a sum in one currency is a figure the journal holds') and the change's own design decision at openspec/changes/archive/2026-10-24-unmeasured-session-usage/design.md:39-43 ('Exclusion is silent nowhere a sum prints'), since tests/test_unmeasured_session_usage.py:246-269 shows a task whose only sessions are unmeasured prints no Cost line at all",
+    "CR-229-F2": "src/agentmarshal/journal/backfill.py:150-171 builds the imported session record with `tokens` from the host stat and no `usage` key (`grep -n usage src/agentmarshal/journal/backfill.py` → no match), and src/agentmarshal/journal/backfill.py:69-73 `_require_int` returns `stat.get(field, 0)`, so a zero-token stat yields a record `_is_unmeasured` (src/agentmarshal/journal/report.py:198-204) calls unmeasured despite `source: imported` and the `host-stat:` artifacts ref at backfill.py:165-171; `grep -rn backfill src/agentmarshal/cli.py` → no match, so no shipped command writes it yet",
+    "CR-229-F3": "openspec/specs/session-activity/spec.md:730-734 — 'Every line `agentmarshal status <task>` prints today SHALL print unchanged, the session line appended after' was left unmodified, while the two analogous report pins at spec.md:485-492 and spec.md:638-648 did gain the 'A journal holding an unmeasured session admits the one exception…' carve-out; src/agentmarshal/journal/status_view.py:315-318 appends ' tokens=unmeasured' to a session record line"
+  },
+  "findings": [
+    "CR-229-F1"
+  ],
+  "previous_review": "01M5Q18K26WFDN14W5STZP8CGC",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "9de3f9fb7e5a664ffc13aaab7b5009bed3095923",
+  "reviewed_contract": "96c36b1df25bfd0a83719f6f8ee10e716bba80ccb50205b8f63f275cf1066b4e",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-229",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "only src/agentmarshal/cli.py:1376 and journal/__init__.py re-exports — no other command reads the report",
+        "what": "grep -rn 'build_report|format_report|TaskReport|JournalReport' src/ --include=*.py (excluding journal/report.py)"
+      },
+      {
+        "result": "only openspec/specs/session-activity/spec.md (this delta's own requirements) — no pre-existing requirement states how token totals are summed",
+        "what": "grep -rn 'tokens=' openspec/specs/"
+      },
+      {
+        "result": "no match — imported session records never carry a usage block",
+        "what": "grep -n 'usage' src/agentmarshal/journal/backfill.py"
+      },
+      {
+        "result": "identical file shape (proposal.md, design.md, specs/<capability>/spec.md, tasks.md) — archived with the archive command",
+        "what": "find openspec/changes/archive/2026-10-24-unmeasured-session-usage -type f, compared with 2026-10-24-status-shows-switches"
+      },
+      {
+        "result": "every re-stated MODIFIED scenario has a test; its _session helper writes 10/5/0 tokens, so those tests are unaffected by the predicate",
+        "what": "grep -rn 'Scenario:' tests/test_report_cost_checks_findings.py and grep -n 'def _session' -A 12 of the same file"
+      },
+      {
+        "result": "only tests/test_unmeasured_session_usage.py pins a status session record line — no existing status test is affected by the new renderer",
+        "what": "grep -rn '} session |\" session \"' tests/*.py"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "read-only review in a snapshot with no virtualenv and no git repository; the coordinator states the sequence passed on this commit"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/journal/report.py:80-520,650-795",
+      "src/agentmarshal/journal/status_view.py:1-50,280-335,820-845",
+      "src/agentmarshal/journal/backfill.py:60-195",
+      "src/agentmarshal/journal/records.py:2272-2347",
+      "src/agentmarshal/cli.py:405-455,1300-1380",
+      "tests/test_unmeasured_session_usage.py",
+      "tests/test_report_cost_checks_findings.py:71-110,120-400,495-560",
+      "openspec/specs/session-activity/spec.md:380-560,630-851",
+      "openspec/changes/archive/2026-10-24-unmeasured-session-usage/design.md",
+      "openspec/changes/archive/2026-10-24-unmeasured-session-usage/proposal.md",
+      "openspec/changes/archive/2026-10-24-unmeasured-session-usage/tasks.md",
+      "openspec/changes/archive/2026-10-24-unmeasured-session-usage/specs/session-activity/spec.md",
+      "docs/adr/ADR-0019-accounting-time-quota-resets-money.md",
+      "docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md",
+      "docs/sidecar.md:320-360",
+      "AGENTS.md",
+      "CHANGELOG.md:1-40"
+    ]
+  }
+}

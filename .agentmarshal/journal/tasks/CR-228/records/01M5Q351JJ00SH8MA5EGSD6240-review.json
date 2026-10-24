@@ -1,0 +1,85 @@
+{
+  "advisory_findings": [
+    "OB-2",
+    "OB-3",
+    "OB-4"
+  ],
+  "artifacts": [
+    {
+      "hash": "f3526a3d6a05d25466f08e5542d6081bae1b6cce2ab77b3bb3a97a5bfc4d3b08",
+      "ref": ".agentmarshal/journal/tasks/CR-228/artifacts/01M5Q351JJ00SH8MA5EGSD6240-review.md"
+    }
+  ],
+  "classes": {
+    "OB-1": "contract-mismatch",
+    "OB-2": "claim-accuracy",
+    "OB-3": "correctness",
+    "OB-4": "other"
+  },
+  "created_at": "2026-10-24T13:56:07.378052Z",
+  "evidence": {
+    "OB-1": "src/agentmarshal/outbox.py:854 ('if not result.drafts: print(\"outbox send: no drafts to send\")') combined with the skip at :586-589 ('if is_draft and digest in sent_digests: skipped += 1; is_draft = False'); tests/test_outbox.py:1593-1626 asserts main(['outbox','send']) == 1, 'no drafts to send' in stderr, rev-list --count HEAD == '1' and the operator's R100 rename still staged; openspec/specs/outbox/spec.md has no scenario for a renamed already-sent file; contradicts docs/adr/ADR-0020-the-outbox-command-group.md decision 4 and its Consequences ('one commit of the outbox only, so findings stop riding along in journal commits')",
+    "OB-2": "tests/test_outbox.py:941-947 — the first batch changed from 'assert main([\"outbox\", \"send\"]) == 0' to '_git(repo, \"add\", \".agentmarshal/upstream\"); _git(repo, \"commit\", \"-m\", \"an earlier batch\")', against the contract's criterion 4 clause 'which the existing outbox tests demonstrate unchanged'",
+    "OB-3": "src/agentmarshal/outbox.py:62 (_SENT_LINE = r'^([0-9a-f]{64})  (.+)$') and :523-527 ('if match and not forges_rendered_text(match.group(2))') drop a line with no output; tests/test_outbox.py:1660-1686 asserts 'skipped as sent' not in out and 'changed after sending' not in out for three malformed lines; openspec/changes/archive/2026-10-24-outbox-skips-sent/design.md invites a hand-written manifest ('the `sha256sum` output form, so an adopter's own record of a batch can become it by hand'); openspec/specs/outbox/spec.md:100 states 'nothing in the outbox passes in silence'",
+    "OB-4": "src/agentmarshal/outbox.py:599-609 pins os.fsencode(f'{_OUTBOX_PREFIX}{entry.name}') for entry.name == 'SENT', and :646-652 overwrites the identical key os.fsencode(f'{_OUTBOX_PREFIX}{_SENT}') with the blob of manifest_new; the loop's failure branch at :606-609 appends 'cannot be pinned' to problems, which sets refused = True at :627-628"
+  },
+  "findings": [
+    "OB-1"
+  ],
+  "previous_review": "01M5Q1A3ZEMBZ5KPQ6FJFTVK6E",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "e4c8aa6c0d85435b6b4d1e1ae4b14075b1ba6f98",
+  "reviewed_contract": "225448956b4b7950bf077097c3274ac5d0643644b5ccf6f0a94861485527bc5d",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-228",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "the MODIFIED requirement's heading and its five scenarios in the archived delta match openspec/specs/outbox/spec.md:56-89 exactly; the two ADDED requirements appear once each at :331 and :409",
+        "what": "grep -n '### Requirement|#### Scenario|README|regular file' openspec/specs/outbox/spec.md"
+      },
+      {
+        "result": "all 13 added scenarios have a test whose docstring names them; test_send_refuses_a_rename_of_an_already_sent_draft at :1593 and the rewritten rename test at :934",
+        "what": "grep -n 'def test_|no drafts to send|nothing to send' tests/test_outbox.py"
+      },
+      {
+        "result": "openspec/changes/ holds only archive/; the change sits at archive/2026-10-24-outbox-skips-sent/",
+        "what": "ls openspec/changes/ openspec/changes/archive/"
+      },
+      {
+        "result": "only openspec/specs/outbox/spec.md describes the outbox; no changelog obligation in CONTRIBUTING.md or AGENTS.md, so no out-of-scope doc duty was skipped",
+        "what": "grep -rln 'upstream' openspec/specs/ ; grep -rn 'outbox' CONTRIBUTING.md README.md ; grep -rn 'CHANGELOG' CONTRIBUTING.md AGENTS.md"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "read-only review, and the snapshot is not a git repository (several outbox tests drive real git), so I rely on the coordinator's note that the sequence passed on this commit"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/outbox.py (full)",
+      "src/agentmarshal/journal/display.py (full)",
+      "src/agentmarshal/journal/records.py (forges_rendered_text, _FORGEABLE_CATEGORIES, _BIDIRECTIONAL_CONTROLS)",
+      "src/agentmarshal/journal/capture.py (LeakHit, safe_path, _LEAK_PATTERNS)",
+      "src/agentmarshal/cli.py (outbox registration and dispatch)",
+      "src/agentmarshal/project.py (_OUTBOX_README scaffold)",
+      "openspec/specs/outbox/spec.md (full)",
+      "openspec/changes/archive/2026-10-24-outbox-skips-sent/{proposal.md,design.md,tasks.md,specs/outbox/spec.md}",
+      "tests/test_outbox.py (new tests plus the send/check tests they interact with)",
+      "docs/adr/ADR-0020-the-outbox-command-group.md",
+      "AGENTS.md, CONTRIBUTING.md, README.md, .gitattributes"
+    ]
+  }
+}

@@ -134,6 +134,64 @@ carried; the first task after the tag is pushed sets a `.dev0` version again.
 The release workflow refuses to publish a development or local version, so a
 branch version cannot reach PyPI by accident.
 
+### Releases
+
+Every release is accepted through a full audit of the project by a strong
+model, enforced by the release workflow — a version cannot reach PyPI without
+it. The order is fixed:
+
+1. A release task sets the version the release publishes and finishes the
+   release documentation (the changelog and upgrading notes for it).
+2. Change freeze: until the tag is pushed, nothing lands on the default
+   branch but the fixes below and the release's own notes.
+3. The full project is audited by the allowlisted model — currently
+   `gpt-6-astra`, named in `.github/scripts/check_release_audit.py`. The
+   audit's full text may carry undisclosed security detail and stays
+   private; what the gate reads is the dispositions file below.
+4. Each blocking finding is either fixed — as an ordinary task with ordinary
+   review — or dispositioned in the audit file as `deferred` or `rejected`
+   with the reason. A finding is blocking when it is a broken published
+   decision or threat-model promise, a security defect, or a false statement
+   in the release documentation.
+5. The audit file `release/audit-<version>.toml` is committed.
+6. The tag `v<version>` is pushed.
+
+There is no re-audit loop: the fixes are ordinary work and the next audit is
+the next release's. Because work lands after the audit, the gate cannot ask
+that nothing changed; it asks that what changed is the fixes of
+dispositioned findings and the release notes.
+
+The audit file is TOML:
+
+```toml
+version = "0.6.0"                    # the released version; the tag is v0.6.0
+audited_commit = "059ba350bcf40d8d912d30850535816f2a87d076"  # the commit audited, as a full 40-character id
+model = "gpt-6-astra"                # must be in the script's allowlist
+audited_at = 2026-10-24T00:00:00Z    # when the audit ran
+
+[[finding]]                          # one per blocking finding
+id = "F-1"                           # its identifier in the audit
+disposition = "fixed"                # fixed | deferred | rejected
+task = "CR-231"                      # the fixing task; required when fixed
+
+[[finding]]
+id = "F-2"
+disposition = "deferred"
+reason = "accepted for the next release"  # required for deferred and rejected
+```
+
+A finding's description may be withheld — the file carries dispositions, not
+audit text. Before building, the release workflow runs
+`.github/scripts/check_release_audit.py <tag>` and the job fails — nothing is
+built or published — when the file is missing or malformed, its `version`
+differs from the tag, `audited_commit` is not an ancestor of the tagged
+commit, `model` is not allowlisted, a `fixed` finding's task's last
+lifecycle record in the journal is not `completed` — a task completed and
+then reopened does not count — or a path changed between `audited_commit` and
+the tag lies outside `.agentmarshal/journal/`, `release/`, `CHANGELOG.md`,
+`UPGRADING.md`, `pyproject.toml`, `uv.lock`, `src/agentmarshal/__init__.py`
+and the contract scopes of the tasks the file lists as `fixed`.
+
 ## Licence
 
 By contributing you agree that your contribution is licensed under

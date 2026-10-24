@@ -21,6 +21,7 @@ from agentmarshal.journal.actors import _actor_git_identities
 from agentmarshal.journal.contracts import JournalContractError, contract_sha256
 from agentmarshal.journal.display import escape_for_display
 from agentmarshal.journal.records import _project_root_for
+from agentmarshal.journal.report import _is_unmeasured
 from agentmarshal.journal.status import (
     TaskStatus,
     TaskStatusError,
@@ -298,6 +299,25 @@ def _render_ext_line(
     )
 
 
+def _render_session_line(
+    _project_root: Path, _journal_root: Path, record: dict[str, object]
+) -> str:
+    """One session line: the generic record line, plus the unmeasured mark.
+
+    A session whose tokens are all zero and which carries no ``usage``
+    block measured nothing — its zeros would read as a free run (digest
+    044's finding) — so its tokens show as ``unmeasured``, the one
+    definition ``report``'s sums share. Every other session keeps the
+    generic id, type and time line: a session carrying ``usage``, or any
+    non-zero count, is shown as before.
+    """
+
+    line = f"- {record['id']} session {record['created_at']}"
+    if _is_unmeasured(record):
+        line += " tokens=unmeasured"
+    return line
+
+
 _RECORD_RENDERERS: dict[str, RecordRenderer] = {
     "review": _render_review_line,
     "acceptance": _render_acceptance_line,
@@ -310,6 +330,7 @@ _RECORD_RENDERERS: dict[str, RecordRenderer] = {
     "agreement": _render_agreement_line,
     "acknowledgement": _render_acknowledgement_line,
     "ext": _render_ext_line,
+    "session": _render_session_line,
 }
 
 

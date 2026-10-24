@@ -1,0 +1,131 @@
+{
+  "advisory_findings": [
+    "ADV-README-EVERY-FILE-IS-A-DRAFT",
+    "ADV-044-ZERO-SIGNAL-AMBIGUITY"
+  ],
+  "artifacts": [
+    {
+      "hash": "b70ca926cc63d3437cf59cab7cb537caa24fe12a9ca0ab9bfd7e2ea2ec23c132",
+      "ref": ".agentmarshal/journal/tasks/CR-230/artifacts/01M5Q1Z22DRSFJP1HBP6JCE23A-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-044-ZERO-SIGNAL-AMBIGUITY": "claim-accuracy",
+    "ADV-README-EVERY-FILE-IS-A-DRAFT": "claim-accuracy"
+  },
+  "created_at": "2026-10-24T13:35:22.701099Z",
+  "evidence": {
+    "ADV-044-ZERO-SIGNAL-AMBIGUITY": "docs/proposals/044-unmeasured-usage-is-written-as-zeros.md:77-79 ('the signals are the ones the finding names — the three counts at zero and no `usage` object') against the same file's 044:33-34 ('because the zero cannot be told apart from a measured zero later') and docs/quickstart.md:547-550 ('Omit both usage flags when the provenance is unavailable'), which together make a genuinely measured-zero session carry exactly that signal",
+    "ADV-README-EVERY-FILE-IS-A-DRAFT": "docs/proposals/README.md:82 ('because every file it holds is judged as a draft') contradicted by docs/proposals/045-outbox-check-refuses-an-outbox-that-predates-it.md:21-22 ('`README.md` is skipped, as designed') and by src/agentmarshal/outbox.py:456 ('is_draft = entry.name != _README') together with src/agentmarshal/outbox.py:451 (print(f\"{safe_path(name, markers)}: not a draft, not checked\"))"
+  },
+  "findings": [],
+  "previous_review": "01M5Q1G6WYD86MC22KX8JQCQX8",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "b13db0dfbf9b9ce9b5877733b8420512c2ac603b",
+  "reviewed_contract": "63d60e31e012b8ca10659b43f6af36cb08220da3b62c18921aac8b696bffb839",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-230",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "cli.py:407-411 — all three token flags default=0; --usage-method choices=('reported','measured'); --usage-provider free text; cli.py:1296-1306 pairs them",
+        "what": "grep -n 'input-tokens|output-tokens|cache-tokens|usage-method|usage-provider' src/agentmarshal/cli.py"
+      },
+      {
+        "result": "record always carries tokens={input,output,cache}; usage added only when usage_provider is not None",
+        "what": "read src/agentmarshal/journal/records.py:2272-2332 (create_session_record)"
+      },
+      {
+        "result": "tokens must be a dict with exactly keys {input,output,cache}, each type int and >= 0 — no shape for an absent/null tokens object",
+        "what": "read src/agentmarshal/journal/records.py:778-794 (@_rule('session-tokens'))"
+      },
+      {
+        "result": "report.py:178 renders absent usage as 'unrecorded'; report.py:364-365 sums the tokens object of every session record; report.py:291-335 counts sessions carrying no cost apart as sessions_without_cost",
+        "what": "grep -rn 'unrecorded|sessions_without_cost' src/agentmarshal/ and read report.py:173-180, 291-335, 364-365"
+      },
+      {
+        "result": "line 547-550: 'Omit both usage flags when the provenance is unavailable; the report calls those counts unrecorded rather than silently treating them as provider-reported.'",
+        "what": "read docs/quickstart.md:530-560"
+      },
+      {
+        "result": "iterates every sorted entry; non-regular -> prints '<name>: not a draft, not checked' and sets refused; is_draft = entry.name != 'README.md'; five fields Symptom/Measurements/Version/Environment/Expected matched by ^## (.+?)\\s*$",
+        "what": "read src/agentmarshal/outbox.py:396-520 (_is_regular, _check) and :315-349 (_field_bodies, _missing_unfilled), :57 (_FIELDS), :80 (_HEADING)"
+      },
+      {
+        "result": "_run_send calls _check(pin=True) and refuses on non-zero; stages with _git(project_root, ['add','--force','--','.agentmarshal/upstream'])",
+        "what": "read src/agentmarshal/outbox.py:655-750 (_run_send) and :51-52 (_OUTBOX_DIR_SPEC)"
+      },
+      {
+        "result": "status sha256-hashes each regular outbox file and matches it against Source: sha256 lines of the --index file",
+        "what": "read src/agentmarshal/outbox.py:758-833 (_SOURCE_LINE, _run_status)"
+      },
+      {
+        "result": "decision 3 — check names the missing field per non-conforming draft and runs the merge boundary's leak scan over what would be sent; decision 5 — status hashes outbox files against an index's Source: lines. The digest's disposition preserves the leak-scan rule it cites",
+        "what": "read docs/adr/ADR-0020-the-outbox-command-group.md:60-135"
+      },
+      {
+        "result": "'### The outbox is a command group (CR-150, CR-156)' under the 0.5.0 — 2026-10-23 heading: new/check/send/status shipped in 0.5.0, as 045 states",
+        "what": "grep -n outbox CHANGELOG.md; sed -n 150,158p CHANGELOG.md"
+      },
+      {
+        "result": "all five exist; 044 adds no links",
+        "what": "ls of every relative link target added by the diff (../adr/ADR-0020-the-outbox-command-group.md, 025-*.md, 026-*.md, 044-*.md, 045-*.md)"
+      },
+      {
+        "result": "no output — the files are English with only the typographic characters the existing digests use",
+        "what": "grep -nP '[^\\x00-\\x7F]' on both new digests, excluding lines whose only non-ASCII are em dash / middot"
+      },
+      {
+        "result": "044 -> 816c7ff8e0ad09bd1bc55f0030897758eba0a539c0da556744de745a76e57b0d; 045 -> a819341cbe9022523a08b200c6ee92e687335c6b83fd4b12a88b22b35a411008 — both identical to the contract's",
+        "what": "grep -o 'sha256:[0-9a-f]{64}' on both new digests"
+      },
+      {
+        "result": "only tests/test_project.py, which asserts the init-scaffolded outbox README text (project.py:232-277), not the digest files — no test covers docs/proposals content",
+        "what": "grep -rln proposals tests/"
+      },
+      {
+        "result": "same reporter-line shape and the Finding / Proposed / Disposition / Where section order the new digests follow; 025/026 carry the identical 'Adopter A (Python web service on Linux)' profile",
+        "what": "grep -n '^#|^- \\*\\*Reporter' on 025, 026, 041, 043"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; uv run agentmarshal validate; uv run pytest; uv run ruff check; uv run ruff format --check; uv run mypy",
+        "why": "read-only review and command execution was not permitted in this session; relying on the coordinator's statement that the full sequence passed on b13db0dfbf9b9ce9b5877733b8420512c2ac603b, and noting that no CI step lints Markdown, so the three changed files are not exercised by it"
+      },
+      {
+        "what": "git status / git diff to confirm no file outside the contract's scope changed",
+        "why": "the snapshot is not a git repository; the 'no other file changes' criterion is judged from the supplied diff, which touches exactly the three scoped paths"
+      }
+    ],
+    "read": [
+      "docs/proposals/044-unmeasured-usage-is-written-as-zeros.md",
+      "docs/proposals/045-outbox-check-refuses-an-outbox-that-predates-it.md",
+      "docs/proposals/README.md",
+      "docs/adr/ADR-0020-the-outbox-command-group.md",
+      "docs/adr/ADR-0019-accounting-time-quota-resets-money.md (decisions 3-5 and the 'how it works today' list)",
+      "docs/quickstart.md:530-565",
+      "UPGRADING.md:65-85",
+      "CHANGELOG.md:1-60 and :145-165",
+      "CONTRIBUTING.md (grep for outbox)",
+      "gitflic-ci.yaml",
+      "src/agentmarshal/outbox.py",
+      "src/agentmarshal/project.py:232-331",
+      "src/agentmarshal/cli.py:400-420, 1290-1310",
+      "src/agentmarshal/journal/records.py:770-812, 2272-2335",
+      "src/agentmarshal/journal/report.py:165-190, 291-340, 360-470, 640-730",
+      "tests/test_project.py"
+    ]
+  }
+}
