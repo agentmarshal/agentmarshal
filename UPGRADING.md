@@ -24,7 +24,8 @@ rule — upgrade each checkout, CI job and merge wrapper when it suits you.
   the extension changes (`not run (changed after approval: <path>)`). A
   project that declares none is unaffected.
 - **The operational lane carries a switches change.** A candidate that
-  changes only `.agentmarshal/switches.toml` and its own task's records
+  changes only `.agentmarshal/switches.toml` and paths inside its own
+  task's journal subtree — its records and an amended contract alike —
   passes the gate without review —
   `PASS: operational transaction (operational lane; review not required)`
   — and pre-gate stages do not run on it.

@@ -64,10 +64,11 @@ The **where** column of a batch table says what an accepted proposal became — 
 release, a decision record, or the piece of work that carries it. A disposition
 without that column is a promise; with it, it is a place to look.
 
-Sending a batch and then reading this file is the whole protocol today. A
-command that reads your outbox, hashes each finding and reports its state back
-to you is proposed in [023](023-upstream-outbox-has-no-transaction.md) and
-accepted for a later release.
+Sending a batch and then reading this file is half the protocol; the
+command half shipped in 0.5.0 as the `outbox` group
+[023](023-upstream-outbox-has-no-transaction.md) proposed —
+`agentmarshal outbox status --index <file>` reports which of your
+outbox files the index you pass it claims, matching by source hash.
 
 ## Batch of 2026-10-24
 
@@ -144,7 +145,7 @@ same batch and took it back.
 | [029](029-outbox-has-no-scaffold-and-its-name-is-taken.md) | The outbox has no scaffold, and `finding` is taken | D | accepted | one command group with 023 — scaffold, validation, send, status — shipped in 0.5.0 |
 | [030](030-review-verdicts-do-not-say-what-was-executed.md) | A verdict does not say what was executed | D | accepted | the `verification` field — `executed`, `read`, `not_run` — shipped in 0.5.0 with the review-evidentiality decision |
 | [031](031-the-contract-is-written-by-an-agent-and-nothing-governs-it.md) | The contract is written by an agent and judged by no one | D | accepted *(in part; the withdrawal of the third suggestion — accepted in [033](033-contract-review-before-implementation-does-not-pay-off.md))* | the contract hashes shipped in 0.5.0; the agreement record shipped in 0.5.0 with the contract-governance decision; the withdrawal accepted in [033](033-contract-review-before-implementation-does-not-pay-off.md) |
-| [032](032-the-journal-has-no-time-axis.md) | The journal has no time axis | D | accepted | session duration and lead time shipped in 0.5.0 with the accounting rework alongside 018 and 024; the journal-only lane's exposure to the required check went with the journal-transactions work of 019 and 035, shipped in 0.6.0 — the transaction branch carries the task id and the gate prints `journal-only transaction (deterministic lane; review not required)`; the documentation sentence on the CI cost of a journal transaction is not yet written |
+| [032](032-the-journal-has-no-time-axis.md) | The journal has no time axis | D | accepted | session duration and lead time shipped in 0.5.0 with the accounting rework alongside 018 and 024; the journal-transactions work of 019 and 035 shipped in 0.6.0 — the transaction branch carries the task id and stages one task's directory — but the lane's exposure to the required check did not: nothing answers which lane a candidate takes short of the full gate, and the shipped required-check template runs all of it; the documentation sentence on the CI cost of a journal transaction is not yet written |
 | [033](033-contract-review-before-implementation-does-not-pay-off.md) | Contract review before implementation does not pay off — a measured withdrawal | D | accepted *(the withdrawal of [031](031-the-contract-is-written-by-an-agent-and-nothing-governs-it.md)'s third suggestion)* | nothing to ship; 031 names it |
 | [034](034-the-contract-does-not-name-its-implementer-and-reviewer.md) | The contract does not name its implementer and reviewer | D | accepted | `provider-limit` already documented since 0.4.1; the header fields — `implementers`, `reviewers`, `independence` — the gate checks and the `status` display shipped in 0.5.0 with the contract-governance decision; the `output-limit` outcome value stands in the vocabulary [ADR-0022](../adr/ADR-0022-the-0-5-0-record-model-one-transition.md) section 4 documents |
 | [035](035-journal-transactions-sweep-records-of-other-tasks.md) | Journal transactions sweep other tasks' records | D | accepted | the per-task staging with 019's transaction helper, the gate warning on another task's `opened`/`amendment` records and the `status --base` listing of unpublished records — all shipped in 0.6.0 |

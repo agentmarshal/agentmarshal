@@ -37,9 +37,10 @@ evidence in the journal (`.agentmarshal/journal/tasks/<id>/`).
    of the exact commit is approved by an independent reviewer — or is a
    non-approving one whose blocking findings an operator `acceptance`
    record for that commit covers exactly — the pipeline is attested for
-   that commit, and the evidence records are append-only and consistent. The `am-merge` host wrapper runs
-   `agentmarshal gate` and, on success, performs the merge by reusing the
-   v1 provider operation `mr.sh merge` with the v1 merge policy skipped.
+   that commit, and the evidence records are append-only and consistent.
+   The `am-merge` host wrapper runs `agentmarshal gate` and, on success,
+   performs the merge by reusing the v1 provider operation `mr.sh merge`
+   with the v1 merge policy skipped.
 
 5. **Complete.** `agentmarshal complete --task <id> --commit <sha>
    --base <base>` re-runs the gate and, on pass, writes the `completed`
@@ -141,9 +142,9 @@ some v1 transport:
 
 - Openings and completions are journal-only and take the gate's
   deterministic lane, and a candidate that changes only
-  `.agentmarshal/switches.toml` and its task's own records takes the
-  operational lane — neither requires a review; implementation
-  candidates take the full review-bound lane.
+  `.agentmarshal/switches.toml` and anything inside its task's own
+  journal subtree takes the operational lane — neither requires a
+  review; implementation candidates take the full review-bound lane.
 - The GitHub template reads the task identifier from the pull request head
   reference. Every branch it gates, including a journal-only opening or
   completion branch, must therefore include its `CR-<number>` identifier.

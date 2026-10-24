@@ -267,14 +267,15 @@ fails the run naming the extension", "a sidecar runs no stages", "an
 invalid task identifier refuses before any stage is planned", "a
 malformed trust.toml fails the command naming it", "on a workstation
 a stage runs only under a matching grant" and "`stage run` reads the
-switches from the base and reports a switched-off extension"). ADR-0013 decision 7's
-list runs past what the runner prints: `addressee not found` as a
-stage line and a `not run` reason of dependencies not matching the
-lock are decided, not yet implemented — `addressee not found` lives
-today on `validate`'s warning for an `ext` record kind no manifest
-declares (extension-records specification, "`validate` warns
-"addressee not found" on an ext record whose kind no manifest
-declares"). An `accepted_pause` acceptance naming the extension at
+switches from the base and reports a switched-off extension").
+ADR-0013 decision 7's list runs past what the runner prints:
+`addressee not found` as a stage line and a `not run` reason of
+dependencies not matching the lock are decided, not yet implemented —
+`addressee not found` lives today on `validate`'s warning for an
+`ext` record kind no manifest declares (extension-records
+specification, "`validate` warns "addressee not found" on an ext
+record whose kind no manifest declares"). An `accepted_pause`
+acceptance naming the extension at
 the resolved commit stands a `pre-gate-stop` pause down
 (extension-stages specification, "an accepted pause stands down a
 pre-gate-stop stage's pause for the accepted extension and commit").
@@ -556,15 +557,16 @@ stop short, and this document does not resolve them.
    by the decision itself. (ADR-0011, decisions 3 and 4 and "Left open".)
 
 5. **A shared extension switched off without review.** The operational
-   lane admits a diff touching only
-   `.agentmarshal/switches.toml` and the task's own records, requires no
-   review, and skips the extensions' `pre-gate` stages; the reason is
-   mandatory and `status` and `doctor` show the switch — "easy, but not
-   silent" (gate-lanes specification, "an operational change takes its
-   own gate lane" and "pre-gate stages do not run on an operational
-   change"; extension-stages specification, "`status` names each
-   switched-off shared extension" and "`doctor` shows each switched-off
-   shared extension"). That file is the one exception to the rule that
+   lane admits a diff touching only `.agentmarshal/switches.toml` and
+   the inside of the task's own journal subtree — its records and an
+   amended contract alike — requires no review, and skips the
+   extensions' `pre-gate` stages; the reason is mandatory and `status`
+   and `doctor` show the switch — "easy, but not silent" (gate-lanes
+   specification, "an operational change takes its own gate lane" and
+   "pre-gate stages do not run on an operational change";
+   extension-stages specification, "`status` names each switched-off
+   shared extension" and "`doctor` shows each switched-off shared
+   extension"). That file is the one exception to the rule that
    configuration is reviewed, and whether its visibility substitutes for
    review is not assessed. (ADR-0013, decisions 16 and 17, header and
    "Consequences"; ADR-0010, decision 2.)

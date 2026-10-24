@@ -139,12 +139,12 @@ rather than decides, the findings lane excepted.
   deterministic) transaction — one whose every changed path sits under
   `.agentmarshal/journal/`, such as an opening, a completion, a contract
   amendment or a reopening — needs no review; an **operational** transaction —
-  one that changes only `.agentmarshal/switches.toml` and its own task's
-  records, the lane `extension switch off` opens a task onto — needs no review
-  either and runs no pre-gate stage; an **implementation** candidate takes the
-  full review-bound diff lane; and an empty-scope research task offered with
-  `--findings` takes the no-candidate findings lane, bound to its latest
-  hash-pinned finding.
+  one that changes only `.agentmarshal/switches.toml` and anything inside
+  its own task's journal subtree, the lane `extension switch off` opens a
+  task onto — needs no review either and runs no pre-gate stage; an
+  **implementation** candidate takes the full review-bound diff lane; and
+  an empty-scope research task offered with `--findings` takes the
+  no-candidate findings lane, bound to its latest hash-pinned finding.
 - **Merge authority** — the gate *decides*; the provider *merges*. A host
   wrapper (e.g. `am-merge` / a GitHub Action) runs the gate and, on a pass,
   performs the merge.

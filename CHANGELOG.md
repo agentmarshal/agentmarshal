@@ -61,15 +61,19 @@ writes an `ext` record for a kind the shared extension's manifest
 declares: the payload is leak-scanned and masked, keys included,
 canonically serialized and bounded at 64 KiB, and `payload_sha256`
 pins the masked form; a kind no shared extension declares, or a
-manifest that cannot be read, refuses. `agentmarshal doctor` lists
-each shared extension — its form, manifest schema, declared stages
-and ext kinds, grant state — under an `extension manifest <name>`
-check per extension, and a manifest declaring `[wraps].runtime` gains
-an `extension runtime <name>` check that finds the runtime on `PATH`
-and compares its version to the declared minimum.
-`agentmarshal validate` warns `<kind>: addressee not found` when an
-`ext` record's kind is declared by no manifest — a warning, never a
-refusal.
+manifest that cannot be read, refuses. `agentmarshal doctor` checks
+each shared extension's manifest under an
+`extension manifest <name>` check whose detail reads
+`<form> form, manifest schema <n>`, and a manifest declaring
+`[wraps].runtime` gains an `extension runtime <name>` check that
+finds the runtime on `PATH` and compares its version to the declared
+minimum; beside the checks, a section prints one
+`extension <name>: …` line per shared extension — its form and
+manifest schema, declared stages and ext kinds, grant state and
+switch. `agentmarshal validate` prints a
+`WARN: <task>: ext record <id> kind '<kind>': addressee not found`
+line when an `ext` record's kind is declared by no manifest — a
+warning, never a refusal.
 
 ### A shared extension is switched off at the base, on the operational lane (CR-217, CR-219, CR-220, CR-222)
 
@@ -84,10 +88,11 @@ operational task whose generated contract declares
 `scope = [".agentmarshal/switches.toml"]` — the switches file alone —
 and writes the `off` entry; it refuses in a sidecar. Such a candidate
 takes the gate's operational lane: only `.agentmarshal/switches.toml`
-and the task's own records may change, the candidate's switches file is
-checked against the base's — every changed entry must name the task, a
-dropped entry refuses, and the other top-level keys must stay identical
-— and the verdict is
+and anything inside the task's own journal subtree — its records and
+an amended contract alike — may change, the candidate's switches file
+is checked against the base's — every changed entry must name the
+task, a dropped entry refuses, and the other top-level keys must stay
+identical — and the verdict is
 `PASS: operational transaction (operational lane; review not required)`,
 with the agreement, review and independence checks not examined;
 pre-gate stages do not run on the lane. `status` prints
@@ -220,30 +225,29 @@ gate on this project's release process; the package gains no command.
 ### Fixes from the release audit (CR-235, CR-236)
 
 The audit filed findings against the gate's journal handling; the two
-tasks named here are their fixes in the code. Where the CR-210 warning
-ends, refusal begins: for
-every other task the candidate adds records to, the gate projects that
-task's merged records — target plus candidate — with the same
-lifecycle projection and the same closed-at-base admission rule it
-applies to the judged task, and names the task and the projection's
-reason on its FAIL line (the audit's reproduction: a candidate for an
-open task that adds a reopening to a task abandoned at base is
-refused). The write-time text refusal now covers the fields it missed:
-a `created_at`, `started_at`, `ended_at` or `resets_at` carrying a
-character the forgeable-text rule refuses is refused at write time
-naming the field — `fromisoformat` accepts any single character as
-the date-time separator, so the refusal lands before the parse — and a
-review record's `artifacts` reference is refused by the same write-time
+tasks named here are its fixes that completed before these notes.
+Where the CR-210 warning ends, refusal begins: for every other task
+the candidate adds records to, the gate projects that task's merged
+records — target plus candidate — with the same lifecycle projection
+and the same closed-at-base admission rule it applies to the judged
+task, and names the task and the projection's reason on its FAIL line
+(the audit's reproduction: a candidate for an open task that adds a
+reopening to a task abandoned at base is refused). The write-time
+text refusal now covers the fields it missed: a `created_at`,
+`started_at`, `ended_at` or `resets_at` carrying a character the
+forgeable-text rule refuses is refused at write time naming the field
+— `fromisoformat` accepts any single character as the date-time
+separator, so the refusal lands before the parse — and a review
+record's `artifacts` reference is refused by the same write-time
 validation; both rules bind past today's schemas, so they reach no
-record a read can load — an earlier journal's timestamps parse as they
-always did, and an artifact reference it holds stays `validate`'s to
-report.
-`write_record` encodes the record to bytes before its file is created,
-so a failed write leaves no empty or partial record behind. And the
-reviewer output kept on a refused verdict is now the reviewer's bytes
-exactly — the preserved file holds what the reviewer printed, including
-bytes that are not valid UTF-8, while parsing still uses the decoded
-text.
+record a read can load — an earlier journal's timestamps parse as
+they always did, and an artifact reference it holds stays
+`validate`'s to report. `write_record` encodes the record to bytes
+before its file is created, so a failed write leaves no empty or
+partial record behind. And the reviewer output kept on a refused
+verdict is now the reviewer's bytes exactly — the preserved file
+holds what the reviewer printed, including bytes that are not valid
+UTF-8, while parsing still uses the decoded text.
 
 ### What 0.6.0 leaves out
 
