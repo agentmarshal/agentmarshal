@@ -105,6 +105,7 @@ class TaskReport:
     sessions: int = 0
     sessions_without_cost: int = 0
     costs: tuple[CostSum, ...] = ()
+    unmeasured: int = 0
     rejected_commits: int = 0
 
 
@@ -131,6 +132,7 @@ class JournalReport:
     sessions: int = 0
     sessions_without_cost: int = 0
     costs: tuple[CostSum, ...] = ()
+    unmeasured: int = 0
     rejected_commits: int = 0
 
 
@@ -169,6 +171,28 @@ class FindingsReport:
 
     classes: tuple[FindingClassView, ...]
     deferrals: tuple[OpenDeferral, ...]
+
+
+def _is_unmeasured(record: dict[str, object]) -> bool:
+    """Whether a session record measured nothing (digest 044's finding).
+
+    ``record-session`` without token flags writes ``0/0/0`` — zeros
+    indistinguishable from a free run, the only trace that nothing was
+    measured being a missing ``usage`` block. Such a record reads as
+    unmeasured: every token count zero and no ``usage`` block. A session
+    carrying ``usage``, or any non-zero count, is measured — a recorded
+    zero is a measurement. ``status`` and ``report`` share this one
+    definition; making token counts optional on the write side waits for
+    the next record schema.
+    """
+
+    tokens = record.get("tokens")
+    return (
+        record["record_type"] == "session"
+        and "usage" not in record
+        and isinstance(tokens, dict)
+        and all(value == 0 for value in tokens.values())
+    )
 
 
 def _usage_provenance(records: Iterable[dict[str, object]]) -> str | None:
@@ -290,22 +314,27 @@ def _lead_time(state: str, phases: tuple[PhaseBoundary, ...]) -> timedelta | Non
 
 def _cost_sums(
     records: Iterable[dict[str, object]],
-) -> tuple[tuple[CostSum, ...], int, int]:
+) -> tuple[tuple[CostSum, ...], int, int, int]:
     """Sum session costs per currency and count sessions carrying none.
 
     Returns the per-currency sums sorted by currency code, the count of
-    session records carrying no ``cost``, and the session count. The
-    record holds ``amount`` as a string so a sum is exact — the sums are
-    ``Decimal``, never floats — and ``reported`` and ``estimated`` keep
-    separate sums: the provenance of a figure stays with it, and a
-    conversion would assert a rate the journal does not hold (ADR-0019
-    decision 4).
+    measured session records carrying no ``cost``, the measured session
+    count, and the count of unmeasured sessions. An unmeasured session —
+    zero tokens and no ``usage`` block — is left out of every sum and
+    count here: its ``cost`` is summed nowhere and it is no measured
+    session, so the unmeasured count carries what the lines would
+    otherwise lose. The record holds ``amount`` as a string so a sum is
+    exact — the sums are ``Decimal``, never floats — and ``reported``
+    and ``estimated`` keep separate sums: the provenance of a figure
+    stays with it, and a conversion would assert a rate the journal does
+    not hold (ADR-0019 decision 4).
     """
 
     reported: dict[str, Decimal] = {}
     estimated: dict[str, Decimal] = {}
     sessions = 0
     without_cost = 0
+    unmeasured = 0
     # An amount runs to more digits than the default context's 28; under
     # the maximum precision the addition of the recorded finite decimals
     # is exact, and a sum that still cannot be represented fails on the
@@ -315,6 +344,9 @@ def _cost_sums(
         context.traps[Inexact] = True
         for record in records:
             if record["record_type"] != "session":
+                continue
+            if _is_unmeasured(record):
+                unmeasured += 1
                 continue
             sessions += 1
             cost = record.get("cost")
@@ -332,6 +364,7 @@ def _cost_sums(
         ),
         without_cost,
         sessions,
+        unmeasured,
     )
 
 
@@ -364,7 +397,7 @@ def _task_report(status: TaskStatus) -> TaskReport:
     tokens = sum(
         sum(cast(dict[str, int], record["tokens"]).values())
         for record in records
-        if record["record_type"] == "session"
+        if record["record_type"] == "session" and not _is_unmeasured(record)
     )
     decision = None
     if any(
@@ -396,7 +429,7 @@ def _task_report(status: TaskStatus) -> TaskReport:
             if reviews and reviews[-1]["verdict"] == "approved":
                 decision = "approved"
     phases = _phases(records)
-    costs, sessions_without_cost, sessions = _cost_sums(records)
+    costs, sessions_without_cost, sessions, unmeasured = _cost_sums(records)
     return TaskReport(
         status.task_id,
         status.state,
@@ -411,6 +444,7 @@ def _task_report(status: TaskStatus) -> TaskReport:
         sessions=sessions,
         sessions_without_cost=sessions_without_cost,
         costs=costs,
+        unmeasured=unmeasured,
         rejected_commits=_rejected_commits(records),
     )
 
@@ -441,7 +475,7 @@ def build_report(journal_root: Path, task_id: str | None = None) -> JournalRepor
             if len(lead_times) % 2
             else (lead_times[middle - 1] + lead_times[middle]) / 2
         )
-    costs, sessions_without_cost, sessions = _cost_sums(
+    costs, sessions_without_cost, sessions, unmeasured = _cost_sums(
         record for status in statuses for record in status.records
     )
     return JournalReport(
@@ -461,6 +495,7 @@ def build_report(journal_root: Path, task_id: str | None = None) -> JournalRepor
         sessions=sessions,
         sessions_without_cost=sessions_without_cost,
         costs=costs,
+        unmeasured=unmeasured,
         rejected_commits=sum(task.rejected_commits for task in tasks),
     )
 
@@ -640,17 +675,24 @@ def _phase_lines(task: TaskReport) -> list[str]:
 
 
 def _cost_lines(
-    costs: tuple[CostSum, ...], sessions: int, sessions_without_cost: int
+    costs: tuple[CostSum, ...],
+    sessions: int,
+    sessions_without_cost: int,
+    unmeasured: int,
 ) -> list[str]:
     """The ``Cost`` lines: one per currency, then the no-cost count.
 
     A currency's ``reported`` and ``estimated`` sums print as decimals
     in plain notation — the record's own spelling (``f`` keeps a small
     sum ``0.000000001`` rather than ``1E-9``) — and the count prints
-    whenever the scope holds a session, so "no cost" reads as a count
-    rather than a zero sum (ADR-0019 decision 4).
+    whenever the scope holds a measured session, so "no cost" reads as a
+    count rather than a zero sum (ADR-0019 decision 4). Every line the
+    block prints carries ``unmeasured=<n>`` as its last field whenever
+    the scope left sessions out of these sums as unmeasured — the count
+    says what the sums would otherwise silently lose.
     """
 
+    unmeasured_field = f"\tunmeasured={unmeasured}" if unmeasured else ""
     lines = []
     for cost in costs:
         line = f"Cost\t{escape_for_display(cost.currency)}"
@@ -658,9 +700,11 @@ def _cost_lines(
             line += f"\treported={cost.reported:f}"
         if cost.estimated is not None:
             line += f"\testimated={cost.estimated:f}"
-        lines.append(line)
+        lines.append(line + unmeasured_field)
     if sessions:
-        lines.append(f"Cost\tsessions_without_cost={sessions_without_cost}")
+        lines.append(
+            f"Cost\tsessions_without_cost={sessions_without_cost}{unmeasured_field}"
+        )
     return lines
 
 
@@ -691,11 +735,18 @@ def format_report(
             line += f"\tusage={escape_for_display(task.usage_provenance)}"
         if task.decision is not None:
             line += f"\tdecision={task.decision}"
+        if task.unmeasured:
+            line += f"\tunmeasured={task.unmeasured}"
         lines.append(line)
         if not include_summary:
             lines.extend(_phase_lines(task))
             lines.extend(
-                _cost_lines(task.costs, task.sessions, task.sessions_without_cost)
+                _cost_lines(
+                    task.costs,
+                    task.sessions,
+                    task.sessions_without_cost,
+                    task.unmeasured,
+                )
             )
             lines.extend(_check_lines(task.rejected_commits))
     if not include_summary:
@@ -714,6 +765,8 @@ def format_report(
         summary += f"\tartifacts={report.artifacts}"
     if report.usage_provenance is not None:
         summary += f"\tusage={escape_for_display(report.usage_provenance)}"
+    if report.unmeasured:
+        summary += f"\tunmeasured={report.unmeasured}"
     lines.append(summary)
     lead = f"Lead\tknown={report.lead_known}"
     if report.lead_median is not None:
@@ -722,7 +775,12 @@ def format_report(
         lead += f"\tmax={_duration(report.lead_maximum)}"
     lines.append(f"{lead}\tunknown={report.lead_unknown}")
     lines.extend(
-        _cost_lines(report.costs, report.sessions, report.sessions_without_cost)
+        _cost_lines(
+            report.costs,
+            report.sessions,
+            report.sessions_without_cost,
+            report.unmeasured,
+        )
     )
     lines.extend(_check_lines(report.rejected_commits))
     return tuple(lines)
