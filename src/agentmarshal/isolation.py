@@ -12,8 +12,13 @@ namespaces (plus the mount namespace for the read-only floor), ``deny``
 to ``/proc/self/setgroups`` and a one-line identity mapping of the
 caller's uid and gid to the uid/gid maps, then ``mount(NULL, "/",
 NULL, MS_REC | MS_PRIVATE)`` and a bind of the candidate directory onto
-itself remounted ``MS_BIND | MS_REMOUNT | MS_RDONLY`` — never a shell and
-never a tool looked up on ``PATH``. Last, before exec, the child drops
+itself remounted ``MS_BIND | MS_REMOUNT | MS_RDONLY`` together with the
+flags the candidate's own mount holds that a user namespace may not
+clear — a remount that would drop one is refused ``EPERM`` — and an
+``os.chdir`` back into the directory, since the working directory the
+spawn set up before ``preexec_fn`` still names the underlying writable
+mount — never a shell and never a tool looked up on ``PATH``. Last,
+before exec, the child drops
 every capability the new user namespace granted it — the ambient set,
 the ``NOROOT``/``NO_SETUID_FIXUP`` securebits and ``no_new_privs``, the
 bounding set and the live effective/permitted/inheritable sets —
@@ -53,10 +58,27 @@ _CLONE_NEWNET = getattr(os, "CLONE_NEWNET", 0x40000000)
 
 #: The mount flags (``linux/mount.h``).
 _MS_RDONLY = 0x0001
+_MS_NOSUID = 0x0002
+_MS_NODEV = 0x0004
+_MS_NOEXEC = 0x0008
 _MS_REMOUNT = 0x0020
+_MS_NOATIME = 0x0400
+_MS_NODIRATIME = 0x0800
 _MS_BIND = 0x1000
 _MS_REC = 0x4000
 _MS_PRIVATE = 0x40000
+_MS_RELATIME = 0x200000
+
+#: The ``statvfs`` ``f_flag`` bits (``sys/vfs.h``) for the mount flags a
+#: user namespace may not clear. They are not the ``MS_*`` values —
+#: ``ST_RELATIME`` is 4096 where ``MS_RELATIME`` is ``1 << 21`` — so the
+#: remount's flags come from a mapping, never from copying ``f_flag``.
+_ST_NOSUID = getattr(os, "ST_NOSUID", 2)
+_ST_NODEV = getattr(os, "ST_NODEV", 4)
+_ST_NOEXEC = getattr(os, "ST_NOEXEC", 8)
+_ST_NOATIME = getattr(os, "ST_NOATIME", 1024)
+_ST_NODIRATIME = getattr(os, "ST_NODIRATIME", 2048)
+_ST_RELATIME = getattr(os, "ST_RELATIME", 4096)
 
 #: The ``prctl`` options (``linux/prctl.h``) the capability drop uses.
 _PR_CAPBSET_DROP = 24
@@ -245,17 +267,49 @@ def _drop_failure(error: BaseException) -> _CapabilityDropError:
     )
 
 
+#: ``ST_*`` → ``MS_*`` for each mount flag the kernel locks on a mount a
+#: user namespace touches: the remount must carry what the candidate's
+#: own mount already holds or the kernel answers ``EPERM``.
+_LOCKED_FLAG_MAP = (
+    (_ST_NOSUID, _MS_NOSUID),
+    (_ST_NODEV, _MS_NODEV),
+    (_ST_NOEXEC, _MS_NOEXEC),
+    (_ST_NOATIME, _MS_NOATIME),
+    (_ST_NODIRATIME, _MS_NODIRATIME),
+    (_ST_RELATIME, _MS_RELATIME),
+)
+
+
+def _locked_mount_flags(f_flag: int) -> int:
+    """The ``MS_*`` flags *f_flag* reports that the remount must keep."""
+
+    flags = 0
+    for statvfs_flag, mount_flag in _LOCKED_FLAG_MAP:
+        if f_flag & statvfs_flag:
+            flags |= mount_flag
+    return flags
+
+
 def _bind_read_only(directory: str) -> None:
-    """Make mount propagation private, then bind *directory* read-only.
+    """Make propagation private, bind *directory* read-only, re-enter it.
 
     The bind mounts the directory onto itself and the remount turns that
-    new mount read-only — the recipe a ``MS_BIND | MS_REMOUNT | MS_RDONLY``
-    call performs. Nothing outside the directory changes.
+    new mount read-only. A remount made inside a user namespace may not
+    clear a flag the mount it was cloned from holds — the kernel
+    answers ``EPERM``, which is why a candidate under a
+    ``nosuid,nodev`` mount such as ``/tmp`` could not be bound before —
+    so the remount carries every locked flag ``statvfs`` reports for
+    the directory's own mount. Then the child re-enters the directory:
+    the working directory the spawn set before ``preexec_fn`` still
+    names the underlying writable mount, and only a fresh lookup lands
+    on the read-only bind.
     """
 
+    locked = _locked_mount_flags(os.statvfs(directory).f_flag)
     _mount(None, "/", _MS_REC | _MS_PRIVATE)
     _mount(directory, directory, _MS_BIND)
-    _mount(directory, directory, _MS_BIND | _MS_REMOUNT | _MS_RDONLY)
+    _mount(directory, directory, _MS_BIND | _MS_REMOUNT | _MS_RDONLY | locked)
+    os.chdir(directory)
 
 
 def stage_setup(
@@ -266,8 +320,11 @@ def stage_setup(
     *network* asks for a new user and network namespace (the manifest did
     not declare ``network = true``); *readonly* asks for the read-only
     candidate floor (a ``pre-gate`` stage): in the same child a new mount
-    namespace binds the candidate directory read-only over itself. Each
-    requested guarantee is attempted so a failure is named on the right
+    namespace binds the candidate directory read-only over itself — the
+    remount keeping the locked flags the candidate's mount reports — and
+    re-enters it, so the working directory the spawn inherited names the
+    read-only bind. Each requested guarantee is attempted so a failure
+    is named on the right
     guarantee: the combined ``os.unshare`` is tried first — the call the
     design prescribes — and only on a refusal is each namespace retried
     on its own so each guarantee carries its own reason. Last, before
