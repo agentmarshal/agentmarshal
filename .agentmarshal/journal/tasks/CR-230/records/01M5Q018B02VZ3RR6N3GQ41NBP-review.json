@@ -1,0 +1,108 @@
+{
+  "advisory_findings": [
+    "CR-230-F3",
+    "CR-230-F4"
+  ],
+  "artifacts": [
+    {
+      "hash": "ecaa5b60b7ededb8155fd5524456cb887268cc4c9d01dbb47a9a39d07db5a5dd",
+      "ref": ".agentmarshal/journal/tasks/CR-230/artifacts/01M5Q018B02VZ3RR6N3GQ41NBP-review.md"
+    }
+  ],
+  "classes": {
+    "CR-230-F1": "claim-accuracy",
+    "CR-230-F2": "claim-accuracy",
+    "CR-230-F3": "claim-accuracy",
+    "CR-230-F4": "correctness"
+  },
+  "created_at": "2026-10-24T13:01:37.504639Z",
+  "evidence": {
+    "CR-230-F1": "docs/proposals/045-outbox-check-refuses-an-outbox-that-predates-it.md:28-29 vs docs/proposals/README.md:56-57 ('The source line begins with the batch of 2026-09-16. Proposals landed before it carry no hash'); grep -l 'Source:' docs/proposals/*.md -> no Source line in 001-013, so Adopter A's only hash-carrying digests are 025 and 026 (batch of 2026-09-24, 'Two files from Adopter A')",
+    "CR-230-F2": "docs/proposals/044-unmeasured-usage-is-written-as-zeros.md:19-21 ('nothing documents that reading') vs docs/quickstart.md:547-550 and src/agentmarshal/journal/report.py:174-181 ('unrecorded'), asserted in tests/test_report.py:197-199 ('usage=unrecorded')",
+    "CR-230-F3": "docs/proposals/README.md:74 ('the reporter of the 2026-08-30 and 2026-09-24 batches') vs the 2026-08-30 table (docs/proposals/README.md: rows 001-013 carry reporters A, B, C, with 006 'A, B' and 008 'B, C') and the 2026-09-24 paragraph ('one of the first batch's three reporters')",
+    "CR-230-F4": "docs/proposals/045-outbox-check-refuses-an-outbox-that-predates-it.md:74,93 (sent manifest kept in the outbox, written by send) vs src/agentmarshal/outbox.py:456 ('is_draft = entry.name != _README') and outbox.py:488-500, which refuse any other regular file lacking the five '## <Field>' headings"
+  },
+  "findings": [
+    "CR-230-F1",
+    "CR-230-F2"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "cbc38d2a0a8da6d9fb07608e9aac195e42a71747",
+  "reviewed_contract": "63d60e31e012b8ca10659b43f6af36cb08220da3b62c18921aac8b696bffb839",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-230",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "Source: lines exist only in 014-045; none in 001-013, i.e. none of Adopter A's 2026-08-30 digests (001-007, 010, 012)",
+        "what": "grep -l \"Source:\" docs/proposals/*.md"
+      },
+      {
+        "result": "src/agentmarshal/journal/report.py:178 \"unrecorded\"; docs/quickstart.md:550; tests/test_report.py:197-199 \"usage=unrecorded\"",
+        "what": "grep -rn \"unrecorded\" src/ docs/ tests/"
+      },
+      {
+        "result": "cli.py:407-409 type=int default=0; cli.py:411 --usage-method choices=(reported, measured)",
+        "what": "grep -n input-tokens/output-tokens/cache-tokens/usage-method src/agentmarshal/cli.py"
+      },
+      {
+        "result": "records.py:2313-2330 always writes tokens{input,output,cache}, usage optional; records.py:778-793 requires exactly the three non-negative ints",
+        "what": "read create_session_record and the session-tokens rule"
+      },
+      {
+        "result": "report.py:364-365 sums the tokens object of every session record; report.py:291-335 counts sessions_without_cost",
+        "what": "grep -n tokens src/agentmarshal/journal/report.py"
+      },
+      {
+        "result": "outbox.py:456 only README.md exempt from the five-field check; outbox.py:449-451 non-regular entry -> 'not a draft, not checked' and refusal; outbox.py:659-710 send runs the same check then git add --force -- .agentmarshal/upstream; outbox.py:105-114 status --index required; outbox.py:764 Source: regex",
+        "what": "read _check/_run_send/status registration in src/agentmarshal/outbox.py"
+      },
+      {
+        "result": "pyproject version 0.6.0.dev0; CHANGELOG 0.5.0 (2026-10-23) section 'The outbox is a command group' lists new/check/send/status; UPGRADING.md:75 same",
+        "what": "grep version/outbox in pyproject.toml, CHANGELOG.md, UPGRADING.md"
+      },
+      {
+        "result": "no CR-ids, ULIDs, URLs, emails, product/person names; non-ASCII only em dash and middot; the one link (../adr/ADR-0020-the-outbox-command-group.md) resolves",
+        "what": "scan both new digests for adopter identifiers, non-ASCII and markdown links"
+      },
+      {
+        "result": "1 each, byte-exact, lowercase 64-hex",
+        "what": "grep -c the two contract Source hashes in the new files"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "read-only review; the coordinator states the full sequence passed on the reviewed commit, and the diff is documentation only"
+      }
+    ],
+    "read": [
+      "docs/proposals/044-unmeasured-usage-is-written-as-zeros.md",
+      "docs/proposals/045-outbox-check-refuses-an-outbox-that-predates-it.md",
+      "docs/proposals/README.md",
+      "docs/adr/ADR-0009-research-findings-lifecycle.md",
+      "docs/adr/ADR-0020-the-outbox-command-group.md",
+      "docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md (head)",
+      "docs/adr/ADR-0019-accounting-time-quota-resets-money.md (context)",
+      "docs/quickstart.md:530-560",
+      "src/agentmarshal/outbox.py",
+      "src/agentmarshal/journal/report.py",
+      "src/agentmarshal/journal/records.py (session rules and factory)",
+      "src/agentmarshal/cli.py:400-415",
+      "CHANGELOG.md:11-40,150-157",
+      "UPGRADING.md:60-95",
+      "docs/proposals/024,025,026,041,043 (digest form)"
+    ]
+  }
+}

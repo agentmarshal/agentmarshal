@@ -1,0 +1,116 @@
+{
+  "advisory_findings": [
+    "CR230-A1",
+    "CR230-A2"
+  ],
+  "artifacts": [
+    {
+      "hash": "f5183b830488747b40d74127edd6b190e19fa1c5dff8d5b8ef8d399849e6df23",
+      "ref": ".agentmarshal/journal/tasks/CR-230/artifacts/01M5Q54DK3S4S48FEEJ9DPCX9M-review.md"
+    }
+  ],
+  "classes": {
+    "CR230-A1": "claim-accuracy",
+    "CR230-A2": "claim-accuracy"
+  },
+  "created_at": "2026-10-24T14:30:44.067571Z",
+  "evidence": {
+    "CR230-A1": "docs/proposals/044-unmeasured-usage-is-written-as-zeros.md:75 says 'status and report show a session whose usage was not measured as unmeasured rather than folding its zeros into the totals'; grep -rn 'tokens' src/agentmarshal/journal/status.py src/agentmarshal/journal/status_view.py -> no match, and src/agentmarshal/journal/status_view.py:406-424 (_implementer_session_line) prints only actor=, vendor=, model= and fallback_reason=, so status shows no token counts and no totals today",
+    "CR230-A2": "docs/proposals/045-outbox-check-refuses-an-outbox-that-predates-it.md:90 names only the field check as the place that exempts a non-draft entry; src/agentmarshal/outbox.py:674 'if not any(entry.name != _README for entry in outbox.iterdir()):' treats every non-README entry as a draft, so a sent-hash manifest in the outbox would also satisfy the 'no drafts to send' guard at src/agentmarshal/outbox.py:675"
+  },
+  "findings": [],
+  "previous_review": "01M5Q4QM616XHC3YMT3SE36FF1",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "2f97fedc5434eb0ac089c06808236a423e9f8f3f",
+  "reviewed_contract": "cacd4d21f51deac4afb96cc3479c7fbfb9c70100f89c163d1cb777f9db62c0d6",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-230",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "cli.py:407-409 --input-tokens/--output-tokens/--cache-tokens type=int default=0; cli.py:411 --usage-method choices=('reported','measured'); cli.py:1306-1313 the pair is required together",
+        "what": "grep -n for the three token flags and the usage flags in src/agentmarshal/"
+      },
+      {
+        "result": "records.py:2320-2325 always writes tokens{input,output,cache}; records.py:778-793 requires keys == {input,output,cache}, each int >= 0; records.py:2330 usage written only when provider is not None",
+        "what": "read create_session_record and the session-tokens rule"
+      },
+      {
+        "result": "report.py:174-186 absent usage -> 'unrecorded'; report.py:691,716 printed as usage=<value>; report.py:364-365 sums tokens of every session record; report.py:106,663 sessions_without_cost counted apart",
+        "what": "grep -rn 'unrecorded|sessions_without_cost|tokens' src/agentmarshal/journal/report.py"
+      },
+      {
+        "result": "no 'tokens' and no 'unmeasured' anywhere in status.py/status_view.py or elsewhere in src/; status_view.py:406-424 session line shows actor/vendor/model/fallback_reason only -- basis for CR230-A1",
+        "what": "grep -rn 'tokens|unmeasured' src/agentmarshal/journal/status.py status_view.py and src/ overall"
+      },
+      {
+        "result": "line 47/51 _README and _OUTBOX_DIR_SPEC='.agentmarshal/upstream'; 57 five fields; 80 _HEADING ^## (.+?)\\s*$; 439-456 every entry iterated, non-regular prints 'not a draft, not checked' and refuses; 456 is_draft = name != README; 659-662 send runs the same check; 674 no-drafts guard counts any non-README entry as a draft (CR230-A2); 708-710 git add --force -- .agentmarshal/upstream; 767-825 status --index sha256-hashes and matches Source: lines",
+        "what": "read src/agentmarshal/outbox.py (_check, _run_send, _run_status, constants)"
+      },
+      {
+        "result": "CHANGELOG.md:150-157 the outbox group shipped in 0.5.0 (2026-10-23); UPGRADING.md:75 names new/check/send/status; pyproject.toml:3 version = 0.6.0.dev0",
+        "what": "grep -n outbox in CHANGELOG.md, UPGRADING.md and version in pyproject.toml"
+      },
+      {
+        "result": "no task ids and no ULID-class strings; non-ASCII only em dash and middot, as in existing digests; no U+00A0/202F/2009/2007/2060/FEFF",
+        "what": "grep -nE 'CR-[0-9]+|[0-9A-HJKMNP-TV-Z]{26}' and grep -nP '[^\\x00-\\x7F]' and a NBSP/narrow-space scan over both new digests and the README"
+      },
+      {
+        "result": "docs/adr/ADR-0020-the-outbox-command-group.md, docs/proposals/025-validate-refused-records-an-earlier-release-wrote.md, docs/proposals/026-reviewer-facts-round-convergence-and-two-gaps.md, docs/proposals/044-..., docs/proposals/045-... all exist",
+        "what": "resolve every link added by the diff"
+      },
+      {
+        "result": "only tests/test_project.py:31-44 (outbox README template), unaffected; CI runs uv sync/validate/pytest/ruff/ruff format/mypy and no documentation check",
+        "what": "grep -rln proposals tests/ and read gitflic-ci.yaml"
+      },
+      {
+        "result": "openspec/changes/ holds only archive/; .agentmarshal/journal/tasks/CR-229/ carries the reading-side contract, not an implementation -- 'not shipped yet' holds",
+        "what": "check for an already-shipped reading side and sibling work"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; uv run agentmarshal validate; uv run pytest; uv run ruff check; uv run ruff format --check; uv run mypy",
+        "why": "uv is not installed in the review snapshot and the snapshot is not a git repository (git rev-parse HEAD fails), which the package and several fixtures require; the coordinator states the sequence passed on 2f97fedc5434eb0ac089c06808236a423e9f8f3f"
+      },
+      {
+        "what": "agentmarshal leak-scan over the diff",
+        "why": "no git repository and no installed package; checked instead that .agentmarshal/project.json declares no private markers and that the new text carries no adopter identifier"
+      }
+    ],
+    "read": [
+      "docs/proposals/044-unmeasured-usage-is-written-as-zeros.md",
+      "docs/proposals/045-outbox-check-refuses-an-outbox-that-predates-it.md",
+      "docs/proposals/README.md",
+      "docs/proposals/025-validate-refused-records-an-earlier-release-wrote.md (header and section headings)",
+      "docs/proposals/026-reviewer-facts-round-convergence-and-two-gaps.md (header and section headings)",
+      "docs/proposals/041-the-next-step-of-a-task-is-decided-outside-the-tool.md (header and section headings)",
+      "docs/proposals/043-review-before-integration-makes-every-merge-stale.md (header and section headings)",
+      "docs/adr/ADR-0020-the-outbox-command-group.md",
+      "docs/adr/ADR-0009-research-findings-lifecycle.md (headings)",
+      "docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md (context and framing)",
+      "docs/quickstart.md:530-560",
+      "src/agentmarshal/outbox.py",
+      "src/agentmarshal/journal/records.py (session rules and create_session_record)",
+      "src/agentmarshal/journal/report.py (usage provenance, token and cost sums)",
+      "src/agentmarshal/journal/status_view.py:406-424",
+      "src/agentmarshal/cli.py (record-session and outbox parsers)",
+      "CHANGELOG.md (0.5.0 section)",
+      "UPGRADING.md:55-100",
+      "gitflic-ci.yaml",
+      ".agentmarshal/project.json",
+      ".agentmarshal/journal/tasks/CR-229/contract.md"
+    ]
+  }
+}

@@ -1,0 +1,101 @@
+{
+  "advisory_findings": [
+    "ADV-044-write-side-release-unnamed",
+    "ADV-index-theme-attributes-copy-to-a-wrapper",
+    "ADV-045-outbox-file-counts-unconfirmed"
+  ],
+  "artifacts": [
+    {
+      "hash": "71dd5844532123b87ad8960e7386ef535b3b0fb7cbf0371ae943941f4ebbe2e0",
+      "ref": ".agentmarshal/journal/tasks/CR-230/artifacts/01M5Q301J6NSHK2TVCZDXMCX1Q-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-044-write-side-release-unnamed": "contract-mismatch",
+    "ADV-045-outbox-file-counts-unconfirmed": "claim-accuracy",
+    "ADV-index-theme-attributes-copy-to-a-wrapper": "claim-accuracy"
+  },
+  "created_at": "2026-10-24T13:53:23.526323Z",
+  "evidence": {
+    "ADV-044-write-side-release-unnamed": ".agentmarshal/journal/tasks/CR-230/contract.md:11 requires 'the write side … with the next record schema in 0.7.0'; docs/proposals/044-unmeasured-usage-is-written-as-zeros.md:91 and :106-109 and docs/proposals/README.md:92 say only 'with the next record schema'. grep -rn '0\\.7\\.0' --include=*.md --include=*.py . → the only hit outside the journal-free tree is the contract itself",
+    "ADV-045-outbox-file-counts-unconfirmed": "docs/proposals/045-…md:10-12 and :28 ('ten finding files … nine of them already sent', '9 of the 10 were sent before 0.5.0') against docs/proposals/README.md:255-257 (Adopter A 'named there on 001 through 007, 010 and 012' — nine proposals of the first batch) plus the two files of the 2026-09-24 batch, while README.md:296-298 describes the first batch as 'Twenty-two source files digested into thirteen proposals'; the private originals are not available to this review",
+    "ADV-index-theme-attributes-copy-to-a-wrapper": "docs/proposals/README.md:86-88 'the reporter's wrappers each invented a marker — a documented zero, a file copied by hand' against docs/proposals/045-outbox-check-refuses-an-outbox-that-predates-it.md:14-15 ('The pending finding was delivered by copying the file') and :32-33 ('the tenth was sent by copy') — the copy is the operator's hand, not a wrapper's marker"
+  },
+  "findings": [],
+  "previous_review": "01M5Q1Z22DRSFJP1HBP6JCE23A",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "b9ff7ff5bcbea8b0ac8da430988333c8a6c76d83",
+  "reviewed_contract": "63d60e31e012b8ca10659b43f6af36cb08220da3b62c18921aac8b696bffb839",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-230",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "cli.py:407-409 — --input-tokens/--output-tokens/--cache-tokens each type=int, default=0; cli.py:411 --usage-method choices=('reported','measured')",
+        "what": "grep -n for the record-session token flags in src/agentmarshal/cli.py"
+      },
+      {
+        "result": "records.py:778-793 rule refuses a session record whose 'tokens' is not a mapping of exactly input/output/cache non-negative ints; records.py:1534 registers it from schema 1; records.py:2322-2326 always writes the three counts",
+        "what": "grep/sed over src/agentmarshal/journal/records.py for the session-tokens rule and create_session_record"
+      },
+      {
+        "result": "report.py:364-367 sums tokens over record_type=='session'; report.py:172-178 absent 'usage' reads as 'unrecorded'; report.py:291-327 and :663 count sessions_without_cost apart",
+        "what": "grep/sed over src/agentmarshal/journal/report.py"
+      },
+      {
+        "result": "outbox.py:440-496 every regular file but README.md is a draft needing the five '## <Field>' headings, :446-452 non-regular entry prints 'not a draft, not checked' and refuses; :659-663 and :710 send runs the check then 'git add --force -- .agentmarshal/upstream'; :800-830 status sha256-matches Source: lines; :94-112 check/send take no flags",
+        "what": "grep/sed over src/agentmarshal/outbox.py for _check, _run_send, status and the parser"
+      },
+      {
+        "result": "all five files exist — every added link resolves",
+        "what": "ls of every link target added by the diff (../adr/ADR-0020-…, 025-…, 026-…, 044-…, 045-…)"
+      },
+      {
+        "result": "only '·' and '—' — English-only text, same characters as the existing digests",
+        "what": "grep -oP '[^\\x00-\\x7F]' over both new digests"
+      },
+      {
+        "result": "only .agentmarshal/journal/tasks/CR-230/contract.md:11 — the release the criterion names appears nowhere else in the repository, and not in the digest",
+        "what": "grep -rn '0\\.7\\.0' over *.md and *.py"
+      },
+      {
+        "result": "only tests/test_project.py:31-45 (the outbox README test); no test covers docs/proposals digests",
+        "what": "grep -rn 'proposals' tests/"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; uv run agentmarshal validate; uv run pytest; uv run ruff check; uv run ruff format --check; uv run mypy",
+        "why": "read-only review of a docs-only diff; the coordinator states the full sequence passed on b9ff7ff5bcbea8b0ac8da430988333c8a6c76d83, and no file the suite reads is touched"
+      }
+    ],
+    "read": [
+      "docs/proposals/044-unmeasured-usage-is-written-as-zeros.md",
+      "docs/proposals/045-outbox-check-refuses-an-outbox-that-predates-it.md",
+      "docs/proposals/README.md",
+      "docs/adr/ADR-0020-the-outbox-command-group.md",
+      "docs/adr/ADR-0019-accounting-time-quota-resets-money.md (headings, Left open)",
+      "docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md (headings, Decision 8, Left open)",
+      "docs/quickstart.md:520-560",
+      "docs/proposals/025-validate-refused-records-an-earlier-release-wrote.md (header, headings)",
+      "docs/proposals/026-reviewer-facts-round-convergence-and-two-gaps.md (header)",
+      "docs/proposals/041-the-next-step-of-a-task-is-decided-outside-the-tool.md (header, headings)",
+      "CHANGELOG.md:1-40, :150-157",
+      "UPGRADING.md:55-100",
+      "src/agentmarshal/project.py:232-331",
+      "tests/test_project.py:25-46",
+      ".agentmarshal/journal/tasks/CR-230/contract.md"
+    ]
+  }
+}

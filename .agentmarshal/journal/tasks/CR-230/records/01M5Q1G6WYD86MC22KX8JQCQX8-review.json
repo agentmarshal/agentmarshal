@@ -1,0 +1,119 @@
+{
+  "advisory_findings": [
+    "ADV-045-partial-disposition-unmarked",
+    "ADV-044-premarker-signal-overstated",
+    "ADV-unpublished-release-numbers"
+  ],
+  "artifacts": [
+    {
+      "hash": "e0ebc2ce534bbea27c1be3fcd165c996cc572a4d42313008ac55e58487f8acb6",
+      "ref": ".agentmarshal/journal/tasks/CR-230/artifacts/01M5Q1G6WYD86MC22KX8JQCQX8-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-044-premarker-signal-overstated": "claim-accuracy",
+    "ADV-045-partial-disposition-unmarked": "style",
+    "ADV-unpublished-release-numbers": "claim-accuracy"
+  },
+  "created_at": "2026-10-24T13:27:16.126146Z",
+  "evidence": {
+    "ADV-044-premarker-signal-overstated": "docs/proposals/044-unmeasured-usage-is-written-as-zeros.md:31-34 versus :77-80; docs/adr/ADR-0019-accounting-time-quota-resets-money.md:88-92; docs/known-defects.md:24-27",
+    "ADV-045-partial-disposition-unmarked": "docs/proposals/045-outbox-check-refuses-an-outbox-that-predates-it.md:3 and :100-103 versus docs/proposals/README.md:36-38,93 and the precedent at docs/proposals/README.md:212 (016 'accepted *(third request met in another shape)*'); docs/known-defects.md:30-34",
+    "ADV-unpublished-release-numbers": "docs/proposals/044-…md:73,86,103, docs/proposals/045-…md:76,102,111, docs/proposals/README.md:92-93 versus docs/known-defects.md:41-44; grep -rn '0\\.7\\.0' finds it nowhere else in the repository, and pyproject.toml:3 is version = \"0.6.0.dev0\""
+  },
+  "findings": [],
+  "previous_review": "01M5Q0D32MXTPPBWZZQZKMD6FV",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "b13db0dfbf9b9ce9b5877733b8420512c2ac603b",
+  "reviewed_contract": "63d60e31e012b8ca10659b43f6af36cb08220da3b62c18921aac8b696bffb839",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-230",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "each hash present exactly once, 64 lowercase hex, matching the contract",
+        "what": "grep -c of both contract Source hashes in the two new digests, plus grep -oE 'sha256:[0-9a-f]+' over them"
+      },
+      {
+        "result": "no output — no adopter task ids, no ULIDs, no unexpected non-ASCII",
+        "what": "grep -nE 'CR-[0-9]|[0-9A-HJKMNP-TV-Z]{26}|[^ -~·—…“”’]' over 044 and 045"
+      },
+      {
+        "result": "all targets exist in docs/adr and docs/proposals",
+        "what": "existence check of every link added (docs/adr/ADR-0020-the-outbox-command-group.md, 025-…, 026-…, 044-…, 045-…)"
+      },
+      {
+        "result": "cli.py:407-411 — --input/--output/--cache-tokens default=0, --usage-method choices=('reported','measured'); cli.py:1297-1304 pairs it with --usage-provider",
+        "what": "grep -n of token flags and usage flags in src/agentmarshal/cli.py"
+      },
+      {
+        "result": "records.py:2313-2330 always writes tokens and makes usage optional; records.py:778-793 requires exactly input/output/cache as non-negative ints",
+        "what": "read create_session_record and the session-tokens rule in src/agentmarshal/journal/records.py"
+      },
+      {
+        "result": "report.py:363-367 sums tokens of session records; report.py:173-178 yields 'unrecorded' when a session carries no usage; report.py:291-321,663 count sessions_without_cost separately",
+        "what": "grep/read of src/agentmarshal/journal/report.py for the token sum, usage provenance and cost counting"
+      },
+      {
+        "result": "outbox.py:47,57,80,445-460,490-500 field check with README exemption and 'not a draft, not checked'; outbox.py:654-659 'The check runs literally'; outbox.py:708-710 git add --force -- the outbox; outbox.py:105-111,764,817 status hashes files against Source: lines from --index; outbox.py:94-112 check and send take no flags",
+        "what": "read of src/agentmarshal/outbox.py (_check, _run_send, _run_status, register)"
+      },
+      {
+        "result": "no project.json key affects which outbox files are checked; project.py:232,298-331 is the init scaffold that writes the outbox README",
+        "what": "grep -rn 'outbox' over src/agentmarshal/settings.py and project.py"
+      },
+      {
+        "result": "0.6.0 only in pyproject.toml:3 as 0.6.0.dev0 and in the three changed files; 0.7.0 only in the three changed files and the contract",
+        "what": "grep -rn '0\\.6\\.0' and '0\\.7\\.0' over docs, CHANGELOG, UPGRADING, pyproject"
+      },
+      {
+        "result": "no test asserts docs/proposals content; tests/test_project.py:31-44 only checks the top-level README's pointers",
+        "what": "grep -rn of docs paths in tests/"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "read-only review of a snapshot that is not a git repository; the coordinator attests the full sequence passed on this commit, and the diff is documentation only"
+      },
+      {
+        "what": "recomputing the two Source sha256 values from the reporter's originals",
+        "why": "the originals are staged privately and are not in this repository — only the contract's values could be compared, and they match"
+      }
+    ],
+    "read": [
+      "docs/proposals/044-unmeasured-usage-is-written-as-zeros.md",
+      "docs/proposals/045-outbox-check-refuses-an-outbox-that-predates-it.md",
+      "docs/proposals/README.md",
+      "docs/proposals/025-validate-refused-records-an-earlier-release-wrote.md (header)",
+      "docs/proposals/026-reviewer-facts-round-convergence-and-two-gaps.md (header)",
+      "docs/proposals/001-review-launcher-loses-the-analysis.md (header)",
+      "docs/proposals/012-upstream-feedback-channel.md (header)",
+      "docs/proposals/041-the-next-step-of-a-task-is-decided-outside-the-tool.md (structure)",
+      "docs/adr/ADR-0020-the-outbox-command-group.md",
+      "docs/adr/ADR-0019-accounting-time-quota-resets-money.md",
+      "docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md",
+      "docs/adr/ADR-0009-research-findings-lifecycle.md (decision 1, headings)",
+      "docs/known-defects.md",
+      "CONTRIBUTING.md (language and proposals policy)",
+      "docs/quickstart.md:530-555",
+      "UPGRADING.md:60-95",
+      "CHANGELOG.md (0.5.0 outbox entry, version headings)",
+      "src/agentmarshal/outbox.py",
+      "src/agentmarshal/cli.py (record-session parser and validation)",
+      "src/agentmarshal/journal/records.py (session rules, create_session_record)",
+      "src/agentmarshal/journal/report.py"
+    ]
+  }
+}
