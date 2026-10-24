@@ -828,8 +828,7 @@ def test_a_file_whose_name_is_not_utf8_is_sent_under_its_escaped_name(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Scenario: a file whose name is not UTF-8 is sent under its escaped
-    name."""
+    """Scenario: a file whose name is not UTF-8 is sent under its escaped name."""
     repo = _project(tmp_path, monkeypatch)
     _byte_named_file(_outbox(repo), b"\xffdraft.md", _CONFORMING.encode())
     capsys.readouterr()  # drain init's output — it names the project path
@@ -1452,6 +1451,59 @@ def test_send_refuses_when_every_file_is_already_sent(
     assert _git_out(repo, "rev-list", "--count", "HEAD") == "1"
 
 
+def test_send_refuses_a_non_rename_change_when_the_outbox_holds_no_draft(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: send refuses a non-rename change when the outbox holds no draft.
+
+    A modified README is no rename or move of a file already sent.
+    """
+    repo = _project(tmp_path, monkeypatch)
+    _conforming_draft(_outbox(repo))
+    assert main(["outbox", "send"]) == 0
+    readme = _outbox(repo) / "README.md"
+    readme.write_text("edited readme\n", encoding="utf-8")
+    capsys.readouterr()
+
+    assert main(["outbox", "send"]) == 1
+
+    captured = capsys.readouterr()
+    assert "skipped as sent: 1" in captured.out
+    assert "no drafts to send" in captured.err
+    assert _git_out(repo, "rev-list", "--count", "HEAD") == "1"
+    # What the refused send staged is put back — the edit stays unstaged.
+    assert _git_out(repo, "diff", "--cached", "--name-only") == ""
+    assert readme.read_text(encoding="utf-8") == "edited readme\n"
+
+
+def test_a_deleted_sent_file_is_no_rename_and_refuses_with_no_draft(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: send refuses a non-rename change when the outbox holds no draft.
+
+    A deleted sent file is no rename either — `git` reports it as `D`,
+    not `R`."""
+    repo = _project(tmp_path, monkeypatch)
+    _conforming_draft(_outbox(repo))
+    assert main(["outbox", "send"]) == 0
+    (_outbox(repo) / "0001-filled.md").unlink()
+    capsys.readouterr()
+
+    assert main(["outbox", "send"]) == 1
+
+    captured = capsys.readouterr()
+    assert "no drafts to send" in captured.err
+    assert _git_out(repo, "rev-list", "--count", "HEAD") == "1"
+    assert _git_out(repo, "diff", "--cached", "--name-only") == ""
+    # The manifest still records where the sent file was — no line
+    # follows a deletion.
+    assert "0001-filled.md" in (_outbox(repo) / "SENT").read_text(encoding="utf-8")
+
+
 def test_send_records_the_batch_in_the_sent_manifest(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1737,6 +1789,34 @@ def test_a_manifest_line_ending_in_a_carriage_return_refuses_the_check(
 
     captured = capsys.readouterr()
     assert "SENT: line 1 does not parse" in captured.out
+    assert "skipped as sent" not in captured.out
+    assert "outbox check: refused" in captured.err
+
+
+def test_a_manifest_line_that_does_not_decode_refuses_the_check(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a manifest line that does not parse refuses the check.
+
+    A line that is not UTF-8 at all fails to parse like any other
+    shape — and is never silently re-encoded into the manifest."""
+    repo = _project(tmp_path, monkeypatch)
+    outbox = _outbox(repo)
+    sent = outbox / "old-one.md"
+    sent.write_text(_CONFORMING, encoding="utf-8")
+    (outbox / "SENT").write_bytes(
+        f"{_sha256(sent)}  old-one.md\n".encode()
+        + f"{_sha256(sent)}  ".encode()
+        + b"\xffname.md\n"
+    )
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    assert main(["outbox", "check"]) == 1
+
+    captured = capsys.readouterr()
+    assert "SENT: line 2 does not parse" in captured.out
     assert "skipped as sent" not in captured.out
     assert "outbox check: refused" in captured.err
 

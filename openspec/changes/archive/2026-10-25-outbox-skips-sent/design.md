@@ -53,8 +53,9 @@ not a draft and is not checked.
   printable form and refuses, for a draft and for an already-sent
   file alike. The read side is strict to match — and loud: only a
   line of exactly `<64 lowercase hex>  <name>` with a name free of
-  those characters is a manifest entry, and a line in any other shape
-  does not parse. The command prints the manifest's name and the
+  those characters is a manifest entry, and a line in any other
+  shape — or a line that is not UTF-8 at all — does not parse. The
+  command prints the manifest's name and the
   line's number and refuses — the manifest invites a hand edit (the
   `sha256sum` form is meant to be writable), so a typo restores the
   very refusal digest 045 reported unless it is diagnosed.
@@ -113,17 +114,21 @@ not a draft and is not checked.
   likewise puts the file's bytes back — or removes it when there
   was none — so a manifest never claims files a commit never
   landed; a made commit is never put back.
-- **"No drafts to send" means no drafts and no outbox change to send.**
-  When the check finds no draft, `send` still stages the outbox and
-  commits what the staged diff holds against the last commit — a
-  rename or move of a file already sent is the outbox's own commit
-  (ADR-0020 decision 4: findings stop riding along in journal
-  commits, so the commit a renamed sent file earns is exactly the
-  transaction the group exists to provide), the message naming both
-  paths of a rename. A pure addition — a skipped file the repository
-  never held — and the manifest alone are no such change: with no
-  draft and none, `send` refuses saying there are no drafts to send
-  and puts back what it staged.
+- **"No drafts to send" means no drafts and no committable change.**
+  When the check finds no draft, `send` still stages the outbox, and
+  the only batch it commits is the outbox's own record: every change
+  the staged diff holds must be a rename or a move of a file already
+  sent — status `R` — or the manifest update that follows one, with
+  at least one rename among them (ADR-0020 decision 6: the exclude
+  pathspec keeps findings out of journal commits, so the commit a
+  renamed sent file earns is exactly the outbox-only transaction the
+  group exists to provide), the message naming both paths of a
+  rename. A passed check with no draft leaves a regular file no
+  other change to make — the README and the manifest are never
+  drafts and every other file is already sent — so any other staged
+  change, a modified README, an untracked non-draft, a deletion, a
+  pure addition of a skipped file, or the manifest alone, refuses
+  saying there are no drafts to send and puts back what it staged.
 - **Entries that are not regular files are unchanged.** A directory, a
   symlink, a FIFO is still reported on one line as not a draft and not
   checked, and still refuses the batch: `send` stages the whole outbox,

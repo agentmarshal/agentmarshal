@@ -34,8 +34,8 @@ same matching can say which outbox files are already sent.
 - With no new draft, `send` still commits a change the outbox holds to
   a file already sent — a rename, a move inside the outbox — as the
   outbox-only commit, and the manifest follows the new name; with no
-  draft and no such change it refuses saying there are no drafts to
-  send.
+  draft every change the outbox holds must be one, and any other
+  refuses saying there are no drafts to send.
 - A refused send leaves the manifest's bytes as it found them, as it
   leaves the index.
 

@@ -177,7 +177,14 @@ nothing, and non-zero otherwise, so a batch wrapper can refuse to send.
 check` requirements and SHALL refuse when it fails for any reason; it
 SHALL refuse, saying there are no drafts to send, when the outbox holds
 no finding draft — the README `init` writes is not a draft and a batch
-of no drafts sends nothing. With the check passed, the command SHALL
+of no drafts sends nothing. With no draft the one committable batch is
+the outbox's own record: `send` SHALL still commit when every change
+the outbox holds is a rename or a move of a file already sent — a
+staged `R` entry — or the sent manifest's update that follows one, at
+least one rename among them; any other change with no draft — a
+modified README, an untracked non-draft, a deletion, or the manifest
+alone — SHALL refuse saying there are no drafts to send exactly as no
+change at all does. With the check passed, the command SHALL
 refuse — naming each staged path — when anything outside
 `.agentmarshal/upstream/` is already staged, so findings never ride
 along in another commit and another commit's work never rides along in
@@ -207,6 +214,13 @@ delivery stays with the operator.
 #### Scenario: send refuses when the outbox holds no drafts
 - **WHEN** the outbox holds no finding draft — only the README `init`
   writes
+- **THEN** the command refuses saying there are no drafts to send, and
+  commits nothing
+
+#### Scenario: send refuses a non-rename change when the outbox holds no draft
+- **WHEN** the outbox holds no finding draft and an outbox change is
+  not a rename or a move of a file already sent — a modified README,
+  an untracked non-draft, a deletion, the manifest alone
 - **THEN** the command refuses saying there are no drafts to send, and
   commits nothing
 
@@ -340,9 +354,10 @@ the outbox keeps beside the findings, not a finding itself — and it is
 parsed strictly: one `<sha256>  <name>` line each, 64 lowercase hex
 digits, exactly two spaces, a name free of the characters that could
 add a line. A line in any other shape does not parse — a wrong form,
-a name the record-text rules refuse, a carriage return — and no such
-line is dropped in silence: each command SHALL refuse and SHALL print
-one line naming the manifest and the line's number. A skipped file is
+a name the record-text rules refuse, a carriage return, a line that
+does not decode as UTF-8 — and no such line is dropped in silence:
+each command SHALL refuse and SHALL print one line naming the
+manifest and the line's number. A skipped file is
 still read and still goes through the leak scan — it leaves with the
 batch like every file — it is only not judged as a draft; and it is
 never the manifest or the README, which are not drafts either. Each
@@ -356,14 +371,16 @@ or another character a line of text cannot hold — SHALL be named in
 escaped printable form and refused: such a name is never written to
 `SENT`. When `send` finds no new draft it SHALL still commit a change
 the outbox holds to a file already sent — a rename, a move inside the
-outbox — as the outbox-only commit it is (ADR-0020 decision 4:
-findings stop riding along in journal commits), the message naming
-both paths of a rename, and the manifest SHALL follow the new name —
-the line that claims the file's sha256 takes the name the file now
-carries — so the renamed file stays skipped; a pure addition — a
-skipped file the repository never held — and the manifest alone are
-no such change: with no draft and no change to a file already sent,
-`send` SHALL refuse saying there are no drafts to send.
+outbox, a staged `R` entry — as the outbox-only commit it is
+(ADR-0020 decision 6: the exclude pathspec keeps findings out of
+journal commits), the message naming both paths of a rename, and the
+manifest SHALL follow the new name — the line that claims the file's
+sha256 takes the name the file now carries — so the renamed file
+stays skipped. It is also the only such batch: with no draft, every
+change the outbox holds must be one — a modified README, an untracked
+non-draft, a deletion, a pure addition of a skipped file the
+repository never held, and the manifest alone are not — or `send`
+SHALL refuse saying there are no drafts to send.
 
 #### Scenario: a file the sent manifest lists is not checked as a draft
 - **WHEN** the outbox holds a file whose sha256 a `SENT` line lists —
@@ -417,7 +434,7 @@ no such change: with no draft and no change to a file already sent,
 - **WHEN** a `SENT` line is not exactly `<64 lowercase hex>  <name>`
   with a name free of line-forging characters — one space, an
   uppercase digest, a control character in the name, a carriage
-  return
+  return, a line that does not decode as UTF-8
 - **THEN** the check refuses and prints one line naming the manifest
   and the line's number
 

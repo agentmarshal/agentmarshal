@@ -37,6 +37,108 @@ unchanged. A draft that is not UTF-8 text SHALL be named as such.
 - **WHEN** the project has no `.agentmarshal/upstream/` directory
 - **THEN** the command fails with a message saying there is no outbox
 
+### Requirement: `outbox send` commits the checked batch
+
+`agentmarshal outbox send` SHALL first run the check of the `outbox
+check` requirements and SHALL refuse when it fails for any reason; it
+SHALL refuse, saying there are no drafts to send, when the outbox holds
+no finding draft — the README `init` writes is not a draft and a batch
+of no drafts sends nothing. With no draft the one committable batch is
+the outbox's own record: `send` SHALL still commit when every change
+the outbox holds is a rename or a move of a file already sent — a
+staged `R` entry — or the sent manifest's update that follows one, at
+least one rename among them; any other change with no draft — a
+modified README, an untracked non-draft, a deletion, or the manifest
+alone — SHALL refuse saying there are no drafts to send exactly as no
+change at all does. With the check passed, the command SHALL
+refuse — naming each staged path — when anything outside
+`.agentmarshal/upstream/` is already staged, so findings never ride
+along in another commit and another commit's work never rides along in
+the batch. Otherwise the command SHALL stage only
+`.agentmarshal/upstream/` — the outbox README's exclude pathspec applied
+the other way, every file under it, a file an ignore rule names
+included, since the check already vetted it — SHALL refuse when nothing
+under the outbox is staged for commit, and SHALL otherwise make exactly
+one commit of the batch with a message naming the files, in the
+repository the outbox belongs to — in a sidecar the journal repository,
+never the host — and SHALL print the commit it made. What is committed
+SHALL be what was checked: before committing, the command SHALL verify
+the staged blobs are the files the check vetted and SHALL refuse —
+putting back what it staged — when they are not. If the commit fails
+after the batch was staged, the command SHALL put back the index
+entries it staged under the outbox — a refused send leaves the index as
+it found it, and a made commit is never put back. Every name the
+command prints SHALL be masked and a name that is not UTF-8 SHALL be
+written in escaped printable form, exactly as `outbox check` names
+files. The command SHALL transmit nothing and SHALL open no network:
+delivery stays with the operator.
+
+#### Scenario: send refuses when the check fails
+- **WHEN** a draft does not conform or the scan reports a hit
+- **THEN** `outbox send` refuses and makes no commit
+
+#### Scenario: send refuses when the outbox holds no drafts
+- **WHEN** the outbox holds no finding draft — only the README `init`
+  writes
+- **THEN** the command refuses saying there are no drafts to send, and
+  commits nothing
+
+#### Scenario: send refuses a non-rename change when the outbox holds no draft
+- **WHEN** the outbox holds no finding draft and an outbox change is
+  not a rename or a move of a file already sent — a modified README,
+  an untracked non-draft, a deletion, the manifest alone
+- **THEN** the command refuses saying there are no drafts to send, and
+  commits nothing
+
+#### Scenario: send refuses when something outside the outbox is staged
+- **WHEN** a path outside `.agentmarshal/upstream/` is already staged
+- **THEN** the command refuses, names the staged path, and commits nothing
+
+#### Scenario: send makes exactly one commit of the batch and prints it
+- **WHEN** conforming drafts sit in the outbox and nothing outside the
+  outbox is staged
+- **THEN** the command stages only `.agentmarshal/upstream/`, makes
+  exactly one commit whose message names the batch's files, prints the
+  commit, and leaves unstaged changes outside the outbox unstaged
+
+#### Scenario: send refuses an empty batch
+- **WHEN** the outbox's files are all committed and unchanged — nothing
+  under the outbox would be staged for commit
+- **THEN** the command refuses and makes no commit
+
+#### Scenario: a failed commit leaves the index as send found it
+- **WHEN** `git commit` fails — a hook refuses it — after the batch was
+  staged
+- **THEN** the command refuses, and the index holds nothing `send`
+  staged: the outbox paths it added are unstaged and what was staged
+  before stays staged
+
+#### Scenario: in a sidecar the commit lands in the journal repository
+- **WHEN** `outbox send` runs in a project whose journal is a sidecar
+- **THEN** the commit lands in the journal repository's git history and
+  the host repository gains no commit
+
+#### Scenario: a gitignored draft is checked and sent like every file
+- **WHEN** an ignore rule names a draft in the outbox and the check
+  passes
+- **THEN** the command stages it and it leaves with the batch
+
+#### Scenario: send refuses when a draft changed since the check
+- **WHEN** a draft's content changed after the check but before the
+  commit
+- **THEN** the command refuses, puts back what it staged, and commits
+  nothing
+
+#### Scenario: a made commit is never put back
+- **WHEN** `git commit` succeeded and only naming the commit fails
+- **THEN** the command reports the failure and leaves the commit and the
+  index as the commit left them
+
+#### Scenario: a file whose name is not UTF-8 is sent under its escaped name
+- **WHEN** the outbox holds a conforming draft whose name is not UTF-8
+- **THEN** the check and the send name it in escaped printable form and
+  the send commits it without crashing
+
 ## ADDED Requirements
 
 ### Requirement: `outbox check` and `outbox send` skip files already sent
@@ -51,9 +153,10 @@ the outbox keeps beside the findings, not a finding itself — and it is
 parsed strictly: one `<sha256>  <name>` line each, 64 lowercase hex
 digits, exactly two spaces, a name free of the characters that could
 add a line. A line in any other shape does not parse — a wrong form,
-a name the record-text rules refuse, a carriage return — and no such
-line is dropped in silence: each command SHALL refuse and SHALL print
-one line naming the manifest and the line's number. A skipped file is
+a name the record-text rules refuse, a carriage return, a line that
+does not decode as UTF-8 — and no such line is dropped in silence:
+each command SHALL refuse and SHALL print one line naming the
+manifest and the line's number. A skipped file is
 still read and still goes through the leak scan — it leaves with the
 batch like every file — it is only not judged as a draft; and it is
 never the manifest or the README, which are not drafts either. Each
@@ -67,14 +170,16 @@ or another character a line of text cannot hold — SHALL be named in
 escaped printable form and refused: such a name is never written to
 `SENT`. When `send` finds no new draft it SHALL still commit a change
 the outbox holds to a file already sent — a rename, a move inside the
-outbox — as the outbox-only commit it is (ADR-0020 decision 4:
-findings stop riding along in journal commits), the message naming
-both paths of a rename, and the manifest SHALL follow the new name —
-the line that claims the file's sha256 takes the name the file now
-carries — so the renamed file stays skipped; a pure addition — a
-skipped file the repository never held — and the manifest alone are
-no such change: with no draft and no change to a file already sent,
-`send` SHALL refuse saying there are no drafts to send.
+outbox, a staged `R` entry — as the outbox-only commit it is
+(ADR-0020 decision 6: the exclude pathspec keeps findings out of
+journal commits), the message naming both paths of a rename, and the
+manifest SHALL follow the new name — the line that claims the file's
+sha256 takes the name the file now carries — so the renamed file
+stays skipped. It is also the only such batch: with no draft, every
+change the outbox holds must be one — a modified README, an untracked
+non-draft, a deletion, a pure addition of a skipped file the
+repository never held, and the manifest alone are not — or `send`
+SHALL refuse saying there are no drafts to send.
 
 #### Scenario: a file the sent manifest lists is not checked as a draft
 - **WHEN** the outbox holds a file whose sha256 a `SENT` line lists —
@@ -128,7 +233,7 @@ no such change: with no draft and no change to a file already sent,
 - **WHEN** a `SENT` line is not exactly `<64 lowercase hex>  <name>`
   with a name free of line-forging characters — one space, an
   uppercase digest, a control character in the name, a carriage
-  return
+  return, a line that does not decode as UTF-8
 - **THEN** the check refuses and prints one line naming the manifest
   and the line's number
 

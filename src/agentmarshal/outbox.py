@@ -14,9 +14,10 @@ the outbox files and compares them with the ``Source:`` lines of an index
 file the operator passes. ``check`` and ``send`` use the same matching —
 plus the outbox's own sent manifest, ``SENT``, which ``send`` updates in
 the batch commit — to treat a file already sent as no draft; and when no
-draft is new, ``send`` still commits a change the outbox holds to a file
-already sent — a rename, a move inside the outbox — the manifest
-following the new name. The group opens no network.
+draft is new, ``send`` still commits a rename or a move of a file
+already sent — the manifest following the new name — and refuses any
+other change it finds with no draft as no drafts. The group opens no
+network.
 
 The outbox is ``project_root/.agentmarshal/upstream`` — the directory
 ``init`` scaffolds beside ``project.json`` — which is the same expression
@@ -60,7 +61,8 @@ _SENT = "SENT"
 # The manifest is parsed strictly: 64 lowercase hex digits, exactly two
 # spaces, then the name — which must be free of the characters that could
 # forge a line, so one line is one entry and a name can never inject a
-# second one. A line in any other shape lists nothing.
+# second one. A line in any other shape — or a line that is not UTF-8 at
+# all — does not parse and refuses the command.
 _SENT_LINE = re.compile(r"^([0-9a-f]{64})  (.+)$")
 # The outbox as a repository-relative path and as the prefix staged paths
 # carry: `.agentmarshal/upstream` — the README's exclude pathspec applied
@@ -482,9 +484,11 @@ def _manifest_next(
     follows the new name, so the manifest still says where the sent file
     is. A line whose name still exists, or whose digest matches no file
     or several, is kept as written — the manifest is a record of what
-    was sent. The rebuilt lines are byte-identical to what was read: the
-    strict parse accepted only ``<sha256>  <name>``. Each draft's line
-    is the sha256sum output form: digest, two spaces, the shown name.
+    was sent. A kept line re-encodes to the very bytes it was read as —
+    the strict parse accepted only UTF-8 in exactly ``<sha256>  <name>``
+    form — so the rebuild normalizes exactly one thing: the final
+    newline, which a manifest lacking it gains. Each draft's line is the
+    sha256sum output form: digest, two spaces, the shown name.
     """
 
     lines = []
@@ -540,15 +544,21 @@ def _check(stderr: TextIO, *, pin: bool, index: Path | None) -> _CheckResult:
                 file=stderr,
             )
             return _CheckResult(1, {}, [], None, b"")
-        # Strictly one entry per line — a wrong form, a name the
-        # record-text rules refuse, a carriage return all fail to parse,
-        # and a malformed line is never dropped in silence: each is
-        # named by number before the refusal.
-        lines = manifest_old.decode("utf-8", errors="replace").split("\n")
-        if lines and lines[-1] == "":
-            lines.pop()
+        # Strictly one entry per line, and strictly UTF-8 — a wrong
+        # form, a name the record-text rules refuse, a carriage return,
+        # a line that does not decode all fail to parse, and a malformed
+        # line is never dropped in silence: each is named by number
+        # before the refusal.
+        raw_lines = manifest_old.split(b"\n")
+        if raw_lines and raw_lines[-1] == b"":
+            raw_lines.pop()
         malformed: list[int] = []
-        for line_number, line in enumerate(lines, start=1):
+        for line_number, raw_line in enumerate(raw_lines, start=1):
+            try:
+                line = raw_line.decode("utf-8")
+            except UnicodeDecodeError:
+                malformed.append(line_number)
+                continue
             match = _SENT_LINE.match(line)
             if match and not forges_rendered_text(match.group(2)):
                 manifest_lines.append((match.group(1), match.group(2)))
@@ -566,10 +576,15 @@ def _check(stderr: TextIO, *, pin: bool, index: Path | None) -> _CheckResult:
     if index is not None:
         # The same parse `outbox status` runs on the same kind of file —
         # an index the operator obtained.
-        claims = _index_claims(index, "check", markers, stderr)
-        if claims is None:
+        try:
+            sent_digests.update(_index_claims(index))
+        except OSError as error:
+            print(
+                f"outbox check: cannot read the index "
+                f"{_printable(index, markers)}: {_os_error_text(error)}",
+                file=stderr,
+            )
             return _CheckResult(1, {}, [], None, b"")
-        sent_digests.update(claims)
 
     try:
         entries = sorted(outbox.iterdir())
@@ -964,15 +979,20 @@ def _run_send(index: Path | None, stderr: TextIO) -> int:
         ]
         batch = sorted(name for _, names in batch_entries for name in names)
         if not result.drafts:
-            # No finding draft is no finding batch — but a change the
-            # outbox holds to a file already sent (a rename, a move
-            # inside the outbox) is still the outbox's own commit
-            # (ADR-0020 decision 4: findings stop riding along in
-            # journal commits). A pure addition — a skipped file the
-            # repository never held — and the manifest alone are no
-            # such change.
-            if not any(
-                status != "A" and names != [sent_spec]
+            # No finding draft is no finding batch — unless the only
+            # changes the outbox holds are renames or moves of files
+            # already sent (staged `R` entries) and the manifest update
+            # that follows one: a change to a file already sent is the
+            # outbox's own commit (ADR-0020 decision 6: the exclude
+            # pathspec keeps findings out of journal commits). A passed
+            # check that found no draft leaves a regular file no other
+            # change to make — the README and the manifest are never
+            # drafts and every other file is already sent — so anything
+            # else staged, a modified README, an addition, a deletion,
+            # or the manifest alone, refuses as no drafts, exactly as
+            # before.
+            if not any(status == "R" for status, _ in batch_entries) or any(
+                status != "R" and names != [sent_spec]
                 for status, names in batch_entries
             ):
                 raise _OutboxGitError("no drafts to send")
@@ -1037,27 +1057,16 @@ def _run_send(index: Path | None, stderr: TextIO) -> int:
 _SOURCE_LINE = re.compile(r"(?:\*\*Source:\*\*|Source:)\s*`?sha256:([0-9A-Fa-f]{64})`?")
 
 
-def _index_claims(
-    index_path: Path, command: str, markers: tuple[str, ...], stderr: TextIO
-) -> dict[str, list[int]] | None:
+def _index_claims(index_path: Path) -> dict[str, list[int]]:
     """The index's ``Source:`` digests mapped to the lines they sit on.
 
     The parse ``status`` reports from is the one ``check`` and ``send``
-    skip by — kept in one place so the commands cannot drift. *command*
-    is the name a refusal prints. ``None`` is a printed refusal: the
-    index is missing or unreadable.
+    skip by — kept in one place so the commands cannot drift. The
+    ``OSError`` of an unreadable index is the caller's to describe: each
+    command names the file the way it names files.
     """
 
-    try:
-        index_text = index_path.read_bytes().decode("utf-8", errors="replace")
-    except OSError as error:
-        print(
-            f"outbox {command}: cannot read the index "
-            f"{_printable(index_path, markers)}: "
-            f"{_os_error_text(error)}",
-            file=stderr,
-        )
-        return None
+    index_text = index_path.read_bytes().decode("utf-8", errors="replace")
     by_digest: dict[str, list[int]] = {}
     for line_number, line in enumerate(index_text.split("\n"), start=1):
         for match in _SOURCE_LINE.finditer(line):
@@ -1075,15 +1084,22 @@ def _run_status(index_path: Path, stderr: TextIO) -> int:
     markers = _markers("status", project_root, stderr)
     if markers is None:
         return 1
-    by_digest = _index_claims(index_path, "status", markers, stderr)
-    if by_digest is None:
+    try:
+        by_digest = _index_claims(index_path)
+    except OSError as error:
+        print(
+            f"outbox status: cannot read the index "
+            f"{safe_path(_shown_name(index_path), markers)}: "
+            f"{_os_error_text(error)}",
+            file=stderr,
+        )
         return 1
     try:
         entries = sorted(outbox.iterdir())
     except OSError as error:
         print(
             f"outbox status: cannot read the outbox at "
-            f"{_printable(outbox, markers)}: {_os_error_text(error)}",
+            f"{safe_path(_shown_name(outbox), markers)}: {_os_error_text(error)}",
             file=stderr,
         )
         return 1
@@ -1091,7 +1107,7 @@ def _run_status(index_path: Path, stderr: TextIO) -> int:
     refused = False
     claimed: set[str] = set()
     for entry in entries:
-        name = _printable(entry.name, markers)
+        name = safe_path(_shown_name(entry.name), markers)
         if not _is_regular(entry):
             # Not a file and not hashable — the check's "nothing passes in
             # silence" rule, applied to the channel's other direction.

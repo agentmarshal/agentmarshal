@@ -61,6 +61,15 @@
   `test_a_secret_beside_a_control_character_in_a_name_is_masked`.
 - [x] 3.6 The manifest is pinned once, on the content `send` writes —
   verify: `test_the_sent_manifest_is_pinned_once_with_the_content_send_writes`.
+- [x] 3.7 The `send` requirement is carried as MODIFIED with the exact
+  no-draft rule — with no draft only renames or moves of files already
+  sent commit, any other change refuses "no drafts to send" — the
+  manifest decodes strictly UTF-8, `status` keeps its earlier name
+  rendering, and the ADR-0020 citation is decision 6 — verify:
+  `test_send_commits_a_rename_of_a_file_already_sent`,
+  `test_send_refuses_a_non_rename_change_when_the_outbox_holds_no_draft`,
+  `test_a_deleted_sent_file_is_no_rename_and_refuses_with_no_draft`,
+  `test_a_manifest_line_that_does_not_decode_refuses_the_check`.
 
 ## 4. Closeout
 
