@@ -815,12 +815,16 @@ def _report_extensions(
         else:
             personal_switches: dict[str, PersonalSwitch] = {}
             personal_switches_reason: str | None = None
-            try:
-                personal_switches = read_personal_switches(
-                    state.switches_file, personal_names
-                )
-            except SwitchesError as error:
-                personal_switches_reason = escape_for_display(str(error))
+            if personal_names:
+                # The file is the personal extensions' own — a clone
+                # holding none owes it no read and no report, so its
+                # transcript stays what it was before the scope existed.
+                try:
+                    personal_switches = read_personal_switches(
+                        state.switches_file, personal_names
+                    )
+                except SwitchesError as error:
+                    personal_switches_reason = escape_for_display(str(error))
             for name in personal_names:
                 personal_switch = personal_switches.get(name)
                 disabled = (

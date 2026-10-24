@@ -986,7 +986,8 @@ def _personal_names(
         return personal_extension_names(state.extensions)
     except OSError as error:
         print(
-            f"extension {command}: cannot enumerate {state.extensions}: "
+            f"extension {command}: cannot enumerate "
+            f"{escape_for_display(str(state.extensions))}: "
             f"{escape_for_display(error.strerror or str(error))}",
             file=stderr,
         )
@@ -1093,7 +1094,7 @@ def _run_disable(args: argparse.Namespace, stderr: TextIO) -> int:
     except (LocalStateError, OSError) as error:
         print(f"extension disable: {escape_for_display(str(error))}", file=stderr)
         return 1
-    print(state.switches_file)
+    print(escape_for_display(str(state.switches_file)))
     print(f"disabled {escape_for_display(args.name)}")
     return 0
 
@@ -1177,6 +1178,6 @@ def _run_enable(args: argparse.Namespace, stderr: TextIO) -> int:
     except (LocalStateError, OSError) as error:
         print(f"extension enable: {escape_for_display(str(error))}", file=stderr)
         return 1
-    print(state.switches_file)
+    print(escape_for_display(str(state.switches_file)))
     print(f"enabled {escape_for_display(args.name)}")
     return 0

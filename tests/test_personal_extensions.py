@@ -24,6 +24,7 @@ from pathlib import Path
 import pytest
 
 from agentmarshal.cli import main
+from agentmarshal.journal.display import escape_for_display
 from agentmarshal.journal.records import read_records
 from test_complete_stages import _review
 from test_stages import (
@@ -1543,3 +1544,73 @@ def test_a_symlinked_personal_extension_directory_is_named_not_run(
     assert line.endswith("(personal)")
     assert "real | check ran" in out
     assert "real: checked (personal)" in out
+
+
+def test_extension_disable_and_enable_escape_a_forgeable_clone_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Not a spec scenario: every printed value goes through the display
+    escape — the switches file's path and the extensions directory's
+    included, so a clone path carrying a forgeable character cannot add
+    a line to the output.
+    """
+    repo = tmp_path / "clone\nFORGED-LINE"
+    repo.mkdir()
+    _git(repo, "init", "--quiet", "-b", "master")
+    monkeypatch.chdir(repo)
+    assert main(["init"]) == 0
+    _personal_extension(repo)
+    raw_switches = str(_switches_file(repo))
+    shown_switches = escape_for_display(raw_switches)
+    capsys.readouterr()
+
+    assert main(["extension", "disable", "mycheck"]) == 0
+    assert capsys.readouterr().out == f"{shown_switches}\ndisabled mycheck\n"
+
+    assert main(["extension", "enable", "mycheck"]) == 0
+    assert capsys.readouterr().out == f"{shown_switches}\nenabled mycheck\n"
+
+    # The enumerate refusal names the directory the same way.
+    extensions = repo / ".git" / "agentmarshal" / "extensions"
+    aside = extensions.with_name("extensions-away")
+    extensions.rename(aside)
+    extensions.write_text("x\n", encoding="utf-8")
+    assert main(["extension", "disable", "mycheck"]) == 1
+    err = capsys.readouterr().err
+    assert "cannot enumerate" in err
+    assert escape_for_display(str(extensions)) in err
+    assert str(extensions) not in err
+
+
+def test_doctor_reports_no_personal_switches_when_the_clone_holds_none(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Not a spec scenario: the personal switches file is the personal
+    extensions' own — a clone holding none owes it no read and no
+    report, so a malformed one changes neither transcript.
+    """
+    repo = _project(tmp_path, monkeypatch)
+    _preconditions(repo, monkeypatch)
+    _commit_all(repo, "base")
+    _switches_file(repo).parent.mkdir(parents=True, exist_ok=True)
+    _switches_file(repo).write_bytes(b"format = 2\n")
+    marks = (
+        " (personal)",
+        "personal scope",
+        "personal switches",
+        "personal extensions",
+    )
+    capsys.readouterr()
+
+    assert main(["doctor"]) == 0
+    captured = capsys.readouterr()
+    assert all(mark not in captured.out for mark in marks)
+    assert all(mark not in captured.err for mark in marks)
+    assert "extensions: none" in captured.err
+
+    _workstation(monkeypatch)
+    assert _stage_run(commit="HEAD", base="master") == 0
+    captured = capsys.readouterr()
+    assert all(mark not in captured.out for mark in marks)
+    assert all(mark not in captured.err for mark in marks)
+    assert "no shared extension declares a pre-gate stage" in captured.out
