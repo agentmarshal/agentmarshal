@@ -1,0 +1,12 @@
+{
+  "contract": "cacd4d21f51deac4afb96cc3479c7fbfb9c70100f89c163d1cb777f9db62c0d6",
+  "created_at": "2026-10-24T14:06:20.323667Z",
+  "reason": "the public digest names no release for the write side: 0.7.0 is not announced and the project describes what it does, not what it intends; the criterion keeps the disposition and drops the release number",
+  "record_type": "amendment",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "schema": 7,
+  "source": "live",
+  "task": "CR-230",
+  "tool_version": "0.6.0.dev0"
+}
