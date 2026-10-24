@@ -1,0 +1,93 @@
+{
+  "advisory_findings": [
+    "A1-sent-manifest-not-scanned-at-send",
+    "A2-manifest-line-injection-via-newline-in-name",
+    "A3-rename-after-send-and-the-unchanged-tests-claim",
+    "A4-design-says-matching-never-uses-the-name"
+  ],
+  "artifacts": [
+    {
+      "hash": "5ae559a87c86e9521f4c6dbabfe06f3afcd21dcd002cbe0a43b6627d01d4328b",
+      "ref": ".agentmarshal/journal/tasks/CR-228/artifacts/01M5Q0QVNC5M9604G56CWE8DX6-review.md"
+    }
+  ],
+  "classes": {
+    "A1-sent-manifest-not-scanned-at-send": "contract-mismatch",
+    "A2-manifest-line-injection-via-newline-in-name": "security",
+    "A3-rename-after-send-and-the-unchanged-tests-claim": "contract-mismatch",
+    "A4-design-says-matching-never-uses-the-name": "claim-accuracy"
+  },
+  "created_at": "2026-10-24T13:13:58.188402Z",
+  "evidence": {
+    "A1-sent-manifest-not-scanned-at-send": "src/agentmarshal/outbox.py:852 writes result.manifest_new and outbox.py:859 stages it, while the only scan calls are outbox.py:543 and outbox.py:600 over the entries read before that write; src/agentmarshal/journal/capture.py:287 is re.compile(r\"(?i)authorization:\\s*(?:bearer|basic)\\s+\\S+\") and capture.py:456-458 runs pattern.search over the whole text, so the pattern can span the manifest's newline",
+    "A2-manifest-line-injection-via-newline-in-name": "src/agentmarshal/outbox.py:455 — added = b\"\".join(f\"{digest}  {name}\\n\".encode() ...) with name from outbox.py:538 (_shown_name); outbox.py:201-213 escapes only undecodable bytes via backslashreplace, so 0x0A passes through; outbox.py:56 _SENT_LINE matches any line of the form <64 hex>\\s+<name>, and outbox.py:507 feeds every match into sent_digests, which outbox.py:561-563 uses to skip a file without checking it",
+    "A3-rename-after-send-and-the-unchanged-tests-claim": "tests/test_outbox.py:940-948 — the docstring now reads \"The first batch is committed by hand — a `send` would list the draft's hash in the sent manifest, and the renamed file would skip as already sent\", and the body replaces main([\"outbox\",\"send\"]) with _git(repo, \"add\", ...)/_git(repo, \"commit\", ...); the refusal path is src/agentmarshal/outbox.py:818-820, reached before _staged_paths at outbox.py:822 so the staged rename is left in the index",
+    "A4-design-says-matching-never-uses-the-name": "openspec/changes/archive/2026-10-24-outbox-skips-sent/design.md:45-46 (\"matching never uses it, only the digest does\") against the same file's lines 47-53 and src/agentmarshal/outbox.py:508 (manifest_names.add(match.group(2))) and outbox.py:564 (elif is_draft and name in manifest_names)"
+  },
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "84447dfab7e07734398254e91fe45aa24b325539",
+  "reviewed_contract": "225448956b4b7950bf077097c3274ac5d0643644b5ccf6f0a94861485527bc5d",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-228",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "identical apart from the delta's own '## MODIFIED Requirements'/'## ADDED Requirements' headers — the requirement heading, full text and all five scenarios match byte for byte",
+        "what": "diff of the delta's MODIFIED requirement block (changes/archive/2026-10-24-outbox-skips-sent/specs/outbox/spec.md lines 3-43) against openspec/specs/outbox/spec.md lines 56-90"
+      },
+      {
+        "result": "7 headings at lines 12, 56, 91, 174, 262, 331, 388 — each requirement exactly once",
+        "what": "grep -n '^### Requirement:' openspec/specs/outbox/spec.md"
+      },
+      {
+        "result": "same structure: proposal.md, design.md, tasks.md, specs/outbox/spec.md; openspec/changes/ holds only archive/",
+        "what": "ls -R of the archived change vs 2026-10-03-outbox-send-and-status"
+      },
+      {
+        "result": "no other module references them; cli.py only registers and dispatches the group",
+        "what": "grep for SENT / 'skipped as sent' outside src/agentmarshal/outbox.py"
+      },
+      {
+        "result": "only CHANGELOG.md:152-157 (the released 0.5.0 entry); no user doc documents the flags, so no in-scope doc went stale",
+        "what": "grep -rn 'outbox check|outbox send|outbox status|outbox new' CONTRIBUTING.md docs/quickstart.md docs/sidecar.md README.md CHANGELOG.md"
+      },
+      {
+        "result": "all nine signatures are prefix-anchored; none can match a bare 64-hex digest, but 'authorization-header' at capture.py:287 can match across a newline, which is A1's scenario",
+        "what": "grep -n of the leak-scan signature table in src/agentmarshal/journal/capture.py"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; uv run agentmarshal validate; uv run pytest; uv run ruff check; uv run ruff format --check; uv run mypy",
+        "why": "command execution is not permitted in this review session and the snapshot is not a git repository; the coordinator states the sequence passed on this commit"
+      },
+      {
+        "what": "an executed reproduction of A1 and A2",
+        "why": "both are reasoned from the code paths and the signature table, not run, hence advisory and marked unconfirmed"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/outbox.py (whole file)",
+      "tests/test_outbox.py (imports, lines 253-270, 460-490, 640-760, 930-970, 1258-1592)",
+      "openspec/specs/outbox/spec.md (whole file)",
+      "openspec/changes/archive/2026-10-24-outbox-skips-sent/{proposal.md,design.md,tasks.md,specs/outbox/spec.md}",
+      "docs/adr/ADR-0020-the-outbox-command-group.md",
+      "docs/threat-model.md lines 140-200 and 380-425",
+      "src/agentmarshal/journal/capture.py lines 265-300 and 446-466",
+      "src/agentmarshal/project.py lines 225-300 (the outbox README init writes)",
+      "CONTRIBUTING.md lines 103-140, CHANGELOG.md lines 1-60"
+    ]
+  }
+}

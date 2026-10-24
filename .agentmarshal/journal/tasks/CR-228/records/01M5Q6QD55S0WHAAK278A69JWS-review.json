@@ -1,0 +1,91 @@
+{
+  "advisory_findings": [
+    "CR-228-F3"
+  ],
+  "artifacts": [
+    {
+      "hash": "876660ad9df326e6625cd42f3c11abbebc95fb3cf4c60b8e97456b345bbd0be0",
+      "ref": ".agentmarshal/journal/tasks/CR-228/artifacts/01M5Q6QD55S0WHAAK278A69JWS-review.md"
+    }
+  ],
+  "classes": {
+    "CR-228-F1": "contract-mismatch",
+    "CR-228-F2": "claim-accuracy",
+    "CR-228-F3": "claim-accuracy"
+  },
+  "created_at": "2026-10-24T14:58:34.789339Z",
+  "evidence": {
+    "CR-228-F1": "src/agentmarshal/outbox.py:966-978 (`if not result.drafts: if not any(status != \"A\" and names != [sent_spec] ...)` — a modified non-draft gives status 'M', so no refusal) against openspec/specs/outbox/spec.md:176-180, spec.md:207-212 and spec.md:363-366; the only existing no-drafts test is tests/test_outbox.py:744-758 and it covers only the untracked ('A') README",
+    "CR-228-F2": "openspec/specs/outbox/spec.md:359-360 and src/agentmarshal/outbox.py:969-971 cite 'ADR-0020 decision 4: findings stop riding along in journal commits'; docs/adr/ADR-0020-the-outbox-command-group.md:90-97 (decision 4) says only that send stages the outbox and makes one commit of the batch, while docs/adr/ADR-0020-the-outbox-command-group.md:107-116 (decision 6) holds the journal-commit statement; grep for 'riding along' in that ADR returns nothing",
+    "CR-228-F3": "src/agentmarshal/outbox.py:486-487 claims byte-identical rebuilt lines; src/agentmarshal/outbox.py:547 decodes the manifest with errors=\"replace\" and U+FFFD (category So) is not refused by forges_rendered_text (src/agentmarshal/journal/records.py:1830,1844-1855), so _manifest_next re-encodes the name and the bytes change"
+  },
+  "findings": [
+    "CR-228-F1",
+    "CR-228-F2"
+  ],
+  "previous_review": "01M5Q652YR65TNAACGNZ9HX538",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "fc66a5b2e7f55a0b8fb2d51198a1eae53651d52f",
+  "reviewed_contract": "225448956b4b7950bf077097c3274ac5d0643644b5ccf6f0a94861485527bc5d",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-228",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "7 requirements, each heading exactly once; the two new ones at lines 331 and 430",
+        "what": "grep -n '^### Requirement' openspec/specs/outbox/spec.md"
+      },
+      {
+        "result": "identical, no output",
+        "what": "diff of the archived delta's MODIFIED block (lines 5-38) against openspec/specs/outbox/spec.md lines 56-89"
+      },
+      {
+        "result": "identical, no output",
+        "what": "diff of the archived delta's ADDED block (lines 42-181) against openspec/specs/outbox/spec.md lines 331-470"
+      },
+      {
+        "result": "no hit in ADR-0020; only spec.md:183 and spec.md:360",
+        "what": "grep -rn 'ride along|riding along|rides along' docs/adr/ADR-0020-the-outbox-command-group.md openspec/specs/outbox/spec.md"
+      },
+      {
+        "result": "only 'archive' — the change is archived, no live change directory remains",
+        "what": "ls openspec/changes/"
+      },
+      {
+        "result": "the only no-drafts send test is tests/test_outbox.py:744-758, on a fresh (untracked) README",
+        "what": "grep -n 'no drafts to send|nothing to send|README' tests/test_outbox.py"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "no uv and no .venv in the snapshot, and the sandbox denied running python at all; I rely on the coordinator's statement that the sequence passed on this commit"
+      },
+      {
+        "what": "a scripted repro of CR-228-F1 (commit the outbox, edit only README.md, run outbox send)",
+        "why": "the sandbox refused every python invocation with a script argument, so the finding rests on reading outbox.py:966-978 plus git's documented status letter for a modified tracked file"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/outbox.py (whole file)",
+      "tests/test_outbox.py (helpers, existing send tests, all new tests)",
+      "openspec/specs/outbox/spec.md",
+      "openspec/changes/archive/2026-10-25-outbox-skips-sent/{proposal.md,design.md,tasks.md,specs/outbox/spec.md}",
+      "docs/adr/ADR-0020-the-outbox-command-group.md",
+      "src/agentmarshal/journal/display.py (escape_for_display)",
+      "src/agentmarshal/journal/records.py (forges_rendered_text, _FORGEABLE_CATEGORIES)",
+      "src/agentmarshal/journal/capture.py (safe_path, render_leak_hits)"
+    ]
+  }
+}

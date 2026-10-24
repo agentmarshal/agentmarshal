@@ -1,0 +1,92 @@
+{
+  "advisory_findings": [
+    "ADV-1",
+    "ADV-2",
+    "ADV-3",
+    "ADV-4"
+  ],
+  "artifacts": [
+    {
+      "hash": "0fc35f121d29f9a064b257b7a385fd6e7807f0003f692a0be86fce485be65cde",
+      "ref": ".agentmarshal/journal/tasks/CR-228/artifacts/01M5Q1A3ZEMBZ5KPQ6FJFTVK6E-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-1": "correctness",
+    "ADV-2": "claim-accuracy",
+    "ADV-3": "claim-accuracy",
+    "ADV-4": "contract-mismatch"
+  },
+  "created_at": "2026-10-24T13:23:56.526456Z",
+  "evidence": {
+    "ADV-1": "src/agentmarshal/outbox.py:561 skips a file whose sha256 is in SENT; :818 refuses when result.drafts is empty — so after a real send, a git-mv'd sent draft is the only entry and send prints 'no drafts to send'. tests/test_outbox.py:935-948: the pre-existing rename test now builds its first batch with `_git(repo, 'add'/'commit')` instead of `main(['outbox','send'])`, docstring: 'The first batch is committed by hand — a `send` would list the draft's hash in the sent manifest, and the renamed file would skip as already sent.' No test covers the new refusal.",
+    "ADV-2": "src/agentmarshal/project.py:234 'Findings about **AgentMarshal itself** go here — one file per finding —'; openspec/specs/outbox/spec.md:4 'one file per finding, sent as a batch'; src/agentmarshal/outbox.py:852 writes .agentmarshal/upstream/SENT and :859 stages it into the batch commit.",
+    "ADV-3": "openspec/changes/archive/2026-10-24-outbox-skips-sent/design.md decision 1: 'matching never uses it, only the digest does' vs decision 3 of the same file and src/agentmarshal/outbox.py:564 `elif is_draft and name in manifest_names: notes.append(\"changed after sending\")`.",
+    "ADV-4": "src/agentmarshal/outbox.py:497 reads manifest_old and :600 `hits.extend(_draft_hits(name, text, markers))` scans those bytes, while :852 `sent_path.write_bytes(result.manifest_new)` stages different bytes; mitigation: each added line is a sha256 plus a name already scanned at :543/:600, and grep over src/agentmarshal/journal/capture.py:273-287 shows no signature matching bare hex."
+  },
+  "findings": [],
+  "previous_review": "01M5Q0QVNC5M9604G56CWE8DX6",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "84447dfab7e07734398254e91fe45aa24b325539",
+  "reviewed_contract": "225448956b4b7950bf077097c3274ac5d0643644b5ccf6f0a94861485527bc5d",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-228",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "7 requirement headings, each exactly once; the two ADDED ones at lines 331 and 388",
+        "what": "grep -n 'Requirement:' openspec/specs/outbox/spec.md"
+      },
+      {
+        "result": "all ten new scenarios have a test docstring naming them (lines 1283-1537)",
+        "what": "grep -n 'Scenario:' tests/test_outbox.py"
+      },
+      {
+        "result": "changes/ holds only archive/; the change sits at archive/2026-10-24-outbox-skips-sent/",
+        "what": "ls openspec/changes/ openspec/changes/archive/"
+      },
+      {
+        "result": "no match — the rename behaviour ADV-1 names is pinned by a test docstring only, not by a requirement",
+        "what": "grep -rn 'rename' openspec/specs/outbox/spec.md"
+      },
+      {
+        "result": "no generic hex/entropy signature, so manifest digests cannot trip the scan on a later run",
+        "what": "grep -n 'SIGNATURE|re.compile' src/agentmarshal/journal/capture.py"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "no uv in the snapshot and the sandbox refuses to execute python3/pytest; the coordinator reports the sequence green on this commit, and no finding here claims a tool failure"
+      },
+      {
+        "what": "git history checks",
+        "why": "the review snapshot is not a git repository"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/outbox.py",
+      "tests/test_outbox.py",
+      "openspec/specs/outbox/spec.md",
+      "openspec/changes/archive/2026-10-24-outbox-skips-sent/design.md",
+      "openspec/changes/archive/2026-10-24-outbox-skips-sent/proposal.md",
+      "openspec/changes/archive/2026-10-24-outbox-skips-sent/tasks.md",
+      "openspec/changes/archive/2026-10-24-outbox-skips-sent/specs/outbox/spec.md",
+      "docs/adr/ADR-0020-the-outbox-command-group.md",
+      "src/agentmarshal/project.py (outbox README scaffold)",
+      "src/agentmarshal/journal/capture.py (leak signatures)",
+      "CHANGELOG.md (release-scoped, no Unreleased section)"
+    ]
+  }
+}
