@@ -339,19 +339,31 @@ given. The manifest is the tool's record of what was sent — bookkeeping
 the outbox keeps beside the findings, not a finding itself — and it is
 parsed strictly: one `<sha256>  <name>` line each, 64 lowercase hex
 digits, exactly two spaces, a name free of the characters that could
-add a line; a line in any other shape lists nothing — it neither skips
-a file nor names one changed after sending. A skipped file is still
-read and still goes through the leak scan — it leaves with the batch
-like every file — it is only not judged as a draft; and it is never
-the manifest or the README, which are not drafts either. Each command
-SHALL print one line `skipped as sent: <n>` when it skipped any, so
-skipping is never silent. A file whose name a manifest line carries
-beside a different sha256 is not skipped — its bytes changed since it
-was sent — so it is checked like a draft and the check SHALL name it as
-changed after sending: an annotation, not a refusal. A regular file
-whose name could add a line to the manifest — a newline or another
-character a line of text cannot hold — SHALL be named in escaped
-printable form and refused: such a name is never written to `SENT`.
+add a line. A line in any other shape does not parse — a wrong form,
+a name the record-text rules refuse, a carriage return — and no such
+line is dropped in silence: each command SHALL refuse and SHALL print
+one line naming the manifest and the line's number. A skipped file is
+still read and still goes through the leak scan — it leaves with the
+batch like every file — it is only not judged as a draft; and it is
+never the manifest or the README, which are not drafts either. Each
+command SHALL print one line `skipped as sent: <n>` when it skipped
+any, so skipping is never silent. A file whose name a manifest line
+carries beside a different sha256 is not skipped — its bytes changed
+since it was sent — so it is checked like a draft and the check SHALL
+name it as changed after sending: an annotation, not a refusal. A
+regular file whose name could add a line to the manifest — a newline
+or another character a line of text cannot hold — SHALL be named in
+escaped printable form and refused: such a name is never written to
+`SENT`. When `send` finds no new draft it SHALL still commit a change
+the outbox holds to a file already sent — a rename, a move inside the
+outbox — as the outbox-only commit it is (ADR-0020 decision 4:
+findings stop riding along in journal commits), the message naming
+both paths of a rename, and the manifest SHALL follow the new name —
+the line that claims the file's sha256 takes the name the file now
+carries — so the renamed file stays skipped; a pure addition — a
+skipped file the repository never held — and the manifest alone are
+no such change: with no draft and no change to a file already sent,
+`send` SHALL refuse saying there are no drafts to send.
 
 #### Scenario: a file the sent manifest lists is not checked as a draft
 - **WHEN** the outbox holds a file whose sha256 a `SENT` line lists —
@@ -389,16 +401,25 @@ printable form and refused: such a name is never written to `SENT`.
 
 #### Scenario: send refuses when every file is already sent
 - **WHEN** every regular file in the outbox is already sent — none is a
-  draft
+  draft — and the outbox holds no change to one of them
 - **THEN** `outbox send` refuses saying there are no drafts to send, and
   commits nothing
 
-#### Scenario: a manifest line in another shape lists nothing
+#### Scenario: send commits a rename of a file already sent
+- **WHEN** the outbox holds no new draft but a file a `SENT` line
+  claims was renamed inside the outbox
+- **THEN** `outbox send` stages only the outbox and commits the change
+  in one commit whose message names both paths of the rename, and the
+  manifest line follows the new name so a later `check` still skips
+  the file
+
+#### Scenario: a manifest line that does not parse refuses the check
 - **WHEN** a `SENT` line is not exactly `<64 lowercase hex>  <name>`
   with a name free of line-forging characters — one space, an
-  uppercase digest, a control character in the name
-- **THEN** the line lists no file: it neither skips one nor names one
-  changed after sending
+  uppercase digest, a control character in the name, a carriage
+  return
+- **THEN** the check refuses and prints one line naming the manifest
+  and the line's number
 
 #### Scenario: a file whose name could add a line to the manifest is refused
 - **WHEN** a regular file in the outbox has a name carrying a newline or

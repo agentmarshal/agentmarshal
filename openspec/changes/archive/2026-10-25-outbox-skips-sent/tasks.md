@@ -39,14 +39,28 @@
 - [x] 3.2 A file name that could add a line to the manifest is refused,
   named escaped, in `check`/`send`; the manifest parses strictly — one
   `<64 hex>  <name>` line each, name without line-forging characters —
-  verify: `test_a_file_whose_name_could_add_a_line_to_the_manifest_is_refused`,
-  `test_a_manifest_line_in_another_shape_lists_nothing`.
-- [x] 3.3 `send` refuses "no drafts to send" before touching the index
-  when every entry is already sent — a sent draft renamed leaves the
-  operator's staged rename exactly as found — verify:
-  `test_send_refuses_a_rename_of_an_already_sent_draft`.
+  and a line that does not parse refuses the check, the manifest and
+  the line's number named — verify:
+  `test_a_file_whose_name_could_add_a_line_to_the_manifest_is_refused`,
+  `test_a_manifest_line_in_the_wrong_form_refuses_the_check`,
+  `test_a_manifest_line_whose_name_is_refused_refuses_the_check`,
+  `test_a_manifest_line_ending_in_a_carriage_return_refuses_the_check`,
+  `test_send_refuses_a_manifest_line_that_does_not_parse`.
+- [x] 3.3 With no new draft `send` still commits a change the outbox
+  holds to a file already sent — a rename, a move inside the outbox —
+  the message naming both paths of a rename and the manifest following
+  the new name; with no draft and no such change it refuses "no drafts
+  to send" — verify:
+  `test_a_draft_renamed_since_the_last_batch_is_sent_as_a_rename`,
+  `test_send_commits_a_rename_of_a_file_already_sent`,
+  `test_send_refuses_when_every_file_is_already_sent`.
 - [x] 3.4 design.md states what the code does on the name/digest
   matching; the delta notes the manifest is bookkeeping, not a finding.
+- [x] 3.5 Masking runs on the raw shown name before display escaping —
+  a signature beside a control character still masks — verify:
+  `test_a_secret_beside_a_control_character_in_a_name_is_masked`.
+- [x] 3.6 The manifest is pinned once, on the content `send` writes —
+  verify: `test_the_sent_manifest_is_pinned_once_with_the_content_send_writes`.
 
 ## 4. Closeout
 

@@ -28,6 +28,14 @@ same matching can say which outbox files are already sent.
 - A file whose name the manifest carries beside a different sha256 is
   not skipped — its bytes changed since it was sent: it is checked like
   a draft and the check names it as changed after sending.
+- The manifest is parsed strictly: a line that is not exactly
+  `<sha256>  <name>` does not parse, and `check` and `send` refuse it,
+  naming the manifest and the line's number.
+- With no new draft, `send` still commits a change the outbox holds to
+  a file already sent — a rename, a move inside the outbox — as the
+  outbox-only commit, and the manifest follows the new name; with no
+  draft and no such change it refuses saying there are no drafts to
+  send.
 - A refused send leaves the manifest's bytes as it found them, as it
   leaves the index.
 

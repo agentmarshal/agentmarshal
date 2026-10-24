@@ -51,10 +51,19 @@ not a draft and is not checked.
   hold — the set `forges_rendered_text` refuses — can take no manifest
   line and can forge one: the check names the file in escaped
   printable form and refuses, for a draft and for an already-sent
-  file alike. The read side is strict to match: only a line of
-  exactly `<64 lowercase hex>  <name>` with a name free of those
-  characters is a manifest entry — a line in any other shape lists
-  nothing.
+  file alike. The read side is strict to match — and loud: only a
+  line of exactly `<64 lowercase hex>  <name>` with a name free of
+  those characters is a manifest entry, and a line in any other shape
+  does not parse. The command prints the manifest's name and the
+  line's number and refuses — the manifest invites a hand edit (the
+  `sha256sum` form is meant to be writable), so a typo restores the
+  very refusal digest 045 reported unless it is diagnosed.
+- **Masking runs on the raw name, escaping second.** A name is masked
+  by `safe_path` on the raw shown form and escaped by
+  `escape_for_display` after — escaping first inserts word characters
+  (`\t`, `\uXXXX`) that defeat the signatures' `\b` and `\s` anchors,
+  so a secret beside a control character would print unmasked. The
+  escaped, masked form is what prints.
 - **A file is already sent when its sha256 is listed.** The check
   hashes each regular outbox file — it reads every one for the scan
   anyway — and a draft is a regular file that is not the README, not
@@ -75,27 +84,46 @@ not a draft and is not checked.
   any draft.
 - **`send` writes the manifest inside the same batch commit, pinned
   like every file.** While the check reads the outbox it also computes
-  what the manifest would become — the manifest's current bytes, plus
-  one `<sha256>  <name>` line per draft, appended in the outbox's
-  sorted entry order — and pins the `SENT` path to the blob id of those
-  bytes, the same `hash-object --stdin --path` pin every file gets.
-  `send` writes exactly those bytes before the add, so the staged
-  manifest blob is the pinned one and the same batch commit carries
-  drafts and manifest together. The leak scan covers those bytes too —
-  the manifest's next content is scanned like every file the batch
-  carries, because a name that trips nothing alone can match once it
-  sits on a manifest line (a signature whose match spans the line
-  break) — a hit refuses the run before `send` stages a byte.
-- **A manifest with nothing to add does not make a batch.** When the
-  only thing the add stages is `SENT` — every draft already committed
-  and unchanged — there is nothing to send and the send refuses as
-  today, index and manifest file both put back. A refusal after the
-  manifest write likewise puts the file's bytes back — or removes it
-  when there was none — so a manifest never claims files a commit
-  never landed; a made commit is never put back.
-- **"No drafts to send" means no drafts.** The count is of drafts
-  under the new rule: an outbox holding only the README, the manifest
-  and already-sent files has nothing to send.
+  what the manifest would become — its parsed lines, each following
+  the name its digest still names, plus one `<sha256>  <name>` line
+  per draft, appended in the outbox's sorted entry order — and pins
+  the `SENT` path once, to the blob id of those bytes, the same
+  `hash-object --stdin --path` pin every file gets (the file itself
+  is not pinned a second time on its old bytes). `send` writes
+  exactly those bytes before the add — only when they differ — so
+  the staged manifest blob is the pinned one and the same batch
+  commit carries drafts and manifest together. The leak scan covers
+  those bytes too — the manifest's next content is scanned like
+  every file the batch carries, because a name that trips nothing
+  alone can match once it sits on a manifest line (a signature whose
+  match spans the line break) — a hit refuses the run before `send`
+  stages a byte.
+- **The manifest's kept lines follow a renamed file.** A manifest
+  line records `<sha256>  <name>`; when the outbox no longer holds
+  the name and the sha256 names exactly one file in it — a rename, a
+  move inside the outbox — the rewritten line takes the name the
+  file now carries, so the renamed file stays skipped and the record
+  still says where it is. A line whose name still exists, or whose
+  digest matches no file or several, is kept as written.
+- **A manifest with nothing to add does not make a batch — but an
+  outbox change to a sent file does.** When the only thing the add
+  stages is `SENT` — every draft already committed and unchanged —
+  there is nothing to send and the send refuses as today, index and
+  manifest file both put back. A refusal after the manifest write
+  likewise puts the file's bytes back — or removes it when there
+  was none — so a manifest never claims files a commit never
+  landed; a made commit is never put back.
+- **"No drafts to send" means no drafts and no outbox change to send.**
+  When the check finds no draft, `send` still stages the outbox and
+  commits what the staged diff holds against the last commit — a
+  rename or move of a file already sent is the outbox's own commit
+  (ADR-0020 decision 4: findings stop riding along in journal
+  commits, so the commit a renamed sent file earns is exactly the
+  transaction the group exists to provide), the message naming both
+  paths of a rename. A pure addition — a skipped file the repository
+  never held — and the manifest alone are no such change: with no
+  draft and none, `send` refuses saying there are no drafts to send
+  and puts back what it staged.
 - **Entries that are not regular files are unchanged.** A directory, a
   symlink, a FIFO is still reported on one line as not a draft and not
   checked, and still refuses the batch: `send` stages the whole outbox,

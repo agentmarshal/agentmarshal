@@ -938,13 +938,10 @@ def test_a_draft_renamed_since_the_last_batch_is_sent_as_a_rename(
 ) -> None:
     """A staged rename's paths are both counted: a draft renamed inside
     the outbox since the last batch is inside on both ends — it sends as
-    one rename and the message names both its paths. The first batch is
-    committed by hand — a `send` would list the draft's hash in the sent
-    manifest, and the renamed file would skip as already sent."""
+    one rename and the message names both its paths."""
     repo = _project(tmp_path, monkeypatch)
     _conforming_draft(_outbox(repo))
-    _git(repo, "add", ".agentmarshal/upstream")
-    _git(repo, "commit", "-m", "an earlier batch")
+    assert main(["outbox", "send"]) == 0
     _git(
         repo,
         "mv",
@@ -1445,6 +1442,15 @@ def test_send_refuses_when_every_file_is_already_sent(
     assert "no drafts to send" in captured.err
     assert _git_out(repo, "rev-list", "--count", "--all") == "0"
 
+    # Committed and unchanged, it refuses the same way — the outbox
+    # holds no change to send either.
+    _git(repo, "add", ".agentmarshal/upstream")
+    _git(repo, "commit", "-m", "an earlier batch")
+    assert main(["outbox", "send"]) == 1
+    captured = capsys.readouterr()
+    assert "no drafts to send" in captured.err
+    assert _git_out(repo, "rev-list", "--count", "HEAD") == "1"
+
 
 def test_send_records_the_batch_in_the_sent_manifest(
     tmp_path: Path,
@@ -1590,15 +1596,12 @@ def test_check_index_refuses_an_unreadable_index(
     assert "cannot read the index" in capsys.readouterr().err
 
 
-def test_send_refuses_a_rename_of_an_already_sent_draft(
+def test_send_commits_a_rename_of_a_file_already_sent(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """A draft renamed after the batch that sent it is already sent —
-    `send` refuses it as no drafts to send before touching the index,
-    so the operator's staged rename is left exactly as found and nothing
-    is committed."""
+    """Scenario: send commits a rename of a file already sent."""
     repo = _project(tmp_path, monkeypatch)
     _conforming_draft(_outbox(repo))
     assert main(["outbox", "send"]) == 0
@@ -1610,18 +1613,21 @@ def test_send_refuses_a_rename_of_an_already_sent_draft(
     )
     capsys.readouterr()
 
-    assert main(["outbox", "send"]) == 1
+    assert main(["outbox", "send"]) == 0
 
     captured = capsys.readouterr()
     assert "skipped as sent: 1" in captured.out
-    assert "no drafts to send" in captured.err
-    assert _git_out(repo, "rev-list", "--count", "HEAD") == "1"
-    # The index is exactly as `send` found it: the operator's staged
-    # rename stands — the refusal staged nothing and unstaged nothing.
-    staged = _git_out(repo, "diff", "--cached", "--name-status")
-    assert "R100" in staged
-    assert ".agentmarshal/upstream/0001-filled.md" in staged
-    assert ".agentmarshal/upstream/0002-renamed.md" in staged
+    assert _git_out(repo, "rev-list", "--count", "HEAD") == "2"
+    message = _git_out(repo, "log", "-1", "--format=%B")
+    assert "- .agentmarshal/upstream/0001-filled.md" in message
+    assert "- .agentmarshal/upstream/0002-renamed.md" in message
+    # The manifest follows the new name — a later check still skips it.
+    renamed = _outbox(repo) / "0002-renamed.md"
+    assert (_outbox(repo) / "SENT").read_text(encoding="utf-8") == (
+        f"{_sha256(renamed)}  0002-renamed.md\n"
+    )
+    assert main(["outbox", "check"]) == 0
+    assert "skipped as sent: 1" in capsys.readouterr().out
 
 
 def test_a_file_whose_name_could_add_a_line_to_the_manifest_is_refused(
@@ -1657,32 +1663,104 @@ def test_a_file_whose_name_could_add_a_line_to_the_manifest_is_refused(
     assert _git_out(repo, "rev-list", "--count", "--all") == "0"
 
 
-def test_a_manifest_line_in_another_shape_lists_nothing(
+def test_a_manifest_line_in_the_wrong_form_refuses_the_check(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Scenario: a manifest line in another shape lists nothing."""
+    """Scenario: a manifest line that does not parse refuses the check.
+
+    One space and an uppercase digest are both the wrong form."""
     repo = _project(tmp_path, monkeypatch)
     outbox = _outbox(repo)
     sent = outbox / "old-one.md"
     sent.write_text(_CONFORMING, encoding="utf-8")
     digest = _sha256(sent)
-    manifest = outbox / "SENT"
-    manifest.write_text(
-        f"{digest} old-one.md\n"
-        f"{digest.upper()}  old-one.md\n"
-        f"{digest}  old-one.md\x07\n",
+    (outbox / "SENT").write_text(
+        f"{digest}  old-one.md\n"
+        f"{digest} one-space.md\n"
+        f"{digest.upper()}  uppercase.md\n",
         encoding="utf-8",
     )
     capsys.readouterr()  # drain init's output — it names the project path
 
-    assert main(["outbox", "check"]) == 0
+    assert main(["outbox", "check"]) == 1
 
-    out = capsys.readouterr().out
-    assert "skipped as sent" not in out
-    assert "changed after sending" not in out
-    assert "1 draft(s) checked" in out
+    captured = capsys.readouterr()
+    assert "SENT: line 2 does not parse" in captured.out
+    assert "SENT: line 3 does not parse" in captured.out
+    assert "skipped as sent" not in captured.out
+    assert "outbox check: refused" in captured.err
+
+
+def test_a_manifest_line_whose_name_is_refused_refuses_the_check(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a manifest line that does not parse refuses the check.
+
+    A control character in the name is a name the record-text rules
+    refuse."""
+    repo = _project(tmp_path, monkeypatch)
+    outbox = _outbox(repo)
+    sent = outbox / "old-one.md"
+    sent.write_text(_CONFORMING, encoding="utf-8")
+    (outbox / "SENT").write_text(f"{_sha256(sent)}  old-one.md\x07\n", encoding="utf-8")
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    assert main(["outbox", "check"]) == 1
+
+    captured = capsys.readouterr()
+    assert "SENT: line 1 does not parse" in captured.out
+    assert "outbox check: refused" in captured.err
+
+
+def test_a_manifest_line_ending_in_a_carriage_return_refuses_the_check(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a manifest line that does not parse refuses the check.
+
+    A carriage return — a manifest checked out with CRLF endings — is
+    a name the record-text rules refuse."""
+    repo = _project(tmp_path, monkeypatch)
+    outbox = _outbox(repo)
+    sent = outbox / "old-one.md"
+    sent.write_text(_CONFORMING, encoding="utf-8")
+    (outbox / "SENT").write_bytes(f"{_sha256(sent)}  old-one.md\r\n".encode())
+    _conforming_draft(outbox, "0002-other.md")
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    assert main(["outbox", "check"]) == 1
+
+    captured = capsys.readouterr()
+    assert "SENT: line 1 does not parse" in captured.out
+    assert "skipped as sent" not in captured.out
+    assert "outbox check: refused" in captured.err
+
+
+def test_send_refuses_a_manifest_line_that_does_not_parse(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """`send` runs the check, so a malformed manifest line refuses it
+    the same way — naming the manifest and the line's number."""
+    repo = _project(tmp_path, monkeypatch)
+    outbox = _outbox(repo)
+    _conforming_draft(outbox)
+    (outbox / "SENT").write_text(f"{'0' * 64} one-space.md\n", encoding="utf-8")
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    assert main(["outbox", "send"]) == 1
+
+    captured = capsys.readouterr()
+    assert "SENT: line 1 does not parse" in captured.out
+    assert "the check did not pass" in captured.err
+    assert _git_out(repo, "rev-list", "--count", "--all") == "0"
+    assert _git_out(repo, "diff", "--cached", "--name-only") == ""
 
 
 def test_the_manifests_next_content_goes_through_the_leak_scan(
@@ -1707,3 +1785,58 @@ def test_the_manifests_next_content_goes_through_the_leak_scan(
     assert not (outbox / "SENT").exists()
     assert _git_out(repo, "rev-list", "--count", "--all") == "0"
     assert _git_out(repo, "diff", "--cached", "--name-only") == ""
+
+
+def test_a_secret_beside_a_control_character_in_a_name_is_masked(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A signature-shaped name beside a control character is masked on
+    the raw name — escaping first would insert word characters the
+    signature's `\\b` anchors do not see past."""
+    repo = _project(tmp_path, monkeypatch)
+    (_outbox(repo) / f"lead\x07{_TOKEN}.md").write_text(_CONFORMING, encoding="utf-8")
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    assert main(["outbox", "check"]) == 1
+
+    captured = capsys.readouterr()
+    assert _TOKEN not in captured.out
+    assert _TOKEN not in captured.err
+    assert "lead\\u0007<github-token>.md" in captured.out
+
+
+def test_the_sent_manifest_is_pinned_once_with_the_content_send_writes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The manifest is pinned once — on the bytes `send` writes, not
+    also on the bytes it found."""
+    repo = _project(tmp_path, monkeypatch)
+    outbox = _outbox(repo)
+    _conforming_draft(outbox)
+    sent = outbox / "old-one.md"
+    sent.write_text("# sent last year\n", encoding="utf-8")
+    _sent_manifest(outbox, [(_sha256(sent), "old-one.md")])
+    run_git = outbox_module._git
+    pins: list[bytes] = []
+
+    def record_manifest_pins(
+        project_root: Path, arguments: list[str], feed: bytes = b""
+    ) -> bytes:
+        if arguments == [
+            "hash-object",
+            "--stdin",
+            "--path=.agentmarshal/upstream/SENT",
+        ]:
+            pins.append(feed)
+        return run_git(project_root, arguments, feed)
+
+    monkeypatch.setattr(outbox_module, "_git", record_manifest_pins)
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    assert main(["outbox", "send"]) == 0
+
+    assert pins == [(outbox / "SENT").read_bytes()]

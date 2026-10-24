@@ -13,8 +13,10 @@ delivery stays with the operator. ``outbox status`` hashes
 the outbox files and compares them with the ``Source:`` lines of an index
 file the operator passes. ``check`` and ``send`` use the same matching —
 plus the outbox's own sent manifest, ``SENT``, which ``send`` updates in
-the batch commit — to treat a file already sent as no draft. The group
-opens no network.
+the batch commit — to treat a file already sent as no draft; and when no
+draft is new, ``send`` still commits a change the outbox holds to a file
+already sent — a rename, a move inside the outbox — the manifest
+following the new name. The group opens no network.
 
 The outbox is ``project_root/.agentmarshal/upstream`` — the directory
 ``init`` scaffolds beside ``project.json`` — which is the same expression
@@ -219,17 +221,21 @@ def _shown_name(name: str | bytes | os.PathLike[str]) -> str:
     return os.fsencode(name).decode("utf-8", errors="backslashreplace")
 
 
-def _display_name(name: str | bytes | os.PathLike[str]) -> str:
-    """The shown name with every line-forging character as a visible escape.
+def _printable(name: str | bytes | os.PathLike[str], markers: tuple[str, ...]) -> str:
+    """The name as a command line prints it: masked first, then escaped.
 
-    ``escape_for_display`` renders a newline as ``\\n``, every other
-    control character as ``\\uXXXX`` — so a name can never add a line to
-    what the command prints or writes. Names carrying none pass through
-    unchanged, which is every name ``_shown_name`` used to produce for a
-    UTF-8-clean outbox.
+    The masking must see the raw shown name — escaping first inserts
+    word characters (``\\t`` for a tab, ``\\uXXXX`` for the rest) that
+    defeat the signatures' ``\\b`` and ``\\s`` anchors, so a secret
+    beside a control character would print unmasked. The masked, escaped
+    form is what prints: no marker's value, no matched text, and no
+    character that could add a line. ``escape_for_display`` renders a
+    newline as ``\\n``, every other refused character as ``\\uXXXX``, and
+    leaves every other character — including the ``\\xNN`` escapes a
+    non-UTF-8 name already carries — as it is.
     """
 
-    return escape_for_display(_shown_name(name))
+    return escape_for_display(safe_path(_shown_name(name), markers))
 
 
 def _markers(
@@ -415,7 +421,7 @@ def _name_hits(name: str, markers: tuple[str, ...]) -> list[LeakHit]:
     marker's position or the signature's identifier.
     """
 
-    return _scan_hits(safe_path(escape_for_display(name), markers), name, markers)
+    return _scan_hits(_printable(name, markers), name, markers)
 
 
 def _draft_hits(name: str, text: str, markers: tuple[str, ...]) -> list[LeakHit]:
@@ -427,7 +433,7 @@ def _draft_hits(name: str, text: str, markers: tuple[str, ...]) -> list[LeakHit]
     nothing else.
     """
 
-    safe_name = safe_path(escape_for_display(name), markers)
+    safe_name = _printable(name, markers)
     return _name_hits(name, markers) + _scan_hits(safe_name, text, markers)
 
 
@@ -461,21 +467,34 @@ class _CheckResult(NamedTuple):
     manifest_new: bytes
 
 
-def _manifest_next(manifest_old: bytes | None, drafts: list[tuple[str, str]]) -> bytes:
-    """The manifest's content after this batch: its bytes plus one line
-    per draft.
+def _manifest_next(
+    manifest_lines: list[tuple[str, str]],
+    drafts: list[tuple[str, str]],
+    file_digests: dict[str, list[str]],
+    present_names: set[str],
+) -> bytes:
+    """The manifest's content after this batch: its lines followed, plus
+    one line per draft.
 
-    The bytes already there are kept verbatim — the manifest is
-    append-only — with the newline supplied that a hand-written file may
-    lack at its end. Each draft's line is the sha256sum output form:
-    digest, two spaces, the shown — escaped — name.
+    A kept line holds its digest beside the name the file now carries:
+    when the recorded name is gone from the outbox and the digest names
+    exactly one file — a rename, a move inside the outbox — the line
+    follows the new name, so the manifest still says where the sent file
+    is. A line whose name still exists, or whose digest matches no file
+    or several, is kept as written — the manifest is a record of what
+    was sent. The rebuilt lines are byte-identical to what was read: the
+    strict parse accepted only ``<sha256>  <name>``. Each draft's line
+    is the sha256sum output form: digest, two spaces, the shown name.
     """
 
-    added = b"".join(f"{digest}  {name}\n".encode() for digest, name in drafts)
-    old = manifest_old or b""
-    if old and not old.endswith(b"\n"):
-        old += b"\n"
-    return old + added
+    lines = []
+    for digest, name in manifest_lines:
+        candidates = file_digests.get(digest, [])
+        if name not in present_names and len(candidates) == 1:
+            name = candidates[0]
+        lines.append(f"{digest}  {name}\n")
+    lines.extend(f"{digest}  {name}\n" for digest, name in drafts)
+    return "".join(lines).encode()
 
 
 def _run_check(index: Path | None, stderr: TextIO) -> int:
@@ -490,9 +509,9 @@ def _check(stderr: TextIO, *, pin: bool, index: Path | None) -> _CheckResult:
     same clean filters the add applies, so the id is the one staging
     writes. Pinning at the read leaves no second read for an edit to
     slip through: a later send verifies it commits what was checked. The
-    manifest's pin is taken the same way on the manifest's next content
-    — computed here, where the checked bytes are — so the update lands
-    in the batch commit pinned like every file.
+    manifest is pinned once, the same way, on the manifest's next
+    content — computed here, where the checked bytes are — so the
+    update lands in the batch commit pinned like every file.
     """
     located = _locate("check", stderr)
     if located is None:
@@ -504,10 +523,11 @@ def _check(stderr: TextIO, *, pin: bool, index: Path | None) -> _CheckResult:
 
     # The sent manifest: one `<sha256>  <name>` line per file sent. Its
     # digests skip drafts; its names name a file whose bytes changed
-    # since it was sent. Anything but a readable regular file simply
-    # holds no digests — a non-regular `SENT` is caught below like every
-    # non-regular entry.
+    # since it was sent; its lines, in order, are what a send rewrites.
+    # Anything but a readable regular file simply holds no digests — a
+    # non-regular `SENT` is caught below like every non-regular entry.
     manifest_old: bytes | None = None
+    manifest_lines: list[tuple[str, str]] = []
     manifest_names: set[str] = set()
     sent_digests: set[str] = set()
     sent_path = outbox / _SENT
@@ -520,11 +540,29 @@ def _check(stderr: TextIO, *, pin: bool, index: Path | None) -> _CheckResult:
                 file=stderr,
             )
             return _CheckResult(1, {}, [], None, b"")
-        for line in manifest_old.decode("utf-8", errors="replace").split("\n"):
+        # Strictly one entry per line — a wrong form, a name the
+        # record-text rules refuse, a carriage return all fail to parse,
+        # and a malformed line is never dropped in silence: each is
+        # named by number before the refusal.
+        lines = manifest_old.decode("utf-8", errors="replace").split("\n")
+        if lines and lines[-1] == "":
+            lines.pop()
+        malformed: list[int] = []
+        for line_number, line in enumerate(lines, start=1):
             match = _SENT_LINE.match(line)
             if match and not forges_rendered_text(match.group(2)):
+                manifest_lines.append((match.group(1), match.group(2)))
                 sent_digests.add(match.group(1))
                 manifest_names.add(match.group(2))
+            else:
+                malformed.append(line_number)
+        if malformed:
+            for line_number in malformed:
+                print(
+                    f"{_printable(_SENT, markers)}: line {line_number} does not parse"
+                )
+            print("outbox check: refused", file=stderr)
+            return _CheckResult(1, {}, [], manifest_old, b"")
     if index is not None:
         # The same parse `outbox status` runs on the same kind of file —
         # an index the operator obtained.
@@ -538,7 +576,7 @@ def _check(stderr: TextIO, *, pin: bool, index: Path | None) -> _CheckResult:
     except OSError as error:
         print(
             f"outbox check: cannot read the outbox at "
-            f"{safe_path(_display_name(outbox), markers)}: {_os_error_text(error)}",
+            f"{_printable(outbox, markers)}: {_os_error_text(error)}",
             file=stderr,
         )
         return _CheckResult(1, {}, [], None, b"")
@@ -549,21 +587,22 @@ def _check(stderr: TextIO, *, pin: bool, index: Path | None) -> _CheckResult:
     pinned: dict[bytes, bytes] = {}
     drafts: list[tuple[str, str]] = []
     hits: list[LeakHit] = []
+    file_digests: dict[str, list[str]] = {}
+    present_names: set[str] = set()
     for entry in entries:
         # The escaped printable form of the name — a surrogate-carrying
-        # non-UTF-8 name used to crash the print below (CR-156's carried
-        # advisory); this form is also what the name scan, the masking
-        # and the manifest's name matching see. The display form adds
-        # escapes for the characters that could add a line, so nothing
-        # printed below can carry one.
+        # non-UTF-8 name used to crash the prints below (CR-156's carried
+        # advisory); this form is also what the name scan and the
+        # manifest's name matching see. `_printable` masks it first and
+        # escapes second, so a secret beside a control character is still
+        # masked and nothing printed can carry a line-forging character.
         name = _shown_name(entry.name)
-        display = escape_for_display(name)
         if not _is_regular(entry):
             # Not a draft and not checkable, but a later send would stage
             # it unchecked — nothing in the outbox passes in silence.
             refused = True
             hits.extend(_name_hits(name, markers))
-            print(f"{safe_path(display, markers)}: not a draft, not checked")
+            print(f"{_printable(entry.name, markers)}: not a draft, not checked")
             continue
         # The README init writes and the manifest send writes are not
         # drafts; a file whose sha256 a manifest line — or a `Source:`
@@ -571,6 +610,8 @@ def _check(stderr: TextIO, *, pin: bool, index: Path | None) -> _CheckResult:
         # either. All of them still leave with the batch, so their names
         # and contents go through the same scan.
         is_draft = entry.name != _README and entry.name != _SENT
+        if entry.name != _SENT:
+            present_names.add(name)
         problems: list[str] = []
         notes: list[str] = []
         # A manifest line is one line — a name that could add one is
@@ -584,6 +625,8 @@ def _check(stderr: TextIO, *, pin: bool, index: Path | None) -> _CheckResult:
             problems.append(f"cannot be read: {_os_error_text(error)}")
         else:
             digest = hashlib.sha256(raw).hexdigest()
+            if entry.name != _SENT:
+                file_digests.setdefault(digest, []).append(name)
             if is_draft and digest in sent_digests:
                 skipped += 1
                 is_draft = False
@@ -592,10 +635,12 @@ def _check(stderr: TextIO, *, pin: bool, index: Path | None) -> _CheckResult:
             if is_draft:
                 checked += 1
                 drafts.append((digest, name))
-            if pin:
+            if pin and entry.name != _SENT:
                 # The key is the repository-relative path's real bytes —
                 # the form `ls-files` reports — so a non-UTF-8 name is
-                # pinned without ever becoming text.
+                # pinned without ever becoming text. `SENT` is pinned
+                # once below, on the content send writes — not on the
+                # bytes it found.
                 relative = f"{_OUTBOX_PREFIX}{entry.name}"
                 try:
                     pinned[os.fsencode(relative)] = _git(
@@ -628,13 +673,13 @@ def _check(stderr: TextIO, *, pin: bool, index: Path | None) -> _CheckResult:
             refused = True
         report = problems + notes
         if report:
-            print(f"{safe_path(display, markers)}: {'; '.join(report)}")
+            print(f"{_printable(entry.name, markers)}: {'; '.join(report)}")
     # The manifest's next content is computed even when nothing pins it —
     # a check that passes hands send the exact bytes to write. Those
     # bytes are staged like every file, so the scan covers them too: a
     # name that trips nothing alone can match once it sits on a manifest
     # line — a signature whose match spans the line break.
-    manifest_new = _manifest_next(manifest_old, drafts)
+    manifest_new = _manifest_next(manifest_lines, drafts, file_digests, present_names)
     hits.extend(
         _scan_hits(
             safe_path(_SENT, markers),
@@ -642,7 +687,10 @@ def _check(stderr: TextIO, *, pin: bool, index: Path | None) -> _CheckResult:
             markers,
         )
     )
-    if pin:
+    # The manifest's one pin is the blob of the content send writes —
+    # not of the bytes it found. A manifest that does not exist and has
+    # nothing to record stages nothing, so it takes no pin either.
+    if pin and (manifest_old is not None or manifest_new):
         relative = f"{_OUTBOX_PREFIX}{_SENT}"
         try:
             pinned[os.fsencode(relative)] = _git(
@@ -653,7 +701,7 @@ def _check(stderr: TextIO, *, pin: bool, index: Path | None) -> _CheckResult:
         except _OutboxGitError as error:
             refused = True
             print(
-                f"{safe_path(_SENT, markers)}: cannot be pinned: "
+                f"{_printable(_SENT, markers)}: cannot be pinned: "
                 f"{safe_path(str(error), markers)}"
             )
     if skipped:
@@ -717,33 +765,52 @@ def _git(project_root: Path, arguments: list[str], feed: bytes = b"") -> bytes:
     return result.stdout
 
 
-def _staged_paths(project_root: Path) -> set[str]:
-    """Every path the index's difference from HEAD names.
+def _staged_name_status(project_root: Path) -> list[tuple[str, list[str]]]:
+    """The staged changes as ``(status, paths)`` pairs, renames detected.
 
     ``git diff --cached`` reads an unborn-HEAD repository against the
-    empty tree, so a first send needs no special case. ``-z`` keeps names
-    as bytes; each is decoded to the escaped printable form — a non-UTF-8
-    path can be staged as easily as created. A rename or copy contributes
-    both its paths because either can be the one outside the outbox.
+    empty tree, so a first send needs no special case. ``-M`` reports a
+    staged rename as one entry carrying both its paths — the form the
+    batch's committable test needs, since a change to a file already
+    sent can be a rename whose add half alone reads as new. ``-z``
+    keeps names as bytes; each is decoded to the escaped printable
+    form — a non-UTF-8 path can be staged as easily as created.
     """
 
-    raw = _git(project_root, ["diff", "--cached", "--name-status", "-z"])
+    raw = _git(project_root, ["diff", "--cached", "--name-status", "-z", "-M"])
     tokens = [token for token in raw.split(b"\0") if token]
-    paths: set[str] = set()
+    entries: list[tuple[str, list[str]]] = []
     index = 0
     while index < len(tokens):
         status = tokens[index].decode("ascii", errors="replace")[0]
         if status in "RC":
             if index + 2 >= len(tokens):
                 raise _OutboxGitError("unparseable rename in the staged list")
-            paths.add(_display_name(tokens[index + 1]))
-            paths.add(_display_name(tokens[index + 2]))
+            entries.append(
+                (
+                    status,
+                    [_shown_name(tokens[index + 1]), _shown_name(tokens[index + 2])],
+                )
+            )
             index += 3
         else:
             if index + 1 >= len(tokens):
                 raise _OutboxGitError("unparseable entry in the staged list")
-            paths.add(_display_name(tokens[index + 1]))
+            entries.append((status, [_shown_name(tokens[index + 1])]))
             index += 2
+    return entries
+
+
+def _staged_paths(project_root: Path) -> set[str]:
+    """Every path the index's difference from HEAD names.
+
+    A rename or copy contributes both its paths because either can be
+    the one outside the outbox.
+    """
+
+    paths: set[str] = set()
+    for _, names in _staged_name_status(project_root):
+        paths.update(names)
     return paths
 
 
@@ -786,13 +853,17 @@ def _restore_outbox_index(project_root: Path, records: bytes) -> str | None:
     return None
 
 
-def _batch_mismatch(project_root: Path, expected: dict[bytes, bytes]) -> list[str]:
+def _batch_mismatch(
+    project_root: Path, expected: dict[bytes, bytes], markers: tuple[str, ...]
+) -> list[str]:
     """The outbox names whose staged blob is not what the check saw.
 
     Every pinned path must sit in the index at stage 0 with exactly the
     pinned blob id, and nothing else may be staged under the outbox: a
     file that arrived after the check was never vetted, and a changed or
-    removed one would commit content nobody checked.
+    removed one would commit content nobody checked. The names come back
+    masked and display-escaped — the caller prints them inside the
+    refusal.
     """
 
     raw = _git(project_root, ["ls-files", "--stage", "-z", "--", _OUTBOX_DIR_SPEC])
@@ -809,7 +880,7 @@ def _batch_mismatch(project_root: Path, expected: dict[bytes, bytes]) -> list[st
         path for path, blob in expected.items() if staged.get(path) != [(blob, b"0")]
     ]
     bad.extend(path for path in staged if path not in expected)
-    return sorted(_display_name(path) for path in bad)
+    return sorted(_printable(path, markers) for path in bad)
 
 
 def _restore_manifest(sent_path: Path, manifest_old: bytes | None) -> str | None:
@@ -847,13 +918,6 @@ def _run_send(index: Path | None, stderr: TextIO) -> int:
     markers = _markers("send", project_root, stderr)
     if markers is None:
         return 1
-    # The check just passed, so every entry is a regular file, and a
-    # draft is any regular file but the README, the manifest and the
-    # already-sent — a batch of no drafts would commit the manifest
-    # update alone.
-    if not result.drafts:
-        print("outbox send: no drafts to send", file=stderr)
-        return 1
     try:
         staged = _staged_paths(project_root)
     except _OutboxGitError as error:
@@ -866,13 +930,13 @@ def _run_send(index: Path | None, stderr: TextIO) -> int:
         # is the operator's to commit or unstage first.
         print(
             "outbox send: staged outside the outbox — commit or unstage it "
-            "first: " + ", ".join(safe_path(path, markers) for path in outside),
+            "first: " + ", ".join(_printable(path, markers) for path in outside),
             file=stderr,
         )
         return 1
     sent_path = outbox / _SENT
+    sent_spec = f"{_OUTBOX_PREFIX}{_SENT}"
     index_records: bytes | None = None
-    manifest_wrote = False
     committed = False
     try:
         # Taken before the manifest write and the add so a refused send
@@ -881,34 +945,48 @@ def _run_send(index: Path | None, stderr: TextIO) -> int:
         index_records = _git(
             project_root, ["ls-files", "--stage", "-z", "--", _OUTBOX_DIR_SPEC]
         )
-        # The manifest the check computed lands before the add, so the
-        # batch commit carries it pinned like every file.
-        manifest_wrote = True
-        try:
-            sent_path.write_bytes(result.manifest_new)
-        except OSError as error:
-            raise _OutboxGitError(
-                f"cannot write the sent manifest: {_os_error_text(error)}"
-            ) from error
+        # The manifest the check computed lands before the add — when it
+        # moved — so the batch commit carries it pinned like every file.
+        if result.manifest_new != (result.manifest_old or b""):
+            try:
+                sent_path.write_bytes(result.manifest_new)
+            except OSError as error:
+                raise _OutboxGitError(
+                    f"cannot write the sent manifest: {_os_error_text(error)}"
+                ) from error
         # --force: an ignore rule must not silently drop a draft the check
         # just passed — the whole outbox is what leaves.
         _git(project_root, ["add", "--force", "--", _OUTBOX_DIR_SPEC])
-        batch = sorted(
-            path
-            for path in _staged_paths(project_root)
-            if path.startswith(_OUTBOX_PREFIX)
-        )
-        # The manifest update alone is no batch: when every draft is
-        # committed and unchanged there is nothing to send.
-        if batch == [f"{_OUTBOX_PREFIX}{_SENT}"]:
+        batch_entries = [
+            (status, names)
+            for status, names in _staged_name_status(project_root)
+            if any(name.startswith(_OUTBOX_PREFIX) for name in names)
+        ]
+        batch = sorted(name for _, names in batch_entries for name in names)
+        if not result.drafts:
+            # No finding draft is no finding batch — but a change the
+            # outbox holds to a file already sent (a rename, a move
+            # inside the outbox) is still the outbox's own commit
+            # (ADR-0020 decision 4: findings stop riding along in
+            # journal commits). A pure addition — a skipped file the
+            # repository never held — and the manifest alone are no
+            # such change.
+            if not any(
+                status != "A" and names != [sent_spec]
+                for status, names in batch_entries
+            ):
+                raise _OutboxGitError("no drafts to send")
+        elif not batch or batch == [sent_spec]:
+            # The manifest update alone is no batch: when every draft is
+            # committed and unchanged there is nothing to send.
             raise _OutboxGitError(
                 "nothing to send — the outbox has no uncommitted changes"
             )
-        changed = _batch_mismatch(project_root, result.pinned)
+        changed = _batch_mismatch(project_root, result.pinned, markers)
         if changed:
             raise _OutboxGitError("changed since the check: " + ", ".join(changed))
         message = "outbox: findings batch\n\n" + "\n".join(
-            f"- {path}" for path in batch
+            f"- {escape_for_display(path)}" for path in batch
         )
         _git(project_root, ["commit", "--message", message])
         committed = True
@@ -926,13 +1004,12 @@ def _run_send(index: Path | None, stderr: TextIO) -> int:
                     f"{safe_path(restore_error, markers)}",
                     file=stderr,
                 )
-            if manifest_wrote:
-                manifest_error = _restore_manifest(sent_path, result.manifest_old)
-                if manifest_error is not None:
-                    print(
-                        f"outbox send: {safe_path(manifest_error, markers)}",
-                        file=stderr,
-                    )
+            manifest_error = _restore_manifest(sent_path, result.manifest_old)
+            if manifest_error is not None:
+                print(
+                    f"outbox send: {safe_path(manifest_error, markers)}",
+                    file=stderr,
+                )
         print(f"outbox send: {safe_path(str(error), markers)}", file=stderr)
         return 1
     try:
@@ -976,7 +1053,7 @@ def _index_claims(
     except OSError as error:
         print(
             f"outbox {command}: cannot read the index "
-            f"{safe_path(_display_name(index_path), markers)}: "
+            f"{_printable(index_path, markers)}: "
             f"{_os_error_text(error)}",
             file=stderr,
         )
@@ -1006,7 +1083,7 @@ def _run_status(index_path: Path, stderr: TextIO) -> int:
     except OSError as error:
         print(
             f"outbox status: cannot read the outbox at "
-            f"{safe_path(_display_name(outbox), markers)}: {_os_error_text(error)}",
+            f"{_printable(outbox, markers)}: {_os_error_text(error)}",
             file=stderr,
         )
         return 1
@@ -1014,7 +1091,7 @@ def _run_status(index_path: Path, stderr: TextIO) -> int:
     refused = False
     claimed: set[str] = set()
     for entry in entries:
-        name = safe_path(_display_name(entry.name), markers)
+        name = _printable(entry.name, markers)
         if not _is_regular(entry):
             # Not a file and not hashable — the check's "nothing passes in
             # silence" rule, applied to the channel's other direction.
