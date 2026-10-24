@@ -53,6 +53,32 @@ evidence in the journal (`.agentmarshal/journal/tasks/<id>/`).
    same way (the gate's base-state check admits the open→done
    transition).
 
+   `complete` also runs the shared extensions' `pre-gate` stages before
+   its gate check and their `post-gate` stages — a notification that
+   changes neither the record nor the exit status — after the
+   `completed` record is written (extension-stages specification,
+   "`complete` runs the `pre-gate` stages before its gate check" and
+   "`complete` runs the `post-gate` stages after `completed` is
+   written"). A `pre-gate-stop` stage that failed, did not finish or
+   did not run pauses the completion, and `--target <ref>` decides what
+   that pause does: while the candidate is not an ancestor of the
+   resolved `--target`, the completion is refused — the paused stages
+   named on one line, exit 3, nothing written; once it is — the
+   candidate already merged into the target branch — each pause becomes
+   one `complete: WARNING:` line and the completion proceeds. With no
+   `--target`, or a target that cannot be resolved, the pause stands
+   rather than being silently lifted; an `accepted_pause` acceptance
+   naming the extension at the resolved commit stands it down outright
+   (extension-stages specification, "a `pre-gate-stop` pause refuses
+   `complete` only while the candidate is not merged" and "an accepted
+   pause stands down a pre-gate-stop stage's pause for the accepted
+   extension and commit"). `--target` is distinct from `--base`:
+   `--base` stays the merge base the gate diffs against, while
+   `--target` names the branch the candidate merges into — so a wrapper
+   that completes after the merge passes the target branch, and a pause
+   warns on that post-merge completion instead of refusing a merge that
+   already happened.
+
 At any point `agentmarshal validate` checks the whole journal for
 integrity (every contract parses, every record is valid, every task
 projects to a consistent state, no record-id collisions); it is the
