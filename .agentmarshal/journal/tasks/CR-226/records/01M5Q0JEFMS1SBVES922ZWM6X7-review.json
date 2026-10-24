@@ -1,0 +1,103 @@
+{
+  "advisory_findings": [
+    "ADV-STAGE-NO-LINE-001",
+    "ADV-REFLOW-002"
+  ],
+  "artifacts": [
+    {
+      "hash": "9735746af20df9d5df50b7a1f41388ad46eeefa8ea2893825c364ea88a78c366",
+      "ref": ".agentmarshal/journal/tasks/CR-226/artifacts/01M5Q0JEFMS1SBVES922ZWM6X7-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-REFLOW-002": "style",
+    "ADV-STAGE-NO-LINE-001": "claim-accuracy"
+  },
+  "created_at": "2026-10-24T13:11:00.852116Z",
+  "evidence": {
+    "ADV-REFLOW-002": "docs/threat-model.md:182 is the single token \"(extension-manifest\"; :293 is \"ADR-0008,\"; :488 is \"declares\\\"). The\"; :479 runs to 80 columns while the surrounding file wraps near 72. No tool enforces Markdown width here (ruff covers Python only; `agentmarshal validate` reads the journal).",
+    "ADV-STAGE-NO-LINE-001": "claim at docs/threat-model.md:252 (\"One case gives a stage no line\"); counter-case at src/agentmarshal/stages.py:858-863 (_base_extensions failure -> print + return StageRunResult(1), before any plan or stage line) with tests/test_stages.py:292-322 asserting `assert \"checked\" not in captured.out` for a base manifest that cannot be parsed; further cases at src/agentmarshal/stages.py:798-811 (unknown phase, invalid task id, sidecar). The trust-file case itself is stages.py:945-958 plus 1097-1101 and tests/test_switches.py:413."
+  },
+  "findings": [],
+  "previous_review": "01M5Q01EB5KXYWXC6PC9AF3SB2",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "127cfab49f6b8a23a104f4e677c09a06e16160eb",
+  "reviewed_contract": "0ee0eaf166e335493b509d07c77e6c961dacb79a2fe1fc05c81e8e41009bface",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-226",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "openspec/changes/ holds only archive/; no extension-stages-purpose/ directory exists",
+        "what": "ls openspec/changes/ and openspec/changes/archive/"
+      },
+      {
+        "result": "only .agentmarshal/journal/tasks/CR-226/contract.md matches — no dangling document reference",
+        "what": "grep -rn \"extension-stages-purpose\" over *.md/*.json/*.toml"
+      },
+      {
+        "result": "remaining hits are lines 13, 107, 198, 205, 264, 390, 462, 559, 569 — each checked against the code (next absent from the CLI, no dependency-lock check and no addressee stage line in stages.py)",
+        "what": "grep -n \"not yet implemented|no extension code\" docs/threat-model.md"
+      },
+      {
+        "result": "no wide `git add .agentmarshal` remains; line 128 stages .agentmarshal/journal/tasks/CR-001",
+        "what": "grep -n \"git add|.agentmarshal\" README.md"
+      },
+      {
+        "result": "_result_text at 723-735 yields exactly checked / failed (<reason>) / did not finish (<reason>) / switched off (<reason>) / not run (<reason>), matching the document's list",
+        "what": "grep -n result-line spellings in src/agentmarshal/stages.py"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "this non-interactive session cannot get approval to run them; the coordinator states the full sequence passed on 127cfab49f6b8a23a104f4e677c09a06e16160eb, and the diff touches only Markdown"
+      },
+      {
+        "what": "git history of the task (to see the deletion of openspec/changes/extension-stages-purpose/ as a diff)",
+        "why": "the review snapshot is not a git repository; the criterion was checked against the tree state instead"
+      }
+    ],
+    "read": [
+      ".agentmarshal/journal/tasks/CR-226/contract.md",
+      "docs/threat-model.md",
+      "README.md",
+      "docs/self-hosting-workflow.md",
+      "docs/quickstart.md:300-341",
+      "templates/journal-transaction.sh",
+      "openspec/specs/extension-stages/spec.md (requirement index; 313-350, 879-1113, 1273-1434)",
+      "openspec/specs/gate-lanes/spec.md (requirement index; 170, 344)",
+      "openspec/specs/process-log/spec.md (requirement index)",
+      "openspec/specs/extension-records/spec.md (requirement index)",
+      "openspec/specs/leak-scan/spec.md (requirement index)",
+      "openspec/specs/review-evidence/spec.md (requirement index)",
+      "openspec/specs/session-activity/spec.md:58-105",
+      "openspec/specs/record-schema/spec.md (requirement index)",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md:82-135, 251-300",
+      "src/agentmarshal/stages.py:160-200, 380-470, 490-740, 760-1218",
+      "src/agentmarshal/isolation.py:1-120, 330-430",
+      "src/agentmarshal/cli.py:340-370, 995-1210",
+      "src/agentmarshal/journal/gate.py:190-210, 647-700, 968-1010, 1750-1770, 2127-2180",
+      "src/agentmarshal/journal/status_view.py:136-145, 180-195, 415-425, 760-790",
+      "src/agentmarshal/journal/records.py:480-540",
+      "src/agentmarshal/journal/validate.py:150-192",
+      "tests/test_stages.py (test index; 292-322, 1035-1260, 1528)",
+      "tests/test_isolation.py (test index)",
+      "tests/test_complete_stages.py (test index)",
+      "tests/test_switches.py:186-300, 413-468",
+      "tests/test_journal_transaction.py (test index)",
+      "tests/test_validate_addressee.py (test index)"
+    ]
+  }
+}

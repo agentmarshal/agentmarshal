@@ -87,14 +87,24 @@ integrity, record validity and lifecycle consistency apply unchanged.
 The record model admits two further forms — the acceptance of an
 extension pause (`accepted_pause`) and of an operational CR
 (`operational`), each bound by `accepted_commit` alone and carrying no
-`findings` — and the lanes that consume them are decided, not yet
-implemented; on the lanes that exist today the gate judges only
-acceptances that carry findings, so one standing alone satisfies
+`findings`. A pause acceptance is read by the stage runner, never by
+the gate: an `accepted_pause` naming the extension at the resolved
+commit stands that stage's pause down, and the result line keeps its
+outcome with a `pause accepted by` suffix (extension-stages
+specification, "an accepted pause stands down a pre-gate-stop stage's
+pause for the accepted extension and commit"). An operational
+acceptance marks the acceptance of an operational CR — a record
+`status` shows — but admits nothing: the operational lane is admitted
+by its own predicate and no gate check consults the record
+(gate-lanes specification, "an operational change takes its own gate
+lane"). Neither form reaches the gate's verdict checks, which judge
+only acceptances that carry findings — one standing alone satisfies
 nothing. Accepted work is never displayed as approved, and an
 acceptance by a writer of the candidate is permitted and always marked
 as self-acceptance. (ADR-0007,
-decisions 1, 2, 3, 4 and 5; ADR-0013, decisions 5 and 17 — decided, not
-yet implemented; ADR-0022, decision 2.)
+decisions 1, 2, 3, 4 and 5; ADR-0013, decisions 5 and 17 — the
+operational lane exists; its adopter-required-acceptance variant is
+decided, not yet implemented; ADR-0022, decision 2.)
 
 **Forgeable text cannot forge output.** The write-time refusal applies
 to the fields the specification names: a review record's finding and
@@ -164,8 +174,12 @@ being the one exception. The process-log sweep never follows a symlink,
 and a local-state location that resolves outside the root after `..`
 segments or symlinks are resolved is refused. A non-regular file in the
 outbox is named as not checked rather than scanned or silently skipped.
-The stage runner these manifest rules serve is decided, not yet
-implemented; the manifest-level refusals themselves are. (extension-manifest
+The stage runner these manifest rules serve exists: `stage run` and
+`complete` execute a stage's `command` as an argv path inside the
+extension's own materialized `bin/`, and a missing or symbolic-link
+command is `not run` naming why (extension-stages specification, "the
+command runs as an argv process under the core's interpreter").
+(extension-manifest
 specification, "An extension is found in the file form or the directory
 form", "A path the directory form names exists in the extension's
 directory", "A stage entry declares a phase and a command under bin/" and
@@ -190,19 +204,73 @@ step commands write only the journal repository's process log"; outbox
 specification, "`outbox send` commits the checked batch"; ADR-0023,
 decision 1 — decided, not yet implemented.)
 
-**No extension can change the gate's decision.** An extension is a
-declared manifest, not code the tool executes; nothing extension-defined
-runs inside the gate — no extension can add, remove or alter a gate
-check — and the gate's decision depends on the journal and the diff, not
-on third-party code. The core does not run someone else's code in a way
-that could permit a merge, and an extension cannot push through what the
-gate refused — by construction. The extension stages this rule protects
-are decided, not yet implemented — no extension code runs today. Where
-they exist, an extension's manifests, modes, isolation, shared switches
-and the code of shared extensions are to be taken from the base commit,
-so a pull request cannot weaken them for itself (decided, not yet
-implemented). (ADR-0010, decisions 4 and 6; ADR-0013, decisions 5 and 6 —
-decided, not yet implemented; ADR-0012, decision 7.)
+**No extension can change the gate's decision.** Nothing
+extension-defined runs inside the gate — no extension can add, remove
+or alter a gate check — and the gate's decision depends on the journal
+and the diff, not on third-party code. Extension code does run today,
+outside the gate: `agentmarshal stage run --phase <pre-gate|post-gate>`
+executes the `[[stage]]` entries a shared extension's manifest
+declares, and `complete` invokes the same run before its gate check
+and again after the `completed` record — each stage an argv process
+under the core's interpreter, never a shell or a `PATH` lookup, in a
+snapshot of the candidate commit (extension-stages specification,
+"`stage run` invokes the declared stages of the base's shared
+extensions", "the extension's code is the base's and the working
+directory the candidate's", "the command runs as an argv process under
+the core's interpreter" and "the stage run is one function both
+commands call"). A stage pauses, warns or notifies but writes no
+journal, and its result lands only as a process-log event the gate
+never reads — an extension cannot push through what the gate refused, by
+construction (extension-stages specification, "the command is
+registered like `step` and writes no journal"; process-log
+specification, "The gate never reads the log"). The manifests, the
+shared switches and the executable code of shared extensions are taken
+from the base commit — never the candidate's tree — so a pull request
+cannot weaken them for itself; on a workstation a stage runs only
+under a local grant whose per-file hashes match the base-materialized
+directory, in CI under none (extension-stages specification, "`stage
+run` reads the switches from the base and reports a switched-off
+extension" and "on a workstation a stage runs only under a matching
+grant"). A candidate the operational lane admits runs no `pre-gate`
+stage at all (gate-lanes specification, "pre-gate stages do not run on
+an operational change"), and the findings lane and the sidecar invoke
+no stage at all (extension-stages specification, "`stage run` invokes
+the declared stages of the base's shared extensions" and "`complete`
+runs the `pre-gate` stages before its gate check"). The result lines
+the runner prints today are `checked`, `failed (exit <n>)`, `did not
+finish (timeout)`, `not run (<reason>)` and `switched off (<task>,
+<reason>)`; a pausing `pre-gate-stop` stage's line keeps its outcome
+with a `pause accepted by <party> (<reason>)` suffix where a matching
+acceptance stands, and the extension's own output gets a frame that
+cannot read as a result line or as another extension's. Those lines
+are the stage runner's, printed in the `stage run` voice whichever
+command invoked it, never the gate's (extension-stages specification,
+"every stage gets exactly one result line and its output a frame",
+"`stage run` reads the switches from the base and reports a
+switched-off extension", "an accepted pause stands down a
+pre-gate-stop stage's pause for the accepted extension and commit" and
+"the stage run is one function both commands call"). One case gives a
+stage no line: where the clone's trust file cannot be read on a
+workstation the command fails naming the file, and a stage that would
+have been grant-checked is skipped without one — the lines still owed
+go to the stages never grant-checked, a switched-off stage's
+`switched off (<task>, <reason>)` and the `not run (shared switches
+file unreadable)` of a stage a refused switches file names
+(extension-stages specification, "on a workstation a stage runs only
+under a matching grant" and "`stage run` reads the switches from the
+base and reports a switched-off extension"). ADR-0013 decision 7's
+list runs past what the runner prints: `addressee not found` as a
+stage line and a `not run` reason of dependencies not matching the
+lock are decided, not yet implemented — `addressee not found` lives
+today on `validate`'s warning for an `ext` record kind no manifest
+declares (extension-records specification, "`validate` warns
+"addressee not found" on an ext record whose kind no manifest
+declares"). An `accepted_pause` acceptance naming the extension at
+the resolved commit stands a `pre-gate-stop` pause down
+(extension-stages specification, "an accepted pause stands down a
+pre-gate-stop stage's pause for the accepted extension and commit").
+(ADR-0010, decisions 4 and 6; ADR-0013, decisions 5, 6 and 7; ADR-0012,
+decision 7.)
 
 **The gate reads nothing local.** The gate reads neither the process log
 nor any of the local state placed outside the journal — importing the
@@ -221,14 +289,11 @@ Asked to judge what does not depend on a review, the
 gate reports the review-bound checks as not examined, with the reason —
 and the mode never weakens a candidate that has been reviewed. The
 findings lane prints each check it cannot run as not examined with the
-reason, and every extension gets a result line — checked, failed,
-addressee not found, did not finish, switched off, not run — with its
-output in its own frame
-(decided, not yet implemented). (ADR-0006, decision 2; ADR-0008,
+reason. (ADR-0006, decision 2;
+ADR-0008,
 decisions 5 and 6; gate-lanes specification, "The gate can be asked to
 judge what does not depend on a review" and "The mode never weakens a
-candidate that has been reviewed"; ADR-0009, decisions 3 and 4; ADR-0013,
-decision 7 — decided, not yet implemented.)
+candidate that has been reviewed"; ADR-0009, decisions 3 and 4.)
 
 ## What the tool does not protect against
 
@@ -243,21 +308,23 @@ out of scope: the line is whether the gate's own checks hold, not whether
 a record's author is who it says. Signing is on the roadmap, and roles
 arrive with it — a permission over unauthenticated identity would be the
 appearance of a control. A recorder that is not a declared actor is still
-accepted and shown for what it is, and a rule whose field is absent
+accepted and shown for what it is — `status` marks it "(not a declared
+actor)" — and a rule whose field is absent
 reads "not checked" rather than refusing or silently skipping — a
 record of a type that requires a recorder is refused when it names
-none; the showing and the
-"not checked" lines are decided, not yet implemented. Self-acceptance
+none. Self-acceptance
 and self-acknowledgement are permitted and marked — visible rather than
 impossible; an acknowledgement establishes that someone claiming to be
-the named actor recorded it — declared and durable, not proven (the
-record type exists; the surfaces that mark acknowledged hits are decided,
-not yet implemented). The tool cannot detect a determined false
+the named actor recorded it — declared and durable, not proven — and a
+hit it names prints marked, on `leak-scan` and on the gate's advisory
+line alike. The tool cannot detect a determined false
 attribution. (README.md, "Trust boundary"; SECURITY.md; ADR-0006,
 decisions 1, 2 and 5 and "Consequences"; ADR-0007, decisions 4 and 6;
-ADR-0018, decision 2; ADR-0021, decision 5 — the marking surfaces are
-decided, not yet implemented; ADR-0022, decisions 3 and 5;
-record-schema specification, "The record types are declared once".)
+ADR-0018, decision 2; ADR-0021, decision 5; ADR-0022, decisions 3 and 5;
+leak-scan specification, "an acknowledged hit stays printed and marked,
+and only an unacknowledged hit fails the command" and "the gate marks
+an acknowledged hit on its leak-scan line"; record-schema
+specification, "The record types are declared once".)
 
 **The checkout, the reviewed tree and the pipeline are trusted.** The
 gate reads the journal's records from the calling checkout's working tree
@@ -287,8 +354,13 @@ the local-state places — and it does not hold against an agent or a
 process running with the user's rights and no sandbox: such a process
 rewrites both the extension and the grants file. Signing the local state
 from the OS keychain was rejected as complexity without protection, and
-running an agent without a sandbox removes the protection outright. (The
-extension machinery is decided, not yet implemented.) (ADR-0014,
+running an agent without a sandbox removes the protection outright.
+The stage isolation the core enforces changes nothing here: it is
+applied inside the stage's own child before `execve`, so a process of
+the same OS user outside the stage is not contained — it rewrites the
+extension, the grants file and the log alike (extension-stages
+specification, "a stage with no declared network runs in a new user and
+network namespace"). (ADR-0014,
 decisions 2, 8 and 12; ADR-0013, decision 15, "Consequences" and
 "Alternatives considered".)
 
@@ -297,13 +369,15 @@ a merge; its heuristics miss content — a candidate crafted to leave the
 scan reporting nothing is the stated best-effort limit — so a hit is not
 proof of a leak and a clean run is not proof of safety; it is not
 authorization to publish, and it does not run on the findings lane. An
-acknowledgement, once its surfaces exist, changes what the standalone
+acknowledgement changes what the standalone
 command refuses and adds a mark — it never removes a hit from a surface
 that shows it, and the scan stays advisory with or without one.
 Mandatory block-on-leak enforcement is roadmap. (ADR-0005,
 implementation-boundary note and decision 2; ADR-0021, "Context",
 decision 3 and "The readers and the advisory follow from what is already
-there" — the marking is decided, not yet implemented; ADR-0009,
+there"; leak-scan specification, "`acknowledge` checks the hit against
+the same scan `leak-scan` runs" and "the gate marks an acknowledged hit
+on its leak-scan line"; ADR-0009,
 decision 3.)
 
 **Nothing is signed, and no SLSA level is claimed.** Review records carry
@@ -360,30 +434,58 @@ the footprint names. A declared extension is recorded, unpinned and
 unchecked — nothing pins its version; a supplied extension — a class
 decided, of which none ships — is pinned by version and a
 package-integrity value and guaranteed for compatibility with the task
-cycle at that version, not for quality or security. Where stages exist
-the core is to enforce declared isolation as far as the platform allows,
-naming what it cannot enforce, and it restricts only the extension
-processes it launches itself — decided, not yet implemented; the local
-protection further rests on the executor sandbox the adopter kit's
-implementer-launch template is to provide — decided, not yet
+cycle at that version, not for quality or security. For the stages the
+core launches itself, the isolation a manifest declares is enforced as
+far as the platform allows: on Linux a stage declaring no `network =
+true` runs in a new user and network namespace; at `pre-gate` the
+candidate directory is bound over itself and remounted read-only — the
+remount keeping the `nosuid`, `nodev`, `noexec` and atime flags the
+candidate's own mount locks — and the working directory is re-entered
+after the remount; declared provider-secret names are withheld at
+`pre-gate` even when `isolation.env` names them; and every capability
+the new user namespace granted is dropped before `execve`
+(extension-stages specification, "a stage with no declared network runs
+in a new user and network namespace", "a pre-gate stage's candidate is
+bound read-only over itself" and "the command runs as an argv process
+under the core's interpreter"). Whatever the platform or the stage's
+own setup cannot enforce is named on a `not enforced` note line for
+the stage, which still runs — a platform without namespaces, a
+namespace or mount the environment refuses, a setup step failing in
+the child are never silently weakened (extension-stages specification,
+"a guarantee the core cannot enforce is named, never silently
+weakened"). The floor reaches only the candidate: nothing outside it
+is made read-only, a `writes` declaration beyond the candidate has no
+enforcement behind it and is named as not enforced, and a process of
+the same OS user outside the stage is not contained — the restriction
+binds only the extension processes the core launches itself. The wider
+local protection further rests on the executor sandbox the adopter
+kit's implementer-launch template is to provide — decided, not yet
 implemented. (ADR-0001, "Consequences"; ADR-0002, "Decision"; ADR-0010,
 decisions 1 and 6; ADR-0012, decision 3; ADR-0013, decisions 8, 11 and
-15 — decided, not yet implemented; ADR-0014, decision 12.)
+15; ADR-0014, decision 12.)
 
 **Several visible things are declarations or reports, not enforcement.**
 A `check` record is a trace of what its observer declares — the gate
-decides nothing from it, and nothing downstream re-verifies it; the
-`record-check` command that writes one is decided, not yet implemented.
+decides nothing from it, and nothing downstream re-verifies it;
+`record-check` writes one (review-evidence specification,
+"`record-check` writes a check record for a resolved commit").
 The `changes_required` count reports and decides nothing — it blocks no
 merge. Why a run fell back to a later entry in an assignment list is
-shown, not verified — the contract header admits the lists and the
-`fallback_reason` field exists; the checking and the display are
-decided, not yet implemented. A documents check checks the presence of
+shown, not verified — the contract header admits the lists, the
+`fallback_reason` field is refused on a forgeable character like the
+other schema-7 fields, and `status` prints it; verified it is not
+(session-activity specification, "A session record can say what it
+produced and with what"; record-schema specification, "Shared field
+validators apply from schema 7"). A documents check checks the presence of
 a change, not its truth. The session outcome vocabulary is
 documentation, not code — `outcome` accepts any non-empty string. An
-`ext` record's body is opaque to the core — the type exists in the
-record model, and the extension stages that would write one are
-decided, not yet implemented, so nothing produces one today. The
+`ext` record's body is opaque to the core — `record-ext` writes one
+for a resolved commit under a declared kind, `status` shows it on a
+line of its own, and `validate` warns "addressee not found" on a kind
+no manifest declares (extension-records specification, "`record-ext`
+writes an ext record for a resolved commit" and "`validate` warns
+"addressee not found" on an ext record whose kind no manifest
+declares"). The
 outbox is neither evidence nor journal — not append-only, not
 task-scoped and not gated — and the tool transmits nothing and opens
 no network for it. And nothing in the tool can tell
@@ -391,7 +493,7 @@ an honest acceptance from a convenient one. (ADR-0017, decision 2 and
 "Consequences"; gate-lanes specification, "The transcript reports the
 task's changes_required count"; ADR-0016, decision 4; ADR-0018,
 decision 3; ADR-0010, decision 3; ADR-0019, decision 5; ADR-0013,
-decision 18 — decided, not yet implemented; ADR-0020, decision 6 and
+decision 18; ADR-0020, decision 6 and
 "Alternatives considered"; ADR-0007, "Consequences".)
 
 ## Open questions
@@ -441,14 +543,18 @@ stop short, and this document does not resolve them.
    by the decision itself. (ADR-0011, decisions 3 and 4 and "Left open".)
 
 5. **A shared extension switched off without review.** The operational
-   lane — decided, not yet implemented — admits a diff touching only
+   lane admits a diff touching only
    `.agentmarshal/switches.toml` and the task's own records, requires no
    review, and skips the extensions' `pre-gate` stages; the reason is
    mandatory and `status` and `doctor` show the switch — "easy, but not
-   silent". That file is the one exception to the rule that
+   silent" (gate-lanes specification, "an operational change takes its
+   own gate lane" and "pre-gate stages do not run on an operational
+   change"; extension-stages specification, "`status` names each
+   switched-off shared extension" and "`doctor` shows each switched-off
+   shared extension"). That file is the one exception to the rule that
    configuration is reviewed, and whether its visibility substitutes for
    review is not assessed. (ADR-0013, decisions 16 and 17, header and
-   "Consequences" — decided, not yet implemented; ADR-0010, decision 2.)
+   "Consequences"; ADR-0010, decision 2.)
 
 6. **`next` reads local, forgeable inputs.** `next` — decided, not yet
    implemented — reads the process log for an open step and for an
