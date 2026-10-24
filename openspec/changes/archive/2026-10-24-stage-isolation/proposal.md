@@ -19,6 +19,13 @@ work; this change is the work.
 - At `pre-gate`, a mount namespace in the same child binds the
   candidate directory read-only over itself — `MS_REC | MS_PRIVATE`
   on `/`, a self-bind, a `MS_BIND | MS_REMOUNT | MS_RDONLY` remount.
+- In the same child, before `execve`, every capability the new user
+  namespace granted is dropped — the ambient set, the `NOROOT`/
+  `NO_SETUID_FIXUP` securebits and `no_new_privs`, the bounding set
+  and the live capability sets — because they otherwise survive
+  `execve` (user_namespaces(7)) and let the stage undo the
+  enforcement for any uid. A drop that fails names every guarantee
+  the child was asked to enforce; the stage still runs.
 - At `pre-gate`, provider secrets — a fixed list plus the
   `_API_KEY`/`_TOKEN`/`_SECRET`/`_PASSWORD` suffixes — are withheld
   even when `isolation.env` names them; `post-gate` is unchanged.

@@ -4,10 +4,10 @@
   verdict, the run-once probe in a throwaway `os.fork` child, the
   `stage_setup` `preexec_fn` closure — `os.unshare`, the `deny`
   setgroups and identity uid/gid maps, the private propagation and
-  the read-only self-bind through libc `mount` — and
-  `strip_failure_reports` for the child's own reports — verify:
-  `probe()` answers `network`/`readonly` verdicts and the closure's
-  steps are exercised by monkeypatched syscalls.
+  the read-only self-bind through libc `mount`, then the capability
+  drop — and `strip_failure_reports` for the child's own reports —
+  verify: `probe()` answers `network`/`readonly` verdicts and the
+  closure's steps are exercised by monkeypatched syscalls.
 - [x] 1.2 `src/agentmarshal/stages.py` withholds provider secrets at
   `pre-gate`, passes the probe's setup to `Popen` as `preexec_fn`,
   and emits one `not enforced` note per stage in the style of the

@@ -14,7 +14,10 @@ permitted only after `fork` and before `execve` — which is why the
 setup must be a `preexec_fn`, never a wrapper process or a shell —
 and inside a new user namespace `os.getuid()` already answers the
 overflow id, so the caller's uid/gid must be captured before
-`os.unshare`. And the guarantees the kernel allows vary by
+`os.unshare`. A third fact came in review (F-ROOT-READONLY): the
+capabilities a new user namespace grants survive `execve`, so the
+bind's read-only-ness must outlive them — the child drops them all
+before exec, for any uid. And the guarantees the kernel allows vary by
 environment: unprivileged user namespaces may be refused outright,
 and a `MS_BIND | MS_REMOUNT | MS_RDONLY` remount over a mount owned
 by the initial user namespace fails `EPERM` under kernels that lock
@@ -51,6 +54,37 @@ discovering it in the stage's child or weakening silently.
   retried per guarantee — a network namespace the kernel allows
   must not go unmade because the mount namespace was refused, and
   each guarantee must name its own reason.
+
+- **Every capability is dropped before exec, for every uid.** A new
+  user namespace grants the child its full capability set, and
+  `execve` does not take it back (user_namespaces(7)): a stage that
+  kept it could remount the candidate read-write or unmount the
+  bind — for a uid-0 run through the root exec rules, for any other
+  uid through the caps the namespace itself granted. So last, after
+  the mounts that need `CAP_SYS_ADMIN`, the child clears the ambient
+  set (`prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_CLEAR_ALL)`), sets and
+  locks `SECBIT_NOROOT` and `SECBIT_NO_SETUID_FIXUP` plus
+  `PR_SET_NO_NEW_PRIVS`, drops each bounding capability
+  (`prctl(PR_CAPBSET_DROP, cap)`) up to
+  `/proc/sys/kernel/cap_last_cap`, and clears effective, permitted
+  and inheritable with `capset` (`_LINUX_CAPABILITY_VERSION_3`,
+  last — the bounding drops need `CAP_SETPCAP`). All through ctypes
+  libc — never a shell, never `PATH`. The drop runs whenever a user
+  namespace was entered, whether the request was network,
+  read-only or both; with no user namespace there is nothing to
+  drop. The probe's throwaway child performs the same drop, so an
+  "enforceable" verdict covers it.
+
+- **A failed drop is named, not refused.** Of the two options —
+  report `not enforced` or refuse the stage — this design reports:
+  a drop failure is an environment refusal like a refused `unshare`,
+  which the contract already answers with weaken-and-report, and the
+  per-guarantee failure channel can carry it exactly. The child
+  writes the usual `AGENTMARSHAL-SETUP-FAILED` lines and the run
+  notes `not enforced: <guarantee> (capabilities could not be
+  dropped: <reason>)` on every guarantee the child was asked to
+  enforce; the stage still runs. What is not done is an exec that
+  keeps capabilities in silence.
 
 - **Child failures are never silent.** Every requested guarantee a
   setup step fails is written to the child's stderr as

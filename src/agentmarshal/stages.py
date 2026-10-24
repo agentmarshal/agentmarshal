@@ -45,8 +45,10 @@ finds what this platform and environment allow; a stage whose manifest
 does not declare ``network = true`` is started in a new user and network
 namespace by the child itself before exec, and at ``pre-gate`` a new
 mount namespace binds the candidate read-only over itself and provider
-secrets are withheld from the declared environment. What the core
-cannot enforce never stops the stage: it runs weakened and one
+secrets are withheld from the declared environment. Before exec the
+child drops every capability the user namespace granted — they would
+otherwise survive ``execve`` and let the stage undo the binds. What the
+core cannot enforce never stops the stage: it runs weakened and one
 ``stage run: note:`` line for it names each guarantee not enforced and
 why; a declared ``writes`` is enforced nowhere beyond the candidate and
 is named the same way.

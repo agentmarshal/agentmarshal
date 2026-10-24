@@ -13,13 +13,20 @@ to ``/proc/self/setgroups`` and a one-line identity mapping of the
 caller's uid and gid to the uid/gid maps, then ``mount(NULL, "/",
 NULL, MS_REC | MS_PRIVATE)`` and a bind of the candidate directory onto
 itself remounted ``MS_BIND | MS_REMOUNT | MS_RDONLY`` — never a shell and
-never a tool looked up on ``PATH``.
+never a tool looked up on ``PATH``. Last, before exec, the child drops
+every capability the new user namespace granted it — the ambient set,
+the ``NOROOT``/``NO_SETUID_FIXUP`` securebits and ``no_new_privs``, the
+bounding set and the live effective/permitted/inheritable sets —
+because those capabilities survive ``execve`` (user_namespaces(7)) and
+would let the stage itself remount or unmount what was bound.
 
 A setup step that fails in the stage's child is never silent: the child
 writes a ``AGENTMARSHAL-SETUP-FAILED: <guarantee>: <reason>`` line to its
 stderr — the first bytes of the captured output, before exec — and the
 run names the guarantee not enforced the same way the probe's refusals
-are named. The stage still runs, weakened but honestly reported.
+are named. A capability drop that fails names every guarantee the child
+was asked to enforce — it must never exec silently with capabilities.
+The stage still runs, weakened but honestly reported.
 """
 
 from __future__ import annotations
@@ -52,6 +59,24 @@ _MS_BIND = 0x1000
 _MS_REC = 0x4000
 _MS_PRIVATE = 0x40000
 
+#: The ``prctl`` options (``linux/prctl.h``) the capability drop uses.
+_PR_CAPBSET_DROP = 24
+_PR_SET_SECUREBITS = 28
+_PR_SET_NO_NEW_PRIVS = 38
+_PR_CAP_AMBIENT = 47
+_PR_CAP_AMBIENT_CLEAR_ALL = 4
+
+#: The securebits (``linux/securebits.h``) the drop sets: ``NOROOT``
+#: keeps a uid that maps to 0 inside the user namespace — the caller's
+#: own, on a uid-0 run — from regaining the full set at ``execve``, and
+#: ``NO_SETUID_FIXUP`` keeps a setuid exec from doing the same; the
+#: ``LOCKED`` halves make both irreversible.
+_SECBITS_NOROOT_AND_FIXUP = 0x01 | 0x02 | 0x04 | 0x08
+
+#: ``capset``'s v3 header accepts the two-word data array covering all
+#: 64 capability slots.
+_LINUX_CAPABILITY_VERSION_3 = 0x20080522
+
 #: The guarantees a stage's setup can enforce or report: ``network`` — a
 #: new user and network namespace — and ``read-only candidate`` — the
 #: pre-gate floor. ``writes`` is never a guarantee the setup attempts.
@@ -70,6 +95,34 @@ class Probe:
 
     network: str | None
     readonly: str | None
+
+
+class _CapabilityDropError(Exception):
+    """A capability-drop step failed; the message names the mechanism."""
+
+
+class _CapHeader(ctypes.Structure):
+    """``__user_cap_header_struct`` for the ``capset`` call."""
+
+    _fields_ = [("version", ctypes.c_uint32), ("pid", ctypes.c_int)]
+
+
+class _CapData(ctypes.Structure):
+    """``__user_cap_data_struct``: the effective, permitted, inheritable sets."""
+
+    _fields_ = [
+        ("effective", ctypes.c_uint32),
+        ("permitted", ctypes.c_uint32),
+        ("inheritable", ctypes.c_uint32),
+    ]
+
+
+def _error_detail(error: BaseException) -> str:
+    """An error's human detail — an ``OSError``'s strerror, else str()."""
+
+    if isinstance(error, OSError):
+        return error.strerror or str(error)
+    return str(error)
 
 
 def _write_file(path: str, text: str) -> None:
@@ -94,13 +147,18 @@ def _write_identity_maps(uid: int, gid: int) -> None:
     _write_file("/proc/self/gid_map", f"{gid} {gid} 1\n")
 
 
+def _libc() -> ctypes.CDLL:
+    """libc with errno capture; a small seam for the child's own calls."""
+
+    return ctypes.CDLL("libc.so.6", use_errno=True)
+
+
 def _mount(source: str | None, target: str, flags: int) -> None:
     """libc ``mount`` through ctypes; raises ``OSError`` on failure."""
 
-    libc = ctypes.CDLL("libc.so.6", use_errno=True)
     source_b = None if source is None else os.fsencode(source)
     if (
-        libc.mount(
+        _libc().mount(
             ctypes.c_char_p(source_b),
             ctypes.c_char_p(os.fsencode(target)),
             None,
@@ -113,12 +171,90 @@ def _mount(source: str | None, target: str, flags: int) -> None:
         raise OSError(error, os.strerror(error))
 
 
+def _cap_last_cap() -> int:
+    """The highest capability index the kernel knows; bounds the drop."""
+
+    return int(
+        Path("/proc/sys/kernel/cap_last_cap").read_text(encoding="ascii").strip()
+    )
+
+
+def _drop_capabilities() -> None:
+    """Drop every capability the child's user namespace granted.
+
+    A new user namespace hands the process its full capability set, and
+    ``execve`` does not take it back (user_namespaces(7)) — with it a
+    stage could remount or unmount the read-only bind. The sequence,
+    all through libc: the ambient set cleared, the ``NOROOT`` and
+    ``NO_SETUID_FIXUP`` securebits set and locked, ``no_new_privs`` set,
+    every bounding capability dropped up to ``cap_last_cap`` — which
+    needs ``CAP_SETPCAP``, so the live ``capset`` clearing the
+    effective, permitted and inheritable sets comes last. Every step
+    that fails raises ``_CapabilityDropError`` naming the step: a child
+    must never exec silently still holding capabilities.
+    """
+
+    libc = _libc()
+    try:
+        last_cap = _cap_last_cap()
+    except (OSError, ValueError) as caught:
+        raise _CapabilityDropError(
+            f"capabilities could not be dropped: cap_last_cap: {_error_detail(caught)}"
+        ) from caught
+
+    def prctl(option: int, arg2: int, name: str) -> None:
+        if (
+            libc.prctl(
+                ctypes.c_int(option),
+                ctypes.c_ulong(arg2),
+                ctypes.c_ulong(0),
+                ctypes.c_ulong(0),
+                ctypes.c_ulong(0),
+            )
+            != 0
+        ):
+            errno = ctypes.get_errno()
+            raise _CapabilityDropError(
+                f"capabilities could not be dropped: {name}: {os.strerror(errno)}"
+            )
+
+    prctl(
+        _PR_CAP_AMBIENT,
+        _PR_CAP_AMBIENT_CLEAR_ALL,
+        "prctl(PR_CAP_AMBIENT_CLEAR_ALL)",
+    )
+    prctl(_PR_SET_SECUREBITS, _SECBITS_NOROOT_AND_FIXUP, "prctl(PR_SET_SECUREBITS)")
+    prctl(_PR_SET_NO_NEW_PRIVS, 1, "prctl(PR_SET_NO_NEW_PRIVS)")
+    for cap in range(last_cap + 1):
+        prctl(_PR_CAPBSET_DROP, cap, f"prctl(PR_CAPBSET_DROP, {cap})")
+    header = _CapHeader(version=_LINUX_CAPABILITY_VERSION_3, pid=0)
+    data = (_CapData * 2)()
+    if libc.capset(ctypes.pointer(header), data) != 0:
+        errno = ctypes.get_errno()
+        raise _CapabilityDropError(
+            f"capabilities could not be dropped: capset: {os.strerror(errno)}"
+        )
+
+
+def _drop_failure(error: BaseException) -> _CapabilityDropError:
+    """A drop error normalised to the ``capabilities could not be dropped`` text."""
+
+    if isinstance(error, _CapabilityDropError):
+        return error
+    return _CapabilityDropError(
+        f"capabilities could not be dropped: {_error_detail(error)}"
+    )
+
+
 def _report_failure(label: str, error: BaseException) -> None:
     """Write one failure line to the child's stderr; never raises."""
 
-    detail = error.strerror or str(error) if isinstance(error, OSError) else str(error)
     with suppress(OSError):
-        os.write(2, f"{_SETUP_FAILED_PREFIX.decode()}{label}: {detail}\n".encode())
+        os.write(
+            2,
+            f"{_SETUP_FAILED_PREFIX.decode()}{label}: "
+            f"{_error_detail(error)}\n".encode(),
+        )
 
 
 def _bind_read_only(directory: str) -> None:
@@ -144,9 +280,13 @@ def stage_setup(*, network: bool, readonly: Path | None) -> Callable[[], None]:
     requested guarantee is attempted so a failure is named on the right
     guarantee: the combined ``os.unshare`` is tried first — the call the
     design prescribes — and only on a refusal is each namespace retried
-    on its own so each guarantee carries its own reason. Whatever fails
-    is reported by ``_report_failure`` and the stage runs weakened; the
-    setup itself never raises out of the child.
+    on its own so each guarantee carries its own reason. Last, before
+    exec, every capability the new user namespace granted is dropped —
+    they survive ``execve`` and would let the stage undo the
+    enforcement — so a drop failure is reported on every guarantee
+    still standing. Whatever fails is reported by ``_report_failure``
+    and the stage runs weakened; the setup itself never raises out of
+    the child.
     """
 
     requested = [
@@ -220,6 +360,19 @@ def stage_setup(*, network: bool, readonly: Path | None) -> Callable[[], None]:
                     except OSError as error:
                         problems.append((_READONLY, error))
                         failed.add(_READONLY)
+                # The user namespace's capabilities survive execve and
+                # would let the stage undo what was enforced — drop them
+                # last, after the mounts that needed them. A failure
+                # must never exec silently with capabilities: every
+                # guarantee still standing is named not enforced.
+                try:
+                    _drop_capabilities()
+                except Exception as error:
+                    dropped = _drop_failure(error)
+                    for label in requested:
+                        if label not in failed:
+                            problems.append((label, dropped))
+                            failed.add(label)
 
     return setup
 
@@ -334,6 +487,7 @@ def _probe_child(directory: str) -> dict[str, str | None]:
     readonly_reason: str | None = None
     user_namespace = False
     mount_ready = False
+    mapped = False
     uid, gid = os.getuid(), os.getgid()
     try:
         try:
@@ -366,13 +520,32 @@ def _probe_child(directory: str) -> dict[str, str | None]:
                 network_reason = network_reason or detail
                 readonly_reason = readonly_reason or detail
                 mount_ready = False
+            else:
+                mapped = True
         if mount_ready:
             readonly_reason = _probe_read_only(directory)
+        if mapped:
+            # The stage child drops the capabilities last; the probe's
+            # verdict must cover that step too, so the same drop runs
+            # here — after the mounts that needed the capabilities.
+            drop_reason = _probe_capability_drop()
+            network_reason = network_reason or drop_reason
+            readonly_reason = readonly_reason or drop_reason
     except Exception as error:
         detail = f"the namespace probe failed: {error}"
         network_reason = network_reason or detail
         readonly_reason = readonly_reason or detail
     return {"network": network_reason, "readonly": readonly_reason}
+
+
+def _probe_capability_drop() -> str | None:
+    """The stage child's capability drop; the reason, or ``None``."""
+
+    try:
+        _drop_capabilities()
+    except Exception as error:
+        return str(_drop_failure(error))
+    return None
 
 
 def _probe_read_only(directory: str) -> str | None:

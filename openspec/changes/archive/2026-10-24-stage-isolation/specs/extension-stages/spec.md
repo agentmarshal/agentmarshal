@@ -106,10 +106,23 @@ SHALL enter a new user and network namespace —
 identity mapping of the caller's uid and gid written to
 `/proc/self/uid_map` and `/proc/self/gid_map` — applied by the core
 itself, never a wrapper process, a shell or a tool looked up on
-`PATH`. A stage whose manifest declares `network = true` SHALL run
-as before. Namespaces this platform or environment cannot provide
-SHALL NOT stop the stage: the stage still runs, and what could not
-be enforced is named under the naming requirement.
+`PATH`. In the same child, still before `execve`, every capability
+the new user namespace granted SHALL be dropped — they otherwise
+survive `execve` (user_namespaces(7)) and let the stage undo the
+enforcement: the ambient set cleared (`PR_CAP_AMBIENT_CLEAR_ALL`),
+the securebits `SECBIT_NOROOT | SECBIT_NOROOT_LOCKED |
+SECBIT_NO_SETUID_FIXUP | SECBIT_NO_SETUID_FIXUP_LOCKED` and
+`PR_SET_NO_NEW_PRIVS` set through `prctl`, `PR_CAPBSET_DROP` run for
+each capability up to `/proc/sys/kernel/cap_last_cap`, and `capset`
+clearing the effective, permitted and inheritable sets — all through
+libc. A stage whose manifest declares `network = true` SHALL run
+as before. A capability drop that fails SHALL name every guarantee
+the child was asked to enforce not enforced with the reason
+`capabilities could not be dropped: <reason>` — the child must not
+exec silently still holding capabilities; and namespaces this
+platform or environment cannot provide SHALL NOT stop the stage: the
+stage still runs, and what could not be enforced is named under the
+naming requirement.
 
 #### Scenario: a stage whose manifest declares no network runs in a new user and network namespace
 - **WHEN** a stage runs whose manifest declares no `[isolation]`
@@ -137,7 +150,10 @@ namespace, `mount(NULL, "/", NULL, MS_REC | MS_PRIVATE)` makes
 propagation private, a bind mounts the candidate directory onto
 itself and a `MS_BIND | MS_REMOUNT | MS_RDONLY` remount turns the
 bind read-only — the mounts made by libc's `mount` through the
-core, and nothing outside the candidate directory made read-only. A
+core, and nothing outside the candidate directory made read-only —
+and the network requirement's capability drop, performed in the same
+child before `execve`, is what keeps the stage itself from remounting
+or unmounting the bind it was handed. A
 `post-gate` stage's candidate is not bound. A `writes` the manifest
 declares beyond the candidate has no enforcement in this mechanism
 — the naming requirement reports it rather than imply a sandbox
@@ -173,28 +189,32 @@ not be enforced is named under the naming requirement.
 #### Scenario: an isolated stage cannot reach the network or write the candidate
 - **WHEN** a stage runs on a platform where the probe finds the
   guarantees enforceable
-- **THEN** the stage's attempt to open a network connection fails
-  and its attempt to write into the candidate directory fails —
+- **THEN** the stage's `CapEff`, `CapPrm` and `CapBnd` are all zero,
+  an attempt to remount the candidate read-write and an attempt to
+  unmount it both fail, its attempt to open a network connection
+  fails and its attempt to write into the candidate directory fails —
   and where a guarantee is not enforceable there, the note names it
 
 ### Requirement: a guarantee the core cannot enforce is named, never silently weakened
 
 The core SHALL answer once per run — a probe in a throwaway child
-running the real sequence and dying with it, its verdict cached —
-which guarantees this platform and environment allow, asked at the
-first stage that runs so the answer precedes the stage rather than
-following it. Each guarantee a stage is owed that the probe or the
-stage's own setup could not enforce SHALL be named on one note
-line for the stage, each with its reason — `not enforced:
-<guarantee> (<reason>)`, as `network`, `read-only candidate` and
-`writes beyond the candidate` are named — and the stage SHALL still
-run; a guarantee enforced SHALL NOT be mentioned, so a platform
-enforcing everything shows unchanged output. A setup step that
-fails in the stage's own child after the probe allowed it SHALL be
-named the same way: the child reports the failure on its stderr
-ahead of its exec'd output, and the run strips the report out of
-the stream it reframes — never a silent weakening. A stage that
-does not run at all SHALL carry no isolation note.
+running the real sequence, the capability drop included, and dying
+with it, its verdict cached — which guarantees this platform and
+environment allow, asked at the first stage that runs so the answer
+precedes the stage rather than following it. Each guarantee a stage
+is owed that the probe or the stage's own setup could not enforce
+SHALL be named on one note line for the stage, each with its reason
+— `not enforced: <guarantee> (<reason>)`, as `network`,
+`read-only candidate` and `writes beyond the candidate` are named —
+and the stage SHALL still run; a guarantee enforced SHALL NOT be
+mentioned, so a platform enforcing everything shows unchanged
+output. A setup step that fails in the stage's own child after the
+probe allowed it SHALL be named the same way: the child reports the
+failure on its stderr ahead of its exec'd output, and the run
+strips the report out of the stream it reframes — never a silent
+weakening; a capability drop that fails is such a step, named on
+every guarantee the child was asked to enforce. A stage that does
+not run at all SHALL carry no isolation note.
 
 #### Scenario: each guarantee not enforced is named on one note line for the stage
 - **WHEN** a stage is owed guarantees the platform cannot enforce
@@ -212,6 +232,14 @@ does not run at all SHALL carry no isolation note.
 - **THEN** the failure is reported out of the child's stderr ahead
   of the stage's output, stripped from the framed stream, and the
   guarantee is named `not enforced` the same way
+
+#### Scenario: a capability drop that fails names every guarantee the child was asked to enforce
+- **WHEN** the probe allowed the guarantees but the stage child's
+  capability drop fails
+- **THEN** each guarantee the child was asked to enforce is named
+  `not enforced: <guarantee> (capabilities could not be dropped:
+  <reason>)` — the child does not exec silently with capabilities —
+  and the stage still runs
 
 #### Scenario: a platform without namespaces names each guarantee it cannot enforce
 - **WHEN** the run's probe reports a platform with no namespace

@@ -1,5 +1,6 @@
 """Tests for stage isolation — the probe, the namespaces and the notes."""
 
+import ctypes
 import os
 import subprocess
 import sys
@@ -201,10 +202,11 @@ def test_a_pre_gate_stage_s_candidate_directory_is_bound_read_only_over_itself(
     # The closure the request builds applies the mount chain in the
     # child: the user and mount namespaces, the identity maps, the
     # private propagation, the bind onto itself and the read-only
-    # remount.
+    # remount — and last, before exec, the capability drop.
     unshared: list[int] = []
     written: list[tuple[str, str]] = []
     mounted: list[tuple[str | None, str, int]] = []
+    dropped: list[int] = []
     monkeypatch.setattr(os, "unshare", unshared.append)
     monkeypatch.setattr(
         isolation,
@@ -216,6 +218,7 @@ def test_a_pre_gate_stage_s_candidate_directory_is_bound_read_only_over_itself(
         "_mount",
         lambda source, target, flags: mounted.append((source, target, flags)),
     )
+    monkeypatch.setattr(isolation, "_drop_capabilities", lambda: dropped.append(1))
     target = Path("/the/candidate")
     real_stage_setup(network=False, readonly=target)()
 
@@ -234,6 +237,7 @@ def test_a_pre_gate_stage_s_candidate_directory_is_bound_read_only_over_itself(
             isolation._MS_BIND | isolation._MS_REMOUNT | isolation._MS_RDONLY,
         ),
     ]
+    assert dropped == [1]
 
 
 def test_a_mount_the_platform_refuses_is_named_and_the_stage_still_runs(
@@ -323,7 +327,27 @@ def test_an_isolated_stage_cannot_reach_the_network_or_write_the_candidate(
         monkeypatch,
         files={
             "bin/check.py": (
-                "import os, socket\n"
+                "import ctypes, os, socket\n"
+                "status = open('/proc/self/status').read()\n"
+                "caps = [\n"
+                "    line.split(':', 1)[1].strip()\n"
+                "    for line in status.splitlines()\n"
+                "    if line.startswith(('CapEff', 'CapPrm', 'CapBnd'))\n"
+                "]\n"
+                "print('CAPS:' + (\n"
+                "    'zero'\n"
+                "    if len(caps) == 3 and all(c == '0' * 16 for c in caps)\n"
+                "    else 'nonzero:' + ','.join(caps)\n"
+                "))\n"
+                "libc = ctypes.CDLL('libc.so.6', use_errno=True)\n"
+                "cwd = os.fsencode(os.getcwd())\n"
+                "rw = libc.mount(\n"
+                "    None, ctypes.c_char_p(cwd), None,\n"
+                "    ctypes.c_ulong(0x20 | 0x1000), None,\n"
+                ")\n"
+                "print('REMOUNT:' + ('blocked' if rw != 0 else 'ok'))\n"
+                "um = libc.umount2(ctypes.c_char_p(cwd), ctypes.c_int(2))\n"
+                "print('UMOUNT:' + ('blocked' if um != 0 else 'ok'))\n"
                 "try:\n"
                 '    socket.create_connection(("1.1.1.1", 53), timeout=2)\n'
                 '    print("NET:reachable")\n'
@@ -343,6 +367,12 @@ def test_an_isolated_stage_cannot_reach_the_network_or_write_the_candidate(
     assert _stage_run(commit="candidate", base="master") == 0
 
     captured = capsys.readouterr()
+    # A user namespace was entered for at least one guarantee, so the
+    # capability drop ran: the stage holds none at all, and the mount
+    # it sees cannot be remounted read-write or unmounted back.
+    assert "openspec | CAPS:zero" in captured.out
+    assert "openspec | REMOUNT:blocked" in captured.out
+    assert "openspec | UMOUNT:blocked" in captured.out
     if verdicts.network is None:
         assert "openspec | NET:blocked" in captured.out
         assert "not enforced: network" not in captured.err
@@ -715,13 +745,17 @@ def test_the_child_setup_names_each_refused_namespace(
     def refuse(flags: int) -> None:
         raise OSError(1, "Operation not permitted")
 
+    dropped: list[int] = []
     monkeypatch.setattr(os, "unshare", refuse)
+    monkeypatch.setattr(isolation, "_drop_capabilities", lambda: dropped.append(1))
     isolation.stage_setup(network=True, readonly=Path("/cand"))()
     err = capfd.readouterr().err
     assert "AGENTMARSHAL-SETUP-FAILED: network: Operation not permitted" in err
     assert (
         "AGENTMARSHAL-SETUP-FAILED: read-only candidate: Operation not permitted" in err
     )
+    # No user namespace was entered, so there are no capabilities to drop.
+    assert dropped == []
 
 
 def test_the_child_setup_keeps_a_namespace_the_retry_allows(
@@ -733,12 +767,16 @@ def test_the_child_setup_keeps_a_namespace_the_retry_allows(
         if flags & isolation._CLONE_NEWNS:
             raise OSError(1, "Operation not permitted")
 
+    dropped: list[int] = []
     monkeypatch.setattr(os, "unshare", refuse_newns)
     monkeypatch.setattr(isolation, "_write_file", lambda path, text: None)
+    monkeypatch.setattr(isolation, "_drop_capabilities", lambda: dropped.append(1))
     isolation.stage_setup(network=True, readonly=Path("/cand"))()
     err = capfd.readouterr().err
     assert "AGENTMARSHAL-SETUP-FAILED: network" not in err
     assert "AGENTMARSHAL-SETUP-FAILED: read-only candidate" in err
+    # The network namespace stands, so the drop it needs still ran.
+    assert dropped == [1]
 
 
 def test_the_child_setup_names_a_failed_mount(
@@ -748,6 +786,7 @@ def test_the_child_setup_names_a_failed_mount(
 
     monkeypatch.setattr(os, "unshare", lambda flags: None)
     monkeypatch.setattr(isolation, "_write_file", lambda path, text: None)
+    monkeypatch.setattr(isolation, "_drop_capabilities", lambda: None)
 
     def refuse(source: str | None, target: str, flags: int) -> None:
         if flags & isolation._MS_REMOUNT:
@@ -774,3 +813,209 @@ def test_strip_failure_reports_splits_markers_from_output() -> None:
     kept, failures = isolation.strip_failure_reports(b"nothing marked\n")
     assert kept == b"nothing marked\n"
     assert failures == []
+
+
+# -- the capability drop -------------------------------------------------------
+
+
+class _FakeLibc:
+    """Records the ``prctl``/``capset`` calls the drop makes.
+
+    ``fail_prctl`` names an option value for which the call answers -1 —
+    the drop's own seam, exercised without the process's real capability
+    set ever changing.
+    """
+
+    def __init__(self, fail_prctl: int | None = None) -> None:
+        self.calls: list[tuple[str, object]] = []
+        self.fail_prctl = fail_prctl
+
+    def prctl(self, *args: Any) -> int:
+        values = tuple(getattr(arg, "value", arg) for arg in args)
+        self.calls.append(("prctl", values))
+        return -1 if values and values[0] == self.fail_prctl else 0
+
+    def capset(self, header: Any, data: Any) -> int:
+        self.calls.append(
+            (
+                "capset",
+                (
+                    header.contents.version,
+                    header.contents.pid,
+                    [
+                        (word.effective, word.permitted, word.inheritable)
+                        for word in data
+                    ],
+                ),
+            )
+        )
+        return 0
+
+
+def test_drop_capabilities_clears_every_capability_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The drop clears ambient, bounding and live sets, securebits, no_new_privs."""
+
+    fake = _FakeLibc()
+    monkeypatch.setattr(isolation, "_libc", lambda: fake)
+    monkeypatch.setattr(isolation, "_cap_last_cap", lambda: 2)
+
+    isolation._drop_capabilities()
+
+    assert fake.calls == [
+        ("prctl", (47, 4, 0, 0, 0)),  # PR_CAP_AMBIENT, CLEAR_ALL
+        ("prctl", (28, 0x0F, 0, 0, 0)),  # PR_SET_SECUREBITS, the four bits
+        ("prctl", (38, 1, 0, 0, 0)),  # PR_SET_NO_NEW_PRIVS
+        ("prctl", (24, 0, 0, 0, 0)),  # PR_CAPBSET_DROP for 0..cap_last_cap
+        ("prctl", (24, 1, 0, 0, 0)),
+        ("prctl", (24, 2, 0, 0, 0)),
+        (
+            "capset",
+            (isolation._LINUX_CAPABILITY_VERSION_3, 0, [(0, 0, 0), (0, 0, 0)]),
+        ),
+    ]
+
+
+def test_drop_capabilities_names_the_step_that_failed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A refused step is the drop failure's reason, not a silent pass."""
+
+    fake = _FakeLibc(fail_prctl=28)  # PR_SET_SECUREBITS
+    monkeypatch.setattr(isolation, "_libc", lambda: fake)
+    monkeypatch.setattr(isolation, "_cap_last_cap", lambda: 2)
+    monkeypatch.setattr(ctypes, "get_errno", lambda: 1)
+
+    with pytest.raises(isolation._CapabilityDropError) as caught:
+        isolation._drop_capabilities()
+    assert str(caught.value) == (
+        "capabilities could not be dropped: "
+        "prctl(PR_SET_SECUREBITS): Operation not permitted"
+    )
+
+
+def test_a_network_only_stage_setup_drops_capabilities(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The drop follows the user namespace however it was asked for."""
+
+    dropped: list[int] = []
+    mounted: list[tuple[str | None, str, int]] = []
+    monkeypatch.setattr(os, "unshare", lambda flags: None)
+    monkeypatch.setattr(isolation, "_write_file", lambda path, text: None)
+    monkeypatch.setattr(
+        isolation,
+        "_mount",
+        lambda source, target, flags: mounted.append((source, target, flags)),
+    )
+    monkeypatch.setattr(isolation, "_drop_capabilities", lambda: dropped.append(1))
+
+    isolation.stage_setup(network=True, readonly=None)()
+
+    assert dropped == [1]
+    assert mounted == []
+
+
+def test_a_capability_drop_failure_names_every_guarantee_the_child_was_asked_to_enforce(
+    monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a capability drop that fails names every guarantee the child was asked to enforce."""  # noqa: E501
+
+    def refuse() -> None:
+        raise OSError(1, "Operation not permitted")
+
+    monkeypatch.setattr(os, "unshare", lambda flags: None)
+    monkeypatch.setattr(isolation, "_write_file", lambda path, text: None)
+    monkeypatch.setattr(isolation, "_mount", lambda s, t, f: None)
+    monkeypatch.setattr(isolation, "_drop_capabilities", refuse)
+    isolation.stage_setup(network=True, readonly=Path("/cand"))()
+    err = capfd.readouterr().err
+    detail = "capabilities could not be dropped: Operation not permitted"
+    assert f"AGENTMARSHAL-SETUP-FAILED: network: {detail}" in err
+    assert f"AGENTMARSHAL-SETUP-FAILED: read-only candidate: {detail}" in err
+
+
+@pytest.mark.skipif(os.name != "posix", reason="preexec_fn is POSIX-only")
+def test_a_failed_capability_drop_is_named_and_the_stage_still_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A drop forced to fail in the stage's child names both guarantees."""
+
+    def refuse() -> None:
+        raise OSError(1, "Operation not permitted")
+
+    _force_probe(monkeypatch)
+    monkeypatch.setattr(os, "unshare", lambda flags: None)
+    monkeypatch.setattr(isolation, "_write_file", lambda path, text: None)
+    monkeypatch.setattr(isolation, "_mount", lambda s, t, f: None)
+    monkeypatch.setattr(isolation, "_drop_capabilities", refuse)
+    _repo_with_extension(tmp_path, monkeypatch)
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 0
+
+    captured = capsys.readouterr()
+    assert "openspec: checked" in captured.out
+    detail = "capabilities could not be dropped: Operation not permitted"
+    assert f"not enforced: network ({detail})" in captured.err
+    assert f"not enforced: read-only candidate ({detail})" in captured.err
+
+
+def test_the_probe_child_runs_the_capability_drop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The probe's enforceable verdict covers the drop: it runs it."""
+
+    dropped: list[int] = []
+    monkeypatch.setattr(os, "unshare", lambda flags: None)
+    monkeypatch.setattr(isolation, "_write_file", lambda path, text: None)
+    monkeypatch.setattr(isolation, "_probe_read_only", lambda directory: None)
+    monkeypatch.setattr(isolation, "_drop_capabilities", lambda: dropped.append(1))
+
+    verdicts = isolation._probe_child("/unused")
+
+    assert verdicts == {"network": None, "readonly": None}
+    assert dropped == [1]
+
+
+def test_the_probe_names_a_capability_drop_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A drop failure in the probe's child marks the guarantees unenforceable."""
+
+    def refuse() -> None:
+        raise OSError(1, "Operation not permitted")
+
+    monkeypatch.setattr(os, "unshare", lambda flags: None)
+    monkeypatch.setattr(isolation, "_write_file", lambda path, text: None)
+    monkeypatch.setattr(isolation, "_probe_read_only", lambda directory: None)
+    monkeypatch.setattr(isolation, "_drop_capabilities", refuse)
+
+    verdicts = isolation._probe_child("/unused")
+
+    detail = "capabilities could not be dropped: Operation not permitted"
+    assert verdicts == {"network": detail, "readonly": detail}
+
+
+def test_the_probe_child_skips_the_drop_without_the_maps(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No uid/gid maps, no granted capabilities: the drop is not attempted."""
+
+    dropped: list[int] = []
+
+    def refuse(path: str, text: str) -> None:
+        raise OSError(1, "Operation not permitted")
+
+    monkeypatch.setattr(os, "unshare", lambda flags: None)
+    monkeypatch.setattr(isolation, "_write_file", refuse)
+    monkeypatch.setattr(isolation, "_drop_capabilities", lambda: dropped.append(1))
+
+    verdicts = isolation._probe_child("/unused")
+
+    assert dropped == []
+    assert verdicts["network"] is not None
+    assert verdicts["network"].startswith("the uid/gid maps:")
+    assert verdicts["readonly"] is not None
