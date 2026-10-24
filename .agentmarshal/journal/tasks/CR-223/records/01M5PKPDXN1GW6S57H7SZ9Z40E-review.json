@@ -1,0 +1,99 @@
+{
+  "advisory_findings": [
+    "ADV-1",
+    "ADV-2",
+    "ADV-3",
+    "ADV-4"
+  ],
+  "artifacts": [
+    {
+      "hash": "6cc83fab8ea9f5e67b8f86bc077f33588f8a3d8c7e352927994ce4d39efc4a8d",
+      "ref": ".agentmarshal/journal/tasks/CR-223/artifacts/01M5PKPDXN1GW6S57H7SZ9Z40E-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-1": "style",
+    "ADV-2": "test-gap",
+    "ADV-3": "contract-mismatch",
+    "ADV-4": "claim-accuracy"
+  },
+  "created_at": "2026-10-24T09:25:59.861560Z",
+  "evidence": {
+    "ADV-1": "src/agentmarshal/isolation.py:21 ('before exec, the child drops') and :329 ('is named on the right') — short line breaks mid-paragraph where neighbouring lines fill to ~72 columns; tests/test_isolation.py:326 and :391 add a blank line after a scenario docstring where :220, :285 and :512 do not",
+    "ADV-2": "tests/test_isolation.py:560 — 'open(os.path.join(os.getcwd(), \"probe-abs.txt\"), \"w\")'; the absolute path is derived from the cwd that the re-entry under test installs, while src/agentmarshal/stages.py:492 already exports AGENTMARSHAL_SNAPSHOT as an independent absolute path",
+    "ADV-3": "tests/test_isolation.py:517 — 'if verdicts.network is not None and verdicts.readonly is not None: pytest.skip(...)'; with verdicts.readonly set and verdicts.network None the test runs and the lines 586-587 assertions on WRITE/ABSWRITE are skipped by the 'if verdicts.readonly is None' branch at line 585 without any skip reason",
+    "ADV-4": "src/agentmarshal/isolation.py:72 — '#: The ``statvfs`` ``f_flag`` bits (``sys/vfs.h``)'; ST_NOSUID..ST_RELATIME are declared in sys/statvfs.h via bits/statvfs.h, while sys/vfs.h provides the statfs interface — unconfirmed, the sandbox refused 'grep -rn ST_NOSUID /usr/include/'"
+  },
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "0c2996a177fc0a0bea81986babe153bce17e3779",
+  "reviewed_contract": "8f6b10fc63219439c61db36087d0c5ea4ed6e9f9634b726b5afc803361c00a1d",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-223",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "identical apart from the delta's '## MODIFIED Requirements' header and one trailing blank line — the heading and full text match byte for byte",
+        "what": "diff of the delta's MODIFIED requirement body (archive/2026-10-24-readonly-floor-holds/specs/extension-stages/spec.md lines 3-116) against openspec/specs/extension-stages/spec.md lines 923-1035"
+      },
+      {
+        "result": "all 11 scenarios of the MODIFIED requirement named in test docstrings at lines 220, 285, 326, 357, 391, 439, 464, 489, 512, 514, 1361",
+        "what": "grep -n 'Scenario:' tests/test_isolation.py"
+      },
+      {
+        "result": "the read-only requirement is at line 923; Purpose at line 3 intact",
+        "what": "grep -n '^### Requirement' openspec/specs/extension-stages/spec.md"
+      },
+      {
+        "result": "every in-process call path either stubs os.chdir or raises before reaching it; the only unstubbed real chdir is in the forked child of test_a_failed_capability_drop_is_named_and_the_stage_still_runs (line 1273), so pytest's own cwd is never changed",
+        "what": "grep -n for _setup_report / _probe_read_only / _bind_read_only / os.chdir / statvfs call sites in tests/test_isolation.py"
+      },
+      {
+        "result": "no match — no CHANGELOG entry is required for this change",
+        "what": "grep -n -i changelog CONTRIBUTING.md AGENTS.md"
+      },
+      {
+        "result": "no match — no stale defect note left behind outside the contract's scope",
+        "what": "grep -n -i 'read-only|readonly|EPERM|nosuid' docs/known-defects.md docs/threat-model.md"
+      },
+      {
+        "result": "only /usr/bin/python3; no uv and no virtualenv in the snapshot",
+        "what": "which uv python3; ls .venv/bin"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; uv run agentmarshal validate; uv run pytest; uv run ruff check; uv run ruff format --check; uv run mypy",
+        "why": "the snapshot has no uv and no virtualenv, and running python3 is blocked in this sandbox; relying on the coordinator's statement that the sequence passed on this commit"
+      },
+      {
+        "what": "a live check of the MS_*/ST_* constants and of the kernel's can_change_locked_flags against the system headers and kernel source",
+        "why": "the sandbox refuses reads outside the project directory, so the constant and lock-set verification is from the C headers' published values, not from this machine"
+      },
+      {
+        "what": "an end-to-end run of the real read-only floor (a stage writing into a bound candidate)",
+        "why": "no test runner available and the review is read-only"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/isolation.py (whole file)",
+      "tests/test_isolation.py lines 1-240, 500-595, 1040-1398",
+      "src/agentmarshal/stages.py lines 480-650, 920-990",
+      "openspec/specs/extension-stages/spec.md lines 1-30, 109-135, 923-1035",
+      "openspec/changes/archive/2026-10-24-readonly-floor-holds/{proposal.md,design.md,tasks.md,specs/extension-stages/spec.md}",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md lines 115-135",
+      "pyproject.toml ruff settings (line-length = 88)"
+    ]
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "advisory_dispositions": {
+    "ADV-1": {
+      "disposition": "rejected",
+      "reason": "formatting only; ruff format passes and the comments read correctly"
+    },
+    "ADV-2": {
+      "disposition": "deferred",
+      "reason": "the end-to-end test takes its absolute path from AGENTMARSHAL_SNAPSHOT in the 0.6.0 tails task"
+    },
+    "ADV-3": {
+      "disposition": "deferred",
+      "reason": "the end-to-end test skips with a reason when only the read-only guarantee is unenforced, in the 0.6.0 tails task"
+    },
+    "ADV-4": {
+      "disposition": "deferred",
+      "reason": "the comment names sys/statvfs.h in the 0.6.0 tails task"
+    }
+  },
+  "completed_commit": "0c2996a177fc0a0bea81986babe153bce17e3779",
+  "created_at": "2026-10-24T09:26:35.562243Z",
+  "record_type": "completed",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "schema": 7,
+  "source": "live",
+  "task": "CR-223",
+  "tool_version": "0.6.0.dev0"
+}
