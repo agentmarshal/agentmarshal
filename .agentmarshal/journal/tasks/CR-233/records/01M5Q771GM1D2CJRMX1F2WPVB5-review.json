@@ -1,0 +1,92 @@
+{
+  "advisory_findings": [
+    "personal-schema-1-refusal-misleads",
+    "personal-command-python-only",
+    "personal-switch-rewrite-drops-entries"
+  ],
+  "artifacts": [
+    {
+      "hash": "d67a3a54896b329df2c42f15bcc867b7ea1478fe07b63f5d62a8ec88ffb56496",
+      "ref": ".agentmarshal/journal/tasks/CR-233/artifacts/01M5Q771GM1D2CJRMX1F2WPVB5-review.md"
+    }
+  ],
+  "classes": {
+    "personal-command-python-only": "contract-mismatch",
+    "personal-run-fails-on-unreadable-trust": "correctness",
+    "personal-schema-1-refusal-misleads": "correctness",
+    "personal-switch-rewrite-drops-entries": "correctness"
+  },
+  "created_at": "2026-10-24T15:07:07.156918Z",
+  "evidence": {
+    "personal-command-python-only": "src/agentmarshal/stages.py:728 'argv = [sys.executable, str(command)]' (one path for both scopes, reached from run_and_report at :1350); docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md:242 'A personal extension may be written in any language.'",
+    "personal-run-fails-on-unreadable-trust": "src/agentmarshal/stages.py:1075 'if not plan and not personal and quiet' and :1092 'if not plan and not personal' (the diff shows both were 'if not plan ...' before), :1146-1159 'if not ci: try: grants = _read_grants(state.trust_file) ... grants_unreadable = True', :1476-1478 'if grants_unreadable: return StageRunResult(1, tuple(paused))'; cli.py:1151-1156 turns that status into 'complete: pre-gate stage run refused; task not completed'",
+    "personal-schema-1-refusal-misleads": "src/agentmarshal/extension_trust.py:320-325 rejects 'artifacts' outright, :326-333 then checks manifest.schema != 2; src/agentmarshal/journal/extensions.py:406 'if schema == 1 or \"artifacts\" in data: artifacts = _require_string_array(data, \"artifacts\", source)' with :119-127 raising \"must be an array of strings\" for a missing key, so schema 1 never reaches the schema-2 message",
+    "personal-switch-rewrite-drops-entries": "src/agentmarshal/switches.py:302-303 'if name not in names: continue' and :330 keeping only state/reason; src/agentmarshal/extension_trust.py:837 'switches = read_personal_switches(state.switches_file, names)', :843 '_write_personal_switches(state, switches)', :728-744 _dump_personal_switches writing exactly that dict; :876 does the same with 'names | {args.name}'"
+  },
+  "findings": [
+    "personal-run-fails-on-unreadable-trust"
+  ],
+  "previous_review": "01M5Q6MVESRN78VE09J44BEHWP",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "5b748eef7d4830e196c5b9fc2c275b8819a1bf7f",
+  "reviewed_contract": "03cc242150d34438f2bd1c5705990c9d8a3401e133b2a3a8d2237b9068accea7",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-233",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "37 and 37; listing both showed the 37 titles matching one-to-one in order",
+        "what": "grep -c '^#### Scenario:' on the archived delta spec and grep -c 'Scenario:' on tests/test_personal_extensions.py"
+      },
+      {
+        "result": "96f1ace8ac52ad3931d29c5079347d7d both — the delta's requirements are appended verbatim",
+        "what": "tail -n 309 openspec/specs/extension-stages/spec.md | md5sum vs the same tail of the archived delta"
+      },
+      {
+        "result": "identical layout (proposal.md, design.md, tasks.md, specs/extension-stages/spec.md); openspec/changes holds only archive/",
+        "what": "find on openspec/changes/archive/2026-10-25-personal-extensions and 2026-10-24-complete-runs-stages"
+      },
+      {
+        "result": "only stages.py:1505-1513 and cli.py:1122-1131, 1217-1226 pass skip; no caller left unpassed",
+        "what": "grep -rn 'run_stages(|skip_ext' src tests"
+      },
+      {
+        "result": "record_ext.py:147 reads the working tree's shared manifest only — personal kinds cannot enter",
+        "what": "grep -rn 'read_extension_manifest|record_kinds' src/agentmarshal/record_ext.py"
+      },
+      {
+        "result": "no output — the process log does not constrain the scope value, so scope=personal is writable",
+        "what": "grep -rn 'scope' src/agentmarshal/process_log.py"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff; mypy",
+        "why": "neither uv nor pytest is installed in this read-only review sandbox and arbitrary interpreter runs were declined; the coordinator's note that the sequence passed on this commit is taken as given and no finding claims a tool failure"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/stages.py (lines 380-900, 900-1523)",
+      "src/agentmarshal/switches.py (whole file)",
+      "src/agentmarshal/extension_trust.py (lines 80-440, 560-895)",
+      "src/agentmarshal/doctor.py (lines 500-845)",
+      "src/agentmarshal/cli.py (lines 1040-1235)",
+      "src/agentmarshal/localstate.py",
+      "src/agentmarshal/journal/extensions.py (lines 60-360, 360-641)",
+      "tests/test_personal_extensions.py (via the diff) and tests/test_stages.py helpers",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md (lines 145-280)",
+      "openspec/specs/extension-stages/spec.md (appended requirements)"
+    ]
+  }
+}
