@@ -599,6 +599,11 @@ def _utc_timestamp(value: str, what: str) -> datetime:
     """Parse *value* as a UTC ISO-8601 timestamp — the one rule
     `created_at` follows, reused for the session's `started_at`,
     `ended_at` and `resets_at`. *what* names the field a refusal gives.
+
+    `fromisoformat` accepts any single character as the date-time
+    separator, so a character the forgeable-text rule refuses can ride
+    a timestamp past this parse; the `timestamp-text` rule's refusal
+    lands ahead of it at write time.
     """
 
     try:
@@ -608,6 +613,27 @@ def _utc_timestamp(value: str, what: str) -> datetime:
     if parsed.tzinfo is None or parsed.utcoffset() != UTC.utcoffset(parsed):
         raise JournalRecordError(f"{what} must be a UTC timestamp")
     return parsed
+
+
+@_rule("timestamp-text")
+def _check_timestamp_text(data: Mapping[str, object], _context: _RuleContext) -> None:
+    # The write side of the text boundary for the four timestamps: the
+    # parser below takes any single character as the date-time
+    # separator, so a newline, a bidirectional mark or a lone surrogate
+    # could ride a timestamp into the journal — the refusal lands ahead
+    # of the parse, naming the field. The rule is bound past today's
+    # schemas, so it reaches no record a read can load — a timestamp
+    # history already holds parses as it always did (ADR-0015
+    # decisions 2 and 4).
+    created_at = data.get("created_at")
+    if isinstance(created_at, str):
+        _reject_control_characters(created_at, "record field 'created_at'")
+    if cast(str, data["record_type"]) != "session":
+        return
+    for field in ("started_at", "ended_at", "resets_at"):
+        value = data.get(field)
+        if isinstance(value, str):
+            _reject_control_characters(value, f"session record field {field!r}")
 
 
 @_rule("created-at")
@@ -854,10 +880,11 @@ def _check_session_fields_7(data: Mapping[str, object], _context: _RuleContext) 
     # follow `created_at`'s UTC ISO-8601 rule — the one parser, reused —
     # and `created_at` itself stays the write time, derived from none of
     # them. None of the four registers in the shared validator tables:
-    # each shape below admits no character the forgeable-text rule
-    # refuses, and this rule runs ahead of it, so an entry would never
-    # fire — and the family's five displayed strings already name every
-    # field that rule guards.
+    # the parser accepts any single character as the date-time
+    # separator, so the guard they need is write-time only and ahead of
+    # the parse — the separate `timestamp-text` rule — while the
+    # family's five displayed strings already name every field the
+    # shared forgeable-text rule guards.
     timestamps: dict[str, datetime] = {}
     for field in ("started_at", "ended_at", "resets_at"):
         if field not in data:
@@ -1380,6 +1407,27 @@ def _check_provenance(data: Mapping[str, object], _context: _RuleContext) -> Non
         _validate_provenance(data)
 
 
+@_rule("artifact-ref-text")
+def _check_artifact_ref_text(
+    data: Mapping[str, object], _context: _RuleContext
+) -> None:
+    # The write side of the guard `_review_artifact_failures` applies on
+    # read: a record's `artifacts` references print in transcripts, so a
+    # `ref` carrying a character the forgeable-text rule refuses is
+    # refused before the record is written, naming the field. The rule
+    # is bound past today's schemas, so it reaches no record a read can
+    # load — a reference history already holds stays `validate`'s to
+    # report, never the reader's to refuse (ADR-0015 decisions 2 and 4).
+    artifacts = data.get("artifacts")
+    if not isinstance(artifacts, list):
+        return
+    for artifact in artifacts:
+        if isinstance(artifact, dict):
+            ref = artifact.get("ref")
+            if isinstance(ref, str):
+                _reject_control_characters(ref, "artifact field 'ref'")
+
+
 @_rule("recorded-by")
 def _check_recorded_by(data: Mapping[str, object], _context: _RuleContext) -> None:
     _validate_recorded_by(data)
@@ -1543,6 +1591,12 @@ _RULE_FROM_SCHEMA: dict[str, int] = {
     "completed-fields-7": 7,
     "ext-fields-7": 7,
     "provenance": 2,
+    # Write-time only: bound to the first schema after today's, so the
+    # rules reach no record a read can load — a timestamp history holds
+    # parses as it always did, and `validate` still reports an artifact
+    # reference history holds, as before (ADR-0015).
+    "artifact-ref-text": 8,
+    "timestamp-text": 8,
     "recorded-by": 1,
     "finding-binding": 4,
     "task-placement": 1,
@@ -2056,14 +2110,18 @@ def write_record(
     )
     record_type = cast(str, data["record_type"])
     path = _record_path(journal_root, task_id, identifier, record_type)
-    _prepare_record_directory(journal_root, task_id)
     content = json.dumps(data, indent=2, sort_keys=True, ensure_ascii=False)
+    # Encode before the file exists: a value UTF-8 cannot encode fails
+    # here, so an exclusive create can never leave an empty or partial
+    # record behind.
+    body = f"{content}\n".encode()
+    _prepare_record_directory(journal_root, task_id)
     try:
         record_file = _create_exclusive(path)
     except UnsafeProjectPathError as error:
         raise JournalRecordError(str(error)) from error
     with record_file:
-        record_file.write(f"{content}\n")
+        record_file.buffer.write(body)
     return path
 
 

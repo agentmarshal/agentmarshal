@@ -596,20 +596,23 @@ def _run_reviewer(
     return result.stdout, result.stderr
 
 
-def _preserve_output(output: str) -> Path:
+def _preserve_output(output: bytes | str) -> Path:
     """Write a reviewer's raw output where the caller can still read it.
 
     A verdict that fails validation used to take the whole run with it: the
     launcher prints only the record path, so the analysis the reviewer was paid
-    to produce had nowhere to survive. The file is deliberately not cleaned up;
-    removing it is the caller's decision.
+    to produce had nowhere to survive. Bytes go to the file as they arrived —
+    a decoded copy would lose what UTF-8 could not read, so callers hand over
+    the reviewer's raw bytes and only parser-built text lands here encoded.
+    The file is deliberately not cleaned up; removing it is the caller's
+    decision.
     """
 
     descriptor, name = tempfile.mkstemp(
         prefix="agentmarshal-rejected-verdict-", suffix=".txt"
     )
-    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-        handle.write(output)
+    with os.fdopen(descriptor, "wb") as handle:
+        handle.write(output.encode("utf-8") if isinstance(output, str) else output)
     return Path(name)
 
 
@@ -808,7 +811,7 @@ def _with_diagnostics(error: ReviewLaunchError, note: str | None) -> ReviewLaunc
 
 
 def _reject(
-    output: str, reason: str, *, preserve_output: bool = True
+    output: bytes | str, reason: str, *, preserve_output: bool = True
 ) -> ReviewLaunchError:
     """Build a rejection that names where the reviewer's raw output was kept."""
 
@@ -822,7 +825,7 @@ def _reject(
 
 
 def _parse_verdict(
-    output: str,
+    output: bytes | str,
     *,
     subject_fields: frozenset[str] = frozenset({"reviewed_commit"}),
     expected_field: str | None = None,
@@ -843,7 +846,14 @@ def _parse_verdict(
     def reject(reason: str) -> ReviewLaunchError:
         return _reject(output, reason, preserve_output=preserve_output)
 
-    lines = output.splitlines()
+    # Raw reviewer bytes decode for parsing with replacements marking what
+    # UTF-8 could not read; a refusal keeps the bytes themselves.
+    text = (
+        output.decode("utf-8", errors="replace")
+        if isinstance(output, bytes)
+        else output
+    )
+    lines = text.splitlines()
     begins = [index for index, line in enumerate(lines) if line == _VERDICT_BEGIN]
     ends = [index for index, line in enumerate(lines) if line == _VERDICT_END]
     if len(begins) != 1 or len(ends) != 1 or begins[0] >= ends[0]:
@@ -1256,7 +1266,6 @@ def dry_run_review(
         diagnostics_note = _keep_diagnostics(
             raw_diagnostics, journal_project_root=journal_root.parents[1]
         )
-        output = raw_output.decode("utf-8", errors="replace")
         try:
             (
                 _subject_field,
@@ -1267,12 +1276,12 @@ def dry_run_review(
                 _classes,
                 _verification,
                 _evidence,
-            ) = _parse_verdict(output, preserve_output=False)
+            ) = _parse_verdict(raw_output, preserve_output=False)
         except ReviewLaunchError as error:
             # The operator is debugging this command; the output is the evidence.
             # It goes beside the rejected-verdict copies, outside any journal.
             try:
-                kept = _preserve_output(output)
+                kept = _preserve_output(raw_output)
             except OSError:
                 raise _with_diagnostics(
                     ReviewLaunchError(f"reviewer output: {error}"), diagnostics_note
@@ -1499,7 +1508,6 @@ def _launch_review_tail(
     """
 
     raw_output = b""
-    reviewer_output = ""
     with tempfile.TemporaryDirectory(
         prefix="agentmarshal-review-"
     ) as temporary_directory:
@@ -1531,9 +1539,9 @@ def _launch_review_tail(
                 if diagnostics_note is not None
                 else operator_note
             )
-        # The verdict is parsed from a decoded copy; the artifact pins the
-        # bytes the reviewer wrote, so nothing is normalised on the way.
-        reviewer_output = raw_output.decode("utf-8", errors="replace")
+        # The verdict parses from a decoded copy with replacements marking
+        # what UTF-8 could not read; the bytes the reviewer wrote are what a
+        # refusal keeps and the artifact pins, so nothing is normalised.
         try:
             (
                 subject_field,
@@ -1545,7 +1553,7 @@ def _launch_review_tail(
                 verification_data,
                 evidence_data,
             ) = _parse_verdict(
-                reviewer_output,
+                raw_output,
                 subject_fields=subject_fields,
                 expected_field=expected_subject_field,
             )
@@ -1556,7 +1564,7 @@ def _launch_review_tail(
         if subject_field != expected_subject_field or subject != expected_subject:
             raise _with_diagnostics(
                 _reject(
-                    reviewer_output,
+                    raw_output,
                     subject_mismatch(subject_field, subject),
                 ),
                 diagnostics_note,
@@ -1605,7 +1613,7 @@ def _launch_review_tail(
         # duplicates, or advisory ids overlapping findings. That path discarded
         # the analysis too, and it is the one seen most often in practice.
         raise _with_diagnostics(
-            _reject(reviewer_output, str(error)), diagnostics_note
+            _reject(raw_output, str(error)), diagnostics_note
         ) from error
     prose_note: str | None = None
     if prose_capture_level is CaptureLevel.HASH:

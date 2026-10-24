@@ -381,6 +381,13 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="attested pipeline SHA (defaults to AGENTMARSHAL_PIPELINE_OK_SHA)",
     )
+    complete_parser.add_argument(
+        "--skip-ext",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help="skip the named personal extension for this run (repeatable)",
+    )
     abandon_parser = subparsers.add_parser(
         "abandon", help="record abandonment of an open task"
     )
@@ -1046,6 +1053,12 @@ def _run_complete(args: argparse.Namespace, stderr: TextIO) -> int:
     if args.findings and args.target is not None:
         print("complete: --findings takes no --target", file=stderr)
         return 1
+    if args.findings and args.skip_ext:
+        # The findings lane invokes no stages at all, so the flag has
+        # nothing to skip — refused like the lane's other stage-side
+        # arguments.
+        print("complete: --findings takes no --skip-ext", file=stderr)
+        return 1
     if not args.findings and (args.commit is None or args.base is None):
         print(
             "complete: --commit and --base are required without --findings", file=stderr
@@ -1115,6 +1128,7 @@ def _run_complete(args: argparse.Namespace, stderr: TextIO) -> int:
                 "pre-gate",
                 stderr,
                 quiet=True,
+                skip=args.skip_ext,
             )
             if stage_run.status == 3:
                 if args.target is not None and _candidate_merged(
@@ -1209,6 +1223,7 @@ def _run_complete(args: argparse.Namespace, stderr: TextIO) -> int:
                 "post-gate",
                 stderr,
                 quiet=True,
+                skip=args.skip_ext,
             )
         except Exception as error:
             print(

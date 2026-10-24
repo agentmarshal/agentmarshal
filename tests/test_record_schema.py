@@ -153,6 +153,8 @@ def test_todays_rules_apply_from_schema_1_except_the_gates() -> None:
         "review-fields-7": 7,
         "completed-fields-7": 7,
         "ext-fields-7": 7,
+        "artifact-ref-text": 8,
+        "timestamp-text": 8,
     }
     for name, schema in records_module._RULE_FROM_SCHEMA.items():
         assert schema == gates.get(name, 1), name

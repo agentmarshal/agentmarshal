@@ -14,9 +14,19 @@ The file is read in two places, each against the extension names its
 reader knows: ``stage run`` reads it from the merge base's tree
 (decision 6 — a candidate can neither switch a check off for its own
 run nor switch one back on), and ``doctor`` reads it from the working
-tree. Personal switches — a different file, in the clone's local state —
-are a later task; this module reads the shared file only and writes
-nothing.
+tree.
+
+The personal switch is the same idea on the clone's side (ADR-0013
+decision 16): ``extension disable`` writes ``state = "off"`` for a
+personal extension into the clone's ``switches.toml`` —
+``LocalState.switches_file`` — and ``extension enable`` removes it.
+``PersonalSwitch`` is one such entry: a ``state`` plus an optional
+``reason`` under the same rule; it carries no ``task`` — no operational
+task writes the local file. Its parser shares the format and, unlike
+the shared one, reads past an entry naming no live personal extension
+and past keys beyond the shape; a missing file means every personal
+extension is on and a file the parse refuses leaves them on too, named
+on one line by its reader. This module writes nothing.
 """
 
 from __future__ import annotations
@@ -205,3 +215,133 @@ def read_switches(path: Path, names: Collection[str]) -> dict[str, Switch]:
             f"{path}: cannot read the switches file: {error.strerror or error}"
         ) from error
     return parse_switches(data, path, names)
+
+
+def personal_extension_names(directory: Path) -> frozenset[str]:
+    """The personal extension names the clone's directory enumerates.
+
+    A personal extension exists only in the directory form (ADR-0013
+    decision 9): an entry that is a directory — or a symbolic link, kept
+    under its name so its manifest read can refuse the link — declares a
+    name; anything else declares none, and a *directory* that is absent
+    enumerates no names. Whether the manifest under a name reads is no
+    part of the rule — a broken extension is still a declared name.
+    A *directory* that exists but is no directory — a file or a link in
+    its place — and a listing that fails raise for the caller to name on
+    one line.
+    """
+
+    if directory.is_symlink():
+        raise OSError(f"{directory} is a symbolic link")
+    if not directory.is_dir():
+        if directory.exists():
+            raise OSError(f"{directory} is not a directory")
+        return frozenset()
+    names: set[str] = set()
+    for entry in directory.iterdir():
+        if entry.is_symlink() or entry.is_dir():
+            names.add(entry.name)
+    return frozenset(names)
+
+
+@dataclass(frozen=True)
+class PersonalSwitch:
+    """One personal extension's switch: its state and an optional reason.
+
+    No operational task writes the clone's file, so the entry carries no
+    ``task``; ``reason`` is the free-text note ``extension disable
+    --reason`` may leave, under the same forgeable-text rule and bound as
+    the shared field.
+    """
+
+    state: Literal["on", "off"]
+    reason: str | None = None
+
+
+def parse_personal_switches(
+    data: bytes, source: str | Path, names: Collection[str]
+) -> dict[str, PersonalSwitch]:
+    """Parse the clone's ``switches.toml`` bytes; refusals raise.
+
+    The shape is the shared file's — ``format = 1``, a ``switches``
+    table, an entry a table — with the personal entry's fields:
+    ``state`` (``on`` or ``off``) and an optional ``reason`` passing the
+    forgeable-text rule; a ``task`` is just another key beyond the
+    shape. Where the shared parser refuses an entry naming no known
+    extension this one reads past it — the clone's file may hold a
+    switch for an extension long deleted — and it reads past keys the
+    entry carries beyond ``state`` and ``reason``. Byte text that is
+    not UTF-8 TOML, a missing or unknown ``format``, a missing or
+    non-table ``switches``, a non-table entry, a ``state`` outside
+    ``on``/``off``, or a ``reason`` that is no string, is empty, over
+    the character limit or holds a forgeable character is each refused
+    naming the file and, where one exists, the entry.
+    """
+
+    shown = str(source)
+    try:
+        parsed = tomllib.loads(data.decode("utf-8"))
+    except (tomllib.TOMLDecodeError, UnicodeDecodeError) as error:
+        raise SwitchesError(f"{shown}: malformed: {error}") from error
+    table = parsed.get("switches")
+    declared = frozenset(table) if isinstance(table, dict) else None
+    version = parsed.get("format")
+    if version is None:
+        raise SwitchesError(f"{shown}: missing 'format'", names=declared)
+    if not (type(version) is int and version == SWITCHES_FORMAT):
+        raise SwitchesError(f"{shown}: unknown format {version!r}", names=declared)
+    if table is None:
+        raise SwitchesError(f"{shown}: missing 'switches'")
+    if not isinstance(table, dict):
+        raise SwitchesError(f"{shown}: malformed: 'switches' is not a table")
+    switches: dict[str, PersonalSwitch] = {}
+    for name, entry in table.items():
+        malformed = f"{shown}: malformed: switch {name!r}"
+        if not isinstance(entry, dict):
+            raise SwitchesError(f"{malformed} is not a table", names=declared)
+        if name not in names:
+            continue
+        state = entry.get("state")
+        reason = entry.get("reason")
+        if not isinstance(state, str) or state not in _SWITCH_STATES:
+            raise SwitchesError(
+                f"{malformed} has a 'state' that is not 'on' or 'off'",
+                names=declared,
+            )
+        reason_value: str | None = None
+        if reason is not None:
+            if not isinstance(reason, str) or not reason:
+                raise SwitchesError(
+                    f"{malformed} has a 'reason' that is not a non-empty string",
+                    names=declared,
+                )
+            if len(reason) > REASON_CHAR_LIMIT:
+                raise SwitchesError(
+                    f"{malformed} has a 'reason' over {REASON_CHAR_LIMIT} characters",
+                    names=declared,
+                )
+            try:
+                reject_control_characters(reason, f"switch {name!r} field 'reason'")
+            except JournalContractError as error:
+                raise SwitchesError(
+                    f"{shown}: malformed: {error}", names=declared
+                ) from error
+            reason_value = reason
+        switches[name] = PersonalSwitch(state=state, reason=reason_value)
+    return switches
+
+
+def read_personal_switches(
+    path: Path, names: Collection[str]
+) -> dict[str, PersonalSwitch]:
+    """Read the clone's switches file; a missing file is all-on."""
+
+    try:
+        data = path.read_bytes()
+    except FileNotFoundError:
+        return {}
+    except OSError as error:
+        raise SwitchesError(
+            f"{path}: cannot read the switches file: {error.strerror or error}"
+        ) from error
+    return parse_personal_switches(data, path, names)
