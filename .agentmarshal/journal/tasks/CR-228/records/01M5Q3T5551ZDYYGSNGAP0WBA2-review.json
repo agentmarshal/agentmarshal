@@ -1,0 +1,95 @@
+{
+  "advisory_findings": [
+    "CR-228-A1",
+    "CR-228-A2",
+    "CR-228-A3"
+  ],
+  "artifacts": [
+    {
+      "hash": "42a4f5abae7eefc3d4716562145ccb2d313108a6f3a9a56ae0a2c06745beead0",
+      "ref": ".agentmarshal/journal/tasks/CR-228/artifacts/01M5Q3T5551ZDYYGSNGAP0WBA2-review.md"
+    }
+  ],
+  "classes": {
+    "CR-228-A1": "claim-accuracy",
+    "CR-228-A2": "scope",
+    "CR-228-A3": "correctness",
+    "CR-228-F1": "security"
+  },
+  "created_at": "2026-10-24T14:07:39.173394Z",
+  "evidence": {
+    "CR-228-A1": "tests/test_outbox.py:934-947 (setup changed from `main([\"outbox\",\"send\"])` to a hand commit, docstring states why), tests/test_outbox.py:1593-1620 (test_send_refuses_a_rename_of_an_already_sent_draft), tests/test_outbox.py:1688-1709 (no-manifest outbox now refuses); contract AC4 text 'an outbox with no sent manifest and no --index behaves exactly as today, which the existing outbox tests demonstrate unchanged'",
+    "CR-228-A2": "src/agentmarshal/project.py:232-235 ('one file per finding'); CHANGELOG.md:150-157 outbox section with no manifest entry; grep -rln outbox docs/ README.md CONTRIBUTING.md CHANGELOG.md shows docs/quickstart.md documents the group and was not touched by the diff",
+    "CR-228-A3": "src/agentmarshal/outbox.py:62 (_SENT_LINE anchored with $), :523-527 (lines split on \\n, name rejected by forges_rendered_text), src/agentmarshal/journal/records.py:1830 (Cc includes \\r)",
+    "CR-228-F1": "src/agentmarshal/outbox.py:418 and :430 compute safe_path(escape_for_display(name), markers); the check prints safe_path(display, markers) at :566 and :631; display.py:14-24 renders \\t as backslash-t and \\x07 as backslash-u0007, inserting word characters, while capture.py:275-289 anchors github-token on \\bghp_[A-Za-z0-9]{36}\\b and authorization-header on authorization:\\s*(?:bearer|basic)\\s+\\S+, so a name 'my\\x07ghp_<36>.md' masked to 'my\\x07<github-token>.md' before the diff now prints the token; the requirement it breaks is openspec/specs/outbox/spec.md:100-109 with the scenario at :124-129; the existing masking tests tests/test_outbox.py:346-363 and :628-648 use control-free names"
+  },
+  "findings": [
+    "CR-228-F1"
+  ],
+  "previous_review": "01M5Q351JJ00SH8MA5EGSD6240",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "e4c8aa6c0d85435b6b4d1e1ae4b14075b1ba6f98",
+  "reviewed_contract": "225448956b4b7950bf077097c3274ac5d0643644b5ccf6f0a94861485527bc5d",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-228",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "only archive/ remains; 2026-10-24-outbox-skips-sent holds proposal.md, design.md, tasks.md and specs/outbox/spec.md",
+        "what": "ls openspec/changes/ and ls -R of the archived change"
+      },
+      {
+        "result": "7 headings, each requirement exactly once, including the two ADDED ones",
+        "what": "grep -c '^### Requirement:' openspec/specs/outbox/spec.md with the heading list"
+      },
+      {
+        "result": "each of the 13 new scenarios has a test whose docstring names it; file is 1709 lines",
+        "what": "grep '^def test_' tests/test_outbox.py and read of the new tests' docstrings"
+      },
+      {
+        "result": "threat model's 'A non-regular file in the outbox is named as not checked' still holds; no changelog or README line for the manifest",
+        "what": "grep -n outbox docs/threat-model.md CHANGELOG.md CONTRIBUTING.md docs/adr/ADR-0020*"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked, agentmarshal validate, pytest, ruff check, ruff format --check, mypy, and any Python at all",
+        "why": "the snapshot is not a git repository and python/uv invocations were refused by the sandbox; CI status taken from the coordinator's note on e4c8aa6c0d85435b6b4d1e1ae4b14075b1ba6f98 and not independently checked"
+      },
+      {
+        "what": "whether the archive was produced by `openspec archive` rather than by hand",
+        "why": "no git history in the snapshot; the date-prefixed directory and the byte-identical requirement text in openspec/specs/outbox/spec.md are consistent with the command"
+      },
+      {
+        "what": "the CRLF premise of CR-228-A3",
+        "why": "depends on an adopter's git line-ending configuration, which is outside this snapshot"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/outbox.py (whole file)",
+      "tests/test_outbox.py (lines 1-200, 340-410, 628-662, 700-1019, and the added block 1257-1709 via the diff)",
+      "openspec/specs/outbox/spec.md",
+      "openspec/changes/archive/2026-10-24-outbox-skips-sent/specs/outbox/spec.md, design.md, proposal.md, tasks.md (via the diff)",
+      "src/agentmarshal/journal/display.py",
+      "src/agentmarshal/journal/records.py:1830-1880",
+      "src/agentmarshal/journal/capture.py:260-335, 440-470, 771-806",
+      "src/agentmarshal/journal/gate.py:647-692",
+      "src/agentmarshal/project.py:228-290",
+      "docs/adr/ADR-0020-the-outbox-command-group.md",
+      "docs/threat-model.md:155-205",
+      "CONTRIBUTING.md:13-25",
+      "AGENTS.md"
+    ]
+  }
+}
