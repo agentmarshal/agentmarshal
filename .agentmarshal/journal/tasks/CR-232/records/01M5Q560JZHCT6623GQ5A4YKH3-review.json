@@ -1,0 +1,86 @@
+{
+  "advisory_findings": [
+    "F1-audited-at-weak-check",
+    "F2-abandoned-cause-untested",
+    "F3-script-arg-is-tag-not-version"
+  ],
+  "artifacts": [
+    {
+      "hash": "461461f5342a0d55f0c57614158c5e054821fb5bfc4ea1842ac8cc146c8fc2db",
+      "ref": ".agentmarshal/journal/tasks/CR-232/artifacts/01M5Q560JZHCT6623GQ5A4YKH3-review.md"
+    }
+  ],
+  "classes": {
+    "F1-audited-at-weak-check": "claim-accuracy",
+    "F2-abandoned-cause-untested": "test-gap",
+    "F3-script-arg-is-tag-not-version": "contract-mismatch"
+  },
+  "created_at": "2026-10-24T14:31:36.287754Z",
+  "evidence": {
+    "F1-audited-at-weak-check": ".github/scripts/check_release_audit.py:262-267 — `if \"audited_at\" in data and not (isinstance(audited_at, datetime.date) or (isinstance(audited_at, str) and audited_at)): refusals.append(... 'audited_at' must be a timestamp)`; any non-empty string satisfies the condition, so a free-text value passes while the message claims a timestamp is required",
+    "F2-abandoned-cause-untested": ".github/scripts/check_release_audit.py:278-279 sets cause = \"was abandoned\"; `grep -n \"abandon\" tests/test_release_audit_check.py .github/scripts/check_release_audit.py` returns only the three script lines (54, 278, 279) and no test line",
+    "F3-script-arg-is-tag-not-version": ".github/workflows/release.yml:62-64 (`env: TAG: ${{ github.ref_name }}` / `run: python3 .github/scripts/check_release_audit.py \"$TAG\"`) against the contract's `check_release_audit.py <version>`; the script treats the argument as a tag (.github/scripts/check_release_audit.py:4, 211, 214) and CONTRIBUTING.md:185 documents `<tag>`"
+  },
+  "findings": [],
+  "previous_review": "01M5Q4SQY7JE78QNTR1PTA5BSE",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "b188aaa52286764617949935e0f803d90fed042e",
+  "reviewed_contract": "ba2050088577256a23036b982da8ed5cd1d2375a96b7b670b87d81f14a008c9c",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-232",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "29 test functions; matches the supplied diff, so the diff was complete",
+        "what": "grep -n \"^def test_\" tests/test_release_audit_check.py"
+      },
+      {
+        "result": "663 and 357 lines, equal to the diff's hunk headers",
+        "what": "wc -l tests/test_release_audit_check.py .github/scripts/check_release_audit.py"
+      },
+      {
+        "result": "only script lines 54, 278, 279; no test hit",
+        "what": "grep -n \"abandon\" tests/test_release_audit_check.py .github/scripts/check_release_audit.py"
+      },
+      {
+        "result": "no output — the mirror CI has no publishing path that would bypass the gate",
+        "what": "grep -n \"publish|twine|pypi|build\" gitflic-ci.yaml"
+      },
+      {
+        "result": "only CHANGELOG.md:3 and CHANGELOG.md:238 — no doc outside the scope is made stale by the new step",
+        "what": "grep -rn \"release.yml|release workflow|Trusted Publishing|PyPI\" docs README.md SECURITY.md CHANGELOG.md UPGRADING.md"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; uv run agentmarshal validate; uv run pytest; uv run ruff check; uv run ruff format --check; uv run mypy",
+        "why": "the sandbox refused to execute python3/pytest in this read-only review session; the coordinator's note that the sequence passed on b188aaa is taken as given and was not re-verified by me"
+      }
+    ],
+    "read": [
+      ".github/scripts/check_release_audit.py",
+      ".github/workflows/release.yml",
+      "CONTRIBUTING.md",
+      "tests/test_release_audit_check.py",
+      "docs/adr/ADR-0001-governance-plane.md",
+      "docs/adr/ADR-0005-evidence-capture-and-format.md",
+      "src/agentmarshal/journal/status.py",
+      "src/agentmarshal/journal/attestation.py",
+      "src/agentmarshal/journal/contracts.py",
+      "src/agentmarshal/journal/records.py",
+      "pyproject.toml",
+      ".gitattributes"
+    ]
+  }
+}
