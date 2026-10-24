@@ -1,0 +1,102 @@
+{
+  "advisory_findings": [
+    "A1-skip-vs-leak-scan"
+  ],
+  "artifacts": [
+    {
+      "hash": "e2c93bc227734640c7162771fd673924d6cb0c1442806fbc0ccac623a56f1e64",
+      "ref": ".agentmarshal/journal/tasks/CR-230/artifacts/01M5Q0D32MXTPPBWZZQZKMD6FV-review.md"
+    }
+  ],
+  "classes": {
+    "A1-skip-vs-leak-scan": "correctness",
+    "F1-usage-absence-is-documented": "claim-accuracy"
+  },
+  "created_at": "2026-10-24T13:08:05.332280Z",
+  "evidence": {
+    "A1-skip-vs-leak-scan": "docs/proposals/045-outbox-check-refuses-an-outbox-that-predates-it.md:72-79 accepts skipping already-sent files without bounding the skip; docs/adr/ADR-0020-the-outbox-command-group.md:82-88 requires check to run the leak scan over what would be sent; src/agentmarshal/outbox.py:447-455 scans every entry ('nothing in the outbox passes in silence') and outbox.py:708-710 stages the whole directory with git add --force",
+    "F1-usage-absence-is-documented": "docs/proposals/044-unmeasured-usage-is-written-as-zeros.md:19-21 ('the only trace ... and nothing documents that reading') vs docs/quickstart.md:548-550 ('Omit both usage flags when the provenance is unavailable; the report calls those counts unrecorded ...'), CHANGELOG.md:552-553 ('usage=reported|measured|unrecorded|mixed') and src/agentmarshal/journal/report.py:174-186 (_usage_provenance returns 'unrecorded' for a session record without 'usage'); compounded at docs/proposals/044-...md:69-75 and docs/proposals/README.md:75-77"
+  },
+  "findings": [
+    "F1-usage-absence-is-documented"
+  ],
+  "previous_review": "01M5Q018B02VZ3RR6N3GQ41NBP",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "cbc38d2a0a8da6d9fb07608e9aac195e42a71747",
+  "reviewed_contract": "63d60e31e012b8ca10659b43f6af36cb08220da3b62c18921aac8b696bffb839",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-230",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "cli.py:407-411 — --input-tokens/--output-tokens/--cache-tokens default=0; --usage-method choices ('reported','measured')",
+        "what": "grep -n 'input-tokens|usage-method' src/agentmarshal/cli.py"
+      },
+      {
+        "result": "create_session_record always writes tokens {input,output,cache}; usage object only when usage_provider is not None",
+        "what": "sed -n '2313,2331p' src/agentmarshal/journal/records.py"
+      },
+      {
+        "result": "session-tokens rule: tokens must be a dict with exactly input/output/cache, each int >= 0",
+        "what": "sed -n '778,791p' src/agentmarshal/journal/records.py"
+      },
+      {
+        "result": "report.py:363-366 sums every session record's tokens; report.py:174-186 renders a session without 'usage' as 'unrecorded'; report.py:106,663 sessions_without_cost",
+        "what": "grep -n 'tokens|sessions_without_cost|_usage_provenance' src/agentmarshal/journal/report.py"
+      },
+      {
+        "result": "docs/quickstart.md:550 and CHANGELOG.md:552-553 document the absent-usage reading as 'unrecorded'",
+        "what": "grep -n 'unrecorded' docs/quickstart.md CHANGELOG.md"
+      },
+      {
+        "result": "_check treats every regular file but README.md as a draft, prints 'not a draft, not checked' for others and refuses; _run_send runs _check then git add --force -- .agentmarshal/upstream",
+        "what": "sed -n '406,530p;655,712p' src/agentmarshal/outbox.py"
+      },
+      {
+        "result": "outbox.py:100-112 — 'check' takes no arguments; 'status' requires --index",
+        "what": "grep -n 'check|status|--index' register() in src/agentmarshal/outbox.py"
+      },
+      {
+        "result": "docs/adr/ADR-0020-the-outbox-command-group.md, 044-*.md and 045-*.md all exist",
+        "what": "link resolution for every added link"
+      },
+      {
+        "result": "only em dash and middle dot, as in the existing digests; no ULIDs, task numbers, URLs or adopter paths",
+        "what": "grep -nP '[^\\x00-\\x7F]' over both digests"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "read-only review; the snapshot is not a git checkout and the coordinator states the sequence passed on cbc38d2a"
+      }
+    ],
+    "read": [
+      "docs/proposals/044-unmeasured-usage-is-written-as-zeros.md",
+      "docs/proposals/045-outbox-check-refuses-an-outbox-that-predates-it.md",
+      "docs/proposals/README.md",
+      "docs/adr/ADR-0020-the-outbox-command-group.md",
+      "docs/adr/ADR-0009-research-findings-lifecycle.md",
+      "docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md",
+      "docs/quickstart.md (record-session section)",
+      "CHANGELOG.md (0.5.0 entry)",
+      "UPGRADING.md (0.5.0 section)",
+      "src/agentmarshal/outbox.py",
+      "src/agentmarshal/journal/report.py",
+      "src/agentmarshal/journal/records.py",
+      "src/agentmarshal/journal/status_view.py",
+      "src/agentmarshal/cli.py (record-session parser)"
+    ]
+  }
+}
