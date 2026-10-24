@@ -1,0 +1,88 @@
+{
+  "advisory_findings": [
+    "CR-229-A1",
+    "CR-229-A2",
+    "CR-229-A3"
+  ],
+  "artifacts": [
+    {
+      "hash": "e067d2a20c8f41a23a2d3b18147dabb9326e94aa2706288f643575bbb474d487",
+      "ref": ".agentmarshal/journal/tasks/CR-229/artifacts/01M5Q18K26WFDN14W5STZP8CGC-review.md"
+    }
+  ],
+  "classes": {
+    "CR-229-A1": "contract-mismatch",
+    "CR-229-A2": "test-gap",
+    "CR-229-A3": "style"
+  },
+  "created_at": "2026-10-24T13:23:06.438744Z",
+  "evidence": {
+    "CR-229-A1": "openspec/specs/session-activity/spec.md:485-489 and :619-623 ('Every line `report` and `report --task` print today SHALL print first and unchanged') versus src/agentmarshal/journal/report.py:738-739 (task line gains '\\tunmeasured=<n>'), :768-769 (Summary line) and :695,703,705-707 (every Cost line); the carve-out added instead is spec.md:808-816",
+    "CR-229-A2": "tests/test_unmeasured_session_usage.py:82-104 — the three tests assert only `_is_unmeasured(...)`, while the scenarios at openspec/specs/session-activity/spec.md:727-740 state the read 'in `status` and `report`'",
+    "CR-229-A3": "src/agentmarshal/journal/report.py:105 and :132 declare `sessions: int = 0` with no note; the narrowed meaning is stated only in the `_cost_sums` docstring at :322-325, and both dataclasses are exported by src/agentmarshal/journal/__init__.py:19-22"
+  },
+  "findings": [],
+  "previous_review": "01M5Q0THZ6XN50Z8E48KM52S6R",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "5cf5f228d8a5aaf50bf9e99a087ae4c0de3be6ae",
+  "reviewed_contract": "96c36b1df25bfd0a83719f6f8ee10e716bba80ccb50205b8f63f275cf1066b4e",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-229",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "only cli.py:1367-1368 (_run_report), journal/__init__.py exports and status_view.py:24,316 — no other command reads the changed API",
+        "what": "grep -rn \"build_report|format_report|TaskReport|JournalReport|_cost_sums|_is_unmeasured\" over src/"
+      },
+      {
+        "result": "every existing report/status test builds sessions with non-zero tokens (10/5/0, 1/2/3, 4/5/6, --input-tokens 2), so none becomes unmeasured",
+        "what": "grep -rn \"0, 0, 0\" and create_session_record call sites over tests/"
+      },
+      {
+        "result": "no match outside tests/test_unmeasured_session_usage.py",
+        "what": "grep -rn for an existing assertion on the status session record line over tests/"
+      },
+      {
+        "result": "22 delta scenarios = 12 ADDED (all 12 named in tests/test_unmeasured_session_usage.py) + 10 in the two MODIFIED requirements (all 10 named in tests/test_report_cost_checks_findings.py)",
+        "what": "grep -c '#### Scenario:' on the archived delta vs grep of Scenario docstrings in the new test file"
+      },
+      {
+        "result": "only docs/sidecar.md:335, an example line with measured tokens — unaffected",
+        "what": "grep -rn \"tokens=\" over docs/, README.md, templates/"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; uv run agentmarshal validate; uv run pytest; uv run ruff check; uv run ruff format --check; uv run mypy",
+        "why": "this read-only review session cannot execute commands (uv and python3 invocations were refused by the sandbox); the coordinator states the sequence passed on this commit"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/journal/report.py",
+      "src/agentmarshal/journal/status_view.py",
+      "src/agentmarshal/journal/display.py",
+      "src/agentmarshal/journal/records.py (create_session_record)",
+      "src/agentmarshal/journal/open_task.py (_contract_content)",
+      "src/agentmarshal/cli.py (_run_report)",
+      "tests/test_unmeasured_session_usage.py",
+      "tests/test_report.py",
+      "tests/test_report_cost_checks_findings.py",
+      "tests/test_report_lead_time.py",
+      "openspec/specs/session-activity/spec.md",
+      "openspec/changes/archive/2026-10-24-unmeasured-session-usage/ (proposal.md, design.md, tasks.md, specs/session-activity/spec.md)",
+      "docs/adr/ADR-0019-accounting-time-quota-resets-money.md",
+      "docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md"
+    ]
+  }
+}
