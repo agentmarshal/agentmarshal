@@ -165,7 +165,7 @@ The audit file is TOML:
 
 ```toml
 version = "0.6.0"                    # the released version; the tag is v0.6.0
-audited_commit = "059ba350bcf40d8d912d30850535816f2a87d076"
+audited_commit = "059ba350bcf40d8d912d30850535816f2a87d076"  # the commit audited, as a full 40-character id
 model = "gpt-6-astra"                # must be in the script's allowlist
 audited_at = 2026-10-24T00:00:00Z    # when the audit ran
 
@@ -185,8 +185,9 @@ audit text. Before building, the release workflow runs
 `.github/scripts/check_release_audit.py <tag>` and the job fails — nothing is
 built or published — when the file is missing or malformed, its `version`
 differs from the tag, `audited_commit` is not an ancestor of the tagged
-commit, `model` is not allowlisted, a `fixed` finding's task has no
-`completed` journal record, or a path changed between `audited_commit` and
+commit, `model` is not allowlisted, a `fixed` finding's task's last
+lifecycle record in the journal is not `completed` — a task completed and
+then reopened does not count — or a path changed between `audited_commit` and
 the tag lies outside `.agentmarshal/journal/`, `release/`, `CHANGELOG.md`,
 `UPGRADING.md`, `pyproject.toml`, `uv.lock`, `src/agentmarshal/__init__.py`
 and the contract scopes of the tasks the file lists as `fixed`.

@@ -48,6 +48,11 @@ _FULL_COMMIT = re.compile(r"[0-9a-f]{40}")
 _TASK_ID = re.compile(r"CR-[0-9]+")
 _DISPOSITIONS = ("fixed", "deferred", "rejected")
 
+# The record types that project to a lifecycle state — the same set
+# status.py derives a non-None projection for. The last of these, in the
+# journal's record order, decides whether the task is done.
+_LIFECYCLE_RECORD_TYPES = ("opened", "completed", "abandoned", "reopened")
+
 
 def _git(repo: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
@@ -68,9 +73,9 @@ def _git_show(repo: Path, commit: str, path: str) -> str | None:
 def _covered(scope: tuple[str, ...] | list[str], path: str) -> bool:
     """Whether an exact entry or trailing-slash prefix covers ``path``.
 
-    The same rule ``agentmarshal.journal.contracts.scope_covers`` applies to
-    contract scopes, so the gate reads a task's scope the way the scope was
-    granted.
+    The matching rule is ``agentmarshal.journal.contracts.scope_covers``'s,
+    applied to the contract's ``scope`` list alone: unlike the merge gate's
+    effective scope, the footprints of named extensions are not added.
     """
 
     for entry in scope:
@@ -113,8 +118,14 @@ def _contract_scope(repo: Path, tagged: str, task: str) -> list[str] | None:
     return scope
 
 
-def _has_completed_record(repo: Path, tagged: str, task: str) -> bool:
-    """Whether ``task`` has a parseable ``completed`` record in the tagged tree."""
+def _last_lifecycle_record(repo: Path, tagged: str, task: str) -> str | None:
+    """The ``record_type`` of ``task``'s last lifecycle record, or ``None``.
+
+    Records are considered in filename order — the order the journal's
+    ``read_records`` and the status projection use — and a record that is
+    unreadable, unparseable or not an object does not move the state, the
+    way the projection treats records without a lifecycle ``record_type``.
+    """
 
     listing = _git(
         repo,
@@ -127,9 +138,10 @@ def _has_completed_record(repo: Path, tagged: str, task: str) -> bool:
         f"{_TASKS}/{task}/records/",
     )
     if listing.returncode != 0:
-        return False
-    for path in listing.stdout.split("\0"):
-        if not path.endswith("-completed.json"):
+        return None
+    last: str | None = None
+    for path in sorted(entry for entry in listing.stdout.split("\0") if entry):
+        if not path.endswith(".json"):
             continue
         raw = _git_show(repo, tagged, path)
         if raw is None:
@@ -138,9 +150,12 @@ def _has_completed_record(repo: Path, tagged: str, task: str) -> bool:
             record: Any = json.loads(raw)
         except json.JSONDecodeError:
             continue
-        if isinstance(record, dict) and record.get("record_type") == "completed":
-            return True
-    return False
+        if not isinstance(record, dict):
+            continue
+        record_type = record.get("record_type")
+        if record_type in _LIFECYCLE_RECORD_TYPES:
+            last = record_type
+    return last
 
 
 def _check_findings(
@@ -228,7 +243,7 @@ def audit_release(tag: str, repo: Path) -> list[str]:
     if "audited_commit" in data:
         if not isinstance(audited, str) or _FULL_COMMIT.fullmatch(audited) is None:
             refusals.append(
-                f"{audit_path}: 'audited_commit' must be a 40-character"
+                f"{audit_path}: 'audited_commit' must be a full 40-character"
                 " hexadecimal commit id"
             )
         else:
@@ -256,10 +271,17 @@ def audit_release(tag: str, repo: Path) -> list[str]:
 
     scopes: list[str] = []
     for task in dict.fromkeys(fixed_tasks):
-        if not _has_completed_record(repo, tagged, task):
+        last_record = _last_lifecycle_record(repo, tagged, task)
+        if last_record != "completed":
+            if last_record == "reopened":
+                cause = "was reopened"
+            elif last_record == "abandoned":
+                cause = "was abandoned"
+            else:
+                cause = "has no 'completed' record"
             refusals.append(
                 f"{audit_path}: task {task} is listed as fixing a finding but"
-                " has no 'completed' record in the tagged tree's journal"
+                f" {cause} in the tagged tree's journal"
             )
         task_scope = _contract_scope(repo, tagged, task)
         if task_scope is None:
@@ -299,14 +321,20 @@ def audit_release(tag: str, repo: Path) -> list[str]:
             audited_commit,
             tagged,
         )
-        for path in diff.stdout.split("\0"):
-            if path and not _covered(allowed, path):
-                refusals.append(
-                    f"{audit_path}: {path} changed between the audited commit"
-                    f" {audited_commit} and tag {tag} and is covered neither by"
-                    " the release paths nor by the scope of a task listed as"
-                    " fixing a finding"
-                )
+        if diff.returncode != 0:
+            refusals.append(
+                f"{audit_path}: git diff between the audited commit"
+                f" {audited_commit} and tag {tag} failed"
+            )
+        else:
+            for path in diff.stdout.split("\0"):
+                if path and not _covered(allowed, path):
+                    refusals.append(
+                        f"{audit_path}: {path} changed between the audited"
+                        f" commit {audited_commit} and tag {tag} and is covered"
+                        " neither by the release paths nor by the scope of a"
+                        " task listed as fixing a finding"
+                    )
 
     return refusals
 

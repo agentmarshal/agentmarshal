@@ -131,6 +131,16 @@ def _base_commit(repo: Path) -> str:
     return _commit_all(repo, "base")
 
 
+def test_unresolvable_tag_refuses(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    _base_commit(repo)
+    # No tag v1.0.0 exists in the repository.
+
+    refusals = _audit(repo)
+
+    assert refusals == ["cannot resolve tag 'v1.0.0' to a commit"]
+
+
 def test_missing_audit_file_refuses(tmp_path: Path) -> None:
     repo = _repo(tmp_path)
     _base_commit(repo)
@@ -189,6 +199,60 @@ def test_version_mismatch_refuses(tmp_path: Path) -> None:
     assert any("does not match tag" in r for r in refusals)
 
 
+def test_non_string_version_refuses(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    audited = _base_commit(repo)
+    _write(
+        repo,
+        "release/audit-1.0.0.toml",
+        "version = 1\n"
+        f'audited_commit = "{audited}"\n'
+        'model = "gpt-6-astra"\n'
+        "audited_at = 2026-10-24T00:00:00Z\n",
+    )
+    _commit_all(repo, "audit file")
+    _git(repo, "tag", "v1.0.0")
+
+    refusals = _audit(repo)
+
+    assert refusals == [
+        "release/audit-1.0.0.toml: 'version' must be a non-empty string"
+    ]
+
+
+def test_short_audited_commit_refuses(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    audited = _base_commit(repo)
+    # The natural operator mistake: the abbreviated SHA git prints. The
+    # refusal must say a full 40-character commit is required.
+    _audit_file(repo, audited_commit=audited[:7])
+    _commit_all(repo, "audit file")
+    _git(repo, "tag", "v1.0.0")
+
+    refusals = _audit(repo)
+
+    assert refusals == [
+        "release/audit-1.0.0.toml: 'audited_commit' must be a full"
+        " 40-character hexadecimal commit id"
+    ]
+
+
+def test_non_hex_audited_commit_refuses(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    _base_commit(repo)
+    # Forty characters but not hexadecimal.
+    _audit_file(repo, audited_commit="z" * 40)
+    _commit_all(repo, "audit file")
+    _git(repo, "tag", "v1.0.0")
+
+    refusals = _audit(repo)
+
+    assert refusals == [
+        "release/audit-1.0.0.toml: 'audited_commit' must be a full"
+        " 40-character hexadecimal commit id"
+    ]
+
+
 def test_model_not_allowlisted_refuses(tmp_path: Path) -> None:
     repo = _repo(tmp_path)
     audited = _base_commit(repo)
@@ -199,6 +263,44 @@ def test_model_not_allowlisted_refuses(tmp_path: Path) -> None:
     refusals = _audit(repo)
 
     assert any("not in the allowlist" in r for r in refusals)
+
+
+def test_non_string_model_refuses(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    audited = _base_commit(repo)
+    _write(
+        repo,
+        "release/audit-1.0.0.toml",
+        'version = "1.0.0"\n'
+        f'audited_commit = "{audited}"\n'
+        "model = 1\n"
+        "audited_at = 2026-10-24T00:00:00Z\n",
+    )
+    _commit_all(repo, "audit file")
+    _git(repo, "tag", "v1.0.0")
+
+    refusals = _audit(repo)
+
+    assert refusals == ["release/audit-1.0.0.toml: 'model' must be a non-empty string"]
+
+
+def test_invalid_audited_at_refuses(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    audited = _base_commit(repo)
+    _write(
+        repo,
+        "release/audit-1.0.0.toml",
+        'version = "1.0.0"\n'
+        f'audited_commit = "{audited}"\n'
+        'model = "gpt-6-astra"\n'
+        "audited_at = 5\n",
+    )
+    _commit_all(repo, "audit file")
+    _git(repo, "tag", "v1.0.0")
+
+    refusals = _audit(repo)
+
+    assert refusals == ["release/audit-1.0.0.toml: 'audited_at' must be a timestamp"]
 
 
 def test_audited_commit_not_a_commit_refuses(tmp_path: Path) -> None:
@@ -229,6 +331,80 @@ def test_audited_commit_not_ancestor_refuses(tmp_path: Path) -> None:
     refusals = _audit(repo)
 
     assert any("is not an ancestor" in r for r in refusals)
+
+
+def test_finding_not_an_array_refuses(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    audited = _base_commit(repo)
+    _write(
+        repo,
+        "release/audit-1.0.0.toml",
+        'version = "1.0.0"\n'
+        f'audited_commit = "{audited}"\n'
+        'model = "gpt-6-astra"\n'
+        "audited_at = 2026-10-24T00:00:00Z\n"
+        'finding = "oops"\n',
+    )
+    _commit_all(repo, "audit file")
+    _git(repo, "tag", "v1.0.0")
+
+    refusals = _audit(repo)
+
+    assert refusals == [
+        "release/audit-1.0.0.toml: 'finding' must be an array of tables"
+    ]
+
+
+def test_finding_element_not_a_table_refuses(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    audited = _base_commit(repo)
+    _write(
+        repo,
+        "release/audit-1.0.0.toml",
+        'version = "1.0.0"\n'
+        f'audited_commit = "{audited}"\n'
+        'model = "gpt-6-astra"\n'
+        "audited_at = 2026-10-24T00:00:00Z\n"
+        'finding = ["oops"]\n',
+    )
+    _commit_all(repo, "audit file")
+    _git(repo, "tag", "v1.0.0")
+
+    refusals = _audit(repo)
+
+    assert refusals == ["release/audit-1.0.0.toml: finding[0] is not a table"]
+
+
+def test_finding_without_id_refuses(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    audited = _base_commit(repo)
+    # One finding has no 'id' key at all, the other an empty one; both are
+    # the same refusal.
+    _write(
+        repo,
+        "release/audit-1.0.0.toml",
+        'version = "1.0.0"\n'
+        f'audited_commit = "{audited}"\n'
+        'model = "gpt-6-astra"\n'
+        "audited_at = 2026-10-24T00:00:00Z\n"
+        "[[finding]]\n"
+        'disposition = "deferred"\n'
+        'reason = "no id at all"\n'
+        "\n"
+        "[[finding]]\n"
+        'id = ""\n'
+        'disposition = "deferred"\n'
+        'reason = "empty id"\n',
+    )
+    _commit_all(repo, "audit file")
+    _git(repo, "tag", "v1.0.0")
+
+    refusals = _audit(repo)
+
+    assert refusals == [
+        "release/audit-1.0.0.toml: finding[0] requires a non-empty 'id'",
+        "release/audit-1.0.0.toml: finding[1] requires a non-empty 'id'",
+    ]
 
 
 def test_fixed_finding_without_task_refuses(tmp_path: Path) -> None:
@@ -296,6 +472,62 @@ def test_fixed_task_without_completed_record_refuses(tmp_path: Path) -> None:
     assert any("no 'completed' record" in r for r in refusals)
 
 
+def test_reopened_fix_task_refuses(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    audited = _base_commit(repo)
+    # CR-7 was completed, then reopened: the last lifecycle record is the
+    # reopening, so the fix does not count as done.
+    _journal_task(repo, "CR-7", ("src/foo.py",))
+    _write(
+        repo,
+        ".agentmarshal/journal/tasks/CR-7/records/02TEST-reopened.json",
+        json.dumps({"record_type": "reopened", "task": "CR-7"}) + "\n",
+    )
+    _write(repo, "src/foo.py", "x = 2\n")
+    _audit_file(
+        repo,
+        audited_commit=audited,
+        findings=({"id": "F-1", "disposition": "fixed", "task": "CR-7"},),
+    )
+    _commit_all(repo, "fix and audit file")
+    _git(repo, "tag", "v1.0.0")
+
+    refusals = _audit(repo)
+
+    assert refusals == [
+        "release/audit-1.0.0.toml: task CR-7 is listed as fixing a finding"
+        " but was reopened in the tagged tree's journal"
+    ]
+
+
+def test_recompleted_after_reopen_passes(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    audited = _base_commit(repo)
+    # completed, reopened, completed again: the last lifecycle record is
+    # the second completion, so the task counts as done.
+    _journal_task(repo, "CR-7", ("src/foo.py",))
+    _write(
+        repo,
+        ".agentmarshal/journal/tasks/CR-7/records/02TEST-reopened.json",
+        json.dumps({"record_type": "reopened", "task": "CR-7"}) + "\n",
+    )
+    _write(
+        repo,
+        ".agentmarshal/journal/tasks/CR-7/records/03TEST-completed.json",
+        json.dumps({"record_type": "completed", "task": "CR-7"}) + "\n",
+    )
+    _write(repo, "src/foo.py", "x = 2\n")
+    _audit_file(
+        repo,
+        audited_commit=audited,
+        findings=({"id": "F-1", "disposition": "fixed", "task": "CR-7"},),
+    )
+    _commit_all(repo, "fix and audit file")
+    _git(repo, "tag", "v1.0.0")
+
+    assert _audit(repo) == []
+
+
 def test_fixed_task_without_contract_refuses(tmp_path: Path) -> None:
     repo = _repo(tmp_path)
     audited = _base_commit(repo)
@@ -335,6 +567,33 @@ def test_change_outside_allowed_paths_refuses(tmp_path: Path) -> None:
     refusals = _audit(repo)
 
     assert any("tools/extra.py changed" in r for r in refusals)
+
+
+def test_diff_failure_refuses(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = _repo(tmp_path)
+    audited = _base_commit(repo)
+    _audit_file(repo, audited_commit=audited)
+    _commit_all(repo, "audit file")
+    _git(repo, "tag", "v1.0.0")
+
+    real_git = check_release_audit._git
+
+    def fake_git(repository: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
+        if arguments[0] == "diff":
+            return subprocess.CompletedProcess(list(arguments), 1, "", "fatal")
+        result: subprocess.CompletedProcess[str] = real_git(repository, *arguments)
+        return result
+
+    # A failing post-audit diff must refuse like every other git call, not
+    # pass on the empty output it produces.
+    monkeypatch.setattr(check_release_audit, "_git", fake_git)
+
+    refusals = _audit(repo)
+
+    assert refusals == [
+        "release/audit-1.0.0.toml: git diff between the audited commit"
+        f" {audited} and tag v1.0.0 failed"
+    ]
 
 
 def test_passes_with_zero_findings(tmp_path: Path) -> None:
@@ -395,3 +654,10 @@ def test_main_reports_pass_and_refusals(
     assert check_release_audit.main(["v1.0.0"]) == 0
     captured = capsys.readouterr()
     assert "release audit: passed" in captured.out
+
+
+def test_main_usage_exits_2(capsys: pytest.CaptureFixture[str]) -> None:
+    assert check_release_audit.main([]) == 2
+    assert check_release_audit.main(["v1.0.0", "extra"]) == 2
+    captured = capsys.readouterr()
+    assert captured.err.count("usage: check_release_audit.py <tag>") == 2
