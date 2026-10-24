@@ -1,0 +1,110 @@
+{
+  "advisory_findings": [
+    "ADV-CITE-001"
+  ],
+  "artifacts": [
+    {
+      "hash": "eea424e85dbe909dfa1708ea5224b719d9bd0c4bf5d7a9847494f21296742c77",
+      "ref": ".agentmarshal/journal/tasks/CR-234/artifacts/01M5QWECZ283SXBA55MCQ4WAM2-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-CITE-001": "claim-accuracy"
+  },
+  "created_at": "2026-10-24T21:18:08.354001Z",
+  "evidence": {
+    "ADV-CITE-001": "docs/threat-model.md:270-277 cites \"a manifest the base cannot parse fails the run naming the extension\", \"a sidecar runs no stages\", \"an invalid task identifier refuses before any stage is planned\" and \"a malformed trust.toml fails the command naming it\"; grep -rn -F over openspec/ returns openspec/specs/extension-stages/spec.md:80, :92, :96 and :308, each prefixed '#### Scenario: ', while grep -n '^### Requirement:' openspec/specs/extension-stages/spec.md does not list any of the four. The document's convention is stated at docs/threat-model.md:9-11 ('a specification under `openspec/specs/` by its capability and requirement'); sampled pre-existing citations resolve to requirements (openspec/specs/process-log/spec.md:98, gate-lanes/spec.md:170, extension-records/spec.md:383, extension-manifest/spec.md:208), as does the citation the same diff adds at docs/threat-model.md:285 (gate-lanes/spec.md:241)."
+  },
+  "findings": [],
+  "previous_review": "01M5QV51XZ4F9JBCQ07TC0MT03",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "71cd0352ad3656bec517a74887764e11b881908f",
+  "reviewed_contract": "7fa097774ad78fbd1ac080724802e66ef60323c932c1948288357dcb5df72c23",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-234",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "0.6.0 in all four; no 0.6.0.dev0 remains outside the journal",
+        "what": "grep for the version in pyproject.toml, src/agentmarshal/__init__.py, uv.lock, tests/test_smoke.py"
+      },
+      {
+        "result": "every string found at its claimed site; stages.py:950-962 _result_text, gate.py:1355, validate.py:189-191, status_view.py:317,684,692, report.py:731,779,812, outbox.py:723, cli.py:1436,1445,1528",
+        "what": "grep -rF for each output string the CHANGELOG quotes (not granted, changed after approval, did not finish (timeout), shared switches file unreadable, a shared extension of this name wins, skipped for this run, disabled (personal), trust-changed, extension-event, pause accepted by, operational lane; review not required, addressee not found, tokens=unmeasured, unmeasured=, skipped as sent, Records absent from, implementer session, did not end 'implemented') over src/"
+      },
+      {
+        "result": "unknown phase (1035), sidecar (1043), base manifest unreadable (1096), task id validated in _run_stages before placement (1563) — none print a stage line",
+        "what": "read stages.py:1026-1115 and 1545-1600 for the refusal order"
+      },
+      {
+        "result": "journal-only lane keys on .agentmarshal/journal/ (78,1252); other-task lifecycle projection and the CR-210 warning confirmed; operational_candidate closes the lane on a scope mismatch (1007) or an unjudgeable base (1009-1016); acceptance requires exact finding-set equality (1771); INFO changes_required line at 2274",
+        "what": "read gate.py:1252, 2038-2165, 969-1017, 1750-1830, 2238-2276"
+      },
+      {
+        "result": "_SUPPORTED_SCHEMAS ends at 7; timestamp-text covers created_at/started_at/ended_at/resets_at; artifact-ref-text and timestamp-text bound at schema 8, so they reach no loadable record",
+        "what": "read records.py:192, 598-637, 1595-1609 for the CR-236 claims"
+      },
+      {
+        "result": "no match for the first two; no next subcommand; localstate.py:70 plan_file has no caller",
+        "what": "grep src/ for carried_approval, mode: resolution, an agentmarshal next subcommand, and readers of plan.toml"
+      },
+      {
+        "result": "_scaffold_outbox writes .agentmarshal/upstream/README.md, confirming the README claim about init",
+        "what": "read project.py:232-331"
+      },
+      {
+        "result": "all six added targets exist; no broken link introduced",
+        "what": "list docs/adr/ and docs/proposals/ and resolve every link target added by the diff"
+      },
+      {
+        "result": "CR-233/235/236 completed; CR-237 holds only an opened record, so the CR-205..CR-236 coverage line is complete",
+        "what": "list .agentmarshal/journal/tasks/ and read the records of CR-204, CR-233, CR-235, CR-236, CR-237"
+      },
+      {
+        "result": "found at lines 80, 92, 96 and 308 as '#### Scenario:' headings, not '### Requirement:' headings (ADV-CITE-001)",
+        "what": "grep openspec/specs/extension-stages/spec.md for the four phrases the threat model newly cites"
+      },
+      {
+        "result": "process-log:98, gate-lanes:170, extension-records:383, extension-manifest:208 — all '### Requirement:', establishing the convention the new citations depart from",
+        "what": "grep openspec/specs/ for four pre-existing threat-model citations"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "the review snapshot is not a git repository and the project environment is not provisioned here; the coordinator states the full sequence passed on 71cd0352ad3656bec517a74887764e11b881908f, and I make no claim that any of these tools fails"
+      }
+    ],
+    "read": [
+      "CHANGELOG.md (0.6.0 section in full; 0.5.0 and 0.4.1 sections for the history claims)",
+      "UPGRADING.md (the new 0.5.0 -> 0.6.0 section and the corrected 0.4.1 -> 0.5.0 note)",
+      "README.md (trust boundary, Status, Quickstart and journal-transaction prose)",
+      "docs/overview.md (glossary Record and Lane entries; the roadmap section)",
+      "docs/proposals/README.md (the preamble and every changed row)",
+      "docs/self-hosting-workflow.md (gate step and Notes)",
+      "docs/threat-model.md (isolation paragraph, the stage-line refusals, open questions 2 and 5, the citation convention at lines 9-11)",
+      "docs/README.md (the proposals block)",
+      "docs/quickstart.md (contract guidance, for proposal 039's row)",
+      "AGENTS.md, CONTRIBUTING.md (release order and the .dev0 version rule)",
+      "openspec/specs/gate-lanes/spec.md (the operational-lane requirements)",
+      "openspec/specs/extension-stages/spec.md (requirement headings)",
+      "src/agentmarshal/stages.py, extension_trust.py, switch_off.py, outbox.py, doctor.py, project.py, localstate.py, record_ext.py, cli.py",
+      "src/agentmarshal/journal/gate.py, records.py, validate.py, status_view.py, report.py, attestation.py",
+      "templates/journal-transaction.sh, .github/scripts/check_release_audit.py, .github/workflows/agentmarshal-governance.yml",
+      ".agentmarshal/extensions/openspec.toml",
+      ".agentmarshal/journal/tasks/CR-235/contract.md, CR-236/contract.md",
+      "docs/adr/ADR-0013, ADR-0018, ADR-0022, ADR-0023"
+    ]
+  }
+}

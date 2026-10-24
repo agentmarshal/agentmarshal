@@ -1,5 +1,64 @@
 # Upgrading
 
+## 0.5.0 → 0.6.0
+
+### No schema changes — upgrade in any order
+
+0.6.0 changes no record schema, contract-header schema or
+extension-manifest schema: every record a 0.6.0 writer stamps stays
+within the schemas 0.5.0 declared, so 0.5.0 and 0.6.0 installations read
+each other's journals. There is no coordinated cutover and no ordering
+rule — upgrade each checkout, CI job and merge wrapper when it suits you.
+
+### What changes for a project
+
+- **Shared extensions run.** A shared extension declared under
+  `.agentmarshal/extensions/` now runs its declared stages: `stage run`
+  and `complete` plan them from the base tree, and on a workstation a
+  stage runs only under a local grant —
+  `agentmarshal extension trust <name>` records one over the extension's
+  current directory, and `extension list` reports whether it still
+  matches. CI (`CI=true`) needs no grant. **Action:** each operator
+  grants the project's shared extensions on their workstation — an
+  ungranted stage reports `not run (not granted)` — and re-grants after
+  the extension changes (`not run (changed after approval: <path>)`). A
+  project that declares none is unaffected.
+- **The operational lane carries a switches change.** A candidate that
+  changes only `.agentmarshal/switches.toml` and paths inside its own
+  task's journal subtree — its records and an amended contract alike —
+  passes the gate without review —
+  `PASS: operational transaction (operational lane; review not required)`
+  — and pre-gate stages do not run on it. The lane also requires the
+  task's contract to declare scope exactly
+  `[".agentmarshal/switches.toml"]` and the base's switches file to
+  read and parse; a candidate failing either takes the review-bound
+  lane. `agentmarshal extension switch off <name> --reason <text>`
+  opens such a task itself, its generated contract declaring that
+  scope.
+- **`complete` runs the declared stages.** The pre-gate stages run before
+  the gate check — a `pre-gate-stop` stage that fails or does not run
+  pauses the completion — and the post-gate stages run after the
+  `completed` record exists. A wrapper that completes a task after the
+  merge should pass `complete --target` naming the branch the candidate
+  merged into: without it a pre-gate-stop pause still refuses a
+  candidate that is already merged.
+- **Personal extensions need no project action.** An operator can run a
+  clone-local extension from `.git/agentmarshal/extensions/<name>/`;
+  it never reaches the shared journal or CI, and a shared extension of
+  the same name wins.
+- **`outbox check` and `outbox send` skip files already sent.** `send`
+  maintains a `SENT` manifest inside the outbox, and
+  `check --index <file>` skips by the `Source:` digests an index
+  claims. No action needed; a project listing the outbox's files should
+  expect `SENT` among them.
+- **A pinned product's version is the project's to raise.** A project
+  that pins a product through an extension manifest — as this repository
+  pins OpenSpec at `1.15.0` — raises the pin when it takes a new release
+  of that product: the manifest's `version` names the release the
+  declaration corresponds to, and the install line and managed files
+  follow it. AgentMarshal reads the pin as a declaration; it does not
+  check it against the installed product.
+
 ## 0.4.1 → 0.5.0
 
 ### Every clone and CI job moves to 0.5.0 before the first 0.5.0 record
@@ -98,7 +157,10 @@ New `project.json` keys, all optional: `review.finding_classes`,
 - The gate gains checks for a schema-3 contract's declared assignment and
   independence rules, and for the agreement a project that sets
   `contract.require_agreement` asks for. A project that declares neither
-  sees the same transcript as before.
+  sees the same checks as before, but not the same transcript: the
+  implementation lane now closes with a count line — `INFO:
+  changes_required verdicts for <task>: <count> (threshold <n>)` — a
+  signal that is never a check and changes no verdict.
 - `status`, `report`, `brief` and `doctor` show more of the journal — the
   new record types, the declared assignment, deferrals, lead times and
   costs, overdue steps and where the journal, the process log and the

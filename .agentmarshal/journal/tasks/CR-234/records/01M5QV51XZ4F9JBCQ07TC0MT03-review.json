@@ -1,0 +1,142 @@
+{
+  "advisory_findings": [
+    "ADV-OVERVIEW-OPERATIONAL-SCOPE"
+  ],
+  "artifacts": [
+    {
+      "hash": "945c97e4a03703b2281de94a44a1445bfa3d0243fb6a803bf4ac7e177361fb68",
+      "ref": ".agentmarshal/journal/tasks/CR-234/artifacts/01M5QV51XZ4F9JBCQ07TC0MT03-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-OVERVIEW-OPERATIONAL-SCOPE": "claim-accuracy"
+  },
+  "created_at": "2026-10-24T20:55:33.567829Z",
+  "evidence": {
+    "ADV-OVERVIEW-OPERATIONAL-SCOPE": "docs/overview.md:141-144 states the operational lane admits a candidate that changes only .agentmarshal/switches.toml and its own task's journal subtree; src/agentmarshal/journal/gate.py:1006-1008 additionally requires contract.scope == ('.agentmarshal/switches.toml',) and :1009-1016 requires the base's switches file to read and parse, otherwise operational_candidate returns None and the candidate takes the review-bound lane. CHANGELOG.md:100-103 states the scope condition explicitly."
+  },
+  "findings": [],
+  "previous_review": "01M5QTCSE346WX6TEZXKJGTH6D",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "7b5386687d6932b75bd5340a7b8d25cd69f68012",
+  "reviewed_contract": "7fa097774ad78fbd1ac080724802e66ef60323c932c1948288357dcb5df72c23",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-234",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "all four read 0.6.0; cli.py:129-131 passes __version__ to --version",
+        "what": "grep of version declarations in pyproject.toml, src/agentmarshal/__init__.py, uv.lock, tests/test_smoke.py"
+      },
+      {
+        "result": "stages.py:950-962 checked/failed/did not finish/switched off/not run; :918 'exit <n>'; :913 'timeout'; :1475-1500 '(personal)' mark and 'pause accepted by <party> (<reason>)'; :1495-1500 'stage run: note: … not enforced'",
+        "what": "grep of stage result strings in src/agentmarshal/stages.py"
+      },
+      {
+        "result": "unknown phase, sidecar, unreadable base manifest each return status 1 before any stage is planned; ci = os.environ.get('CI') == 'true'; unreadable switches block the named stages with 'shared switches file unreadable'",
+        "what": "read of stages.py:1030-1160 (command-level refusals, CI, switches)"
+      },
+      {
+        "result": "lane requires switches.toml plus only the task's own subtree AND contract.scope == ('.agentmarshal/switches.toml',); verdict line 'PASS: operational transaction (operational lane; review not required)' at :1355; a link at the file refuses as 'not a file' (:1044-1045)",
+        "what": "read of gate.py:969-1017 and 1340-1440 (operational lane)"
+      },
+      {
+        "result": "gate.py:78 _JOURNAL_PREFIX = '.agentmarshal/journal/' — overview's journal-only definition matches",
+        "what": "grep of _JOURNAL_PREFIX in src/agentmarshal/journal/gate.py"
+      },
+      {
+        "result": "merged projection per affected task with the same closed-at-base admission; FAIL names task and reason; 'WARN: candidate adds opened/amendment records of other tasks'",
+        "what": "read of gate.py:2056-2165 (other-task projection and CR-210 warning)"
+      },
+      {
+        "result": "timestamp-text and artifact-ref-text rules bound to schema 8 (write-time only); write_record encodes before creating the file",
+        "what": "read of records.py:598-636, 1410-1428, 1585-1600, 2092-2125"
+      },
+      {
+        "result": "raw reviewer bytes preserved on a refused verdict; parsing uses the decoded text",
+        "what": "read of review.py:599-616, 1273-1292"
+      },
+      {
+        "result": "outbox.py:60-66 SENT and its line format; :117-140 --index on check, send, status; :723 'skipped as sent: <n>'; :1060-1105 Source: digest matching",
+        "what": "grep/read of outbox.py (SENT manifest, --index on check/send/status)"
+      },
+      {
+        "result": "pre-gate stages run before the gate; status 3 refuses unless --target shows the candidate merged; post-gate run after the completed record, its status informing nothing",
+        "what": "read of cli.py:1100-1232 (complete)"
+      },
+      {
+        "result": "init scaffolds .agentmarshal/upstream/README.md — README's new claim holds",
+        "what": "read of project.py:232-331"
+      },
+      {
+        "result": "CR-205..CR-236 all carry completed records, CR-234 only opened, CR-237 only opened; CR-200..CR-203 completed before CR-204 (0.5.0), so '0.5.0's CR-200 through CR-203' is correct",
+        "what": "ls and grep over .agentmarshal/journal/tasks (CR-200..CR-237 lifecycle records and titles)"
+      },
+      {
+        "result": "schema = 1, version = '1.15.0'; the script checks the model allowlist, ancestry, dispositions and the paths changed since the audit",
+        "what": "grep of .agentmarshal/extensions/openspec.toml and .github/scripts/check_release_audit.py"
+      },
+      {
+        "result": "all targets exist",
+        "what": "existence check of every link added (ADR-0013/0015/0018/0022, proposals 044 and 045)"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "read-only review of a snapshot that is not a git repository and has no synced environment; the coordinator attests the full sequence passed on the reviewed commit, and the diff is documentation plus a version string"
+      },
+      {
+        "what": "an end-to-end run of stage run / complete / gate against a live repository",
+        "why": "no git repository in the snapshot; the behaviour claims were checked against the implementing code and the openspec requirements instead"
+      }
+    ],
+    "read": [
+      "CHANGELOG.md (0.6.0 section and the 0.5.0 section it sits above)",
+      "UPGRADING.md",
+      "README.md",
+      "docs/overview.md",
+      "docs/threat-model.md",
+      "docs/proposals/README.md",
+      "docs/README.md",
+      "docs/self-hosting-workflow.md",
+      "CONTRIBUTING.md (Versions and Releases)",
+      "AGENTS.md",
+      "src/agentmarshal/stages.py",
+      "src/agentmarshal/extension_trust.py",
+      "src/agentmarshal/switch_off.py",
+      "src/agentmarshal/outbox.py",
+      "src/agentmarshal/record_ext.py",
+      "src/agentmarshal/doctor.py",
+      "src/agentmarshal/cli.py",
+      "src/agentmarshal/project.py",
+      "src/agentmarshal/journal/gate.py",
+      "src/agentmarshal/journal/records.py",
+      "src/agentmarshal/journal/review.py",
+      "src/agentmarshal/journal/report.py",
+      "src/agentmarshal/journal/status.py",
+      "src/agentmarshal/journal/status_view.py",
+      "src/agentmarshal/journal/validate.py",
+      "src/agentmarshal/journal/extensions.py",
+      "templates/journal-transaction.sh",
+      "tests/test_smoke.py",
+      "tests/test_gate.py (released_030)",
+      "openspec/specs/gate-lanes/spec.md",
+      "docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md",
+      "docs/adr/ADR-0023-next-the-next-step-of-a-task.md",
+      ".agentmarshal/journal/tasks/CR-204/contract.md",
+      ".agentmarshal/journal/tasks/CR-234/contract.md"
+    ]
+  }
+}

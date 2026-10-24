@@ -1,0 +1,176 @@
+{
+  "advisory_findings": [
+    "ADV-AUDIT-FIXES-SCOPE-001",
+    "ADV-DOCTOR-CHECK-001",
+    "ADV-OPERATIONAL-LANE-001",
+    "ADV-WRAP-001"
+  ],
+  "artifacts": [
+    {
+      "hash": "430e83171902bd02239b6510f2f6d6945abcd98cdd095e3924ecc235c47a14b1",
+      "ref": ".agentmarshal/journal/tasks/CR-234/artifacts/01M5QRWVF7STE67DQ6RZ8X26AG-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-AUDIT-FIXES-SCOPE-001": "claim-accuracy",
+    "ADV-DOCTOR-CHECK-001": "claim-accuracy",
+    "ADV-OPERATIONAL-LANE-001": "claim-accuracy",
+    "ADV-WRAP-001": "style"
+  },
+  "created_at": "2026-10-24T20:16:07.655313Z",
+  "evidence": {
+    "ADV-AUDIT-FIXES-SCOPE-001": "CHANGELOG.md:222-223 'The audit filed findings against the gate's journal handling; the two tasks named here are their fixes in the code.' vs .agentmarshal/journal/tasks/CR-237/contract.md Context 'Release audit 0.6.0, area gate-journal, findings AUD-gate-journal-5 and -4 (confirmed by reproduction)'; `ls .agentmarshal/journal/tasks/CR-237/records` -> only 01M5QJ09B8H4RGPVRRJ8TE7K1S-opened.json (no completed record)",
+    "ADV-DOCTOR-CHECK-001": "CHANGELOG.md:65-70 places the listing 'under an `extension manifest <name>` check per extension'; src/agentmarshal/doctor.py:399-400 `return True, f\"{form} form, manifest schema {manifest.schema}\"` is that check's whole detail, while src/agentmarshal/doctor.py:775-789 builds the stages/ext-kinds/grant/switch parts for the separate `extension <name>: …` section line",
+    "ADV-OPERATIONAL-LANE-001": "CHANGELOG.md:86-88, UPGRADING.md ('changes only `.agentmarshal/switches.toml` and its own task's records'), docs/overview.md:141-144, docs/self-hosting-workflow.md:143-146 vs src/agentmarshal/journal/gate.py:997-1003 (`elif not path.startswith(task_prefix): return None`, task_prefix = '.agentmarshal/journal/tasks/<task>/') and gate.py:926-934 plus openspec/specs/gate-lanes/spec.md:206-210 'the candidate amends the contract inside its own journal subtree -> the candidate still takes the operational lane'",
+    "ADV-WRAP-001": "`grep -nE '^.{80}' docs/self-hosting-workflow.md` -> single hit, line 40 ('that commit, and the evidence records are append-only and consistent. The `am-merge` host wrapper runs', 106 chars) in a file otherwise wrapped at <=79; docs/threat-model.md:270 (87 chars); CHANGELOG.md:224 is the 25-char fragment 'ends, refusal begins: for' and CHANGELOG.md:241 starts '`write_record` encodes the record to bytes' on a fresh line inside the same paragraph"
+  },
+  "findings": [],
+  "previous_review": "01M5QR009HAN1VJ2ZWPTN2TFGN",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "f5fbc8c3cce45baf6739b662867ba20b75fe92cf",
+  "reviewed_contract": "7fa097774ad78fbd1ac080724802e66ef60323c932c1948288357dcb5df72c23",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-234",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "CR-233, CR-235, CR-236 carry completed records; CR-234 and CR-237 carry only opened.json — so CR-235/CR-236 are merged fixes and CR-237 is not",
+        "what": "ls .agentmarshal/journal/tasks + ls of CR-233..CR-237 records"
+      },
+      {
+        "result": "stages.py:950-962 _result_text returns checked / failed (<reason>) / did not finish (<reason>) / switched off (<reason>) / not run (<reason>); :919 reason is 'exit <n>', :913 'timeout', :1377 '<task>, <reason>'",
+        "what": "grep for the stage result-line vocabulary in src/agentmarshal/stages.py"
+      },
+      {
+        "result": "extension_trust.py:733,736,741 print '<name>: not granted', 'granted', 'changed after approval: <path> (<kind>)'; :724 skips non-directories, so a single-file manifest gets no line",
+        "what": "grep 'extension list' output strings in src/agentmarshal/extension_trust.py"
+      },
+      {
+        "result": "gate.py:78 _JOURNAL_PREFIX='.agentmarshal/journal/'; :1252 journal_only = all(path.startswith(_JOURNAL_PREFIX)); :1352-1355 the two PASS lines, the operational one byte-for-byte as CHANGELOG quotes it",
+        "what": "read src/agentmarshal/journal/gate.py lane classification"
+      },
+      {
+        "result": "the under-threshold branch prints 'INFO: changes_required verdicts for {task_id}: {count} (threshold {threshold})' and is skipped on the journal-only and operational lanes — matching UPGRADING.md's corrected 0.4.1 -> 0.5.0 note",
+        "what": "read gate.py:2238-2276 (changes_required count line)"
+      },
+      {
+        "result": "the lane admits '.agentmarshal/switches.toml' plus every path under '.agentmarshal/journal/tasks/<task>/' (docstring: 'the task's own subtree, contract included'), and requires contract.scope == (SWITCHES_RELPATH,)",
+        "what": "read gate.py:969-1017 operational_candidate"
+      },
+      {
+        "result": "the other-task lifecycle projection FAILs naming the task and the reason; the warning string 'WARN: candidate adds opened/amendment records of other tasks' is at :2159",
+        "what": "read gate.py:2085-2165 (CR-235 and the CR-210 warning)"
+      },
+      {
+        "result": "_SUPPORTED_SCHEMAS={1..7}; schema-7 acceptance fields are accepted_pause/operational; the timestamp-text rule refuses created_at/started_at/ended_at/resets_at before the parse and is bound past today's schemas; write_record encodes to bytes before _create_exclusive",
+        "what": "read records.py:192, :256, :590-650, :2092-2125 (CR-236 and the schema ceiling)"
+      },
+      {
+        "result": "_SENT='SENT' (:60), 'skipped as sent: <n>' (:723), --index on check/send/status (:117-141); hits.extend(_draft_hits(...)) at :688 sits outside the is_draft guard, so the leak scan covers skipped files",
+        "what": "grep outbox SENT manifest and the skip path in src/agentmarshal/outbox.py"
+      },
+      {
+        "result": "_is_unmeasured = session record, no 'usage', every token count zero; status appends ' tokens=unmeasured'; report carries unmeasured=/unmeasured_without_cost= on the task, Summary and Cost lines (:731,:779,:812)",
+        "what": "read report.py:213-233 and status_view.py:305-317 (unmeasured)"
+      },
+      {
+        "result": "openspec/specs/extension-stages/spec.md:80, 92, 96, 308 carry them verbatim; openspec/specs/gate-lanes/spec.md:241 carries the switches-file requirement including 'a link or a non-blob at the file's path refuses as not a file'",
+        "what": "grep the four extension-stages quotes the threat model adds"
+      },
+      {
+        "result": "init writes .agentmarshal/project.json and scaffolds .agentmarshal/upstream/README.md and nothing else, so README's enumeration is complete",
+        "what": "read src/agentmarshal/project.py:232-446 (what init writes)"
+      },
+      {
+        "result": "ALWAYS_ALLOWED + fixed-task scopes bound the post-audit diff; ALLOWED_MODELS, merge-base --is-ancestor, _DISPOSITIONS and the last-lifecycle-record=='completed' rule are all present; the step runs before 'uv build'",
+        "what": "read .github/scripts/check_release_audit.py and .github/workflows/release.yml"
+      },
+      {
+        "result": "pyproject.toml:3 and src/agentmarshal/__init__.py:3 and uv.lock:11 all read 0.6.0; tests/test_smoke.py:48 asserts it and :51-59 asserts `agentmarshal --version` prints __version__; no 0.6.0.dev0 remains outside the append-only journal",
+        "what": "grep version strings"
+      },
+      {
+        "result": "docs/self-hosting-workflow.md:40 (106 chars) is the only over-length line in that file; docs/threat-model.md:270 (87) is newly added beside one pre-existing long line",
+        "what": "grep -nE '^.{80}' over the changed documents"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; uv run agentmarshal validate; uv run pytest; uv run ruff check; uv run ruff format --check; uv run mypy",
+        "why": "read-only review sandbox without uv or network; the coordinator states the sequence passed on f5fbc8c, so no check-failure claim is made"
+      },
+      {
+        "what": "agentmarshal --version as a process",
+        "why": "command execution was declined in this sandbox; the wiring (cli.py:129-131) and tests/test_smoke.py::test_console_version_prints_package_version were read instead"
+      },
+      {
+        "what": "git log / git diff against master",
+        "why": "the snapshot is not a git repository, so merge state was established from the journal's lifecycle records instead"
+      }
+    ],
+    "read": [
+      "CHANGELOG.md (0.6.0 section, lines 11-270, and the 0.5.0 section for the history and interop claims)",
+      "UPGRADING.md (the new 0.5.0 -> 0.6.0 section and the corrected 0.4.1 -> 0.5.0 note)",
+      "README.md",
+      "docs/threat-model.md (the stage-line refusals and open question 2)",
+      "docs/proposals/README.md",
+      "docs/README.md",
+      "docs/overview.md",
+      "docs/self-hosting-workflow.md",
+      "docs/quickstart.md (contract principles, the 0.5.0-pinned install the contract leaves out of scope)",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md (decisions 13, 16, 17, the scope table)",
+      "docs/adr/ADR-0015-a-rule-applies-from-the-schema-that-introduced-it.md (referenced)",
+      "docs/adr/ADR-0018-governing-the-contract.md",
+      "docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md (sections 2, 3, 4, 7, 8)",
+      "docs/adr/ADR-0023-next-the-next-step-of-a-task.md",
+      "openspec/specs/extension-stages/spec.md",
+      "openspec/specs/gate-lanes/spec.md",
+      "src/agentmarshal/stages.py",
+      "src/agentmarshal/cli.py",
+      "src/agentmarshal/extension_trust.py",
+      "src/agentmarshal/doctor.py",
+      "src/agentmarshal/switch_off.py",
+      "src/agentmarshal/switches.py",
+      "src/agentmarshal/isolation.py",
+      "src/agentmarshal/outbox.py",
+      "src/agentmarshal/record_ext.py",
+      "src/agentmarshal/project.py",
+      "src/agentmarshal/localstate.py",
+      "src/agentmarshal/journal/gate.py",
+      "src/agentmarshal/journal/records.py",
+      "src/agentmarshal/journal/report.py",
+      "src/agentmarshal/journal/status_view.py",
+      "src/agentmarshal/journal/validate.py",
+      "src/agentmarshal/journal/complete.py",
+      "src/agentmarshal/journal/capture.py",
+      "templates/journal-transaction.sh",
+      ".github/scripts/check_release_audit.py",
+      ".github/workflows/release.yml",
+      ".agentmarshal/extensions/openspec.toml",
+      ".agentmarshal/journal/tasks/CR-234/contract.md",
+      ".agentmarshal/journal/tasks/CR-235/contract.md",
+      ".agentmarshal/journal/tasks/CR-236/contract.md",
+      ".agentmarshal/journal/tasks/CR-237/contract.md",
+      "tests/test_smoke.py",
+      "tests/test_journal.py (init outbox tests)",
+      "tests/test_outbox.py",
+      "tests/test_personal_extensions.py",
+      "tests/test_gate_operational.py",
+      "tests/test_status_candidate_session.py",
+      "tests/test_validate_addressee.py",
+      "tests/test_project.py",
+      "tests/test_localstate.py"
+    ]
+  }
+}

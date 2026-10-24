@@ -249,23 +249,33 @@ command invoked it, never the gate's (extension-stages specification,
 "`stage run` reads the switches from the base and reports a
 switched-off extension", "an accepted pause stands down a
 pre-gate-stop stage's pause for the accepted extension and commit" and
-"the stage run is one function both commands call"). One case gives a
-stage no line: where the clone's trust file cannot be read on a
-workstation the command fails naming the file, and a stage that would
-have been grant-checked is skipped without one — the lines still owed
-go to the stages never grant-checked, a switched-off stage's
-`switched off (<task>, <reason>)` and the `not run (shared switches
-file unreadable)` of a stage a refused switches file names
-(extension-stages specification, "on a workstation a stage runs only
-under a matching grant" and "`stage run` reads the switches from the
-base and reports a switched-off extension"). ADR-0013 decision 7's
-list runs past what the runner prints: `addressee not found` as a
-stage line and a `not run` reason of dependencies not matching the
-lock are decided, not yet implemented — `addressee not found` lives
-today on `validate`'s warning for an `ext` record kind no manifest
-declares (extension-records specification, "`validate` warns
-"addressee not found" on an ext record whose kind no manifest
-declares"). An `accepted_pause` acceptance naming the extension at
+"the stage run is one function both commands call"). The command-level
+refusals give no stage a line at all — a phase the runner does not
+know, a task identifier the record family would refuse (refused by the
+calling command before the runner is reached), a sidecar journal,
+whose stage base is a property of the embedded placement, and a
+manifest the base tree cannot produce or parse each fail the command
+before a stage is planned — and where the clone's trust file cannot be
+read on a workstation the command fails naming the file, and a stage
+that would have been grant-checked is skipped without one — the lines
+still owed go to the stages never grant-checked, a switched-off
+stage's `switched off (<task>, <reason>)` and the
+`not run (shared switches file unreadable)` of a stage a refused
+switches file names
+(extension-stages specification, "a manifest the base cannot parse
+fails the run naming the extension", "a sidecar runs no stages", "an
+invalid task identifier refuses before any stage is planned", "a
+malformed trust.toml fails the command naming it", "on a workstation
+a stage runs only under a matching grant" and "`stage run` reads the
+switches from the base and reports a switched-off extension").
+ADR-0013 decision 7's list runs past what the runner prints:
+`addressee not found` as a stage line and a `not run` reason of
+dependencies not matching the lock are decided, not yet implemented —
+`addressee not found` lives today on `validate`'s warning for an
+`ext` record kind no manifest declares (extension-records
+specification, "`validate` warns "addressee not found" on an ext
+record whose kind no manifest declares"). An `accepted_pause`
+acceptance naming the extension at
 the resolved commit stands a `pre-gate-stop` pause down
 (extension-stages specification, "an accepted pause stands down a
 pre-gate-stop stage's pause for the accepted extension and commit").
@@ -512,11 +522,15 @@ stop short, and this document does not resolve them.
 2. **Symlinks inside the journal.** Symlink refusal is specified for the
    extension manifest and its `bin/` and `lock/` paths, for the
    process-log sweep, for local-state creation and for non-regular
-   entries of the outbox. No published statement covers a symlink inside
-   `.agentmarshal/journal/` — at a record or an artifact — or at
-   `.agentmarshal/switches.toml`. (extension-manifest specification, "An
+   entries of the outbox, and for the switches file the operational lane
+   verifies — a link at `.agentmarshal/switches.toml` refuses as not a
+   file. No published statement covers a symlink inside
+   `.agentmarshal/journal/` — at a record or an artifact.
+   (extension-manifest specification, "An
    extension is found in the file form or the directory form" and "A path
    the directory form names exists in the extension's directory";
+   gate-lanes specification, "the operational lane verifies the switches
+   file against the task and the base";
    process-log specification, "The log directory is bounded as a whole"
    and "Creating a location is contained to the local state root";
    outbox specification, "`outbox check` scans what would be sent and
@@ -543,18 +557,23 @@ stop short, and this document does not resolve them.
    by the decision itself. (ADR-0011, decisions 3 and 4 and "Left open".)
 
 5. **A shared extension switched off without review.** The operational
-   lane admits a diff touching only
-   `.agentmarshal/switches.toml` and the task's own records, requires no
-   review, and skips the extensions' `pre-gate` stages; the reason is
-   mandatory and `status` and `doctor` show the switch — "easy, but not
-   silent" (gate-lanes specification, "an operational change takes its
-   own gate lane" and "pre-gate stages do not run on an operational
-   change"; extension-stages specification, "`status` names each
-   switched-off shared extension" and "`doctor` shows each switched-off
-   shared extension"). That file is the one exception to the rule that
-   configuration is reviewed, and whether its visibility substitutes for
-   review is not assessed. (ADR-0013, decisions 16 and 17, header and
-   "Consequences"; ADR-0010, decision 2.)
+   lane admits a diff touching only `.agentmarshal/switches.toml` and
+   the inside of the task's own journal subtree — its records and an
+   amended contract alike — and only while the task's contract
+   declares `scope` exactly `[".agentmarshal/switches.toml"]` and the
+   base's switches file reads and parses; a candidate failing either
+   takes the regular lane and needs a review. On the lane no review
+   is required and the extensions' `pre-gate` stages are skipped; the
+   reason is mandatory and `status` and `doctor` show the switch —
+   "easy, but not silent" (gate-lanes specification, "an operational
+   change takes its own gate lane" and "pre-gate stages do not run on
+   an operational change"; extension-stages specification, "`status`
+   names each switched-off shared extension" and "`doctor` shows each
+   switched-off shared extension"). That file is the one exception to
+   the rule that configuration is reviewed, and whether its
+   visibility substitutes for review is not assessed. (ADR-0013,
+   decisions 16 and 17, header and "Consequences"; ADR-0010,
+   decision 2.)
 
 6. **`next` reads local, forgeable inputs.** `next` — decided, not yet
    implemented — reads the process log for an open step and for an
