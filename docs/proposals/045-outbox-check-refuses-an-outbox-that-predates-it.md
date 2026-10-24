@@ -25,10 +25,16 @@ Measurements, as reported:
   besides;
 - 2 files carry `## Symptom` only — the section scheme the reporter
   settled on before the form existed;
-- 9 of the 10 were sent before 0.5.0, and each one's sha256 is the
-  `Source:` line that links it to its public digest — editing them into
-  the form would break that link for every one of them; the tenth was
-  sent by copy for the same reason;
+- 9 of the 10 were sent before 0.5.0. A sent file's sha256 is the
+  `Source:` line linking it to its public digest where the digest
+  carries one — that is the pair published from the reporter's
+  2026-09-24 batch,
+  [025](025-validate-refused-records-an-earlier-release-wrote.md) and
+  [026](026-reviewer-facts-round-convergence-and-two-gaps.md); the
+  earlier digests predate the source line, which this index dates to
+  the batch of 2026-09-16. Editing a sent file into the form breaks the
+  link where it exists — and rewrites what was sent either way; the
+  tenth was sent by copy for the same reason;
 - there is no flag or configuration key that changes which files are
   checked.
 
@@ -57,12 +63,13 @@ the `Source:` lines of an index file the operator passes with `--index`.
    they try to send.
 
 The reporter weighed and rejected: rewriting the sent files into the
-form — it breaks the sha256 `Source:` link to their public digests, the
-only link the reporter holds; moving the sent files into a subdirectory
-— `check` refuses any entry that is not a regular file, so the batch is
-refused still; moving them out of the outbox — the same link breaks,
-and `outbox status` could no longer hash them in place; and continuing
-to deliver by copy — which works today, but gives up what `send` exists
+form — it breaks the sha256 `Source:` link where a digest carries one,
+the only link the reporter holds, and rewrites what was sent either
+way; moving the sent files into a subdirectory — `check` refuses any
+entry that is not a regular file, so the batch is refused still; moving
+them out of the outbox — the link breaks where it exists, and `outbox
+status` could no longer hash the files in place; and continuing to
+deliver by copy — which works today, but gives up what `send` exists
 for: the leak scan over exactly what leaves, and a batch commit pinned
 to the checked bytes.
 
@@ -70,13 +77,21 @@ to the checked bytes.
 
 **Skipping the already-sent** is accepted for 0.6.0, keyed on the hash
 the reporter names — the sha256 `outbox status` already matches against
-an index. The knowledge arrives by the routes the proposal offers — a
-manifest of sent hashes that `send` writes, and the same index file
-`status` takes — because each covers what the other cannot: the manifest
-marks what this tool sent, while the index reaches back to findings
-that left before it existed, or by copy. Deciding by hash rather than
-by name also keeps the property the `Source:` line exists for: a file
-edited after it was sent is a new draft, not a sent one.
+an index. What is skipped is the draft-form check: the leak scan still
+covers every file `send` stages, the rule
+[ADR-0020](../adr/ADR-0020-the-outbox-command-group.md) sets — the scan
+runs over what would be sent. The knowledge arrives by the routes the
+proposal offers — a manifest of sent hashes that `send` writes, and an
+index file of the kind `status` takes — because each covers what the
+other cannot: the manifest marks what this tool sent, while an index
+reaches findings that left before the group existed or went by copy —
+the published one where the digests carry a `Source:` line, and one the
+operator writes where they do not. The manifest joins the outbox as a
+second non-draft entry: the field check already exempts the `README.md`
+`init` writes, and a manifest judged as a draft would itself refuse
+every batch it joins. Deciding by hash rather than by name also keeps
+the property the `Source:` line exists for: a file edited after it was
+sent is a new draft, not a sent one.
 
 **Reporting the skipped files** is accepted with it — one line, `skipped
 as sent: N` — on the rule `_check` already prints by: nothing in the
@@ -89,7 +104,8 @@ instead of the refusal.
 
 ## Where
 
-`outbox check` and `outbox send` skip files already sent — known by a
-manifest of sent hashes that `send` writes, or by the index `outbox
-status` takes — with the skipped files reported rather than silent, in
-0.6.0. Not shipped yet.
+`outbox check` and `outbox send` skip the draft-form check for files
+already sent — known by a manifest of sent hashes that `send` writes,
+or by the index `outbox status` takes — with the skipped files reported
+rather than silent and the leak scan still covering every file `send`
+stages, in 0.6.0. Not shipped yet.

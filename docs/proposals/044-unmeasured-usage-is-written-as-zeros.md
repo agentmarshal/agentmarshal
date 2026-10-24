@@ -16,12 +16,17 @@ journal is exactly what a run that cost nothing looks like.
 
 The record models usage as always measured. `create_session_record`
 (`journal/records.py`) writes the three-integer `tokens` object on every
-session record; the optional `usage` object (`provider`, `method`) is
-the only trace that the figures were not reported, and nothing documents
-that reading. Nor can the distinction be written by hand: the
-`session-tokens` rule requires `tokens` to be a mapping of exactly the
-three counts, each a non-negative integer, so a session record without
-the object is invalid — the schema admits no shape for "not measured".
+session record; the optional `usage` object (`provider`, `method`)
+carries the counts' provenance, and its absence is already a documented
+reading — the quickstart says to omit the usage flags exactly when the
+provenance is unavailable, and `report` reads that absence as
+`usage=unrecorded`. But provenance is all that reading marks: the three
+counts are still zeros that sum into the totals like a run that cost
+nothing, and the record itself cannot say "not measured". Nor can the
+distinction be written by hand: the `session-tokens` rule requires
+`tokens` to be a mapping of exactly the three counts, each a
+non-negative integer, so a session record without the object is
+invalid — the schema admits no shape for "not measured".
 
 How the reporter works around it, as reported: an executor wrapper
 writes a per-run usage line, and a run whose counter was not found is
@@ -57,8 +62,9 @@ Make the token counts optional and explicit:
    never as zero.
 
 The reporter weighed and rejected: recording zeros and relying on the
-absent `usage` object — undocumented, and any consumer summing `tokens`
-gets the wrong answer silently; a sentinel such as `-1` — the sums still
+absent `usage` object — it marks the provenance unrecorded but leaves
+the zeros in place, so any consumer summing `tokens` still gets the
+wrong answer silently; a sentinel such as `-1` — the sums still
 break, and negative counts would need special-casing everywhere; and
 encoding the fact in `outcome` (`completed:unmeasured`) — which mixes
 how the run ended with whether its cost is known, two independent facts
@@ -69,9 +75,10 @@ in one field.
 **The reading side** is accepted for 0.6.0: `status` and `report` show a
 session whose usage was not measured as unmeasured rather than folding
 its zeros into the totals. For records written before the marker
-exists, the only signal is the one the finding names — the three counts
-at zero and no `usage` object — and `report` already shows the shape
-such a reading takes: sessions carrying no `cost` are counted apart, as
+exists, the signals are the ones the finding names — the three counts
+at zero and no `usage` object. `report` already reads the second of
+them, as `usage=unrecorded`, and already shows the shape the rest of
+the reading takes: sessions carrying no `cost` are counted apart, as
 `sessions_without_cost`, never averaged as zero.
 
 **The write side** — token counts that default to absent, and the
