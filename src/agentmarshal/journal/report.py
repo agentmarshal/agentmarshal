@@ -90,7 +90,13 @@ class CostSum:
 
 @dataclass(frozen=True)
 class TaskReport:
-    """Measured work and terminal status for one task."""
+    """Measured work and terminal status for one task.
+
+    ``sessions``, ``sessions_without_cost`` and ``costs`` run over the
+    task's measured sessions alone — an unmeasured session, zero tokens
+    and no ``usage`` block, is no measured session and counts in
+    ``unmeasured`` and nowhere else.
+    """
 
     task_id: str
     state: str
@@ -117,7 +123,10 @@ class JournalReport:
     boundary carries a time (``lead_known``); ``lead_median`` and
     ``lead_maximum`` run over their ``completed`` minus ``opened`` spans
     alone, and ``lead_unknown`` counts the rest — counted, never
-    averaged in (ADR-0019 decision 2).
+    averaged in (ADR-0019 decision 2). As on ``TaskReport``,
+    ``sessions``, ``sessions_without_cost`` and ``costs`` run over the
+    journal's measured sessions alone, ``unmeasured`` counting the
+    sessions they left out.
     """
 
     tasks: tuple[TaskReport, ...]

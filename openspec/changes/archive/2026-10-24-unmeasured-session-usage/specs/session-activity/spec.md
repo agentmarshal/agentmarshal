@@ -108,6 +108,36 @@ be escaped where it is displayed, as every record value in the view is.
 
 ## MODIFIED Requirements
 
+### Requirement: the new lines leave today's output first and unchanged
+Every line `report` and `report --task` print today SHALL print first
+and, for a journal holding no unmeasured session, unchanged, the new
+lines appended after; every value the new lines take from a record
+SHALL be escaped where it is displayed, as every record value in the
+view is. A journal holding an unmeasured session admits the one
+exception the unmeasured-session requirements name: a line carrying a
+sum those sessions were left out of gains `unmeasured=<n>` as its last
+field and nothing more, and every other line prints unchanged.
+
+#### Scenario: today's output is the new output's prefix
+- **WHEN** `report` or `report --task` runs over a journal holding no
+  unmeasured session
+- **THEN** every line the command printed before this change prints
+  first and unchanged, and the new lines follow
+
+#### Scenario: the unmeasured field joins a sum line and the new lines still follow
+- **WHEN** `report` or `report --task` runs over a journal holding an
+  unmeasured session
+- **THEN** every line the command printed before this change prints
+  first — each line carrying a sum the session was left out of gaining
+  `unmeasured=<n>` as its last field and nothing more — and the new
+  lines follow
+
+#### Scenario: a record value in the new lines is escaped on display
+- **WHEN** a value the new lines take from a record carries a
+  character that could forge a line
+- **THEN** it is escaped on display, as every record value in the view
+  is
+
 ### Requirement: report --task shows the task's cost per currency
 `agentmarshal report --task <id>` SHALL print, after the round lines it
 prints today, the task's `Cost` lines: one line per currency the task's
@@ -119,36 +149,38 @@ measured sessions carrying no `cost`, printed whenever the task holds at least
 one measured session. Amounts SHALL be summed as decimals and printed in plain
 decimal notation — never as floats. No sum SHALL convert or blend
 currencies: two currencies are two lines, never one figure (ADR-0019
-decision 4). A task whose sessions carry no cost SHALL print no
+decision 4). A task whose measured sessions carry no cost SHALL print no
 currency line — none rather than zero — and a task holding no measured session
 SHALL print no `Cost` line at all. Every `Cost` line SHALL carry
 `unmeasured=<n>` as its last field whenever the task left sessions out
 of these sums as unmeasured.
 
 #### Scenario: cost sums print per currency with reported and estimated apart
-- **WHEN** `report --task` runs for a task whose sessions carry `cost`
+- **WHEN** `report --task` runs for a task whose measured sessions
+  carry `cost`
 - **THEN** one `Cost` line prints per currency — after the task's round
   lines — carrying `reported=` and `estimated=` sums separately, each a
   decimal
 
 #### Scenario: two currencies are two sums, never a blended figure
-- **WHEN** the task's sessions carry costs in two currencies
+- **WHEN** the task's measured sessions carry costs in two currencies
 - **THEN** two `Cost` lines print, one per currency, and no line
   combines them
 
 #### Scenario: amounts sum and print as decimals, never floats
-- **WHEN** the task's sessions carry costs whose amounts do not sum
-  exactly in binary floating point — `1.10` and `2.20`
+- **WHEN** the task's measured sessions carry costs whose amounts do
+  not sum exactly in binary floating point — `1.10` and `2.20`
 - **THEN** the printed sum is `3.30`, the exact decimal
 
 #### Scenario: a task with no cost shows none rather than zero
-- **WHEN** the task's sessions carry no `cost`
+- **WHEN** the task's measured sessions carry no `cost`
 - **THEN** no `Cost` currency line prints — none rather than a zero sum
 
 #### Scenario: the count of sessions carrying no cost prints
-- **WHEN** the task holds sessions, some carrying `cost` and some not
+- **WHEN** the task holds measured sessions, some carrying `cost` and
+  some not
 - **THEN** `Cost	sessions_without_cost=<n>` prints the count of the
-  task's sessions carrying no `cost`
+  task's measured sessions carrying no `cost`
 
 #### Scenario: a task holding no session prints no cost lines
 - **WHEN** `report --task` runs for a task holding no session record
@@ -160,26 +192,61 @@ line it prints today, the same sums over every task's measured sessions: one
 `Cost` line per currency carrying `reported` and `estimated` apart,
 and a `Cost	sessions_without_cost=<n>` line counting every measured session
 carrying no `cost` whenever the journal holds at least one measured session. A
-journal with no cost recorded SHALL print no currency line — none
+journal whose measured sessions carry no cost SHALL print no currency line — none
 rather than zero. Every `Cost` line SHALL carry `unmeasured=<n>` as its
 last field whenever the journal left sessions out of these sums as
 unmeasured.
 
 #### Scenario: the aggregate sums every task's sessions per currency and source
-- **WHEN** `report` runs over tasks whose sessions carry `cost`
+- **WHEN** `report` runs over tasks whose measured sessions carry
+  `cost`
 - **THEN** after the `Lead` line, one `Cost` line per currency prints
-  the `reported=` and `estimated=` sums over every task's sessions
+  the `reported=` and `estimated=` sums over every task's measured
+  sessions
 
 #### Scenario: no conversion or blending across currencies in the aggregate
-- **WHEN** `report` runs over sessions carrying costs in two currencies
+- **WHEN** `report` runs over measured sessions carrying costs in two
+  currencies
 - **THEN** two `Cost` lines print, one per currency, and no line
   combines them
 
 #### Scenario: the aggregate counts sessions carrying no cost
-- **WHEN** `report` runs over a journal holding sessions without `cost`
+- **WHEN** `report` runs over a journal holding measured sessions
+  without `cost`
 - **THEN** `Cost	sessions_without_cost=<n>` prints their count
 
 #### Scenario: with no cost recorded the aggregate prints no currency line
-- **WHEN** `report` runs over a journal whose sessions carry no `cost`,
-  or none at all
+- **WHEN** `report` runs over a journal whose measured sessions carry
+  no `cost`, or none at all
 - **THEN** no `Cost` currency line prints
+
+### Requirement: the cost and check lines leave today's output first and unchanged
+Every line `report` and `report --task` print today SHALL print first
+and, for a journal holding no unmeasured session, unchanged, the cost
+and check lines appended after; every value the new lines take from a
+record SHALL be escaped where it is displayed, as every record value in
+the view is (ADR-0015 decision 5). A journal holding an unmeasured
+session admits the one exception the unmeasured-session requirements
+name: a line carrying a sum those sessions were left out of gains
+`unmeasured=<n>` as its last field and nothing more, and every other
+line prints unchanged.
+
+#### Scenario: today's report output is the new output's prefix
+- **WHEN** `report` or `report --task` runs over a journal holding no
+  unmeasured session
+- **THEN** every line the command printed before this change prints
+  first and unchanged, and the cost and check lines follow
+
+#### Scenario: the unmeasured field joins a sum line and the cost and check lines still follow
+- **WHEN** `report` or `report --task` runs over a journal holding an
+  unmeasured session
+- **THEN** every line the command printed before this change prints
+  first — each line carrying a sum the session was left out of gaining
+  `unmeasured=<n>` as its last field and nothing more — and the cost
+  and check lines follow
+
+#### Scenario: a record value in the cost or check lines is escaped on display
+- **WHEN** a value the new lines take from a record carries a
+  character that could forge a line
+- **THEN** it is escaped on display, as every record value in the view
+  is

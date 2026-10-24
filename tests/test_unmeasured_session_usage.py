@@ -20,7 +20,6 @@ import pytest
 
 from agentmarshal.cli import main
 from agentmarshal.journal.records import create_session_record, write_record
-from agentmarshal.journal.report import _is_unmeasured
 
 _DECLARATION = (
     "A check record is the observer's declaration of what the pipeline found "
@@ -79,28 +78,86 @@ def _status_session_lines(output: str) -> list[str]:
     ]
 
 
-def test_zero_tokens_and_no_usage_is_unmeasured() -> None:
+def test_zero_tokens_and_no_usage_is_unmeasured(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     """Scenario: zero tokens and no usage is unmeasured."""
 
-    assert _is_unmeasured(_session("CR-001"))
+    repo = tmp_path / "repo"
+    journal = _initialize_repo(repo, monkeypatch)
+    _open(journal, "CR-001")
+    session = _session("CR-001")
+    path = write_record(journal, "CR-001", session)
+    capsys.readouterr()
+
+    # The one read both views share: `status` marks the session's tokens
+    # unmeasured, `report` leaves it out of the token sum and names it.
+    assert main(["status", "CR-001"]) == 0
+    record_id = path.name.removesuffix("-session.json")
+    assert _status_session_lines(capsys.readouterr().out) == [
+        f"- {record_id} session {session['created_at']} tokens=unmeasured"
+    ]
+
+    assert main(["report", "--task", "CR-001"]) == 0
+    line = capsys.readouterr().out.splitlines()[0]
+    assert "\ttokens=0" in line
+    assert line.endswith("\tunmeasured=1")
 
 
-def test_a_session_with_a_usage_block_reads_as_today() -> None:
+def test_a_session_with_a_usage_block_reads_as_today(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     """Scenario: a session with a usage block reads as today."""
 
+    repo = tmp_path / "repo"
+    journal = _initialize_repo(repo, monkeypatch)
+    _open(journal, "CR-001")
     # A `usage` block marks the session measured even at zero tokens —
     # the zeros are a recorded measurement, not a missing one.
-    for method in ("measured", "reported"):
-        assert not _is_unmeasured(
-            _session("CR-001", usage=("example-provider", method))
-        )
+    sessions = [
+        _session("CR-001", usage=("example-provider", method))
+        for method in ("measured", "reported")
+    ]
+    paths = [write_record(journal, "CR-001", session) for session in sessions]
+    capsys.readouterr()
+
+    assert main(["status", "CR-001"]) == 0
+    assert _status_session_lines(capsys.readouterr().out) == [
+        f"- {path.name.removesuffix('-session.json')} session {session['created_at']}"
+        for path, session in zip(paths, sessions, strict=True)
+    ]
+
+    assert main(["report", "--task", "CR-001"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert "\ttokens=0" in lines[0]
+    assert not any("unmeasured" in line for line in lines)
 
 
-def test_a_session_with_a_non_zero_token_reads_as_today() -> None:
+def test_a_session_with_a_non_zero_token_reads_as_today(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     """Scenario: a session with a non-zero token reads as today."""
 
-    assert not _is_unmeasured(_session("CR-001", tokens=(1, 0, 0)))
-    assert not _is_unmeasured(_session("CR-001", tokens=(0, 0, 7)))
+    repo = tmp_path / "repo"
+    journal = _initialize_repo(repo, monkeypatch)
+    _open(journal, "CR-001")
+    session = _session("CR-001", tokens=(0, 0, 7))
+    path = write_record(journal, "CR-001", session)
+    capsys.readouterr()
+
+    # A non-zero count is a measurement even with no `usage` block:
+    # `status` prints the record line it prints today and `report` sums
+    # the session in.
+    assert main(["status", "CR-001"]) == 0
+    record_id = path.name.removesuffix("-session.json")
+    assert _status_session_lines(capsys.readouterr().out) == [
+        f"- {record_id} session {session['created_at']}"
+    ]
+
+    assert main(["report", "--task", "CR-001"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert "\ttokens=7" in lines[0]
+    assert not any("unmeasured" in line for line in lines)
 
 
 def test_an_unmeasured_sessions_tokens_show_as_unmeasured(
@@ -309,6 +366,69 @@ def test_the_aggregate_leaves_unmeasured_sessions_out_and_names_them(
     lines = capsys.readouterr().out.splitlines()
     assert "Cost\tUSD\treported=1.00\tunmeasured=2" in lines
     assert "Cost\tsessions_without_cost=0\tunmeasured=2" in lines
+
+
+def test_the_unmeasured_field_joins_a_sum_line_and_the_new_lines_still_follow(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: the unmeasured field joins a sum line and the new lines
+    still follow."""
+
+    repo = tmp_path / "repo"
+    journal = _initialize_repo(repo, monkeypatch)
+    _open(journal, "CR-001")
+    write_record(journal, "CR-001", _session("CR-001"))
+    write_record(journal, "CR-001", _session("CR-001", tokens=(10, 5, 0)))
+    capsys.readouterr()
+
+    # The task line — the one line from before the lead-time change
+    # carrying a sum the unmeasured session was left out of — gains
+    # `unmeasured=<n>` as its last field and nothing more; the phase and
+    # duration lines the change appended still follow, unmarked.
+    assert main(["report", "--task", "CR-001"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0] == (
+        "CR-001\topen\treviews=0\ttokens=15\tusage=unrecorded\tunmeasured=1"
+    )
+    assert lines[1].startswith("Phases\t")
+    assert lines[2].startswith("Durations\t")
+    assert not any("unmeasured" in line for line in lines[1:3])
+
+
+def test_unmeasured_field_joins_sum_line_and_cost_check_lines_follow(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: the unmeasured field joins a sum line and the cost and
+    check lines still follow."""
+
+    repo = tmp_path / "repo"
+    journal = _initialize_repo(repo, monkeypatch)
+    _open(journal, "CR-001")
+    write_record(journal, "CR-001", _session("CR-001"))
+    write_record(
+        journal,
+        "CR-001",
+        _session(
+            "CR-001",
+            tokens=(10, 5, 0),
+            cost={"amount": "1.00", "currency": "USD", "source": "reported"},
+        ),
+    )
+    capsys.readouterr()
+
+    # Today's lines print first — the task line gaining `unmeasured=<n>`
+    # for the sum it left the session out of — and the cost and check
+    # lines still follow, the cost lines carrying the same field for
+    # their own sums and the check lines unmarked.
+    assert main(["report", "--task", "CR-001"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0].endswith("\tunmeasured=1")
+    assert lines[-4:] == [
+        "Cost\tUSD\treported=1.00\tunmeasured=1",
+        "Cost\tsessions_without_cost=0\tunmeasured=1",
+        "Checks\trejected_commits=0",
+        _DECLARATION,
+    ]
 
 
 def test_with_no_unmeasured_session_nothing_changes(
