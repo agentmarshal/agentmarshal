@@ -11,6 +11,7 @@ import pytest
 
 import agentmarshal.stages as stages_module
 from agentmarshal.cli import main
+from agentmarshal.journal.records import create_acceptance_record, write_record
 from agentmarshal.localstate import LocalState
 from agentmarshal.process_log import read_events
 from test_placement import _host_and_sidecar
@@ -155,6 +156,28 @@ def _journal_snapshot(repo: Path) -> dict[str, bytes]:
         for path in sorted(root.rglob("*"))
         if path.is_file()
     }
+
+
+def _accept_pause(
+    repo: Path,
+    extension: str = "openspec",
+    commit: str | None = None,
+    party: str = "ops-lead",
+    reason: str = "The pause is understood",
+    task: str = "CR-001",
+) -> Path:
+    """Write one ``accepted_pause`` acceptance for *task*; return its path."""
+
+    record = create_acceptance_record(
+        task,
+        "test",
+        commit,
+        party,
+        None,
+        reason,
+        accepted_pause=extension,
+    )
+    return write_record(repo / ".agentmarshal" / "journal", task, record)
 
 
 # -- the declared stages of the base's shared extensions ---------------------
@@ -1497,3 +1520,412 @@ def test_the_journal_is_untouched(
 
     capsys.readouterr()
     assert _journal_snapshot(repo) == before
+
+
+# -- an accepted pause ---------------------------------------------------------
+
+
+def test_an_accepted_pause_lets_the_process_continue_naming_who_accepted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: an accepted pause lets the process continue naming who accepted."""
+    _repo, _base, candidate = _repo_with_extension(
+        tmp_path,
+        monkeypatch,
+        files={"bin/check.py": "import sys\nsys.exit(2)\n"},
+    )
+    _accept_pause(_repo, commit=candidate)
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 0
+
+    captured = capsys.readouterr()
+    assert (
+        "openspec: failed (exit 2), pause accepted by ops-lead "
+        "(The pause is understood)" in captured.out
+    )
+    assert "paused" not in captured.err
+
+
+def test_an_accepted_pause_stands_down_a_did_not_finish_or_not_run_stage_the_same_way(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: an accepted pause stands down a did-not-finish or not-run stage the same way."""  # noqa: E501
+    repo = _project(tmp_path, monkeypatch)
+    _extension(
+        repo,
+        name="alpha",
+        manifest=_manifest(name="alpha", stages=(("pre-gate-stop", "bin/missing.py"),)),
+        files={"bin/other.py": "print(1)\n"},
+    )
+    _extension(
+        repo,
+        name="beta",
+        manifest=_manifest(
+            name="beta",
+            isolation=(
+                "[isolation]\n"
+                "network = false\n"
+                "env = []\n"
+                'writes = "none"\n'
+                "timeout_seconds = 1\n"
+            ),
+        ),
+        files={"bin/check.py": "import time\ntime.sleep(60)\n"},
+    )
+    _commit_all(repo, "base")
+    _git(repo, "checkout", "--quiet", "-b", "candidate")
+    (repo / "x.txt").write_text("x\n", encoding="utf-8")
+    candidate = _commit_all(repo, "candidate")
+    _accept_pause(repo, extension="alpha", commit=candidate, reason="alpha seen")
+    _accept_pause(repo, extension="beta", commit=candidate, reason="beta seen")
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 0
+
+    captured = capsys.readouterr()
+    assert (
+        "alpha: not run (command bin/missing.py does not exist), "
+        "pause accepted by ops-lead (alpha seen)" in captured.out
+    )
+    assert (
+        "beta: did not finish (timeout), pause accepted by ops-lead "
+        "(beta seen)" in captured.out
+    )
+    assert "paused" not in captured.err
+
+
+def test_the_latest_matching_acceptance_in_journal_order_is_the_one_named(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: the latest matching acceptance in journal order is the one named."""
+    repo, _base, candidate = _repo_with_extension(
+        tmp_path,
+        monkeypatch,
+        files={"bin/check.py": "import sys\nsys.exit(2)\n"},
+    )
+    _accept_pause(repo, commit=candidate, party="first", reason="earlier word")
+    latest = _accept_pause(repo, commit=candidate, party="second", reason="later word")
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 0
+
+    captured = capsys.readouterr()
+    assert "pause accepted by second (later word)" in captured.out
+    assert "pause accepted by first" not in captured.out
+    record_id = latest.name.removesuffix("-acceptance.json")
+    events = [event for event in _events(repo) if event["event"] == "extension-event"]
+    (event,) = events
+    assert str(event["reason"]).endswith(
+        f"pause accepted by acceptance record {record_id}"
+    )
+
+
+def test_an_acceptance_bound_to_another_commit_does_not_count(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: an acceptance bound to another commit does not count."""
+    repo, base, _candidate = _repo_with_extension(
+        tmp_path,
+        monkeypatch,
+        files={"bin/check.py": "import sys\nsys.exit(2)\n"},
+    )
+    _accept_pause(repo, commit=base)
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 3
+
+    captured = capsys.readouterr()
+    assert "openspec: failed (exit 2)" in captured.out
+    assert "pause accepted" not in captured.out
+    assert "paused before the gate" in captured.err
+
+
+def test_an_acceptance_naming_another_extension_does_not_count(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: an acceptance naming another extension does not count."""
+    repo, _base, candidate = _repo_with_extension(
+        tmp_path,
+        monkeypatch,
+        files={"bin/check.py": "import sys\nsys.exit(2)\n"},
+    )
+    _accept_pause(repo, extension="other", commit=candidate)
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 3
+
+    captured = capsys.readouterr()
+    assert "openspec: failed (exit 2)" in captured.out
+    assert "pause accepted" not in captured.out
+    assert "paused before the gate" in captured.err
+
+
+def test_an_acceptance_of_another_form_does_not_count(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: an acceptance of another form does not count."""
+    repo, _base, candidate = _repo_with_extension(
+        tmp_path,
+        monkeypatch,
+        files={"bin/check.py": "import sys\nsys.exit(2)\n"},
+    )
+    journal = repo / ".agentmarshal" / "journal"
+    write_record(
+        journal,
+        "CR-001",
+        create_acceptance_record(
+            "CR-001", "test", candidate, "ops-lead", ["F-1"], "over findings"
+        ),
+    )
+    write_record(
+        journal,
+        "CR-001",
+        create_acceptance_record(
+            "CR-001",
+            "test",
+            candidate,
+            "ops-lead",
+            None,
+            "operational",
+            operational=True,
+        ),
+    )
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 3
+
+    captured = capsys.readouterr()
+    assert "openspec: failed (exit 2)" in captured.out
+    assert "pause accepted" not in captured.out
+    assert "paused before the gate" in captured.err
+
+
+def test_an_accepted_pause_lifts_no_other_stages_pause(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: an accepted pause lifts no other stage's pause."""
+    repo = _project(tmp_path, monkeypatch)
+    for name in ("alpha", "beta"):
+        _extension(
+            repo,
+            name=name,
+            manifest=_manifest(name=name),
+            files={"bin/check.py": "import sys\nsys.exit(2)\n"},
+        )
+    _commit_all(repo, "base")
+    _git(repo, "checkout", "--quiet", "-b", "candidate")
+    (repo / "x.txt").write_text("x\n", encoding="utf-8")
+    candidate = _commit_all(repo, "candidate")
+    _accept_pause(repo, extension="alpha", commit=candidate)
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 3
+
+    captured = capsys.readouterr()
+    assert (
+        "alpha: failed (exit 2), pause accepted by ops-lead "
+        "(The pause is understood)" in captured.out
+    )
+    beta_lines = [
+        line for line in captured.out.splitlines() if line.startswith("beta: ")
+    ]
+    assert beta_lines == ["beta: failed (exit 2)"]
+    pauses = [line for line in captured.err.splitlines() if "paused" in line]
+    assert len(pauses) == 1
+    assert "beta" in pauses[0]
+    assert "alpha" not in pauses[0]
+
+
+def test_a_checked_stages_line_never_mentions_an_acceptance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a checked stage's line never mentions an acceptance."""
+    repo, _base, candidate = _repo_with_extension(tmp_path, monkeypatch)
+    _accept_pause(repo, commit=candidate)
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 0
+
+    captured = capsys.readouterr()
+    assert "openspec: checked" in captured.out
+    assert "pause accepted" not in captured.out
+    events = [event for event in _events(repo) if event["event"] == "extension-event"]
+    (event,) = events
+    assert event["reason"] == ""
+
+
+def test_a_pre_gate_warn_stage_is_unchanged_by_an_acceptance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a pre-gate-warn stage is unchanged by an acceptance."""
+    repo, _base, candidate = _repo_with_extension(
+        tmp_path,
+        monkeypatch,
+        manifest=_manifest(stages=(("pre-gate-warn", "bin/warn.py"),)),
+        files={"bin/warn.py": "import sys\nsys.exit(9)\n"},
+    )
+    _accept_pause(repo, commit=candidate)
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 0
+
+    captured = capsys.readouterr()
+    assert "openspec: failed (exit 9)" in captured.out
+    assert "pause accepted" not in captured.out
+    assert "WARNING" in captured.err
+    assert "paused" not in captured.err
+
+
+def test_a_post_gate_stage_is_unchanged_by_an_acceptance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a post-gate stage is unchanged by an acceptance."""
+    repo, _base, candidate = _repo_with_extension(
+        tmp_path,
+        monkeypatch,
+        manifest=_manifest(stages=(("post-gate", "bin/post.py"),)),
+        files={"bin/post.py": "import sys\nsys.exit(5)\n"},
+    )
+    _accept_pause(repo, commit=candidate)
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(phase="post-gate", commit="candidate", base="master") == 0
+
+    captured = capsys.readouterr()
+    assert "openspec: failed (exit 5)" in captured.out
+    assert "pause accepted" not in captured.out
+
+
+def test_a_switched_off_stage_is_unchanged_by_an_acceptance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a switched-off stage is unchanged by an acceptance."""
+    repo = _project(tmp_path, monkeypatch)
+    _extension(repo)
+    (repo / ".agentmarshal" / "switches.toml").write_text(
+        "format = 1\n\n"
+        "[switches.openspec]\n"
+        'state = "off"\n'
+        'task = "CR-214"\n'
+        'reason = "hangs on empty repositories"\n',
+        encoding="utf-8",
+    )
+    _commit_all(repo, "base")
+    _git(repo, "checkout", "--quiet", "-b", "candidate")
+    (repo / "x.txt").write_text("x\n", encoding="utf-8")
+    candidate = _commit_all(repo, "candidate")
+    _accept_pause(repo, commit=candidate)
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 0
+
+    captured = capsys.readouterr()
+    assert (
+        "openspec: switched off (CR-214, hangs on empty repositories)" in captured.out
+    )
+    assert "pause accepted" not in captured.out
+    assert "paused" not in captured.err
+
+
+def test_the_extension_event_of_an_accepted_pause_names_the_acceptance_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: the extension-event of an accepted pause names the acceptance record."""  # noqa: E501
+    repo, _base, candidate = _repo_with_extension(
+        tmp_path,
+        monkeypatch,
+        files={"bin/check.py": "import sys\nsys.exit(2)\n"},
+    )
+    path = _accept_pause(repo, commit=candidate)
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 0
+
+    capsys.readouterr()
+    record_id = path.name.removesuffix("-acceptance.json")
+    events = [event for event in _events(repo) if event["event"] == "extension-event"]
+    (event,) = events
+    assert event["decision"] == "failed"
+    assert event["reason"] == (
+        f"exit 2; pause accepted by acceptance record {record_id}"
+    )
+    assert event["commit"] == candidate
+
+
+def test_a_records_values_are_escaped_on_display(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a record's values are escaped on display."""
+    _repo, _base, candidate = _repo_with_extension(
+        tmp_path,
+        monkeypatch,
+        files={"bin/check.py": "import sys\nsys.exit(2)\n"},
+    )
+    # A record the reader itself would refuse can still reach the render
+    # path — the suffix escapes what it shows regardless.
+    record = create_acceptance_record(
+        "CR-001",
+        "test",
+        candidate,
+        "ops\nlead",
+        None,
+        "understood\u2028fine",
+        accepted_pause="openspec",
+    )
+    record["id"] = "01J00000000000000000000000"
+    monkeypatch.setattr(stages_module, "read_records", lambda *_args, **_keys: [record])
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 0
+
+    captured = capsys.readouterr()
+    assert "pause accepted by ops\\nlead (understood\\u2028fine)" in captured.out
+    assert "\nlead" not in captured.out
+    assert "\u2028" not in captured.out
+
+
+def test_a_journal_that_cannot_be_read_names_it_and_every_pause_stands(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a journal that cannot be read names it and every pause stands."""
+    repo, _base, _candidate = _repo_with_extension(
+        tmp_path,
+        monkeypatch,
+        files={"bin/check.py": "import sys\nsys.exit(2)\n"},
+    )
+    # A record the reader cannot parse: the journal answers nothing, so
+    # the pause stands — the fallback never lifts one.
+    records_dir = repo / ".agentmarshal" / "journal" / "tasks" / "CR-001" / "records"
+    records_dir.mkdir(parents=True)
+    (records_dir / "01J00000000000000000000000-acceptance.json").write_text(
+        "this is not json", encoding="utf-8"
+    )
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 3
+
+    captured = capsys.readouterr()
+    assert "openspec: failed (exit 2)" in captured.out
+    assert "pause accepted" not in captured.out
+    journal_lines = [
+        line for line in captured.err.splitlines() if "journal cannot be read" in line
+    ]
+    assert len(journal_lines) == 1
+    assert str(repo / ".agentmarshal" / "journal") in journal_lines[0]
+    assert "every pause stands" in journal_lines[0]
+    assert "paused before the gate" in captured.err

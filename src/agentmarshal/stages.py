@@ -24,7 +24,15 @@ written to the
 journal. A ``pre-gate-stop`` stage that failed, did not finish or did not
 run pauses the process before the gate — the command exits 3 — while a
 ``pre-gate-warn`` stage's failure is a loud warning and a ``post-gate``
-stage's only a notification.
+stage's only a notification. One exception (ADR-0013 decision 5,
+ADR-0022 section 2): where the task's acceptance records — read from
+the placement's journal through ``read_records``, asked only when a
+pause could stand — carry an ``accepted_pause`` naming the stage's
+extension and bound by ``accepted_commit`` to the commit the run
+resolved, the stage's result line keeps its outcome and adds
+``pause accepted by <party> (<reason>)`` from the record, the stage
+does not pause, and its event names the acceptance record; a journal
+that cannot be read is named once on stderr and every pause stands.
 
 The invocation protocol — what the command receives and what its exit
 status means — is the coordinator's decision recorded in the change's
@@ -68,7 +76,7 @@ from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Literal, TextIO
+from typing import Literal, TextIO, cast
 
 from agentmarshal import isolation
 from agentmarshal.extension_trust import (
@@ -102,7 +110,11 @@ from agentmarshal.journal.placement import (
     PlacementError,
     resolve_placement,
 )
-from agentmarshal.journal.records import JournalRecordError, validate_task_id
+from agentmarshal.journal.records import (
+    JournalRecordError,
+    read_records,
+    validate_task_id,
+)
 from agentmarshal.journal.review import _extract_snapshot
 from agentmarshal.localstate import LocalState, LocalStateError, local_state
 from agentmarshal.process_log import (
@@ -685,6 +697,22 @@ def _new_failures(
     return [(label, reason) for label, reason in failures if label not in named]
 
 
+def _pause_extension(record: dict[str, object]) -> object:
+    """The extension an acceptance record's ``accepted_pause`` names, or
+    ``None``.
+
+    ``read_records`` guarantees the object's shape — exactly
+    ``extension``, a string — for the records that carry it; anything
+    else — an acceptance of another form, a value that is no object —
+    is no pause acceptance at all.
+    """
+
+    pause = record.get("accepted_pause")
+    if not isinstance(pause, dict):
+        return None
+    return cast(dict[str, object], pause).get("extension")
+
+
 def _result_text(outcome: _Outcome) -> str:
     """The result line's tail: checked / failed / did not finish / not run /
     switched off."""
@@ -841,7 +869,11 @@ def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
     writer_lost = False
 
     def record_event(
-        name: str, stage: ExtensionStage, outcome: _Outcome, result_text: str
+        name: str,
+        stage: ExtensionStage,
+        outcome: _Outcome,
+        result_text: str,
+        acceptance: dict[str, object] | None,
     ) -> None:
         """Append the stage's ``extension-event``; a lost log is a warning.
 
@@ -873,6 +905,12 @@ def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
         event_reason = (
             outcome.reason if outcome.event_reason is None else outcome.event_reason
         )
+        if acceptance is not None:
+            # An accepted pause keeps the decision it carries today;
+            # the reason names the acceptance record the lift stands on,
+            # so a reader of the log can trace it to the evidence.
+            clause = f"pause accepted by acceptance record {acceptance['id']}"
+            event_reason = f"{event_reason}; {clause}" if event_reason else clause
         try:
             if stage.phase == "post-gate":
                 write_event(
@@ -906,6 +944,41 @@ def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
                 f"{escape_for_display(str(error))}",
                 file=stderr,
             )
+
+    # An operator's accepted pause (ADR-0013 decision 5, ADR-0022
+    # section 2) is asked for only where a pause could stand — the first
+    # ``pre-gate-stop`` stage whose decision is not ``checked`` or
+    # ``switched-off`` — so a run that pauses nothing never opens the
+    # journal. The records come from the placement's journal through
+    # ``read_records``, the journal's own loader, schema-validated; a
+    # journal that cannot be read is named once on stderr and answers
+    # no acceptance — the fallback never lifts a pause.
+    pause_records: list[dict[str, object]] | None = None
+
+    def accepted_pause(extension: str) -> dict[str, object] | None:
+        """The latest acceptance of *extension*'s pause at the resolved
+        commit, or ``None``."""
+
+        nonlocal pause_records
+        if pause_records is None:
+            try:
+                pause_records = read_records(placement.journal_root, args.task)
+            except (JournalRecordError, OSError, ValueError) as error:
+                pause_records = []
+                print(
+                    "stage run: the journal cannot be read "
+                    f"({escape_for_display(str(placement.journal_root))}: "
+                    f"{escape_for_display(str(error))}); every pause stands",
+                    file=stderr,
+                )
+        accepted = [
+            record
+            for record in pause_records
+            if record.get("record_type") == "acceptance"
+            and record.get("accepted_commit") == resolved_commit
+            and _pause_extension(record) == extension
+        ]
+        return accepted[-1] if accepted else None
 
     paused: list[str] = []
     warnings: list[str] = []
@@ -969,8 +1042,27 @@ def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
             lines.pop()
         for line in lines:
             print(f"{shown} | {escape_for_display(line)}")
+        # A stage whose decision could pause is the only one that asks
+        # for an acceptance — a checked or switched-off stage and the
+        # other phases keep their lines exactly, and the read is the
+        # lazy one above. With one, the result line keeps its outcome
+        # and says who accepted the pause and why, each record value
+        # escaped for display; the pause bookkeeping below skips it.
+        acceptance = (
+            accepted_pause(name)
+            if stage.phase == "pre-gate-stop"
+            and outcome.decision not in ("checked", "switched-off")
+            else None
+        )
         result_text = _result_text(outcome)
-        print(f"{shown}: {result_text}")
+        if acceptance is None:
+            print(f"{shown}: {result_text}")
+        else:
+            print(
+                f"{shown}: {result_text}, pause accepted by "
+                f"{escape_for_display(str(acceptance['accepted_by']))} "
+                f"({escape_for_display(str(acceptance['reason']))})"
+            )
         if outcome.not_enforced:
             # What the stage ran without — one note line for it, each
             # guarantee named with its reason. A guarantee enforced is
@@ -985,12 +1077,13 @@ def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
                 ),
                 file=stderr,
             )
-        record_event(name, stage, outcome, result_text)
+        record_event(name, stage, outcome, result_text, acceptance)
         if stage.phase == "pre-gate-stop" and outcome.decision not in (
             "checked",
             "switched-off",
         ):
-            paused.append(f"{shown}: {result_text}")
+            if acceptance is None:
+                paused.append(f"{shown}: {result_text}")
         elif stage.phase == "pre-gate-warn" and outcome.decision not in (
             "checked",
             "switched-off",
