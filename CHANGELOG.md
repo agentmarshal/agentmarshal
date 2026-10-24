@@ -143,9 +143,11 @@ and runs on the workstation only — CI plans and prints nothing
 personal. Its command runs directly as a program rather than under the
 core's interpreter, its result lines are marked `(personal)`, and its
 process log events carry the `personal` scope. A personal manifest
-carries no `footprint`, `documents` or `artifacts` — it writes to no
-shared surface and writes no `ext` record — and a shared extension of
-the same name wins: the personal stage reports
+carries no `footprint`, `documents` or `artifacts` — a personal
+extension has no write path into the journal through the core, and its
+process runs with the developer's rights, so the same-user caveat of
+[docs/threat-model.md](docs/threat-model.md) applies — and a shared
+extension of the same name wins: the personal stage reports
 `not run (a shared extension of this name wins) (personal)`.
 `agentmarshal extension disable <name>` writes `state = "off"` to the
 clone's switches — `extension enable <name>` clears it — for a

@@ -43,9 +43,10 @@ rule — upgrade each checkout, CI job and merge wrapper when it suits you.
   merged into: without it a pre-gate-stop pause still refuses a
   candidate that is already merged.
 - **Personal extensions need no project action.** An operator can run a
-  clone-local extension from `.git/agentmarshal/extensions/<name>/`;
-  it never reaches the shared journal or CI, and a shared extension of
-  the same name wins.
+  clone-local extension from `.git/agentmarshal/extensions/<name>/`; it
+  runs on the workstation only, has no write path into the shared
+  journal through the core — the threat model's same-user caveat
+  applies — and a shared extension of the same name wins.
 - **`outbox check` and `outbox send` skip files already sent.** `send`
   maintains a `SENT` manifest inside the outbox, and
   `check --index <file>` skips by the `Source:` digests an index

@@ -1802,10 +1802,14 @@ phase prints nothing and adds no event.
 
 ### Requirement: a personal extension has no journal authority
 
-A personal extension SHALL write no `ext` records — `record-ext`
-accepts only kinds a shared extension declares, a personal manifest's
-`[records]` entries never entering the accepted set — and nothing to
-the journal; its `extension-event`s SHALL carry `scope` `personal`.
+A personal extension has no write path into the journal through the
+core — `record-ext` SHALL accept only kinds a shared extension
+declares, none a personal manifest's `[records]` declares — its
+manifest SHALL carry no `footprint`, `documents` or `artifacts`, no
+personal stage SHALL affect the gate or the server-side process, and
+its `extension-event`s SHALL carry `scope` `personal`. Its process runs
+with the developer's rights, not contained beyond the stage isolation
+(docs/threat-model.md).
 
 #### Scenario: record-ext refuses a kind only a personal manifest declares
 
