@@ -11,7 +11,11 @@ import pytest
 
 import agentmarshal.stages as stages_module
 from agentmarshal.cli import main
-from agentmarshal.journal.records import create_acceptance_record, write_record
+from agentmarshal.journal.records import (
+    create_acceptance_record,
+    read_records,
+    write_record,
+)
 from agentmarshal.localstate import LocalState
 from agentmarshal.process_log import read_events
 from test_placement import _host_and_sidecar
@@ -391,6 +395,31 @@ def test_an_invalid_task_identifier_refuses_before_any_stage_is_planned(
     assert "manifest" not in captured.err
     assert "openspec" not in captured.err
     assert "checked" not in captured.out
+
+
+def test_a_bad_task_id_is_refused_before_the_project_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Not a spec scenario: outside an initialized project the task
+    identifier is still refused first — the order ``stage run`` printed
+    before the runner was shared (CR-225 F2)."""
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    monkeypatch.chdir(plain)
+
+    assert _stage_run(task="not a task") == 1
+
+    captured = capsys.readouterr()
+    assert captured.err.startswith("stage run:")
+    assert "task id" in captured.err
+    assert "initialized project" not in captured.err
+    assert captured.out == ""
+
+    assert _stage_run() == 1
+
+    captured = capsys.readouterr()
+    assert "must be run inside an initialized project" in captured.err
+    assert captured.out == ""
 
 
 # -- materialization ---------------------------------------------------------
@@ -1928,4 +1957,45 @@ def test_a_journal_that_cannot_be_read_names_it_and_every_pause_stands(
     assert len(journal_lines) == 1
     assert str(repo / ".agentmarshal" / "journal") in journal_lines[0]
     assert "every pause stands" in journal_lines[0]
-    assert "paused before the gate" in captured.err
+
+
+def test_a_run_that_pauses_nothing_never_reads_the_journal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Not a spec scenario: the acceptance read is lazy — a run that
+    pauses nothing never opens the journal for it (CR-224)."""
+    _repo_with_extension(
+        tmp_path,
+        monkeypatch,
+        manifest=_manifest(
+            stages=(
+                ("pre-gate-stop", "bin/stop.py"),
+                ("pre-gate-warn", "bin/warn.py"),
+            )
+        ),
+        files={
+            "bin/stop.py": "print('stop ran')\n",
+            # A failed pre-gate-warn stage warns, never pauses — and is
+            # still owed no acceptance read.
+            "bin/warn.py": "import sys\nsys.exit(9)\n",
+        },
+    )
+    original = read_records
+    calls: list[tuple[Path, str]] = []
+
+    def spy(journal_root: Path, task_id: str) -> list[dict[str, object]]:
+        calls.append((journal_root, task_id))
+        return original(journal_root, task_id)
+
+    monkeypatch.setattr(stages_module, "read_records", spy)
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 0
+
+    assert calls == []
+    captured = capsys.readouterr()
+    assert "openspec: checked" in captured.out
+    assert "openspec: failed (exit 9)" in captured.out
+    assert "WARNING" in captured.err
+    assert "paused" not in captured.err

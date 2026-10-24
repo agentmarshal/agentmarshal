@@ -1201,6 +1201,15 @@ def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
     line on an empty plan and the per-entry pause lines.
     """
 
+    # The task id is refused before the placement is resolved — the
+    # refusal order the command printed before the runner was shared, so
+    # ``stage run`` outside an initialized project still names a bad id
+    # rather than the missing project.
+    try:
+        validate_task_id(args.task)
+    except JournalRecordError as error:
+        print(f"stage run: {error}", file=stderr)
+        return 1
     resolved = _resolve(stderr)
     if resolved is None:
         return 1
