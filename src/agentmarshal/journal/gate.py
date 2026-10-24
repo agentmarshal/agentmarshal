@@ -64,6 +64,7 @@ from agentmarshal.journal.records import (
 from agentmarshal.journal.report import (
     SELF_ACCEPTED_MARK,
     accepting_party_is_declared_writer,
+    decode_writer_field,
 )
 from agentmarshal.journal.status import (
     TaskStatusError,
@@ -513,9 +514,12 @@ def _range_writer_identities(
     against the *emails* alone — a name in that set could only collide
     with a reviewer identity declared as an address. The self-acceptance
     mark's shared comparison ``report.accepting_party_is_declared_writer``
-    matches ``accepted_by`` against the names and emails alike — the
-    fields ``report.declared_commit_writers`` reads for the accepted
-    commit, case-folded the same way.
+    matches ``accepted_by`` against the names and emails alike. This is
+    the gate's own range lookup — where ``report`` and ``status`` read
+    the accepted commit's writers through
+    ``report.declared_commit_writers`` — so a writer of an earlier
+    commit of the range only marks at the gate: the journal holds no
+    candidate base the other surfaces could rebuild the range from.
     """
 
     output = _run_git_bytes(
@@ -528,20 +532,18 @@ def _range_writer_identities(
     )
     # The format writes %an, %ae, %cn, %ce once per commit behind NUL
     # separators — no byte inside a field can misalign the grid — so the
-    # emails are the second and fourth field of each group of four. An
-    # email decodes strictly, as the whole output did before; a name
-    # decodes with ``replace``, so a commit whose author or committer
-    # name is not UTF-8 cannot fail the run.
+    # emails are the second and fourth field of each group of four,
+    # decoded by the helper the surfaces share: emails strictly, as the
+    # whole output decoded before, so the independence check is
+    # unchanged; names with ``replace``, so a commit whose author or
+    # committer name is not UTF-8 cannot fail the run.
     emails: set[str] = set()
     identities: set[str] = set()
     for index, field in enumerate(output.split(b"\x00")):
-        if index % 4 in (1, 3):
-            try:
-                decoded = field.decode("utf-8")
-            except UnicodeDecodeError as error:
-                raise GateError(f"git produced non-UTF-8 output: {error}") from error
-        else:
-            decoded = field.decode("utf-8", errors="replace")
+        try:
+            decoded = decode_writer_field(field, email=index % 4 in (1, 3))
+        except UnicodeDecodeError as error:
+            raise GateError(f"git produced non-UTF-8 output: {error}") from error
         value = decoded.strip().casefold()
         if not value:
             continue
@@ -1834,10 +1836,12 @@ def run_gate(
         # acceptance's self-acceptance mark (ADR-0007 decision 4) applies
         # the shared comparison `accepting_party_is_declared_writer`:
         # the gate applies it over the candidate's commit range — the
-        # names and emails read here — while report and status apply it
-        # to the accepted commit. One `git log` yields both sets, and a
-        # valid acceptance implies a latest review, so they are present
-        # wherever the lines need them.
+        # names and emails its own range lookup reads here — while
+        # report and status apply it to the accepted commit's writers,
+        # read through `declared_commit_writers`, so a writer of an
+        # earlier commit of the range only marks here. One `git log`
+        # yields both sets, and a valid acceptance implies a latest
+        # review, so they are present wherever the lines need them.
         writer_emails, writer_identities = (
             _range_writer_identities(project_root, merge_base, resolved_commit)
             if latest is not None

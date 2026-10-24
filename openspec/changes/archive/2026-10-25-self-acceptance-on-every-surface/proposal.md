@@ -35,14 +35,18 @@ distinguish how the completed commit actually closed.
 ## Impact
 
 `gate.py` reads the candidate range's declared writer names and emails
-ahead of the verdict block, beside the emails-only set the
-independence check keeps. `report.py` derives the decision per
-completed binding and holds the shared writer lookup and comparison —
-`declared_commit_writers` and `accepting_party_is_declared_writer`,
-the functions `status_view` calls for the same check — applied by the
-gate over the candidate's commit range and by `report` and `status`
-over the accepted commit, in the repository the placement resolves, as
-`status` resolves it. The mark's wording is one constant,
-`SELF_ACCEPTED_MARK`; the report line carries ` self-accepted` only
-where the self-acceptance is confirmed. `status`'s output is
-untouched — it already marks.
+through its own range lookup ahead of the verdict block — one `git
+log` yields them beside the emails-only set the independence check
+keeps. `report.py` derives the decision per completed binding and
+holds the shared pieces: the comparison
+`accepting_party_is_declared_writer`, which the gate applies over the
+range and `report` and `status` over the accepted commit's writers —
+read there through `declared_commit_writers`, in the repository the
+placement resolves, as `status` resolves it — and the field decoding
+`decode_writer_field`, which all three writer reads share (names with
+`replace`, emails strictly). The journal holds no candidate base, so
+a writer of an earlier commit of the range earns the mark at the
+gate alone. The mark's wording is one constant, `SELF_ACCEPTED_MARK`;
+the report line carries ` self-accepted` only where the
+self-acceptance is confirmed. `status`'s output is untouched — it
+already marks.

@@ -90,6 +90,37 @@ def _commit(repo: Path, name: str, *, committer: tuple[str, str] | None = None) 
     ).stdout.strip()
 
 
+def _implement_as(repo: Path, path: str, name: str, email: str) -> str:
+    """Commit ``path`` with ``name <email>`` as author and committer."""
+
+    target = repo / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("code\n", encoding="utf-8")
+    subprocess.run(["git", "add", path], cwd=repo, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            f"user.name={name}",
+            "-c",
+            f"user.email={email}",
+            "commit",
+            "--quiet",
+            "-m",
+            path,
+        ],
+        cwd=repo,
+        check=True,
+    )
+    return subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
 def _implement_latin1_author(repo: Path, head: str) -> str:
     """HEAD rewritten with an author name that is not valid UTF-8.
 
@@ -260,11 +291,15 @@ def test_the_gate_runs_over_an_author_name_that_is_not_utf8(
     The range's ``git log`` is read as bytes and split on NUL: names
     decode lossily where emails decode as strictly as before, so a
     commit whose author name is not UTF-8 keeps the gate running — and
-    the surviving email half of the identity still earns the mark.
+    the surviving email half of the identity still earns the mark. The
+    range's other commit is written by another identity, so only the
+    latin-1 commit's own email can supply it.
     """
 
     repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
-    head = _implement_latin1_author(repo, _implement(repo, "src/module.py"))
+    head = _implement_latin1_author(
+        repo, _implement_as(repo, "src/module.py", "Other", "other@test.invalid")
+    )
     _require_changes(repo, head, "F-001")
     _accept(repo, head, accepted_by="worker@test.invalid")
 
@@ -300,6 +335,46 @@ def test_an_acceptance_by_another_party_prints_unmarked(
         "not an approving review"
     ) in output
     assert "self-accepted" not in output
+
+    journal = repo / ".agentmarshal" / "journal"
+    write_record(journal, "CR-001", create_completed_record("CR-001", "test", head))
+    capsys.readouterr()
+
+    assert _report_line(capsys, "CR-001") == (
+        "CR-001\tdone\treviews=1\ttokens=0\tdecision=accepted-over-findings"
+    )
+
+
+def test_a_writer_of_an_earlier_range_commit_is_marked_by_the_gate_alone(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a writer of an earlier range commit is marked by the gate alone.
+
+    The documented asymmetry the requirement states: the gate compares
+    the accepting party against the declared writers of every commit in
+    the candidate range, where ``report`` and ``status`` can read only
+    the accepted commit's — the journal holds no candidate base — so a
+    party who wrote an earlier commit of the range but not its tip
+    earns the mark at the gate and nowhere else.
+    """
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    _implement_as(repo, "src/first.py", "Alice", "alice@test.invalid")
+    head = _implement_as(repo, "src/second.py", "Bob", "bob@test.invalid")
+    _require_changes(repo, head, "F-001")
+    _accept(repo, head, accepted_by="alice@test.invalid")
+
+    report = run_gate(repo, "CR-001", head, base, head)
+
+    output = "\n".join(report.lines)
+    assert report.passed, output
+    assert (
+        "PASS: accepted over findings F-001 by alice@test.invalid "
+        "(self-accepted: accepting party is a declared author or "
+        "committer); not an approving review"
+    ) in output
 
     journal = repo / ".agentmarshal" / "journal"
     write_record(journal, "CR-001", create_completed_record("CR-001", "test", head))
@@ -367,6 +442,41 @@ def test_reports_task_line_marks_a_committer_self_acceptance(
         "CR-001\tdone\treviews=1\ttokens=0"
         "\tdecision=accepted-over-findings\tself-accepted"
     )
+
+
+def test_report_and_status_keep_the_mark_over_a_non_utf8_author_name(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A non-UTF-8 author name cannot lose the mark on report or status.
+
+    The accepted commit's writer read decodes names with ``replace`` and
+    emails strictly — the same split the gate's range lookup makes — so
+    a commit whose author name is not UTF-8 keeps the mark on every
+    surface, earned by the surviving email half of the identity.
+    """
+
+    repo, journal = _report_repo(tmp_path, monkeypatch)
+    commit = _implement_latin1_author(repo, _commit(repo, "tracked.py"))
+    write_record(journal, "CR-001", _review(commit, "changes_required", "F-1"))
+    write_record(
+        journal,
+        "CR-001",
+        create_acceptance_record(
+            "CR-001", "test", commit, "worker@test.invalid", ["F-1"], "accepted"
+        ),
+    )
+    write_record(journal, "CR-001", create_completed_record("CR-001", "test", commit))
+    capsys.readouterr()
+
+    assert _report_line(capsys, "CR-001") == (
+        "CR-001\tdone\treviews=1\ttokens=0"
+        "\tdecision=accepted-over-findings\tself-accepted"
+    )
+
+    assert main(["status", "CR-001"]) == 0
+    assert "self-accepted" in capsys.readouterr().out
 
 
 def test_reports_task_line_prints_unmarked_when_the_check_cannot_run(
@@ -470,9 +580,16 @@ def test_a_finding_completed_over_findings_reports_accepted_over_findings(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Scenario: a finding completed over findings reports accepted-over-findings."""
+    """Scenario: a finding completed over findings reports accepted-over-findings.
 
-    _repo, journal = _report_repo(tmp_path, monkeypatch)
+    The accepting party is a declared writer of a real commit — so the
+    absent mark is the finding binding's own doing: an
+    ``accepted_finding`` carries no ``accepted_commit`` whose writers
+    could be compared, not merely a party that matched no writer.
+    """
+
+    repo, journal = _report_repo(tmp_path, monkeypatch)
+    _commit(repo, "tracked.py")
     finding = write_record(
         journal,
         "CR-001",
@@ -506,7 +623,7 @@ def test_a_finding_completed_over_findings_reports_accepted_over_findings(
             "CR-001",
             "test",
             None,
-            "op",
+            "test@example.invalid",
             ["F-1"],
             "accepted",
             accepted_finding=finding,
@@ -635,4 +752,34 @@ def test_a_task_with_no_completed_record_keeps_todays_decision_rule(
 
     assert _report_line(capsys, "CR-001") == (
         "CR-001\topen\treviews=1\ttokens=0\tdecision=accepted-over-findings"
+    )
+
+
+def test_a_task_with_no_completed_record_marks_a_self_acceptance(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: report's task line marks a self-acceptance.
+
+    The no-`completed`-record branch applies the mark to the latest
+    findings-carrying acceptance it reports: a self-accepting party
+    earns `self-accepted` there exactly as on the completed lane.
+    """
+
+    repo, journal = _report_repo(tmp_path, monkeypatch)
+    commit = _commit(repo, "tracked.py")
+    write_record(journal, "CR-001", _review(commit, "changes_required", "F-1"))
+    write_record(
+        journal,
+        "CR-001",
+        create_acceptance_record(
+            "CR-001", "test", commit, "test@example.invalid", ["F-1"], "accepted"
+        ),
+    )
+    capsys.readouterr()
+
+    assert _report_line(capsys, "CR-001") == (
+        "CR-001\topen\treviews=1\ttokens=0"
+        "\tdecision=accepted-over-findings\tself-accepted"
     )

@@ -314,19 +314,19 @@ same review checks, the same record.
   blocking findings are the record's, and its refusals are unchanged
 
 ### Requirement: every surface marks a self-acceptance
-Where an acceptance's `accepted_by` matches a declared writer of the
-candidate — an author or committer name or email, case-insensitively —
-the gate's acceptance line SHALL carry
-` (self-accepted: accepting party is a declared author or committer)`
-and `report`'s task line a tab-separated `self-accepted` field.
-`report` marks a confirmed self-acceptance only — where the commit's
-writers cannot be read it prints unmarked, and `status` alone says the
-check could not run (ADR-0007 decision 4).
+The gate SHALL mark an acceptance whose `accepted_by` is a declared
+author or committer name or email — case-insensitively — of any
+commit in the candidate range (merge base..candidate), its line
+carrying ` (self-accepted: accepting party is a declared author or
+committer)`. `report` and `status` SHALL mark one matching the
+accepted commit's — `report` by a tab-separated `self-accepted`
+field — and so do not mark a writer of an earlier range commit only
+(ADR-0007 decision 4).
 
 #### Scenario: the gate's acceptance line marks a self-acceptance
 - **WHEN** the acceptance over findings the gate judges carries an
-  `accepted_by` matching a declared writer name or email of the
-  candidate range
+  `accepted_by` matching a declared writer name or email of a commit
+  in the candidate range
 - **THEN** the acceptance line reads `accepted over findings <ids> by
   <party> (self-accepted: accepting party is a declared author or
   committer); not an approving review`
@@ -337,9 +337,17 @@ check could not run (ADR-0007 decision 4).
 - **THEN** its report line carries a tab-separated `self-accepted`
   field after the `decision=accepted-over-findings` field
 
+#### Scenario: a writer of an earlier range commit is marked by the gate alone
+- **WHEN** the acceptance the gate judges binds the candidate tip and
+  its `accepted_by` is a declared writer of an earlier commit of the
+  candidate range but not of the tip
+- **THEN** the gate's acceptance line carries the mark and `report`'s
+  task line does not — the journal holds no candidate base, so the
+  two compare against the accepted commit's declared writers alone
+
 #### Scenario: an acceptance by another party prints unmarked
 - **WHEN** an acceptance's `accepted_by` matches no declared writer of
-  the candidate
+  the candidate range
 - **THEN** the gate's acceptance line and the `report` task line print
   exactly what they print today, with no mark
 

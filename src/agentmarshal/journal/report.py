@@ -467,6 +467,23 @@ def _writers_repository(journal_root: Path) -> Path | None:
         return None
 
 
+def decode_writer_field(field: bytes, *, email: bool) -> str:
+    """Decode one field of a commit's declared writer identity.
+
+    The one decoding the surfaces share — the gate's range lookup calls
+    it as ``declared_commit_writers`` does: an email decodes strictly, so
+    a non-UTF-8 email raises ``UnicodeDecodeError`` for the caller to
+    answer (the gate fails the run; ``report`` and ``status`` treat the
+    lookup as unreadable), where a name decodes with ``replace`` and a
+    commit whose author or committer name is not UTF-8 can neither fail
+    the gate nor lose the mark.
+    """
+
+    if email:
+        return field.decode("utf-8")
+    return field.decode("utf-8", errors="replace")
+
+
 def declared_commit_writers(project_root: Path, commit: str) -> set[str] | None:
     """Return the commit's declared author and committer names and emails.
 
@@ -474,24 +491,44 @@ def declared_commit_writers(project_root: Path, commit: str) -> set[str] | None:
     directory that is not a repository. That is distinct from an answer
     of "no match", and the caller must keep the two apart — ``status``
     reports the ``None`` leg as unchecked where ``report`` prints no
-    mark. The one writer lookup the surfaces share: ``status_view``
-    calls this function for the accepted commit, so the mark's writer
-    set is one git call rather than a copy each surface keeps.
+    mark. The one writer lookup ``report`` and ``status`` share:
+    ``status_view`` calls this function for the accepted commit, so the
+    mark's writer set is one git call rather than a copy each surface
+    keeps. The gate reads writers through its own range lookup instead —
+    the journal holds no candidate base, so a writer of an earlier
+    commit of the range only marks at the gate.
     """
 
     try:
         result = subprocess.run(
-            ["git", "show", "-s", "--format=%an%n%ae%n%cn%n%ce", commit],
+            [
+                "git",
+                "show",
+                "-s",
+                "--format=%an%x00%ae%x00%cn%x00%ce%x00",
+                commit,
+            ],
             cwd=project_root,
             capture_output=True,
             check=False,
         )
         if result.returncode != 0:
             return None
-        output = result.stdout.decode("utf-8")
-    except (OSError, UnicodeDecodeError):
+    except OSError:
         return None
-    return {line.strip().casefold() for line in output.splitlines() if line.strip()}
+    writers: set[str] = set()
+    # The format writes %an, %ae, %cn, %ce once behind NUL separators, so
+    # the emails are the second and fourth field of the group of four;
+    # each decodes through the helper the surfaces share.
+    for index, field in enumerate(result.stdout.split(b"\x00")):
+        try:
+            value = decode_writer_field(field, email=index % 4 in (1, 3))
+        except UnicodeDecodeError:
+            return None
+        value = value.strip().casefold()
+        if value:
+            writers.add(value)
+    return writers
 
 
 def accepting_party_is_declared_writer(
@@ -501,11 +538,11 @@ def accepting_party_is_declared_writer(
 
     The accepting party, stripped and case-folded, against the declared
     author and committer names and emails. The gate applies it over the
-    candidate's commit range; ``report`` and ``status`` apply it to the
-    accepted commit — ``status_view`` calls this function as
-    ``report._self_accepted`` does. ``writers`` of ``None`` — git could
-    not answer — yields ``None``, the unchecked leg of ``status``'s
-    tri-state.
+    candidate's commit range — the writers its own range lookup reads —
+    where ``report`` and ``status`` apply it to the accepted commit's
+    writers, read through ``declared_commit_writers``. ``writers`` of
+    ``None`` — git could not answer — yields ``None``, the unchecked
+    leg of ``status``'s tri-state.
     """
 
     if writers is None:

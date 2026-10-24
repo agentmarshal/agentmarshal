@@ -42,17 +42,23 @@ apart.
   the accepting party, stripped and case-folded, against the declared
   author and committer names and emails — and `status_view` calls it
   as `report` does. The gate applies it over the candidate's commit
-  range — one `git log` of `%an%x00%ae%x00%cn%x00%ce%x00` over
-  `merge-base..candidate`, read as bytes and split on NUL so no byte
-  inside a field can misalign the fields, yields both the
-  names-and-emails set the mark needs and the emails-only set the
-  reviewer-independence check keeps (a name in it could only collide
-  with a reviewer identity declared as an address); names decode with
-  `replace` and emails strictly, so a commit whose author name is not
-  UTF-8 cannot fail the run. `report` and `status` apply it to the
-  accepted commit. The mark the gate appends is
-  `report.SELF_ACCEPTED_MARK` — `status`'s wording, byte for byte,
-  held as one constant in the module every surface imports.
+  range — the writer set its own range lookup
+  `_range_writer_identities` reads: one `git log` of
+  `%an%x00%ae%x00%cn%x00%ce%x00` over `merge-base..candidate`, read as
+  bytes and split on NUL so no byte inside a field can misalign the
+  fields, yields both the names-and-emails set the mark needs and the
+  emails-only set the reviewer-independence check keeps (a name in it
+  could only collide with a reviewer identity declared as an address).
+  `report` and `status` apply it to the accepted commit's writers,
+  read through `report.declared_commit_writers` — the journal holds
+  no candidate base, so they cannot rebuild the range and a writer of
+  an earlier commit of it earns the mark at the gate alone. Both
+  lookups decode each field through `report.decode_writer_field` —
+  names with `replace`, emails strictly — so a commit whose author or
+  committer name is not UTF-8 can neither fail the gate nor lose the
+  mark. The mark the gate appends is `report.SELF_ACCEPTED_MARK` —
+  `status`'s wording, byte for byte, held as one constant in the
+  module every surface imports.
 - **`report` applies the shared comparison over the accepted commit.**
   `_self_accepted` looks the commit's declared writers up through
   `declared_commit_writers` — the lookup `status_view` calls for the

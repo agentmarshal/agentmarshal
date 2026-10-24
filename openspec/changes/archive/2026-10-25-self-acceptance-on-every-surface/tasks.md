@@ -1,9 +1,11 @@
 ## 1. The gate's line
 
 - [x] 1.1 `gate.py` computes the candidate's writer identities — the
-  range's declared author and committer names and emails — ahead of
-  the verdict block, beside the emails-only set the
-  reviewer-independence check keeps — verify: pytest.
+  range's declared author and committer names and emails, read by its
+  own range lookup `_range_writer_identities` and decoded by the
+  shared `report.decode_writer_field` — ahead of the verdict block,
+  beside the emails-only set the reviewer-independence check keeps —
+  verify: pytest.
 - [x] 1.2 The acceptance PASS line appends ` (self-accepted: accepting
   party is a declared author or committer)` after the party when the
   shared comparison `report.accepting_party_is_declared_writer`
@@ -25,10 +27,13 @@
 - [x] 2.3 `report.py` applies the shared comparison —
   `accepting_party_is_declared_writer` — to the accepted commit's
   declared writers looked up through `declared_commit_writers`, the
-  same two functions `status_view` calls for its check; the line
-  carries the mark only where the self-acceptance is confirmed —
-  where git cannot answer it prints as for any other acceptance and
-  `status` alone says the check could not run — verify: pytest.
+  same two functions `status_view` calls for its check — the gate
+  reads writers through its own range lookup instead, so a writer of
+  an earlier commit of the range earns the mark at the gate alone;
+  the line carries the mark only where the self-acceptance is
+  confirmed — where git cannot answer it prints as for any other
+  acceptance and `status` alone says the check could not run —
+  verify: pytest.
 
 ## 3. Scenarios and pins
 
