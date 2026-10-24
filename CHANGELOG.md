@@ -31,63 +31,69 @@ the granter and the time — in the clone's `trust.toml`, writing a
 `trust-changed` event to the process log; `extension untrust <name>`
 removes the grant, and `extension list` recomputes the hashes and prints
 `granted`, `not granted` or `changed after approval: <path> (<kind>)`
-per shared extension. `agentmarshal stage run --phase
-<pre-gate|post-gate> --task <id> --commit <rev> --base <ref>`
-materializes the base tree's extensions — each manifest is read at the
-merge base, and the gate reads a directory-form manifest at the tree it
-is declared on, so a candidate cannot change the extension that runs —
-and plans their stages. Every stage the plan names gets one result line —
-`checked`, `failed (exit <n>)`, `did not finish (timeout)`, `not run
-(<reason>)` or `switched off (<task>, <reason>)` — and every result is
-written to the process log as an `extension-event`; the journal holds no
-stage output. A command-level refusal — an unknown phase, an invalid task
-id, a sidecar journal, an unreadable base extension manifest — prints no
-stage line; a stage the plan names that cannot run is `not run` with the
-reason. On a workstation a stage runs only when a local grant's per-file
-hashes match the stage's own fresh materialization of the base's
-directory — an extension changed after its approval is `not run (changed
-after approval: <path>)` — while in CI (`CI=true`) no grant is consulted.
-A `pre-gate-stop` stage that fails or does not run pauses the command —
-`stage run` exits 3 — and a `pre-gate-warn` failure warns.
+for each directory-form shared extension — a manifest in the
+single-file form gets no line. `agentmarshal stage run` —
+`--phase <pre-gate|post-gate>`, `--task <id>`, `--commit <rev>` and
+`--base <ref>` — materializes the base tree's extensions — each
+manifest is read at the merge base, and the gate reads a directory-form
+manifest at the tree it is declared on, so a candidate cannot change
+the extension that runs — and plans their stages. Every stage the plan
+names gets one result line — `checked`, `failed (exit <n>)`,
+`did not finish (timeout)`, `not run (<reason>)` or
+`switched off (<task>, <reason>)` — and every result is written to the
+process log as an `extension-event`; the journal holds no stage output.
+A command-level refusal — an unknown phase, an invalid task id, a
+sidecar journal, an unreadable base extension manifest — prints no
+stage line; a stage the plan names that cannot run is `not run` with
+the reason. On a workstation a stage runs only when a local grant's
+per-file hashes match the stage's own fresh materialization of the
+base's directory — an extension changed after its approval is
+`not run (changed after approval: <path>)` — while in CI (`CI=true`)
+no grant is consulted. A `pre-gate-stop` stage that fails or does not
+run pauses the command — `stage run` exits 3 — and a `pre-gate-warn`
+failure warns.
 
 ### Extension results and declarations are read (CR-212, CR-213, CR-214, CR-216)
 
-`agentmarshal record-ext --task <id> --commit <rev> --kind
-'<name>/<kind>@<version>' --payload-file <json>` writes an `ext` record
-for a kind the shared extension's manifest declares: the payload is
-leak-scanned and masked, keys included, canonically serialized and
-bounded at 64 KiB, and `payload_sha256` pins the masked form; a kind no
-shared extension declares, or a manifest that cannot be read, refuses.
-`agentmarshal doctor` lists each shared extension — its form, manifest
-schema, declared stages and ext kinds, grant state — under an `extension
-manifest <name>` check per extension, and a manifest declaring
-`[wraps].runtime` gains an `extension runtime <name>` check that finds
-the runtime on `PATH` and compares its version to the declared minimum.
-`agentmarshal validate` warns `<kind>: addressee not found` when an `ext`
-record's kind is declared by no manifest — a warning, never a refusal.
+`agentmarshal record-ext` — `--task <id>`, `--commit <rev>`,
+`--kind '<name>/<kind>@<version>'` and `--payload-file <json>` —
+writes an `ext` record for a kind the shared extension's manifest
+declares: the payload is leak-scanned and masked, keys included,
+canonically serialized and bounded at 64 KiB, and `payload_sha256`
+pins the masked form; a kind no shared extension declares, or a
+manifest that cannot be read, refuses. `agentmarshal doctor` lists
+each shared extension — its form, manifest schema, declared stages
+and ext kinds, grant state — under an `extension manifest <name>`
+check per extension, and a manifest declaring `[wraps].runtime` gains
+an `extension runtime <name>` check that finds the runtime on `PATH`
+and compares its version to the declared minimum.
+`agentmarshal validate` warns `<kind>: addressee not found` when an
+`ext` record's kind is declared by no manifest — a warning, never a
+refusal.
 
 ### A shared extension is switched off at the base, on the operational lane (CR-217, CR-219, CR-220, CR-222)
 
 A shared extension's switch lives in the base's
 `.agentmarshal/switches.toml`: a stage of an extension the trusted side
-switched off reports `switched off (<task>, <reason>)` and does not run,
-a candidate cannot silence its own extensions, and a switches file that
-cannot be parsed against the base's extension names blocks the stages it
-names with `not run (shared switches file unreadable)`. `agentmarshal
-extension switch off <name> --reason <text>` opens an operational task
-whose generated contract scopes exactly `.agentmarshal/switches.toml` and
-the task's own records, and writes the `off` entry; it refuses in a
-sidecar. Such a candidate takes the gate's operational lane: only
-`.agentmarshal/switches.toml` and the task's own records may change, the
-candidate's switches file is checked against the base's — every changed
-entry must name the task, a dropped entry refuses, and the other
-top-level keys must stay identical — and the verdict is `PASS:
-operational transaction (operational lane; review not required)`, with
-the agreement, review and independence checks not examined; pre-gate
-stages do not run on the lane. `status` prints `switched off: <name>
-since <task> (<reason>)` for each shared extension switched off —
-`switches: unavailable` when the file cannot be read — and `doctor` lists
-the same state beside the grant's.
+switched off reports `switched off (<task>, <reason>)` and does not
+run, a candidate cannot silence its own extensions, and a switches file
+that cannot be parsed against the base's extension names blocks the
+stages it names with `not run (shared switches file unreadable)`.
+`agentmarshal extension switch off <name> --reason <text>` opens an
+operational task whose generated contract declares
+`scope = [".agentmarshal/switches.toml"]` — the switches file alone —
+and writes the `off` entry; it refuses in a sidecar. Such a candidate
+takes the gate's operational lane: only `.agentmarshal/switches.toml`
+and the task's own records may change, the candidate's switches file is
+checked against the base's — every changed entry must name the task, a
+dropped entry refuses, and the other top-level keys must stay identical
+— and the verdict is
+`PASS: operational transaction (operational lane; review not required)`,
+with the agreement, review and independence checks not examined;
+pre-gate stages do not run on the lane. `status` prints
+`switched off: <name> since <task> (<reason>)` for each shared
+extension switched off — `switches: unavailable` when the file cannot
+be read — and `doctor` lists the same state beside the grant's.
 
 ### Isolation is enforced as far as the platform allows (CR-221, CR-223, CR-227)
 
@@ -106,68 +112,69 @@ the stage still runs.
 ### A pre-gate pause can be answered; `complete` runs the stages (CR-215, CR-218, CR-224, CR-225)
 
 `agentmarshal accept --pause <name> --commit <rev>` records an
-`accepted_pause` acceptance for an extension's pause, and `accept
---operational --commit <rev>` records an operational acceptance; each
-binds a revision resolved in the journal's repository and consults no
-review. An `accepted_pause` naming the extension at the resolved commit
-stands a `pre-gate-stop` pause down: the result line keeps the stage's
-outcome with `pause accepted by <party> (<reason>)` appended.
-`agentmarshal complete` runs the declared pre-gate stages before its gate
-check — the same run `stage run` performs — and the post-gate stages once
-the `completed` record exists; a post-gate stage cannot pause, and its
-outcome informs nothing. A `pre-gate-stop` pause refuses the completion
-while the candidate is not merged — `complete` exits 3 — and `complete
---target <branch>` names the branch the candidate merges into, distinct
-from `--base`, so that a wrapper completing after the merge sees the same
-pause warn rather than refuse.
+`accepted_pause` acceptance for an extension's pause, and
+`accept --operational --commit <rev>` records an operational
+acceptance; each binds a revision resolved in the journal's repository
+and consults no review. An `accepted_pause` naming the extension at
+the resolved commit stands a `pre-gate-stop` pause down: the result
+line keeps the stage's outcome with
+`pause accepted by <party> (<reason>)` appended.
+`agentmarshal complete` runs the declared pre-gate stages before its
+gate check — the same run `stage run` performs — and the post-gate
+stages once the `completed` record exists; a post-gate stage cannot
+pause, and its outcome informs nothing. A `pre-gate-stop` pause
+refuses the completion while the candidate is not merged —
+`complete` exits 3 — and `complete --target <branch>` names the
+branch the candidate merges into, distinct from `--base`, so that a
+wrapper completing after the merge sees the same pause warn rather
+than refuse.
 
 ### The personal-in-clone scope joins the shared one (CR-233)
 
 An extension manifest placed under the clone's
 `.git/agentmarshal/extensions/<name>/` — directory form only — is the
 developer's own: it plans beside the shared manifests, needs no grant,
-and runs on the workstation only — CI plans and prints nothing personal.
-Its command runs directly as a program rather than under the core's
-interpreter, its result lines are marked `(personal)`, and its process
-log events carry the `personal` scope. A personal manifest carries no
-`footprint`, `documents` or `artifacts` — it writes to no shared surface
-and writes no `ext` record — and a shared extension of the same name
-wins: the personal stage reports `not run (a shared extension of this
-name wins) (personal)`. `agentmarshal extension disable <name>` writes
-`state = "off"` to the clone's switches — `extension enable <name>`
-clears it — for a `disabled (personal)` result line, and `--skip-ext
-<name>` on `stage run` or `complete` reports `skipped for this run
-(personal)`; naming a shared extension to either refuses. A personal
-`pre-gate-stop` pause pauses the local run like a shared one.
+and runs on the workstation only — CI plans and prints nothing
+personal. Its command runs directly as a program rather than under the
+core's interpreter, its result lines are marked `(personal)`, and its
+process log events carry the `personal` scope. A personal manifest
+carries no `footprint`, `documents` or `artifacts` — it writes to no
+shared surface and writes no `ext` record — and a shared extension of
+the same name wins: the personal stage reports
+`not run (a shared extension of this name wins) (personal)`.
+`agentmarshal extension disable <name>` writes `state = "off"` to the
+clone's switches — `extension enable <name>` clears it — for a
+`disabled (personal)` result line, and `--skip-ext <name>` on
+`stage run` or `complete` reports
+`skipped for this run (personal)`; naming a shared extension to
+either refuses. A personal `pre-gate-stop` pause pauses the local run
+like a shared one.
 
-### Status and the gate say more (CR-208, CR-210, CR-235)
+### Status and the gate say more (CR-208, CR-210)
 
 The additions 0.5.0's CR-200 through CR-203 began — a session-absent
 status, findings the completion consumes, required agreement, named
-reviewers and implementers — gain four details. `status` prints
-`Reviewed commit <sha7>: implementer session <id>`, naming the implementer
-session whose `commit` equals the latest review's — its actor and outcome
-on the same line, and a `(did not end 'implemented')` mark when it ended
-otherwise.
+reviewers and implementers — gain three details. `status` prints
+`Reviewed commit <sha7>: implementer session <id>`, naming the
+implementer session whose `commit` equals the latest review's — its
+actor and outcome on the same line, and a
+`(did not end 'implemented')` mark when it ended otherwise.
 `status <task> --base <ref>` lists the task's records the base ref does
 not hold under `Records absent from <base>`, and the gate warns
 `candidate adds opened/amendment records of other tasks` — a warning
-only: the record stays valid evidence of the task it names. What is not
-admitted is refused rather than warned about: for every other task the
-candidate adds records to, the gate projects that task's merged records
-— target plus candidate — with the same lifecycle projection and the
-same closed-at-base admission rule it applies to the judged task, and
-names the task and the projection's reason on its FAIL line.
+only: the record stays valid evidence of the task it names; the
+refusal the warning stops short of is an audit fix below.
 
 ### A journal transaction stages only its own task (CR-207)
 
-`templates/journal-transaction.sh` stages `.agentmarshal/journal/
-tasks/<task-id>/` by literal pathspec — nothing outside the task's own
-records enters the commit — lists the working tree's other journal
-changes and leaves them alone, and refuses a task id that is not a CR, a
-run that is not on the default branch and a call with nothing to stage.
-The recipes that once swept the whole journal — the quickstart's, the
-sidecar guide's and the outbox README's — now stage one task's directory.
+`templates/journal-transaction.sh` stages
+`.agentmarshal/journal/tasks/<task-id>/` by literal pathspec — nothing
+outside the task's own records enters the commit — lists the working
+tree's other journal changes and leaves them alone, and refuses a task
+id that is not a CR, a run that is not on the default branch and a call
+with nothing to stage. The recipes that once swept the whole journal —
+the quickstart's, the sidecar guide's and the outbox README's — now
+stage one task's directory.
 
 ### The outbox skips files it already sent (CR-228)
 
@@ -182,18 +189,21 @@ covers every file `send` stages, sent or not.
 
 A session record carrying zero token counts and no `usage` block is the
 record of a session the exporter did not measure: `status` renders the
-session line with `tokens=unmeasured`, and `report` counts them on lines
-of their own — `unmeasured=<n>` and `unmeasured_without_cost` — beside
-the measured ones. Cost sums admit every session: an unmeasured session
-that carries a cost still sums, and one carrying none is counted rather
-than silently folded into a zero.
+session line with `tokens=unmeasured`, and `report` carries
+`unmeasured=<n>` as the last field of the task line, the Summary line
+and each Cost line — on a Cost line the count covers only the
+unmeasured sessions that recorded no cost, the sessions the line's
+sums left out. The cost sums themselves admit every session: an
+unmeasured session that carries a cost still sums, and one carrying
+none is counted rather than silently folded into a zero.
 
 ### OpenSpec's pin rises to 1.15.0 (CR-231)
 
 The extension manifest that pins the OpenSpec release this repository's
-contributor tooling works against — `.agentmarshal/extensions/openspec/
-manifest.toml` — names `version = "1.15.0"`, and the skills it manages
-under `.agents/skills/` are regenerated from that release.
+contributor tooling works against —
+`.agentmarshal/extensions/openspec.toml`, a schema-1 manifest in the
+single-file form — names `version = "1.15.0"`, and the skills it
+manages under `.agents/skills/` are regenerated from that release.
 
 ### A release asks for its audit before it builds (CR-232)
 
@@ -207,6 +217,34 @@ task whose last lifecycle record is `completed`, or `deferred` /
 but the fixes it named, the release notes and the version bump. It is a
 gate on this project's release process; the package gains no command.
 
+### Fixes from the release audit (CR-235, CR-236)
+
+The audit filed findings against the gate's journal handling; the two
+tasks named here are their fixes in the code. Where the CR-210 warning
+ends, refusal begins: for
+every other task the candidate adds records to, the gate projects that
+task's merged records — target plus candidate — with the same
+lifecycle projection and the same closed-at-base admission rule it
+applies to the judged task, and names the task and the projection's
+reason on its FAIL line (the audit's reproduction: a candidate for an
+open task that adds a reopening to a task abandoned at base is
+refused). The write-time text refusal now covers the fields it missed:
+a `created_at`, `started_at`, `ended_at` or `resets_at` carrying a
+character the forgeable-text rule refuses is refused at write time
+naming the field — `fromisoformat` accepts any single character as
+the date-time separator, so the refusal lands before the parse — and a
+review record's `artifacts` reference is refused by the same write-time
+validation; both rules bind past today's schemas, so they reach no
+record a read can load — an earlier journal's timestamps parse as they
+always did, and an artifact reference it holds stays `validate`'s to
+report.
+`write_record` encodes the record to bytes before its file is created,
+so a failed write leaves no empty or partial record behind. And the
+reviewer output kept on a refused verdict is now the reviewer's bytes
+exactly — the preserved file holds what the reviewer printed, including
+bytes that are not valid UTF-8, while parsing still uses the decoded
+text.
+
 ### What 0.6.0 leaves out
 
 The release task's contract names what this release does not carry; each
@@ -214,10 +252,8 @@ item names the decision or proposal that holds it. **Record schema 8 and
 the work waiting on it** stay refused (ADR-0022 — the schema table still
 ends at 7): the unfinished-candidate refusal proposal 036 holds, the
 review-by dates on acceptances and deferrals 0.5.0's notes already
-named, the write side of proposal 044 — optional token counts and an
-explicit unmeasured marker — and the session-id field and the `stalled`
-/ `safety-limit` stop outcomes with their resume handle of proposal 042
-all arrive under a later record schema.
+named, and the write side of proposal 044 — optional token counts and
+an explicit unmeasured marker — all arrive under a later record schema.
 **The user extension scope** — an extension under
 `~/.config/agentmarshal/extensions/` (Windows: `%APPDATA%`) shared by all
 a developer's repositories — is decided but not implemented: ADR-0013

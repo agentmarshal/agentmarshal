@@ -259,8 +259,9 @@ before a stage is planned — and where the clone's trust file cannot be
 read on a workstation the command fails naming the file, and a stage
 that would have been grant-checked is skipped without one — the lines
 still owed go to the stages never grant-checked, a switched-off
-stage's `switched off (<task>, <reason>)` and the `not run (shared
-switches file unreadable)` of a stage a refused switches file names
+stage's `switched off (<task>, <reason>)` and the
+`not run (shared switches file unreadable)` of a stage a refused
+switches file names
 (extension-stages specification, "a manifest the base cannot parse
 fails the run naming the extension", "a sidecar runs no stages", "an
 invalid task identifier refuses before any stage is planned", "a

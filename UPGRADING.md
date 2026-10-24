@@ -25,10 +25,11 @@ rule — upgrade each checkout, CI job and merge wrapper when it suits you.
   project that declares none is unaffected.
 - **The operational lane carries a switches change.** A candidate that
   changes only `.agentmarshal/switches.toml` and its own task's records
-  passes the gate without review — `PASS: operational transaction
-  (operational lane; review not required)` — and pre-gate stages do not
-  run on it. `agentmarshal extension switch off <name> --reason <text>`
-  opens such a task itself.
+  passes the gate without review —
+  `PASS: operational transaction (operational lane; review not required)`
+  — and pre-gate stages do not run on it.
+  `agentmarshal extension switch off <name> --reason <text>` opens such
+  a task itself.
 - **`complete` runs the declared stages.** The pre-gate stages run before
   the gate check — a `pre-gate-stop` stage that fails or does not run
   pauses the completion — and the post-gate stages run after the
@@ -41,10 +42,10 @@ rule — upgrade each checkout, CI job and merge wrapper when it suits you.
   it never reaches the shared journal or CI, and a shared extension of
   the same name wins.
 - **`outbox check` and `outbox send` skip files already sent.** `send`
-  maintains a `SENT` manifest inside the outbox, and `check --index
-  <file>` skips by the `Source:` digests an index claims. No action
-  needed; a project listing the outbox's files should expect `SENT` among
-  them.
+  maintains a `SENT` manifest inside the outbox, and
+  `check --index <file>` skips by the `Source:` digests an index
+  claims. No action needed; a project listing the outbox's files should
+  expect `SENT` among them.
 - **A pinned product's version is the project's to raise.** A project
   that pins a product through an extension manifest — as this repository
   pins OpenSpec at `1.15.0` — raises the pin when it takes a new release
