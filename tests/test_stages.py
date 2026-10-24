@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -1957,6 +1958,7 @@ def test_a_journal_that_cannot_be_read_names_it_and_every_pause_stands(
     assert len(journal_lines) == 1
     assert str(repo / ".agentmarshal" / "journal") in journal_lines[0]
     assert "every pause stands" in journal_lines[0]
+    assert "paused before the gate" in captured.err
 
 
 def test_a_run_that_pauses_nothing_never_reads_the_journal(
@@ -1999,3 +2001,56 @@ def test_a_run_that_pauses_nothing_never_reads_the_journal(
     assert "openspec: failed (exit 9)" in captured.out
     assert "WARNING" in captured.err
     assert "paused" not in captured.err
+
+
+def test_a_stage_whose_temporary_directory_fails_is_not_run_and_the_run_goes_on(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Not a spec scenario: an OS refusal in the stage's own machinery —
+    the temporary directory each stage gets for itself — is that stage's
+    ``not run`` reason, a pre-gate-stop one pausing like any other
+    not-run stage, never the run's abort: the later stages keep their
+    result lines (CR-227-ADV-2)."""
+    repo, _base, _candidate = _repo_with_extension(
+        tmp_path,
+        monkeypatch,
+        manifest=_manifest(
+            stages=(
+                ("pre-gate-stop", "bin/stop.py"),
+                ("pre-gate-warn", "bin/warn.py"),
+            )
+        ),
+        files={
+            "bin/stop.py": "print('stop ran')\n",
+            "bin/warn.py": "print('warn ran')\n",
+        },
+    )
+    real = tempfile.TemporaryDirectory
+    refused = False
+
+    def refuse_once(prefix: str) -> tempfile.TemporaryDirectory[str]:
+        # The first stage directory refuses; every later creation — the
+        # next stage's own, the probe's — is the platform's real one.
+        nonlocal refused
+        if prefix == "agentmarshal-stage-" and not refused:
+            refused = True
+            raise OSError("no space left on device")
+        return real(prefix=prefix)
+
+    monkeypatch.setattr(tempfile, "TemporaryDirectory", refuse_once)
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 3
+
+    captured = capsys.readouterr()
+    assert (
+        "openspec: not run (the stage's own machinery: "
+        "no space left on device)" in captured.out
+    )
+    assert "stop ran" not in captured.out
+    assert "warn ran" in captured.out
+    assert "openspec: checked" in captured.out
+    assert "paused before the gate" in captured.err
+    events = [event for event in _events(repo) if event["event"] == "extension-event"]
+    assert [event["decision"] for event in events] == ["not-run", "checked"]

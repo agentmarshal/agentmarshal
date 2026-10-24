@@ -706,7 +706,10 @@ def test_a_post_gate_run_that_raises_leaves_the_completion_untouched(
     _ci(monkeypatch)
 
     def refuse(*_args: object, **_keys: object) -> NoReturn:
-        raise OSError("no space left on device")
+        # An OSError there is now the stage's own ``not run`` line
+        # (CR-227-ADV-2); the run-level report is for a raise the runner
+        # does not handle itself.
+        raise RuntimeError("the runner broke")
 
     monkeypatch.setattr(tempfile, "TemporaryDirectory", refuse)
     capsys.readouterr()
@@ -717,6 +720,6 @@ def test_a_post_gate_run_that_raises_leaves_the_completion_untouched(
     assert captured.out.endswith("completed\n")
     assert "post ran" not in captured.out
     assert captured.err.splitlines() == [
-        "complete: the post-gate stage run could not finish (no space left on device)"
+        "complete: the post-gate stage run could not finish (the runner broke)"
     ]
     assert read_records(_journal(repo), "CR-001")[-1]["record_type"] == "completed"
