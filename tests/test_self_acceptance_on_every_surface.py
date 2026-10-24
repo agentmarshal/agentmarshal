@@ -20,6 +20,7 @@ from agentmarshal.journal.records import (
     create_acceptance_record,
     create_completed_record,
     create_finding_record,
+    create_reopened_record,
     create_review_record,
     write_record,
 )
@@ -180,7 +181,7 @@ def test_the_gates_acceptance_line_marks_a_self_acceptance(
     assert report.passed, output
     assert (
         f"PASS: accepted over findings F-001 by {party} (self-accepted: "
-        "accepting party is a declared writer of the candidate); "
+        "accepting party is a declared author or committer); "
         "not an approving review"
     ) in output
 
@@ -207,7 +208,7 @@ def test_the_gates_acceptance_line_marks_a_committer_self_acceptance(
     assert report.passed, output
     assert (
         f"PASS: accepted over findings F-001 by {party} (self-accepted: "
-        "accepting party is a declared writer of the candidate); "
+        "accepting party is a declared author or committer); "
         "not an approving review"
     ) in output
 
@@ -514,6 +515,39 @@ def test_an_acceptance_bound_to_another_commit_leaves_no_decision(
     capsys.readouterr()
 
     assert _report_line(capsys, "CR-001") == ("CR-001\tdone\treviews=2\ttokens=0")
+
+
+def test_a_review_written_after_the_completion_does_not_change_its_decision(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a review written after the completion does not change its decision.
+
+    review(changes_required) → acceptance → completed → reopened →
+    review(approved), all on one commit: the completed record's decision
+    reads only the records written before it, so the approval the
+    reopened task earned cannot rewrite a completion that closed over
+    findings — and the task, open again, keeps the completed record's
+    report of how it closed.
+    """
+
+    repo, journal = _report_repo(tmp_path, monkeypatch)
+    commit = _commit(repo, "tracked.py")
+    write_record(journal, "CR-001", _review(commit, "changes_required", "F-1"))
+    write_record(
+        journal,
+        "CR-001",
+        create_acceptance_record("CR-001", "test", commit, "op", ["F-1"], "accepted"),
+    )
+    write_record(journal, "CR-001", create_completed_record("CR-001", "test", commit))
+    write_record(journal, "CR-001", create_reopened_record("CR-001", "test", "work"))
+    write_record(journal, "CR-001", _review(commit, "approved"))
+    capsys.readouterr()
+
+    assert _report_line(capsys, "CR-001") == (
+        "CR-001\topen\treviews=2\ttokens=0\tdecision=accepted-over-findings"
+    )
 
 
 def test_a_task_with_no_completed_record_keeps_todays_decision_rule(

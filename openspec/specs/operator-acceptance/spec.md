@@ -315,28 +315,27 @@ same review checks, the same record.
 
 ### Requirement: every surface marks a self-acceptance
 Where an acceptance's `accepted_by` matches a declared writer of the
-candidate — a declared author or committer name or email, compared
-case-insensitively — the gate's acceptance line SHALL carry
-` (self-accepted: accepting party is a declared writer of the
-candidate)` and `report`'s task line SHALL carry ` self-accepted` after
-the decision field. `report` marks a confirmed self-acceptance only —
-where the accepted commit's writers cannot be read its line prints
-unmarked, and `status` alone says the check could not run (ADR-0007
-decision 4).
+candidate — an author or committer name or email, case-insensitively —
+the gate's acceptance line SHALL carry
+` (self-accepted: accepting party is a declared author or committer)`
+and `report`'s task line a tab-separated `self-accepted` field.
+`report` marks a confirmed self-acceptance only — where the commit's
+writers cannot be read it prints unmarked, and `status` alone says the
+check could not run (ADR-0007 decision 4).
 
 #### Scenario: the gate's acceptance line marks a self-acceptance
 - **WHEN** the acceptance over findings the gate judges carries an
   `accepted_by` matching a declared writer name or email of the
   candidate range
 - **THEN** the acceptance line reads `accepted over findings <ids> by
-  <party> (self-accepted: accepting party is a declared writer of the
-  candidate); not an approving review`
+  <party> (self-accepted: accepting party is a declared author or
+  committer); not an approving review`
 
 #### Scenario: report's task line marks a self-acceptance
 - **WHEN** a task's decision derives from an acceptance whose
   `accepted_by` is a declared writer of the accepted commit
-- **THEN** its report line carries ` self-accepted` after the
-  `decision=accepted-over-findings` field
+- **THEN** its report line carries a tab-separated `self-accepted`
+  field after the `decision=accepted-over-findings` field
 
 #### Scenario: an acceptance by another party prints unmarked
 - **WHEN** an acceptance's `accepted_by` matches no declared writer of
@@ -354,11 +353,12 @@ decision 4).
 
 ### Requirement: `report` derives a completed task's decision from the completed record's binding
 A completed task's `decision` SHALL come from the review and the
-acceptance bound to the `completed` record's `completed_commit`, or its
-`completed_finding`: `approved` on the binding's approving latest review,
-else `accepted-over-findings` on a latest `findings` acceptance bound to
-it (ADR-0007 decision 5). An unbound acceptance SHALL not mark the task;
-a task with no `completed` record keeps today's rule.
+acceptance recorded before the `completed` record and bound to its
+`completed_commit`, or its `completed_finding`: `approved` on the
+binding's approving latest review, else `accepted-over-findings` on a
+latest `findings` acceptance bound to it (ADR-0007 decision 5). An
+unbound acceptance SHALL not mark the task; a task with no `completed`
+record keeps today's rule.
 
 #### Scenario: a commit approved after an earlier commit's acceptance reports approved
 - **WHEN** a task's earlier commit was accepted over findings and its
@@ -389,6 +389,14 @@ a task with no `completed` record keeps today's rule.
 - **WHEN** a task's completed commit was never approved and its only
   acceptance over findings binds to an earlier commit
 - **THEN** its report line carries no `decision` field
+
+#### Scenario: a review written after the completion does not change its decision
+- **WHEN** a task's `completed` record closed over findings and a
+  review bound to its `completed_commit` is recorded after a later
+  `reopened`
+- **THEN** its report line still reads
+  `decision=accepted-over-findings` — records written after the
+  `completed` record do not reach its decision
 
 #### Scenario: a task with no completed record keeps today's decision rule
 - **WHEN** a task holds an acceptance carrying `findings` and no

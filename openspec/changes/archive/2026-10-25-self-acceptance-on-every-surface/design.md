@@ -38,23 +38,24 @@ apart.
 ## Decisions
 
 - **One shared comparison, three surfaces.**
-  `_accepting_party_is_declared_writer` in `report.py` is the comparison
+  `report.accepting_party_is_declared_writer` is the comparison
   `status_view._is_self_accepted` makes — the accepting party, stripped
   and case-folded, against the declared author and committer names and
-  emails. The gate applies it over the candidate's commit range
-  (`_range_writer_identities` reads `%an%n%ae%n%cn%n%ce` over
-  `merge-base..candidate`, the same fields
-  `_declared_commit_writers` reads for one commit); `report` and
-  `status` apply it to the accepted commit. The reviewer-independence
-  check keeps the emails-only `_range_emails` set — a name in it could
-  only collide with a reviewer identity declared as an address.
+  emails. The gate applies it over the candidate's commit range — one
+  `git log` of `%an%n%ae%n%cn%n%ce` over `merge-base..candidate` yields
+  both the names-and-emails set the mark needs and the emails-only set
+  the reviewer-independence check keeps (a name in it could only
+  collide with a reviewer identity declared as an address); `report`
+  and `status` apply it to the accepted commit. The mark the gate
+  appends is `report.SELF_ACCEPTED_MARK` — `status`'s wording, byte for
+  byte, held as one constant in the module every surface imports.
 - **`report` applies the shared comparison over the accepted commit.**
-  `_self_accepted` looks the commit's declared writers up the way
-  `status` does — `status_view._declared_commit_writers`, imported
-  where it runs rather than copied: `status_view.py` imports `report`,
-  so a module-level import back would cycle — in the repository the
-  accepted commit lives in, the placement's host root, resolved the
-  way `status` resolves it.
+  `_self_accepted` looks the commit's declared writers up through
+  `declared_commit_writers` — the same lookup
+  `status_view._declared_commit_writers` makes, held beside the
+  comparison in the module every surface imports — in the repository
+  the accepted commit lives in, the placement's host root, resolved
+  the way `status` resolves it.
 - **`report` marks a confirmed self-acceptance only.** Where the
   accepted commit's writers cannot be read — an absent commit, a
   shallow clone, a journal outside a readable project — the line
@@ -68,10 +69,13 @@ apart.
   the latest review of the `completed_commit` (or `completed_finding`)
   decides: `approved` wins, else a latest findings-carrying acceptance
   bound to it yields `accepted-over-findings` — and that acceptance is
-  the one the mark derives from. A task with no `completed` record keeps
-  today's rule: any findings-carrying acceptance reports
-  `accepted-over-findings`, marked when its latest such acceptance is
-  a self-acceptance.
+  the one the mark derives from. Only the records written before the
+  `completed` record answer: a review recorded after a later `reopened`
+  cannot rewrite how a completion already closed, and an append-only
+  journal cannot have the earlier report quietly change. A task with no
+  `completed` record keeps today's rule: any findings-carrying
+  acceptance reports `accepted-over-findings`, marked when its latest
+  such acceptance is a self-acceptance.
 - **An approval after an acceptance on the same commit reports
   `approved`.** `review(X, changes_required) → acceptance(X) →
   review(X, approved) → completed(X)` is a legal journal — records are

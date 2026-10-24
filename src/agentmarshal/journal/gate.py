@@ -61,7 +61,10 @@ from agentmarshal.journal.records import (
     read_records,
     validate_record_content,
 )
-from agentmarshal.journal.report import _accepting_party_is_declared_writer
+from agentmarshal.journal.report import (
+    SELF_ACCEPTED_MARK,
+    accepting_party_is_declared_writer,
+)
 from agentmarshal.journal.status import (
     TaskStatusError,
     load_task_status,
@@ -499,32 +502,37 @@ def _sidecar_tampered_records(journal_root: Path) -> list[str]:
     return sorted(tampered)
 
 
-def _range_emails(project_root: Path, merge_base: str, commit: str) -> set[str]:
-    output = _run_git(
-        project_root, ["log", "--format=%ae%n%ce", f"{merge_base}..{commit}"]
-    )
-    return {line.strip() for line in output.splitlines() if line.strip()}
-
-
 def _range_writer_identities(
     project_root: Path, merge_base: str, commit: str
-) -> set[str]:
-    """The candidate range's declared author and committer names and emails.
+) -> tuple[set[str], set[str]]:
+    """The candidate range's declared writer emails, and its identities.
 
-    The fields ``status_view._declared_commit_writers`` reads for the
-    accepted commit, read over ``merge-base..candidate`` and case-folded
-    the same way — the set the shared comparison
-    ``report._accepting_party_is_declared_writer`` matches ``accepted_by``
-    against. The reviewer-independence check keeps the emails-only
-    ``_range_emails`` set: a name in it could only collide with a
-    reviewer identity declared as an address.
+    One ``git log`` over ``merge-base..candidate`` yields both sets the
+    verdict block reads: ``(emails, identities)``, each stripped and
+    case-folded. The reviewer-independence check holds the reviewer
+    against the *emails* alone — a name in that set could only collide
+    with a reviewer identity declared as an address. The self-acceptance
+    mark's shared comparison ``report.accepting_party_is_declared_writer``
+    matches ``accepted_by`` against the names and emails alike — the
+    fields ``status_view._declared_commit_writers`` reads for the
+    accepted commit, case-folded the same way.
     """
 
     output = _run_git(
         project_root,
         ["log", "--format=%an%n%ae%n%cn%n%ce", f"{merge_base}..{commit}"],
     )
-    return {line.strip().casefold() for line in output.splitlines() if line.strip()}
+    fields = [line.strip() for line in output.splitlines()]
+    identities = {field.casefold() for field in fields if field}
+    # The format writes %an, %ae, %cn, %ce once per commit — four lines,
+    # an empty field's line included — so the emails are the second and
+    # fourth field of each group of four.
+    emails = {
+        field.casefold()
+        for index, field in enumerate(fields)
+        if index % 4 in (1, 3) and field
+    }
+    return emails, identities
 
 
 def _range_commits(project_root: Path, merge_base: str, commit: str) -> set[str]:
@@ -1808,31 +1816,23 @@ def run_gate(
         # reviewer-independence check below compares the reviewer email
         # against the range's author and committer emails. And an
         # acceptance's self-acceptance mark (ADR-0007 decision 4) applies
-        # the shared comparison `_accepting_party_is_declared_writer`:
+        # the shared comparison `accepting_party_is_declared_writer`:
         # the gate applies it over the candidate's commit range — the
         # names and emails read here — while report and status apply it
-        # to the accepted commit. A valid acceptance implies a latest
-        # review, so both sets are present wherever the lines need them.
-        writer_emails = (
-            {
-                email.strip().casefold()
-                for email in _range_emails(project_root, merge_base, resolved_commit)
-            }
-            if latest is not None
-            else set()
-        )
-        writer_identities = (
+        # to the accepted commit. One `git log` yields both sets, and a
+        # valid acceptance implies a latest review, so they are present
+        # wherever the lines need them.
+        writer_emails, writer_identities = (
             _range_writer_identities(project_root, merge_base, resolved_commit)
             if latest is not None
-            else set()
+            else (set(), set())
         )
         if valid_acceptance is not None:
             accepted_by, accepted_findings = valid_acceptance
             findings = ", ".join(accepted_findings)
             mark = (
-                " (self-accepted: accepting party is a declared writer of the "
-                "candidate)"
-                if _accepting_party_is_declared_writer(accepted_by, writer_identities)
+                SELF_ACCEPTED_MARK
+                if accepting_party_is_declared_writer(accepted_by, writer_identities)
                 else ""
             )
             say(

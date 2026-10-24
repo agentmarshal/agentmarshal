@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -35,6 +36,16 @@ class ReportError(Exception):
 # time, never a stand-in.
 _UNKNOWN = "unknown"
 _NOT_YET = "not yet"
+
+# The qualification a confirmed self-acceptance prints, in the terms
+# ``status`` uses — the gate's acceptance line appends it, and
+# ``status_view`` prints the same text on its summary. It lives here, in
+# the one module every surface already imports, so the wording is one
+# constant rather than a phrase each surface retypes (ADR-0007
+# decision 4).
+SELF_ACCEPTED_MARK = (
+    " (self-accepted: accepting party is a declared author or committer)"
+)
 
 # The lead-time chain in order (ADR-0019 decision 2): opened, the first
 # implementer session's start, the first review, approval, completion.
@@ -456,7 +467,34 @@ def _writers_repository(journal_root: Path) -> Path | None:
         return None
 
 
-def _accepting_party_is_declared_writer(
+def declared_commit_writers(project_root: Path, commit: str) -> set[str] | None:
+    """Return the commit's declared author and committer names and emails.
+
+    ``None`` when git cannot answer — an absent commit, a shallow clone, a
+    directory that is not a repository. That is distinct from an answer
+    of "no match", and the caller must keep the two apart — ``status``
+    reports the ``None`` leg as unchecked where ``report`` prints no
+    mark. The same lookup ``status_view._declared_commit_writers`` makes;
+    ``status_view`` imports this module already, so the surfaces read one
+    writer set rather than each keeping its own git call.
+    """
+
+    try:
+        result = subprocess.run(
+            ["git", "show", "-s", "--format=%an%n%ae%n%cn%n%ce", commit],
+            cwd=project_root,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return None
+        output = result.stdout.decode("utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    return {line.strip().casefold() for line in output.splitlines() if line.strip()}
+
+
+def accepting_party_is_declared_writer(
     accepted_by: str, writers: set[str] | None
 ) -> bool | None:
     """The one self-acceptance comparison — gate, report and status.
@@ -478,26 +516,21 @@ def _accepting_party_is_declared_writer(
 def _self_accepted(repository: Path | None, acceptance: dict[str, object]) -> bool:
     """Whether the accepting party is a declared writer of the commit.
 
-    The shared comparison — ``_accepting_party_is_declared_writer`` —
+    The shared comparison — ``accepting_party_is_declared_writer`` —
     over the accepted commit's declared writers, looked up the way
-    ``status`` looks them up (ADR-0007 decision 4).
-    ``status_view._declared_commit_writers`` is imported where it runs
-    rather than copied: ``status_view`` imports this module, so a
-    module-level import back would cycle. ``False`` when the party
-    matches no writer, when the acceptance binds a finding — a binding
-    with no ``accepted_commit`` has no writers to compare — and when
-    git cannot read the writers here: ``report`` then prints the line
-    as for any other acceptance, and ``status`` alone says the check
-    could not run.
+    ``status`` looks them up (ADR-0007 decision 4). ``False`` when the
+    party matches no writer, when the acceptance binds a finding — a
+    binding with no ``accepted_commit`` has no writers to compare —
+    and when git cannot read the writers here: ``report`` then prints
+    the line as for any other acceptance, and ``status`` alone says
+    the check could not run.
     """
 
     if "accepted_commit" not in acceptance or repository is None:
         return False
-    from agentmarshal.journal.status_view import _declared_commit_writers
-
-    checked = _accepting_party_is_declared_writer(
+    checked = accepting_party_is_declared_writer(
         str(acceptance["accepted_by"]),
-        _declared_commit_writers(repository, str(acceptance["accepted_commit"])),
+        declared_commit_writers(repository, str(acceptance["accepted_commit"])),
     )
     return checked is True
 
@@ -517,23 +550,28 @@ def _task_report(status: TaskStatus, repository: Path | None) -> TaskReport:
     )
     decision = None
     decisive_acceptance: dict[str, object] | None = None
-    completed = next(
+    completed_index = next(
         (
-            record
-            for record in reversed(records)
-            if record["record_type"] == "completed"
+            index
+            for index in range(len(records) - 1, -1, -1)
+            if records[index]["record_type"] == "completed"
         ),
         None,
     )
-    if completed is not None:
+    if completed_index is not None:
         # The decision is read off the review and the acceptance that
         # apply to the completed record's own binding — its
         # `completed_commit`, or its `completed_finding` on the findings
         # lane — so an acceptance an earlier commit earned cannot mark a
         # task the completed commit closed on approval (ADR-0007
-        # decision 5; release-audit finding AUD-gate-journal-4). As at
-        # the gate, the latest review decides and only an acceptance
-        # carrying `findings` counts.
+        # decision 5; release-audit finding AUD-gate-journal-4). Only the
+        # records written before the `completed` record answer — a review
+        # or an acceptance recorded after a later `reopened` cannot
+        # rewrite how a completion already reported it closed. As at the
+        # gate, the latest review decides and only an acceptance carrying
+        # `findings` counts.
+        completed = records[completed_index]
+        prior = records[:completed_index]
         if "completed_finding" in completed:
             review_key, acceptance_key = "reviewed_finding", "accepted_finding"
             bound = completed["completed_finding"]
@@ -542,7 +580,7 @@ def _task_report(status: TaskStatus, repository: Path | None) -> TaskReport:
             bound = completed["completed_commit"]
         reviews = [
             record
-            for record in records
+            for record in prior
             if record["record_type"] == "review" and record.get(review_key) == bound
         ]
         if reviews and reviews[-1]["verdict"] == "approved":
@@ -550,7 +588,7 @@ def _task_report(status: TaskStatus, repository: Path | None) -> TaskReport:
         else:
             acceptances = [
                 record
-                for record in records
+                for record in prior
                 if record["record_type"] == "acceptance"
                 and "findings" in record
                 and record.get(acceptance_key) == bound
