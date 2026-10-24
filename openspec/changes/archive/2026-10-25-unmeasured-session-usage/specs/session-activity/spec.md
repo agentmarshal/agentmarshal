@@ -67,18 +67,19 @@ leaving none SHALL carry no `unmeasured` field.
   alone and the line carries `unmeasured=<n>` as its last field
 
 ### Requirement: an unmeasured session counts in no cost sum or measured-session count
-An unmeasured session SHALL be no counted member of the `Cost` sums'
-scope: it is no `sessions_without_cost` session and no `Cost` line's
-`unmeasured=<n>` counts it. A `cost` it records SHALL sum exactly as a
-measured session's does — per currency and source, in plain decimal:
-the sum holds the figure, and leaving it out would silently drop money
-the journal holds (ADR-0019 decision 4). Only an unmeasured session
-carrying no `cost` is left out of these sums — wherever `Cost` lines
-print, such sessions SHALL be named by `unmeasured=<n>` as the line's
-last field, the count of unmeasured sessions carrying no `cost` alone —
-and a scope whose every session is unmeasured carrying no `cost` SHALL
-print no `Cost` line at all: the count means sessions that ran measured
-and carried no cost, not sessions that measured nothing.
+An unmeasured session carrying a `cost` SHALL be a counted member of
+the `Cost` sums' scope exactly as a measured session is: its recorded
+`cost` sums per currency and source, in plain decimal — the sum holds
+the figure, and leaving it out would silently drop money the journal
+holds (ADR-0019 decision 4) — and no `Cost` line's `unmeasured=<n>`
+counts it. An unmeasured session carrying no `cost` SHALL be left out
+of the sums' scope — it is no admitted session and no
+`sessions_without_cost` session — and wherever `Cost` lines print such
+sessions SHALL be named by `unmeasured=<n>` as the line's last field,
+the count of unmeasured sessions carrying no `cost` alone. A scope
+whose every session is unmeasured carrying no `cost` SHALL print no
+`Cost` line at all: the count means sessions that ran measured and
+carried no cost, not sessions that measured nothing.
 
 #### Scenario: a task whose only session is unmeasured but records a cost prints its Cost lines as today
 - **WHEN** `report --task` runs for a task whose only session is

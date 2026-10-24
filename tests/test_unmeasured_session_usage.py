@@ -435,11 +435,15 @@ def test_the_aggregate_sums_a_recorded_cost_and_names_the_sessions_left_out(
 
     # CR-001's second session is unmeasured but records a cost: the
     # aggregate sums it exactly as a measured session's, and each `Cost`
-    # line names only the unmeasured sessions carrying none.
+    # line names only the unmeasured sessions carrying none — two —
+    # while the `Summary` line's token sum names every unmeasured
+    # session, all three.
     assert main(["report"]) == 0
     lines = capsys.readouterr().out.splitlines()
     assert "Cost\tUSD\treported=6.00\tunmeasured=2" in lines
     assert "Cost\tsessions_without_cost=0\tunmeasured=2" in lines
+    summary = next(line for line in lines if line.startswith("Summary\t"))
+    assert summary.endswith("\tunmeasured=3")
 
 
 def test_the_unmeasured_field_joins_a_sum_line_and_the_new_lines_still_follow(
