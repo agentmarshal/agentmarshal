@@ -21,7 +21,12 @@ from agentmarshal.journal.actors import _actor_git_identities
 from agentmarshal.journal.contracts import JournalContractError, contract_sha256
 from agentmarshal.journal.display import escape_for_display
 from agentmarshal.journal.records import _project_root_for
-from agentmarshal.journal.report import _is_unmeasured
+from agentmarshal.journal.report import (
+    SELF_ACCEPTED_MARK,
+    _is_unmeasured,
+    accepting_party_is_declared_writer,
+    declared_commit_writers,
+)
 from agentmarshal.journal.status import (
     TaskStatus,
     TaskStatusError,
@@ -45,29 +50,6 @@ from agentmarshal.steps import OpenStep, format_overdue
 RecordRenderer = Callable[[Path, Path, dict[str, object]], str]
 
 
-def _declared_commit_writers(project_root: Path, commit: str) -> set[str] | None:
-    """Return the commit's declared author and committer names and emails.
-
-    ``None`` when git cannot answer — an absent commit, a shallow clone, a
-    directory that is not a repository. That is distinct from an answer of "no
-    match", and the caller must keep the two apart.
-    """
-
-    try:
-        result = subprocess.run(
-            ["git", "show", "-s", "--format=%an%n%ae%n%cn%n%ce", commit],
-            cwd=project_root,
-            capture_output=True,
-            check=False,
-        )
-        if result.returncode != 0:
-            return None
-        output = result.stdout.decode("utf-8")
-    except (OSError, UnicodeDecodeError):
-        return None
-    return {line.strip().casefold() for line in output.splitlines() if line.strip()}
-
-
 def _is_self_accepted(project_root: Path, record: dict[str, object]) -> bool | None:
     """Whether the accepting party wrote the commit, or ``None`` if unknown.
 
@@ -78,10 +60,10 @@ def _is_self_accepted(project_root: Path, record: dict[str, object]) -> bool | N
 
     if "accepted_commit" not in record:
         return None
-    writers = _declared_commit_writers(project_root, str(record["accepted_commit"]))
-    if writers is None:
-        return None
-    return str(record["accepted_by"]).strip().casefold() in writers
+    return accepting_party_is_declared_writer(
+        str(record["accepted_by"]),
+        declared_commit_writers(project_root, str(record["accepted_commit"])),
+    )
 
 
 def _is_self_acknowledged(
@@ -99,7 +81,7 @@ def _is_self_acknowledged(
     committer names and emails the commit declares.
     """
 
-    writers = _declared_commit_writers(project_root, str(record["commit"]))
+    writers = declared_commit_writers(project_root, str(record["commit"]))
     if writers is None:
         return None
     identities = _actor_git_identities(_project_root_for(journal_root), record)
@@ -805,9 +787,7 @@ def print_task_detail(project_root: Path, task: TaskStatus, journal_root: Path) 
                 f"{escape_for_display(str(acceptance['accepted_commit'])[:7])} here)"
             )
         elif self_accepted:
-            summary += (
-                " (self-accepted: accepting party is a declared author or committer)"
-            )
+            summary += SELF_ACCEPTED_MARK
         print(summary)
     print("Scope:")
     if task.contract.scope:

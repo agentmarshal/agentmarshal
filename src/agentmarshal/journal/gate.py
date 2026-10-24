@@ -62,6 +62,11 @@ from agentmarshal.journal.records import (
     read_records,
     validate_record_content,
 )
+from agentmarshal.journal.report import (
+    SELF_ACCEPTED_MARK,
+    accepting_party_is_declared_writer,
+    decode_writer_field,
+)
 from agentmarshal.journal.status import (
     TaskStatusError,
     load_task_status,
@@ -499,11 +504,54 @@ def _sidecar_tampered_records(journal_root: Path) -> list[str]:
     return sorted(tampered)
 
 
-def _range_emails(project_root: Path, merge_base: str, commit: str) -> set[str]:
-    output = _run_git(
-        project_root, ["log", "--format=%ae%n%ce", f"{merge_base}..{commit}"]
+def _range_writer_identities(
+    project_root: Path, merge_base: str, commit: str
+) -> tuple[set[str], set[str]]:
+    """The candidate range's declared writer emails, and its identities.
+
+    One ``git log`` over ``merge-base..candidate`` yields both sets the
+    verdict block reads: ``(emails, identities)``, each stripped and
+    case-folded. The reviewer-independence check holds the reviewer
+    against the *emails* alone — a name in that set could only collide
+    with a reviewer identity declared as an address. The self-acceptance
+    mark's shared comparison ``report.accepting_party_is_declared_writer``
+    matches ``accepted_by`` against the names and emails alike. This is
+    the gate's own range lookup — where ``report`` and ``status`` read
+    the accepted commit's writers through
+    ``report.declared_commit_writers`` — so a writer of an earlier
+    commit of the range only marks at the gate: the journal holds no
+    candidate base the other surfaces could rebuild the range from.
+    """
+
+    output = _run_git_bytes(
+        project_root,
+        [
+            "log",
+            "--format=%an%x00%ae%x00%cn%x00%ce%x00",
+            f"{merge_base}..{commit}",
+        ],
     )
-    return {line.strip() for line in output.splitlines() if line.strip()}
+    # The format writes %an, %ae, %cn, %ce once per commit behind NUL
+    # separators — no byte inside a field can misalign the grid — so the
+    # emails are the second and fourth field of each group of four,
+    # decoded by the helper the surfaces share: emails strictly, as the
+    # whole output decoded before, so the independence check is
+    # unchanged; names with ``replace``, so a commit whose author or
+    # committer name is not UTF-8 cannot fail the run.
+    emails: set[str] = set()
+    identities: set[str] = set()
+    for index, field in enumerate(output.split(b"\x00")):
+        try:
+            decoded = decode_writer_field(field, email=index % 4 in (1, 3))
+        except UnicodeDecodeError as error:
+            raise GateError(f"git produced non-UTF-8 output: {error}") from error
+        value = decoded.strip().casefold()
+        if not value:
+            continue
+        identities.add(value)
+        if index % 4 in (1, 3):
+            emails.add(value)
+    return emails, identities
 
 
 def _range_commits(project_root: Path, merge_base: str, commit: str) -> set[str]:
@@ -1788,12 +1836,34 @@ def run_gate(
         # decision 1).
         if latest is not None and (approved or valid_acceptance is not None):
             resolved_review = cast(str, latest["id"])
+        # The candidate's declared writers answer two questions. The
+        # reviewer-independence check below compares the reviewer email
+        # against the range's author and committer emails. And an
+        # acceptance's self-acceptance mark (ADR-0007 decision 4) applies
+        # the shared comparison `accepting_party_is_declared_writer`:
+        # the gate applies it over the candidate's commit range — the
+        # names and emails its own range lookup reads here — while
+        # report and status apply it to the accepted commit's writers,
+        # read through `declared_commit_writers`, so a writer of an
+        # earlier commit of the range only marks here. One `git log`
+        # yields both sets, and a valid acceptance implies a latest
+        # review, so they are present wherever the lines need them.
+        writer_emails, writer_identities = (
+            _range_writer_identities(project_root, merge_base, resolved_commit)
+            if latest is not None
+            else (set(), set())
+        )
         if valid_acceptance is not None:
             accepted_by, accepted_findings = valid_acceptance
             findings = ", ".join(accepted_findings)
+            mark = (
+                SELF_ACCEPTED_MARK
+                if accepting_party_is_declared_writer(accepted_by, writer_identities)
+                else ""
+            )
             say(
-                f"PASS: accepted over findings {findings} by {accepted_by}; "
-                "not an approving review"
+                f"PASS: accepted over findings {findings} by {accepted_by}"
+                f"{mark}; not an approving review"
             )
         elif acceptance is not None and latest is not None and not approved:
             # An operator who has just recorded an acceptance and sees only
@@ -1885,10 +1955,6 @@ def run_gate(
                 if isinstance(reviewer_email, str)
                 else ""
             )
-            writer_emails = {
-                email.strip().casefold()
-                for email in _range_emails(project_root, merge_base, resolved_commit)
-            }
             check(
                 bool(normalized_reviewer) and normalized_reviewer not in writer_emails,
                 "declared reviewer identity differs from the candidate's "

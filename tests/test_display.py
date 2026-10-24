@@ -249,7 +249,9 @@ def test_a_refused_character_prints_escaped_in_report() -> None:
         state="open",
     )
     report = JournalReport(
-        tasks=(_task_report(status),),
+        # An in-memory status has no repository to check writers in —
+        # `None` derives no mark rather than guessing one.
+        tasks=(_task_report(status, None),),
         review_cycles=0,
         tokens=4,
         usage_provenance="rep\u202eorted\nforged",
