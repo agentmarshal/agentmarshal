@@ -135,22 +135,26 @@ rather than decides, the findings lane excepted.
   `--attestation` modes in the [Quickstart](quickstart.md)).
 - **Gate** — `agentmarshal gate`: the provider-agnostic merge authority. Passes
   fail-closed only when every check holds.
-- **Lane** — the gate recognizes three kinds of work: a **journal-only** (a.k.a.
-  deterministic) transaction — one that touches nothing outside `.agentmarshal/`,
-  such as an opening, a completion, a contract amendment or a reopening — needs
-  no review; an **implementation** candidate takes the full review-bound diff
-  lane; and an empty-scope research task offered with `--findings` takes the
-  no-candidate findings lane, bound to its latest hash-pinned finding.
+- **Lane** — the gate recognizes four kinds of work: a **journal-only** (a.k.a.
+  deterministic) transaction — one whose every changed path sits under
+  `.agentmarshal/journal/`, such as an opening, a completion, a contract
+  amendment or a reopening — needs no review; an **operational** transaction —
+  one that changes only `.agentmarshal/switches.toml` and its own task's
+  records, the lane `extension switch off` opens a task onto — needs no review
+  either and runs no pre-gate stage; an **implementation** candidate takes the
+  full review-bound diff lane; and an empty-scope research task offered with
+  `--findings` takes the no-candidate findings lane, bound to its latest
+  hash-pinned finding.
 - **Merge authority** — the gate *decides*; the provider *merges*. A host
   wrapper (e.g. `am-merge` / a GitHub Action) runs the gate and, on a pass,
   performs the merge.
 
 ## Direction (roadmap)
 
-The design is broader than the shipped 0.4.1 repository version; the honest
+The design is broader than the shipped 0.6.0 repository version; the honest
 boundary is stated in the ADRs and
 [migration-v1-to-v2.md](migration-v1-to-v2.md). What is **not active in
-0.4.1**, in rough order (features land in later releases — `agentmarshal
+0.6.0**, in rough order (features land in later releases — `agentmarshal
 --version` shows yours). Entries say whether a published design exists:
 
 - **Verifiable attestation** — projecting records to an in-toto Statement and
@@ -158,7 +162,7 @@ boundary is stated in the ADRs and
   not just recorded. Adjacent to (not a claim of) SLSA Source; not yet emitted.
   ADR-0005 designs the Statement projection; it names signing as a later slice
   without specifying it.
-- **Capture policy** — the `reviews` class is read in 0.4.1: its default
+- **Capture policy** — the `reviews` class is read in 0.6.0: its default
   `hash` level keeps a reviewer's standard output out of the journal in a file
   under the clone's local state — `log/files/` beside the process log in
   `.git/agentmarshal/` — announced by a `review-prose` event carrying the
@@ -170,7 +174,7 @@ boundary is stated in the ADRs and
   `record-session` keeps its existing behaviour whatever their levels say.
   Prompt text and raw session transcripts still have no policy-driven writer
   or private store. Designed in ADR-0005.
-- **Mandatory leak-scan enforcement** — 0.4.1 ships a standalone `leak-scan`
+- **Mandatory leak-scan enforcement** — 0.6.0 ships a standalone `leak-scan`
   command and an advisory merge-time scan that warns on possible leaks in a
   candidate's additions. Making a match block is roadmap. The scan is
   best-effort by design (ADR-0005) — never a guarantee. The blocking mode is

@@ -249,16 +249,24 @@ command invoked it, never the gate's (extension-stages specification,
 "`stage run` reads the switches from the base and reports a
 switched-off extension", "an accepted pause stands down a
 pre-gate-stop stage's pause for the accepted extension and commit" and
-"the stage run is one function both commands call"). One case gives a
-stage no line: where the clone's trust file cannot be read on a
-workstation the command fails naming the file, and a stage that would
-have been grant-checked is skipped without one — the lines still owed
-go to the stages never grant-checked, a switched-off stage's
-`switched off (<task>, <reason>)` and the `not run (shared switches
-file unreadable)` of a stage a refused switches file names
-(extension-stages specification, "on a workstation a stage runs only
-under a matching grant" and "`stage run` reads the switches from the
-base and reports a switched-off extension"). ADR-0013 decision 7's
+"the stage run is one function both commands call"). The command-level
+refusals give no stage a line at all — a phase the runner does not
+know, a task identifier the record family would refuse (refused by the
+calling command before the runner is reached), a sidecar journal,
+whose stage base is a property of the embedded placement, and a
+manifest the base tree cannot produce or parse each fail the command
+before a stage is planned — and where the clone's trust file cannot be
+read on a workstation the command fails naming the file, and a stage
+that would have been grant-checked is skipped without one — the lines
+still owed go to the stages never grant-checked, a switched-off
+stage's `switched off (<task>, <reason>)` and the `not run (shared
+switches file unreadable)` of a stage a refused switches file names
+(extension-stages specification, "a manifest the base cannot parse
+fails the run naming the extension", "a sidecar runs no stages", "an
+invalid task identifier refuses before any stage is planned", "a
+malformed trust.toml fails the command naming it", "on a workstation
+a stage runs only under a matching grant" and "`stage run` reads the
+switches from the base and reports a switched-off extension"). ADR-0013 decision 7's
 list runs past what the runner prints: `addressee not found` as a
 stage line and a `not run` reason of dependencies not matching the
 lock are decided, not yet implemented — `addressee not found` lives
@@ -512,11 +520,15 @@ stop short, and this document does not resolve them.
 2. **Symlinks inside the journal.** Symlink refusal is specified for the
    extension manifest and its `bin/` and `lock/` paths, for the
    process-log sweep, for local-state creation and for non-regular
-   entries of the outbox. No published statement covers a symlink inside
-   `.agentmarshal/journal/` — at a record or an artifact — or at
-   `.agentmarshal/switches.toml`. (extension-manifest specification, "An
+   entries of the outbox, and for the switches file the operational lane
+   verifies — a link at `.agentmarshal/switches.toml` refuses as not a
+   file. No published statement covers a symlink inside
+   `.agentmarshal/journal/` — at a record or an artifact.
+   (extension-manifest specification, "An
    extension is found in the file form or the directory form" and "A path
    the directory form names exists in the extension's directory";
+   gate-lanes specification, "the operational lane verifies the switches
+   file against the task and the base";
    process-log specification, "The log directory is bounded as a whole"
    and "Creating a location is contained to the local state root";
    outbox specification, "`outbox check` scans what would be sent and
