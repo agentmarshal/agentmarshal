@@ -209,12 +209,18 @@ SHALL be named on one note line for the stage, each with its reason
 and the stage SHALL still run; a guarantee enforced SHALL NOT be
 mentioned, so a platform enforcing everything shows unchanged
 output. A setup step that fails in the stage's own child after the
-probe allowed it SHALL be named the same way: the child reports the
-failure on its stderr ahead of its exec'd output, and the run
-strips the report out of the stream it reframes — never a silent
-weakening; a capability drop that fails is such a step, named on
-every guarantee the child was asked to enforce. A stage that does
-not run at all SHALL carry no isolation note.
+probe allowed it SHALL be named the same way: before `execve` the
+child reports each asked-for guarantee's outcome over a dedicated
+pipe the parent creates — the write end kept open through the
+spawn's descriptor closing and marked close-on-exec by the child,
+so it is closed the instant `execve` succeeds and the extension's
+code never holds it — and the parent reads it to EOF; a report
+that never arrives cannot vouch for a guarantee and names it not
+enforced — never a silent weakening, and never a byte of the
+stage's own output read as a core message; a capability drop that
+fails is such a step, named on every guarantee the child was asked
+to enforce. A stage that does not run at all SHALL carry no
+isolation note.
 
 #### Scenario: each guarantee not enforced is named on one note line for the stage
 - **WHEN** a stage is owed guarantees the platform cannot enforce
@@ -229,9 +235,15 @@ not run at all SHALL carry no isolation note.
 #### Scenario: a setup step that fails in the stage's own child is named
 - **WHEN** the probe allowed a guarantee but a setup step still
   fails in the stage's child
-- **THEN** the failure is reported out of the child's stderr ahead
-  of the stage's output, stripped from the framed stream, and the
-  guarantee is named `not enforced` the same way
+- **THEN** the failure is reported on the child's dedicated pipe —
+  a channel the extension's code cannot reach — and the guarantee
+  is named `not enforced` the same way
+
+#### Scenario: a stage's own output never carries the setup's report
+- **WHEN** a stage's output carries a line shaped like a setup
+  report — text only the child's report pipe may carry
+- **THEN** the line is framed as the stage's own output like any
+  other and names no guarantee not enforced
 
 #### Scenario: a capability drop that fails names every guarantee the child was asked to enforce
 - **WHEN** the probe allowed the guarantees but the stage child's

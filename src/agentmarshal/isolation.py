@@ -20,13 +20,17 @@ bounding set and the live effective/permitted/inheritable sets —
 because those capabilities survive ``execve`` (user_namespaces(7)) and
 would let the stage itself remount or unmount what was bound.
 
-A setup step that fails in the stage's child is never silent: the child
-writes a ``AGENTMARSHAL-SETUP-FAILED: <guarantee>: <reason>`` line to its
-stderr — the first bytes of the captured output, before exec — and the
-run names the guarantee not enforced the same way the probe's refusals
-are named. A capability drop that fails names every guarantee the child
-was asked to enforce — it must never exec silently with capabilities.
-The stage still runs, weakened but honestly reported.
+A setup step that fails in the stage's child is never silent: before
+exec the child writes each requested guarantee's outcome to a dedicated
+report pipe the parent created — the write end close-on-exec, so it is
+closed the instant ``execve`` succeeds and the extension's code never
+holds it — and the run names what the report calls failed not enforced
+the same way the probe's refusals are named; a report that never
+arrives cannot vouch for a guarantee, so it is named the same way.
+Nothing in the stage's own output is ever read as a core message. A
+capability drop that fails names every guarantee the child was asked
+to enforce — it must never exec silently with capabilities. The stage
+still runs, weakened but honestly reported.
 """
 
 from __future__ import annotations
@@ -39,12 +43,6 @@ from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-
-#: The line a stage's child writes to its stderr — the first bytes of the
-#: captured output, since it is written before exec — when a setup step
-#: the probe had allowed still fails. ``stages`` strips these lines out
-#: of the stage's framed output and names each guarantee not enforced.
-_SETUP_FAILED_PREFIX = b"AGENTMARSHAL-SETUP-FAILED: "
 
 #: The namespace flags (``linux/sched.h``); ``os`` carries them on Linux
 #: and the literals keep the probe honest elsewhere.
@@ -246,17 +244,6 @@ def _drop_failure(error: BaseException) -> _CapabilityDropError:
     )
 
 
-def _report_failure(label: str, error: BaseException) -> None:
-    """Write one failure line to the child's stderr; never raises."""
-
-    with suppress(OSError):
-        os.write(
-            2,
-            f"{_SETUP_FAILED_PREFIX.decode()}{label}: "
-            f"{_error_detail(error)}\n".encode(),
-        )
-
-
 def _bind_read_only(directory: str) -> None:
     """Make mount propagation private, then bind *directory* read-only.
 
@@ -270,7 +257,9 @@ def _bind_read_only(directory: str) -> None:
     _mount(directory, directory, _MS_BIND | _MS_REMOUNT | _MS_RDONLY)
 
 
-def stage_setup(*, network: bool, readonly: Path | None) -> Callable[[], None]:
+def stage_setup(
+    *, network: bool, readonly: Path | None, report_fd: int
+) -> Callable[[], None]:
     """The ``preexec_fn``-style setup for a stage's child.
 
     *network* asks for a new user and network namespace (the manifest did
@@ -284,9 +273,17 @@ def stage_setup(*, network: bool, readonly: Path | None) -> Callable[[], None]:
     exec, every capability the new user namespace granted is dropped —
     they survive ``execve`` and would let the stage undo the
     enforcement — so a drop failure is reported on every guarantee
-    still standing. Whatever fails is reported by ``_report_failure``
-    and the stage runs weakened; the setup itself never raises out of
-    the child.
+    still standing.
+
+    *report_fd* is the write end of a dedicated pipe the parent created
+    and kept through the spawn's fd closing: the child marks it
+    close-on-exec before anything else — so the instant ``execve``
+    succeeds it is closed and the extension's code never holds it —
+    then, still before exec, writes one ``<guarantee>=<ok|reason>``
+    line per requested guarantee in a single write, the report the
+    parent reads to EOF. Whatever fails is named in the report and the
+    stage runs weakened; the setup itself never raises out of the
+    child.
     """
 
     requested = [
@@ -298,6 +295,7 @@ def stage_setup(*, network: bool, readonly: Path | None) -> Callable[[], None]:
     uid, gid = os.getuid(), os.getgid()
 
     def setup() -> None:
+        os.set_inheritable(report_fd, False)
         problems: list[tuple[str, BaseException]] = []
         failed: set[str] = set()
         try:
@@ -307,8 +305,16 @@ def stage_setup(*, network: bool, readonly: Path | None) -> Callable[[], None]:
                 if label not in failed:
                     problems.append((label, error))
                     failed.add(label)
-        for label, problem in problems:
-            _report_failure(label, problem)
+        reasons = {
+            label: _error_detail(problem).replace("\n", " ")
+            for label, problem in problems
+        }
+        payload = b"".join(
+            f"{label}={reasons.get(label, 'ok')}\n".encode("utf-8", errors="replace")
+            for label in requested
+        )
+        with suppress(OSError):
+            os.write(report_fd, payload)
 
     def _setup(problems: list[tuple[str, BaseException]], failed: set[str]) -> None:
         flags = _CLONE_NEWUSER
@@ -387,24 +393,39 @@ def _try_unshare(flags: int) -> OSError | None:
     return None
 
 
-def strip_failure_reports(output: bytes) -> tuple[bytes, list[tuple[str, str]]]:
-    """Split the child's setup-failure lines out of captured *output*.
+def parse_setup_report(
+    data: bytes, *, network: bool, readonly: bool
+) -> list[tuple[str, str]]:
+    """The guarantees the stage child's report names as failed or cannot vouch for.
 
-    The lines precede exec, so they always head the captured stream;
-    each names a guarantee and its reason. Returns the stage's own
-    output — the frame reprints only that — and the reported failures.
+    *data* is what the dedicated report pipe carried to EOF: one
+    ``<guarantee>=<ok|reason>`` line per guarantee the child was asked
+    to enforce — the pipe is a channel the extension's own output
+    cannot reach, closed the instant ``execve`` succeeds. A guarantee
+    the report does not name — a child that died before writing, a
+    write that failed — may have stopped halfway through its setup, so
+    it is reported not enforced, never assumed enforced. *network* and
+    *readonly* name the guarantees the stage's child was asked for, in
+    the same terms ``stage_setup`` takes.
     """
 
+    reported: dict[str, str] = {}
+    for line in data.decode("utf-8", errors="replace").splitlines():
+        label, separator, value = line.partition("=")
+        if separator:
+            reported.setdefault(label, value)
     failures: list[tuple[str, str]] = []
-    kept = output
-    while kept.startswith(_SETUP_FAILED_PREFIX):
-        line, _, rest = kept.partition(b"\n")
-        label, _, reason = (
-            line[len(_SETUP_FAILED_PREFIX) :].decode("utf-8", errors="replace")
-        ).partition(": ")
-        failures.append((label, reason))
-        kept = rest
-    return kept, failures
+    for label, asked in ((_NETWORK, network), (_READONLY, readonly)):
+        if not asked:
+            continue
+        outcome = reported.get(label)
+        if outcome is None:
+            failures.append(
+                (label, "the child's setup report did not arrive before exec")
+            )
+        elif outcome != "ok":
+            failures.append((label, outcome))
+    return failures
 
 
 def probe() -> Probe:

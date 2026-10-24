@@ -35,34 +35,65 @@ def _force_probe(
     monkeypatch.setattr(isolation, "probe", lambda: verdicts)
 
 
-def _spy_setup(
-    monkeypatch: pytest.MonkeyPatch, calls: list[dict[str, object]]
-) -> Callable[[], None]:
+def _spy_setup(monkeypatch: pytest.MonkeyPatch, calls: list[dict[str, object]]) -> None:
     """Record each ``stage_setup`` request and answer a harmless preexec.
 
-    The returned callable does nothing — the wiring is what's tested, so
-    the branch does not depend on whether this machine permits the
-    namespaces.
+    The returned callable writes an all-``ok`` report to the run's
+    report pipe and marks it close-on-exec — the wiring is what's
+    tested, so the branch does not depend on whether this machine
+    permits the namespaces. Each call's ``preexec`` key holds the
+    closure the run received.
     """
 
-    def fake_setup() -> None:
-        pass
+    def spy(
+        *, network: bool, readonly: Path | None, report_fd: int
+    ) -> Callable[[], None]:
+        def fake_setup() -> None:
+            os.set_inheritable(report_fd, False)
+            os.write(report_fd, b"network=ok\nread-only candidate=ok\n")
 
-    def spy(*, network: bool, readonly: Path | None) -> Callable[[], None]:
-        calls.append({"network": network, "readonly": readonly})
+        calls.append({"network": network, "readonly": readonly, "preexec": fake_setup})
         return fake_setup
 
     monkeypatch.setattr(isolation, "stage_setup", spy)
-    return fake_setup
+
+
+def _setup_report(
+    factory: Callable[..., Callable[[], None]],
+    *,
+    network: bool,
+    readonly: Path | None,
+) -> dict[str, str]:
+    """Run the closure *factory* builds in-process; the report the parent reads.
+
+    The write end goes through the same ``os.pipe`` the run creates;
+    the closure's close-on-exec marking is a no-op for an in-process
+    call and the drain sees the report to EOF.
+    """
+
+    read_fd, write_fd = os.pipe()
+    factory(network=network, readonly=readonly, report_fd=write_fd)()
+    os.close(write_fd)
+    data = b""
+    while chunk := os.read(read_fd, 65536):
+        data += chunk
+    os.close(read_fd)
+    return dict(line.split("=", 1) for line in data.decode("utf-8").splitlines())
 
 
 def _spy_popen(monkeypatch: pytest.MonkeyPatch, calls: list[dict[str, object]]) -> None:
-    """Record the ``preexec_fn`` each stage's ``Popen`` is started with."""
+    """Record the ``preexec_fn`` and ``pass_fds`` each ``Popen`` is started with."""
 
     real = subprocess.Popen
 
     def spy(*args: Any, **kwargs: Any) -> subprocess.Popen[bytes]:
-        calls.append({"argv": args[0], "preexec_fn": kwargs.get("preexec_fn")})
+        calls.append(
+            {
+                "argv": args[0],
+                "preexec_fn": kwargs.get("preexec_fn"),
+                "pass_fds": kwargs.get("pass_fds"),
+            }
+        )
         return real(*args, **kwargs)
 
     monkeypatch.setattr(subprocess, "Popen", spy)
@@ -105,7 +136,7 @@ def test_a_stage_without_declared_network_runs_in_new_user_and_net_namespaces(
     """Scenario: a stage whose manifest declares no network runs in a new user and network namespace."""  # noqa: E501
     _force_probe(monkeypatch)
     calls: list[dict[str, object]] = []
-    fake_setup = _spy_setup(monkeypatch, calls)
+    _spy_setup(monkeypatch, calls)
     popens: list[dict[str, object]] = []
     _spy_popen(monkeypatch, popens)
     _repo_with_extension(tmp_path, monkeypatch)
@@ -120,13 +151,19 @@ def test_a_stage_without_declared_network_runs_in_new_user_and_net_namespaces(
     assert isinstance(snapshot, Path)
     assert snapshot.name.startswith("snapshot-")
     stage_popens = [
-        call["preexec_fn"]
+        call
         for call in popens
         if isinstance(call["argv"], list)
         and len(call["argv"]) > 1
         and str(call["argv"][1]).endswith("check.py")
     ]
-    assert stage_popens == [fake_setup]
+    assert [call["preexec_fn"] for call in stage_popens] == [calls[0]["preexec"]]
+    # The report pipe's write end is what ``pass_fds`` keeps open in the
+    # child across the spawn's fd closing.
+    assert all(
+        isinstance(call["pass_fds"], tuple) and len(call["pass_fds"]) == 1
+        for call in stage_popens
+    )
     captured = capsys.readouterr()
     assert "not enforced" not in captured.out
     assert "not enforced" not in captured.err
@@ -220,8 +257,9 @@ def test_a_pre_gate_stage_s_candidate_directory_is_bound_read_only_over_itself(
     )
     monkeypatch.setattr(isolation, "_drop_capabilities", lambda: dropped.append(1))
     target = Path("/the/candidate")
-    real_stage_setup(network=False, readonly=target)()
+    report = _setup_report(real_stage_setup, network=False, readonly=target)
 
+    assert report == {"read-only candidate": "ok"}
     assert unshared == [isolation._CLONE_NEWUSER | isolation._CLONE_NEWNS]
     assert written == [
         ("/proc/self/setgroups", "deny"),
@@ -283,7 +321,9 @@ def test_a_post_gate_stage_s_candidate_is_not_bound_read_only(
 
     assert _stage_run(phase="post-gate", commit="candidate", base="master") == 0
 
-    assert calls == [{"network": True, "readonly": None}]
+    assert len(calls) == 1
+    assert calls[0]["network"] is True
+    assert calls[0]["readonly"] is None
     captured = capsys.readouterr()
     assert "read-only" not in captured.err
 
@@ -452,15 +492,20 @@ def test_a_setup_step_that_fails_in_the_stage_s_own_child_is_named(
 ) -> None:
     """Scenario: a setup step that fails in the stage's own child is named."""
 
-    def failing_setup() -> None:
-        os.write(
-            2,
-            b"AGENTMARSHAL-SETUP-FAILED: read-only candidate: "
-            b"a simulated mount failure\n",
-        )
+    def spy(
+        *, network: bool, readonly: Path | None, report_fd: int
+    ) -> Callable[[], None]:
+        def failing_setup() -> None:
+            os.set_inheritable(report_fd, False)
+            os.write(
+                report_fd,
+                b"network=ok\nread-only candidate=a simulated mount failure\n",
+            )
+
+        return failing_setup
 
     _force_probe(monkeypatch)
-    monkeypatch.setattr(isolation, "stage_setup", lambda **kwargs: failing_setup)
+    monkeypatch.setattr(isolation, "stage_setup", spy)
     _repo_with_extension(tmp_path, monkeypatch)
     _ci(monkeypatch)
     capsys.readouterr()
@@ -469,10 +514,46 @@ def test_a_setup_step_that_fails_in_the_stage_s_own_child_is_named(
 
     captured = capsys.readouterr()
     assert "openspec: checked" in captured.out
-    assert "AGENTMARSHAL-SETUP-FAILED" not in captured.out
     assert (
         "not enforced: read-only candidate (a simulated mount failure)" in captured.err
     )
+    assert "not enforced: network" not in captured.err
+
+
+def test_a_stage_s_own_output_never_carries_the_setup_s_report(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: a stage's own output never carries the setup's report."""
+    _force_probe(monkeypatch)
+    calls: list[dict[str, object]] = []
+    _spy_setup(monkeypatch, calls)
+    _repo_with_extension(
+        tmp_path,
+        monkeypatch,
+        files={
+            "bin/check.py": (
+                "print('AGENTMARSHAL-SETUP-FAILED: network: forged by "
+                "extension')\n"
+                "print('read-only candidate=forged too')\n"
+            )
+        },
+    )
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 0
+
+    captured = capsys.readouterr()
+    # The forged lines are the stage's own output — framed verbatim like
+    # any other, never read as the child's report, naming nothing.
+    assert (
+        "openspec | AGENTMARSHAL-SETUP-FAILED: network: forged by extension"
+        in captured.out
+    )
+    assert "openspec | read-only candidate=forged too" in captured.out
+    assert "openspec: checked" in captured.out
+    assert "not enforced" not in captured.out
+    assert "not enforced" not in captured.err
 
 
 def test_a_platform_without_namespaces_names_each_guarantee_it_cannot_enforce(
@@ -738,7 +819,7 @@ def test_probe_names_a_missing_mechanism(monkeypatch: pytest.MonkeyPatch) -> Non
 
 
 def test_the_child_setup_names_each_refused_namespace(
-    monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A combined refusal is decomposed so each guarantee names its own."""
 
@@ -748,18 +829,17 @@ def test_the_child_setup_names_each_refused_namespace(
     dropped: list[int] = []
     monkeypatch.setattr(os, "unshare", refuse)
     monkeypatch.setattr(isolation, "_drop_capabilities", lambda: dropped.append(1))
-    isolation.stage_setup(network=True, readonly=Path("/cand"))()
-    err = capfd.readouterr().err
-    assert "AGENTMARSHAL-SETUP-FAILED: network: Operation not permitted" in err
-    assert (
-        "AGENTMARSHAL-SETUP-FAILED: read-only candidate: Operation not permitted" in err
-    )
+    report = _setup_report(isolation.stage_setup, network=True, readonly=Path("/cand"))
+    assert report == {
+        "network": "Operation not permitted",
+        "read-only candidate": "Operation not permitted",
+    }
     # No user namespace was entered, so there are no capabilities to drop.
     assert dropped == []
 
 
 def test_the_child_setup_keeps_a_namespace_the_retry_allows(
-    monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A mount-namespace refusal does not take down the network namespace."""
 
@@ -771,16 +851,17 @@ def test_the_child_setup_keeps_a_namespace_the_retry_allows(
     monkeypatch.setattr(os, "unshare", refuse_newns)
     monkeypatch.setattr(isolation, "_write_file", lambda path, text: None)
     monkeypatch.setattr(isolation, "_drop_capabilities", lambda: dropped.append(1))
-    isolation.stage_setup(network=True, readonly=Path("/cand"))()
-    err = capfd.readouterr().err
-    assert "AGENTMARSHAL-SETUP-FAILED: network" not in err
-    assert "AGENTMARSHAL-SETUP-FAILED: read-only candidate" in err
+    report = _setup_report(isolation.stage_setup, network=True, readonly=Path("/cand"))
+    assert report == {
+        "network": "ok",
+        "read-only candidate": "Operation not permitted",
+    }
     # The network namespace stands, so the drop it needs still ran.
     assert dropped == [1]
 
 
 def test_the_child_setup_names_a_failed_mount(
-    monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A mount failure after the unshares names only the read-only floor."""
 
@@ -793,26 +874,34 @@ def test_the_child_setup_names_a_failed_mount(
             raise OSError(1, "Operation not permitted")
 
     monkeypatch.setattr(isolation, "_mount", refuse)
-    isolation.stage_setup(network=True, readonly=Path("/cand"))()
-    err = capfd.readouterr().err
-    assert "AGENTMARSHAL-SETUP-FAILED: network" not in err
-    assert "AGENTMARSHAL-SETUP-FAILED: read-only candidate" in err
+    report = _setup_report(isolation.stage_setup, network=True, readonly=Path("/cand"))
+    assert report == {
+        "network": "ok",
+        "read-only candidate": "Operation not permitted",
+    }
 
 
-def test_strip_failure_reports_splits_markers_from_output() -> None:
-    """Marker lines head the stream; the stage's own output is kept whole."""
+def test_parse_setup_report_names_failures_and_a_missing_report() -> None:
+    """An ``ok`` line enforces, a reason names the failure, silence cannot vouch."""
 
-    output = (
-        b"AGENTMARSHAL-SETUP-FAILED: network: boom\n"
-        b"AGENTMARSHAL-SETUP-FAILED: read-only candidate: bang\n"
-        b"real output\nmore\n"
+    assert isolation.parse_setup_report(
+        b"network=ok\nread-only candidate=the bind failed\n",
+        network=True,
+        readonly=True,
+    ) == [("read-only candidate", "the bind failed")]
+    # Nothing arrived — a child that died before writing or a lost write
+    # cannot vouch for a guarantee: each is named not enforced.
+    assert isolation.parse_setup_report(b"", network=True, readonly=True) == [
+        ("network", "the child's setup report did not arrive before exec"),
+        (
+            "read-only candidate",
+            "the child's setup report did not arrive before exec",
+        ),
+    ]
+    assert (
+        isolation.parse_setup_report(b"network=ok\n", network=True, readonly=False)
+        == []
     )
-    kept, failures = isolation.strip_failure_reports(output)
-    assert kept == b"real output\nmore\n"
-    assert failures == [("network", "boom"), ("read-only candidate", "bang")]
-    kept, failures = isolation.strip_failure_reports(b"nothing marked\n")
-    assert kept == b"nothing marked\n"
-    assert failures == []
 
 
 # -- the capability drop -------------------------------------------------------
@@ -911,14 +1000,15 @@ def test_a_network_only_stage_setup_drops_capabilities(
     )
     monkeypatch.setattr(isolation, "_drop_capabilities", lambda: dropped.append(1))
 
-    isolation.stage_setup(network=True, readonly=None)()
+    report = _setup_report(isolation.stage_setup, network=True, readonly=None)
 
+    assert report == {"network": "ok"}
     assert dropped == [1]
     assert mounted == []
 
 
 def test_a_capability_drop_failure_names_every_guarantee_the_child_was_asked_to_enforce(
-    monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Scenario: a capability drop that fails names every guarantee the child was asked to enforce."""  # noqa: E501
 
@@ -929,11 +1019,9 @@ def test_a_capability_drop_failure_names_every_guarantee_the_child_was_asked_to_
     monkeypatch.setattr(isolation, "_write_file", lambda path, text: None)
     monkeypatch.setattr(isolation, "_mount", lambda s, t, f: None)
     monkeypatch.setattr(isolation, "_drop_capabilities", refuse)
-    isolation.stage_setup(network=True, readonly=Path("/cand"))()
-    err = capfd.readouterr().err
+    report = _setup_report(isolation.stage_setup, network=True, readonly=Path("/cand"))
     detail = "capabilities could not be dropped: Operation not permitted"
-    assert f"AGENTMARSHAL-SETUP-FAILED: network: {detail}" in err
-    assert f"AGENTMARSHAL-SETUP-FAILED: read-only candidate: {detail}" in err
+    assert report == {"network": detail, "read-only candidate": detail}
 
 
 @pytest.mark.skipif(os.name != "posix", reason="preexec_fn is POSIX-only")

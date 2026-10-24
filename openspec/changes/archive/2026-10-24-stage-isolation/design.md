@@ -29,8 +29,8 @@ discovering it in the stage's child or weakening silently.
 
 - **One mechanism module.** `agentmarshal/isolation.py` holds the
   namespace/mount machinery: the `Probe` verdict, `probe()`, the
-  `stage_setup(network=, readonly=)` factory returning the
-  `preexec_fn`, and `strip_failure_reports()` for the child's own
+  `stage_setup(network=, readonly=, report_fd=)` factory returning
+  the `preexec_fn`, and `parse_setup_report()` for the child's own
   reports. `stages.py` keeps the run's policy.
 
 - **The probe runs in a throwaway `os.fork` child, never exec'd.**
@@ -80,20 +80,31 @@ discovering it in the stage's child or weakening silently.
   a drop failure is an environment refusal like a refused `unshare`,
   which the contract already answers with weaken-and-report, and the
   per-guarantee failure channel can carry it exactly. The child
-  writes the usual `AGENTMARSHAL-SETUP-FAILED` lines and the run
+  reports its failure on the child's dedicated pipe and the run
   notes `not enforced: <guarantee> (capabilities could not be
   dropped: <reason>)` on every guarantee the child was asked to
   enforce; the stage still runs. What is not done is an exec that
   keeps capabilities in silence.
 
-- **Child failures are never silent.** Every requested guarantee a
-  setup step fails is written to the child's stderr as
-  `AGENTMARSHAL-SETUP-FAILED: <guarantee>: <reason>` — the first
-  bytes of the captured output, since they precede exec — and the
-  setup never raises out of the child. `strip_failure_reports`
-  removes those lines from the stream the run reframes and the
-  guarantees they name join the probe's own `not enforced` set;
-  the stage still runs.
+- **Child failures are never silent — and never forgeable.** The
+  child reports on a dedicated pipe the parent opens with
+  `os.pipe()`: `pass_fds` keeps the write end open through the
+  spawn's descriptor closing, the child marks it close-on-exec
+  before anything else — so the instant `execve` succeeds the fd
+  is closed and the extension's code never holds it — and then,
+  still before exec, writes one `<guarantee>=<ok|reason>` line per
+  requested guarantee in a single write. The parent reads the pipe
+  to EOF once `Popen`'s own exec handshake has already waited for
+  the child to exec or die — the drain cannot block — and
+  `parse_setup_report` names each reported failure; a guarantee
+  the report does not name — a child that died before writing —
+  cannot vouch for itself and is named not enforced the same way.
+  The setup never raises out of the child. This is how
+  `subprocess` itself reports exec failures; nothing in the
+  stage's own output is ever read as a core message, so a line
+  shaped like a report that a stage prints is framed as its output
+  and decides nothing — the round-1 marker channel through the
+  captured stream was forgeable exactly here.
 
 - **The note line is the stage's own.** Each stage owed a guarantee
   it did not get gets one `stage run: note: <name>: not enforced:

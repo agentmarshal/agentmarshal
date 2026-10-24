@@ -5,7 +5,8 @@
   `stage_setup` `preexec_fn` closure — `os.unshare`, the `deny`
   setgroups and identity uid/gid maps, the private propagation and
   the read-only self-bind through libc `mount`, then the capability
-  drop — and `strip_failure_reports` for the child's own reports —
+  drop — the close-on-exec report pipe the child's failures ride,
+  and `parse_setup_report` reading them —
   verify: `probe()` answers `network`/`readonly` verdicts and the
   closure's steps are exercised by monkeypatched syscalls.
 - [x] 1.2 `src/agentmarshal/stages.py` withholds provider secrets at

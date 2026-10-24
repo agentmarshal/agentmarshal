@@ -36,7 +36,9 @@ work; this change is the work.
   enforced is not mentioned. A declared `writes` beyond the
   candidate is always named — the core has no filesystem sandbox
   there. A setup step that fails in the stage's own child reports
-  itself before exec and is named the same way.
+  itself before exec over a dedicated close-on-exec pipe the
+  extension's code never holds — nothing the stage prints is read
+  as a core message — and is named the same way.
 
 ## Capabilities
 

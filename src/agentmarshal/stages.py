@@ -47,8 +47,10 @@ namespace by the child itself before exec, and at ``pre-gate`` a new
 mount namespace binds the candidate read-only over itself and provider
 secrets are withheld from the declared environment. Before exec the
 child drops every capability the user namespace granted — they would
-otherwise survive ``execve`` and let the stage undo the binds. What the
-core cannot enforce never stops the stage: it runs weakened and one
+otherwise survive ``execve`` and let the stage undo the binds — and
+reports each guarantee's outcome over a dedicated close-on-exec pipe
+the stage's own output can never reach. What the core cannot enforce
+never stops the stage: it runs weakened and one
 ``stage run: note:`` line for it names each guarantee not enforced and
 why; a declared ``writes`` is enforced nowhere beyond the candidate and
 is named the same way.
@@ -547,9 +549,9 @@ def _run_stage(
     # platform and environment can enforce; what it cannot is named, and
     # a declared ``writes`` beyond the candidate is always named — the
     # core has no filesystem sandbox there. The child applies only the
-    # guarantees the probe verified; a step that still fails reports
-    # itself on its stderr head, stripped out of the stage's output and
-    # named the same way.
+    # guarantees the probe verified; a step that still fails is reported
+    # on the child's own report pipe — a channel the stage's output can
+    # never forge — and named the same way.
     probed = probe()
     not_enforced: list[tuple[str, str]] = []
     want_network = manifest.isolation is None or not manifest.isolation.network
@@ -567,14 +569,40 @@ def _run_stage(
                 "the core has no filesystem sandbox beyond the candidate",
             )
         )
-    setup = (
-        isolation.stage_setup(
-            network=use_network,
-            readonly=snapshot if use_readonly else None,
-        )
-        if use_network or use_readonly
-        else None
-    )
+    # The setup's report channel is a dedicated pipe: ``pass_fds`` keeps
+    # the write end open in the child across the spawn's fd closing, the
+    # child marks it close-on-exec so the instant ``execve`` succeeds it
+    # is closed and the extension's code never holds it — nothing the
+    # stage prints is ever read as a core message. The child writes each
+    # asked-for guarantee's outcome before exec; a report that never
+    # arrives cannot vouch for a guarantee and names it not enforced.
+    report_pipe: tuple[int, int] | None = None
+    setup: Callable[[], None] | None = None
+    if use_network or use_readonly:
+        try:
+            report_pipe = os.pipe()
+            setup = isolation.stage_setup(
+                network=use_network,
+                readonly=snapshot if use_readonly else None,
+                report_fd=report_pipe[1],
+            )
+        except Exception as error:
+            # The report channel itself could not be opened: the stage
+            # still runs without the setup — an environment refusal
+            # like the probe's own — each asked-for guarantee named not
+            # enforced with the reason rather than the stage losing its
+            # result line.
+            if report_pipe is not None:
+                for fd in report_pipe:
+                    with suppress(OSError):
+                        os.close(fd)
+                report_pipe = None
+            setup = None
+            detail = f"the report pipe: {error}"
+            if use_network:
+                not_enforced.append(("network", detail))
+            if use_readonly:
+                not_enforced.append(("read-only candidate", detail))
     try:
         process = subprocess.Popen(
             argv,
@@ -586,8 +614,13 @@ def _run_stage(
             stderr=subprocess.STDOUT,
             start_new_session=True,
             preexec_fn=setup,
+            pass_fds=() if report_pipe is None else (report_pipe[1],),
         )
     except (OSError, subprocess.SubprocessError) as error:
+        if report_pipe is not None:
+            for fd in report_pipe:
+                with suppress(OSError):
+                    os.close(fd)
         detail = (
             error.strerror or str(error) if isinstance(error, OSError) else str(error)
         )
@@ -595,6 +628,22 @@ def _run_stage(
             "not-run",
             f"cannot start {stage.command}: {escape_for_display(detail)}",
             b"",
+        )
+    if report_pipe is not None:
+        # ``Popen``'s own exec handshake already waited for the child to
+        # exec or die, so the child's write end is closed and this drain
+        # reaches EOF at once — a full report or nothing, and nothing
+        # cannot vouch for what the child was asked to enforce.
+        os.close(report_pipe[1])
+        report = b""
+        while chunk := os.read(report_pipe[0], 65536):
+            report += chunk
+        os.close(report_pipe[0])
+        not_enforced += _new_failures(
+            not_enforced,
+            isolation.parse_setup_report(
+                report, network=use_network, readonly=use_readonly
+            ),
         )
     try:
         output, _ = process.communicate(timeout=_stage_timeout(manifest))
@@ -613,13 +662,9 @@ def _run_stage(
                         pipe.close()
             process.wait()
             output = still_open.output or b""
-        output, failures = isolation.strip_failure_reports(output)
-        not_enforced += _new_failures(not_enforced, failures)
         return _Outcome(
             "did-not-finish", "timeout", output, not_enforced=tuple(not_enforced)
         )
-    output, failures = isolation.strip_failure_reports(output)
-    not_enforced += _new_failures(not_enforced, failures)
     if process.returncode == 0:
         return _Outcome("checked", "", output, not_enforced=tuple(not_enforced))
     return _Outcome(
