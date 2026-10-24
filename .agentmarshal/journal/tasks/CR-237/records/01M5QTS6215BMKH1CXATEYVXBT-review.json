@@ -1,0 +1,91 @@
+{
+  "advisory_findings": [
+    "ADV-report-cannot-say-the-mark-was-unchecked",
+    "ADV-gate-and-report-mark-from-different-identity-sets",
+    "ADV-gate-reads-the-candidate-range-twice",
+    "ADV-shared-comparison-crosses-three-modules-by-private-name"
+  ],
+  "artifacts": [
+    {
+      "hash": "1b3cdac0ce221332f529fb14ce2674bf086e4de580192a27f66c41a93648bc3b",
+      "ref": ".agentmarshal/journal/tasks/CR-237/artifacts/01M5QTS6215BMKH1CXATEYVXBT-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-gate-and-report-mark-from-different-identity-sets": "claim-accuracy",
+    "ADV-gate-reads-the-candidate-range-twice": "other",
+    "ADV-report-cannot-say-the-mark-was-unchecked": "claim-accuracy",
+    "ADV-shared-comparison-crosses-three-modules-by-private-name": "style",
+    "BLK-report-decision-reads-records-after-the-completion": "correctness"
+  },
+  "created_at": "2026-10-24T20:49:04.577646Z",
+  "evidence": {
+    "ADV-gate-and-report-mark-from-different-identity-sets": "openspec/specs/operator-acceptance/spec.md:316-326 states one condition for both surfaces; src/agentmarshal/journal/gate.py:509-527 and :1824-1828 derive it from `git log --format=%an%n%ae%n%cn%n%ce merge-base..candidate` while src/agentmarshal/journal/report.py:494-502 derives it from `status_view._declared_commit_writers` on the accepted commit alone (src/agentmarshal/journal/status_view.py:48-68). Qualification texts also differ: gate.py:1832-1834 '(self-accepted: accepting party is a declared writer of the candidate)' vs status_view.py:807-809 '(self-accepted: accepting party is a declared author or committer)'.",
+    "ADV-gate-reads-the-candidate-range-twice": "src/agentmarshal/journal/gate.py:1816-1828 computes both `writer_emails` and `writer_identities` whenever `latest is not None`, but `writer_identities` is read only at gate.py:1835 inside the `valid_acceptance is not None` branch; `_range_writer_identities` (gate.py:509-527) returns a case-folded superset of `_range_emails` (gate.py:502-506), so one `git log` could serve both.",
+    "ADV-report-cannot-say-the-mark-was-unchecked": "src/agentmarshal/journal/report.py:494-502 returns False both for 'no match' and for 'git could not answer', against src/agentmarshal/journal/status_view.py:71-84 ('If an unanswerable git query were reported as \"not self-accepted\", the display would quietly lose exactly that') and docs/threat-model.md:102-104 ('always marked as self-acceptance'); the trade-off is recorded in the change's design.md and in openspec/specs/operator-acceptance/spec.md:322-325.",
+    "ADV-shared-comparison-crosses-three-modules-by-private-name": "src/agentmarshal/journal/gate.py:64 imports `report._accepting_party_is_declared_writer`; src/agentmarshal/journal/report.py:496 imports `status_view._declared_commit_writers` inside the function because src/agentmarshal/journal/status_view.py:24 imports `report` at module level.",
+    "BLK-report-decision-reads-records-after-the-completion": "src/agentmarshal/journal/report.py:520-560 selects the last `completed` record and then every review/acceptance of that binding regardless of write order; src/agentmarshal/journal/status.py:175-180 with src/agentmarshal/journal/attestation.py:79 admit a `review` once a `reopened` record has returned the task to `open`, and src/agentmarshal/journal/submit_review.py:116 adds no constraint on the reviewed commit. Journal open -> review(C, changes_required, F-1) -> acceptance(C, F-1) -> completed(C) -> reopened -> review(C, approved) therefore makes reviews[-1]['verdict'] == 'approved' and prints `CR-001\\topen\\treviews=2\\ttokens=0\\tdecision=approved`, where the pre-diff code printed `decision=accepted-over-findings`; docs/adr/ADR-0007-operator-acceptance.md:151-160 forbids an accepted-over-findings task reading as approved."
+  },
+  "findings": [
+    "BLK-report-decision-reads-records-after-the-completion"
+  ],
+  "previous_review": "01M5QS0Y5YRK6ENN9XB06KVBFE",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "10197420e17fb52a6ced52176b5256a1a379c940",
+  "reviewed_contract": "3f616f4962ee28d06d49bbadff73209d2ec6d90eec5fdac264f059a1115ff146",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-237",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "only operator-acceptance/spec.md and docs/sidecar.md:335 document the field; no script parses report output, so the new bare `self-accepted` token breaks no parser in-tree",
+        "what": "grep -rn 'decision=' openspec/specs docs tests .github templates"
+      },
+      {
+        "result": "no requirement outside operator-acceptance pins the gate acceptance line or the report task line, so the single MODIFIED requirement is the only one the mark touches",
+        "what": "grep -rn 'byte for byte|byte-identical' openspec/specs/"
+      },
+      {
+        "result": "status's self-accepted pins survive at tests/test_status_view.py:262 and tests/test_pause_and_operational_acceptance.py:642 after the party in the byte-for-byte test was changed to 'op'",
+        "what": "grep -rn 'declared author or committer' tests/"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "read-only review in a sandbox that refuses to execute interpreters (python3 -V was denied); per the coordinator's note the sequence passed on this commit, and I make no claim that any tool fails"
+      },
+      {
+        "what": "reproducing the reopen sequence of the blocking finding as a test",
+        "why": "same execution restriction; the finding is derived by reading report.py:520-560 together with status.py:175-180 and attestation.py:79"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/journal/report.py",
+      "src/agentmarshal/journal/gate.py (imports, _range_emails/_range_writer_identities, findings lane, run_gate verdict block)",
+      "src/agentmarshal/journal/status_view.py (_declared_commit_writers, _is_self_accepted, _render_acceptance_line, print_task_detail)",
+      "src/agentmarshal/journal/status.py (project_status, load_task_for_record, record_type_is_admitted_after_terminal)",
+      "src/agentmarshal/journal/attestation.py (RECORD_TYPES admitted_after_terminal)",
+      "src/agentmarshal/journal/placement.py",
+      "src/agentmarshal/journal/complete.py (record_commit_completion)",
+      "src/agentmarshal/journal/records.py (_project_root_for, _validate_binding, create_completed_record)",
+      "src/agentmarshal/journal/__init__.py, src/agentmarshal/cli.py (report/status call sites)",
+      "docs/adr/ADR-0007-operator-acceptance.md",
+      "docs/threat-model.md:95-108, docs/quickstart.md:425-490, docs/sidecar.md:315-350, CONTRIBUTING.md:120-195, CHANGELOG.md:480-498",
+      "openspec/specs/operator-acceptance/spec.md (full)",
+      "openspec/changes/archive/2026-10-25-self-acceptance-on-every-surface/{proposal,design,tasks}.md and its spec delta",
+      "tests/test_self_acceptance_on_every_surface.py, tests/test_pause_and_operational_acceptance.py, tests/test_report.py, tests/test_status_view.py, tests/test_quickstart.py, tests/test_gate.py helpers, tests/test_display.py"
+    ]
+  }
+}

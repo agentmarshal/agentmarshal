@@ -1,0 +1,93 @@
+{
+  "advisory_findings": [
+    "CR-237-A1",
+    "CR-237-A2",
+    "CR-237-A3"
+  ],
+  "artifacts": [
+    {
+      "hash": "1cbd2adc2187e75888defd50693ebc1fa60d75f79e17c61e5f68b0503d970be8",
+      "ref": ".agentmarshal/journal/tasks/CR-237/artifacts/01M5QWT8TKP12VG0NR4K03YDKX-review.md"
+    }
+  ],
+  "classes": {
+    "CR-237-A1": "contract-mismatch",
+    "CR-237-A2": "contract-mismatch",
+    "CR-237-A3": "correctness",
+    "CR-237-F1": "claim-accuracy"
+  },
+  "created_at": "2026-10-24T21:24:37.331372Z",
+  "evidence": {
+    "CR-237-A1": "src/agentmarshal/journal/report.py:596-612 sets self_accepted only from decisive_acceptance; tests/test_self_acceptance_on_every_surface.py:461-497 asserts the approved-after-its-own-self-acceptance journal prints \"CR-001\\tdone\\treviews=2\\ttokens=0\\tdecision=approved\" with no mark, against contract criterion 1 and ADR-0007 decision 4 (docs/adr/ADR-0007-operator-acceptance.md:117-120).",
+    "CR-237-A2": "src/agentmarshal/journal/gate.py:1826 derives the mark from _range_writer_identities(project_root, merge_base, resolved_commit) — every commit of the range — while src/agentmarshal/journal/report.py:529-535 derives it from declared_commit_writers(repository, acceptance[\"accepted_commit\"]) alone; the delta's scenarios encode the same asymmetry (openspec/specs/operator-acceptance/spec.md:326-338).",
+    "CR-237-A3": "src/agentmarshal/journal/gate.py:519-522 widened the format to %an%n%ae%n%cn%n%ce and src/agentmarshal/journal/gate.py:311-318 decodes it strictly, raising GateError(\"git produced non-UTF-8 output\"); before the change only %ae/%ce had to decode. Reproduction attempt blocked by the sandbox — unconfirmed.",
+    "CR-237-F1": "src/agentmarshal/journal/report.py:470-479 and :497-509 claim the lookup and the comparison are status_view's and shared (\"the surfaces read one writer set rather than each keeping its own git call\"), report.py:40-48 claims the mark lives in \"the one module every surface already imports\"; but report.py has no status_view import and src/agentmarshal/journal/status_view.py:48-68, :71-84 and :807-810 still hold their own git call, their own comparison and the retyped literal. Same claim in the archived change: .../tasks.md 2.3 (\"looked up through status_view._declared_commit_writers, imported where it runs\"), design.md Decisions, proposal.md Impact."
+  },
+  "findings": [
+    "CR-237-F1"
+  ],
+  "previous_review": "01M5QVA6KHXDBWAMGFJW9GHDJW",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "6f1c96ca00573001113aa3f62a900c280fa800a2",
+  "reviewed_contract": "3f616f4962ee28d06d49bbadff73209d2ec6d90eec5fdac264f059a1115ff146",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-237",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "status_view.py:48,71,809 keep their own lookup, comparison and literal; report.py:46,470,497 add new ones; gate.py:65,1834 import the constant",
+        "what": "grep -rn \"self-accepted|_declared_commit_writers|SELF_ACCEPTED\" src/"
+      },
+      {
+        "result": "only gate.py:505 and gate.py:1826 — no direct test of the emails/identities split",
+        "what": "grep -rn \"_range_emails|_range_writer_identities\" src/ tests/"
+      },
+      {
+        "result": "build_report signature unchanged; the one private call-site updated at tests/test_display.py:254",
+        "what": "grep -rn \"_task_report|build_report(\" src/ tests/"
+      },
+      {
+        "result": "no other capability spec pins report's decision field or the gate acceptance line; docs/quickstart.md:485 example uses a non-writer party",
+        "what": "grep -rn \"accepted-over-findings|decision=\" openspec/specs/ docs/"
+      },
+      {
+        "result": "all six scenarios of the MODIFIED requirement still have tests naming them",
+        "what": "grep -n '\\\"\\\"\\\"Scenario' tests/test_pause_and_operational_acceptance.py"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "the sandbox refuses to execute python/uv in this snapshot; relying on the coordinator's note that the sequence passed on 6f1c96c"
+      },
+      {
+        "what": "git reproduction of a non-UTF-8 author name through git log --format=%an",
+        "why": "creating a repository with that ident was refused by the sandbox — CR-237-A3 stays unconfirmed"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/journal/report.py",
+      "src/agentmarshal/journal/gate.py:293-530,1700-1960",
+      "src/agentmarshal/journal/status_view.py:1-200,772-818",
+      "src/agentmarshal/journal/placement.py:64-98",
+      "src/agentmarshal/journal/records.py:2027-2041,2193-2236",
+      "openspec/specs/operator-acceptance/spec.md",
+      "openspec/changes/archive/2026-10-25-self-acceptance-on-every-surface/{proposal,design,tasks}.md and its operator-acceptance delta",
+      "docs/adr/ADR-0007-operator-acceptance.md:100-190",
+      "tests/test_self_acceptance_on_every_surface.py",
+      "tests/test_pause_and_operational_acceptance.py:640-742",
+      "tests/test_gate.py:42-312,1530-1570,3600-3635"
+    ]
+  }
+}

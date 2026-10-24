@@ -1,0 +1,87 @@
+{
+  "advisory_findings": [
+    "ADV-gate-report-writer-set-divergence",
+    "ADV-proposal-shared-lookup-claim",
+    "ADV-finding-lane-mark-test"
+  ],
+  "artifacts": [
+    {
+      "hash": "076c2a7e920d0dcb797b5e2d3105ed138916c6e4287460f4770f25ec7f0c9957",
+      "ref": ".agentmarshal/journal/tasks/CR-237/artifacts/01M5R1YKW9X4KZBNWAZX902DP1-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-finding-lane-mark-test": "test-gap",
+    "ADV-gate-report-writer-set-divergence": "contract-mismatch",
+    "ADV-proposal-shared-lookup-claim": "claim-accuracy"
+  },
+  "created_at": "2026-10-24T22:54:22.601674Z",
+  "evidence": {
+    "ADV-finding-lane-mark-test": "tests/test_self_acceptance_on_every_surface.py::test_a_finding_completed_over_findings_reports_accepted_over_findings passes accepted_by=\"op\" with accepted_finding set, so report.py:530 returns False on the missing `accepted_commit` and the party value is never exercised; no test in the file drives the no-completed-record branch (report.py:600-608) with a self-accepting party, which design.md's \"A task with no `completed` record keeps today's rule ... marked when its latest such acceptance is a self-acceptance\" asserts.",
+    "ADV-gate-report-writer-set-divergence": "src/agentmarshal/journal/gate.py:1841-1842 computes the mark's identities over `merge_base..resolved_commit`, while src/agentmarshal/journal/report.py:530-536 and src/agentmarshal/journal/status_view.py:63-66 compare against `declared_commit_writers(repository, acceptance['accepted_commit'])` alone; openspec/specs/operator-acceptance/spec.md:316-323 states one condition (\"a declared writer of the candidate\") for both surfaces while spec.md:326-338 splits it into range vs accepted commit. Decode divergence: gate.py:535-541 (names decode with errors='replace', so the mark is still derived) vs report.py:491-493 (strict decode of the whole output; UnicodeDecodeError -> None -> no mark), asserted by tests/test_self_acceptance_on_every_surface.py::test_the_gate_runs_over_an_author_name_that_is_not_utf8.",
+    "ADV-proposal-shared-lookup-claim": "openspec/changes/archive/2026-10-25-self-acceptance-on-every-surface/proposal.md, Impact: \"holds the shared writer lookup and comparison - declared_commit_writers and accepting_party_is_declared_writer ... applied by the gate over the candidate's commit range\"; grep -n 'declared_commit_writers' src/agentmarshal/journal/gate.py returns nothing - the gate imports only SELF_ACCEPTED_MARK and accepting_party_is_declared_writer (gate.py:64-68) and reads writers through its own _range_writer_identities (gate.py:505-551)."
+  },
+  "findings": [],
+  "previous_review": "01M5QXF2B5MQBZVT46G56XFHGQ",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "9279604c58c939a80af405b6e24963f1456f39a2",
+  "reviewed_contract": "58eb831c6d19cf445bf167a237e19f74c55117790f6c6d2f05558bf7008dbf7d",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-237",
+  "tool_version": "0.6.0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "only status_view.py:778, gate.py:220 (findings lane), gate.py:1855 (commit lane); no other capability spec pins the line",
+        "what": "grep -rn 'accepted over findings' src/ openspec/specs/"
+      },
+      {
+        "result": "only operator-acceptance scenarios and the docs/sidecar.md:335 sample line; no other spec pins report's field order",
+        "what": "grep -rn 'decision=' openspec/specs/ docs/"
+      },
+      {
+        "result": "no remaining references anywhere, so the two removals left no caller behind",
+        "what": "grep -rn '_range_emails|_declared_commit_writers' --include=*.py ."
+      },
+      {
+        "result": "status's record-line and summary marks stay pinned at tests/test_status_view.py:283 and :262 after test_pause_and_operational_acceptance.py dropped its own copies",
+        "what": "grep -rn 'self-accepted' tests/"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "read-only review in a non-git snapshot; the sandbox refused command execution beyond file reads and greps, so I rely on the coordinator's note that the sequence passed on 9279604c"
+      },
+      {
+        "what": "a scripted byte comparison of the delta's MODIFIED requirement against openspec/specs/operator-acceptance/spec.md, and a git probe of the %x00 log format",
+        "why": "python execution was denied by the sandbox; both were checked by reading the two texts and by git's documented tformat terminator semantics instead"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/journal/report.py:420-670,900-945",
+      "src/agentmarshal/journal/gate.py:150-260,288-340,498-551,1780-1970",
+      "src/agentmarshal/journal/status_view.py:50-90,750-795",
+      "src/agentmarshal/journal/placement.py:1-100",
+      "src/agentmarshal/journal/records.py:2027-2041,660-680,2190-2235",
+      "src/agentmarshal/cli.py:1520-1530",
+      "openspec/specs/operator-acceptance/spec.md (full requirement list; 119-168 and 316-404 compared against the change's delta line by line)",
+      "openspec/changes/archive/2026-10-25-self-acceptance-on-every-surface/{proposal.md,design.md,tasks.md,specs/operator-acceptance/spec.md}",
+      "docs/adr/ADR-0007-operator-acceptance.md:95-190",
+      "tests/test_self_acceptance_on_every_surface.py",
+      "tests/test_pause_and_operational_acceptance.py (scenario docstrings; 656-745)",
+      "tests/test_status_view.py:255-290",
+      "tests/test_acceptance.py:195-230"
+    ]
+  }
+}

@@ -1,0 +1,90 @@
+{
+  "advisory_findings": [
+    "unbound-acceptance-decision-dropped",
+    "range-writer-email-index-coupling"
+  ],
+  "artifacts": [
+    {
+      "hash": "943a373ef4e6d3f9009617964fdd4587319bc9c4c378536685b311e7f8f3ebf7",
+      "ref": ".agentmarshal/journal/tasks/CR-237/artifacts/01M5QXF2B5MQBZVT46G56XFHGQ-review.md"
+    }
+  ],
+  "classes": {
+    "range-writer-email-index-coupling": "correctness",
+    "report-shared-comparison-claim-false": "claim-accuracy",
+    "unbound-acceptance-decision-dropped": "correctness"
+  },
+  "created_at": "2026-10-24T21:35:58.821676Z",
+  "evidence": {
+    "range-writer-email-index-coupling": "src/agentmarshal/journal/gate.py:527-535 — fields = output.splitlines(); emails = {field.casefold() for index, field in enumerate(fields) if index % 4 in (1, 3) and field}; the set feeds the reviewer-independence check at gate.py:1932-1936; _run_git (gate.py:311-318) does not strip, so alignment depends only on every commit emitting exactly four lines",
+    "report-shared-comparison-claim-false": "src/agentmarshal/journal/report.py:43,477-479,506-508 claim a shared lookup/comparison/constant with status; src/agentmarshal/journal/status_view.py:24 imports only _is_unmeasured from report, :48-68 defines its own _declared_commit_writers (byte-identical duplicate of report.py:470-494), :71-84 its own _is_self_accepted, :809 retypes the mark text; openspec/changes/archive/2026-10-25-self-acceptance-on-every-surface/proposal.md:40-45, tasks.md:9,26-28 and design.md:37-50 repeat the claim and name `_accepting_party_is_declared_writer`, which grep finds nowhere in src/",
+    "unbound-acceptance-decision-dropped": "src/agentmarshal/journal/report.py:589-598 restricts the acceptance to record.get(acceptance_key) == bound, so no decision field is set; pre-image (diff) set decision='accepted-over-findings' for any findings acceptance; spec scenario openspec/specs/operator-acceptance/spec.md:388-391 and tests/test_self_acceptance_on_every_surface.py:499-517 pin the new behaviour; src/agentmarshal/journal/complete.py:72 writes report.resolved_commit, which is why the CLI flow cannot reach it"
+  },
+  "findings": [
+    "report-shared-comparison-claim-false"
+  ],
+  "previous_review": "01M5QWT8TKP12VG0NR4K03YDKX",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "6f1c96ca00573001113aa3f62a900c280fa800a2",
+  "reviewed_contract": "3f616f4962ee28d06d49bbadff73209d2ec6d90eec5fdac264f059a1115ff146",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-237",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "only operator-acceptance states the acceptance line, the decision field and the mark; no other capability spec carries a byte-for-byte output clause the mark touches",
+        "what": "grep -rn 'accepted over findings|decision=|self-accept' over openspec/specs and src"
+      },
+      {
+        "result": "status_view keeps its own _declared_commit_writers/_is_self_accepted and uses neither new helper nor the constant; only tests/test_display.py calls _task_report outside report.py",
+        "what": "grep -rn '_range_emails|_task_report|declared_commit_writers|accepting_party_is_declared_writer|SELF_ACCEPTED_MARK' over src and tests"
+      },
+      {
+        "result": "acceptance text is produced only by gate.py:221 (findings lane, unmarked by design), gate.py:1839, status_view.py:785-810 and stages.py:1486 (pause line); brief.py prints no acceptance record",
+        "what": "grep -rn 'accepted_by' over src"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv run pytest / ruff / mypy / agentmarshal validate",
+        "why": "read-only review in a sandbox that refuses writes (mkdir and git init in the scratchpad were denied); CI result for this commit taken from the coordinator's note"
+      },
+      {
+        "what": "a git experiment on whether an ident name can carry a newline",
+        "why": "creating a scratch repository was denied by the sandbox, so range-writer-email-index-coupling stays unconfirmed"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/journal/report.py",
+      "src/agentmarshal/journal/gate.py (311-338, 145-250, 498-540, 1700-1980)",
+      "src/agentmarshal/journal/status_view.py (1-200, 772-818)",
+      "src/agentmarshal/journal/placement.py",
+      "src/agentmarshal/journal/records.py (_validate_binding, _project_root_for, completed-record fields)",
+      "src/agentmarshal/journal/complete.py (completed_commit binding)",
+      "src/agentmarshal/cli.py (1490-1540, status placement resolution)",
+      "src/agentmarshal/stages.py (1455-1500)",
+      "openspec/specs/operator-acceptance/spec.md (full)",
+      "openspec/changes/archive/2026-10-25-self-acceptance-on-every-surface/{proposal,design,tasks}.md and specs/operator-acceptance/spec.md",
+      "docs/adr/ADR-0007-operator-acceptance.md (decisions 4, 5, 6)",
+      "docs/threat-model.md (92-112)",
+      "docs/quickstart.md:481-485, docs/sidecar.md:330-345",
+      "CONTRIBUTING.md (Releases)",
+      "tests/test_self_acceptance_on_every_surface.py",
+      "tests/test_pause_and_operational_acceptance.py (600-760)",
+      "tests/test_status_view.py (230-300)",
+      "tests/test_gate.py (30-310 helpers)",
+      "tests/test_display.py (240-260)"
+    ]
+  }
+}

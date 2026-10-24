@@ -1,0 +1,103 @@
+{
+  "advisory_findings": [
+    "TEST-NO-DISTINCT-COMMITTER",
+    "REP-UNCHECKED-COLLAPSED"
+  ],
+  "artifacts": [
+    {
+      "hash": "84c3387867f25e303bcc764240d6e0a69ba7b7c69ec9c3b7899c0cf0214df690",
+      "ref": ".agentmarshal/journal/tasks/CR-237/artifacts/01M5QPAE90TX8W6XJ2NMZX255D-review.md"
+    }
+  ],
+  "classes": {
+    "REP-UNCHECKED-COLLAPSED": "correctness",
+    "REP-WRITER-FORMAT-MISSING-NEWLINE": "correctness",
+    "TEST-NO-DISTINCT-COMMITTER": "test-gap"
+  },
+  "created_at": "2026-10-24T19:31:07.168952Z",
+  "evidence": {
+    "REP-UNCHECKED-COLLAPSED": "src/agentmarshal/journal/report.py:139 `self_accepted: bool = False` and report.py:494-500 return False both for `repository is None`/no `accepted_commit` and for an unanswerable `git show`; status_view.py:71-84 returns `bool | None` and status_view.py:170 prints the `self-acceptance not checked` form instead",
+    "REP-WRITER-FORMAT-MISSING-NEWLINE": "src/agentmarshal/journal/report.py:454 `[\"git\", \"show\", \"-s\", \"--format=%an%n%ae%n%cn%ce\", commit]` — no %n between %cn and %ce, so the committer name and email land on one line and the set parsed at report.py:464 holds their concatenation; src/agentmarshal/journal/status_view.py:58 `--format=%an%n%ae%n%cn%n%ce` is the comparison report.py:443-445 and openspec/specs/operator-acceptance/spec.md:313-318 claim it makes",
+    "TEST-NO-DISTINCT-COMMITTER": "tests/test_self_acceptance_on_every_surface.py:60-78 commits with `-c user.name=Test -c user.email=test@example.invalid`; tests/test_gate.py:42 `_WRITER = [\"-c\", \"user.name=Worker\", \"-c\", \"user.email=worker@test.invalid\"]` used at tests/test_gate.py:99; tests/test_journal.py:66-75 likewise — author and committer coincide in every fixture"
+  },
+  "findings": [
+    "REP-WRITER-FORMAT-MISSING-NEWLINE"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "a71228fffb8477c5c45e77835ea6c46770ef90bc",
+  "reviewed_contract": "3f616f4962ee28d06d49bbadff73209d2ec6d90eec5fdac264f059a1115ff146",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-237",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "report.py:454 '--format=%an%n%ae%n%cn%ce' vs status_view.py:58 '--format=%an%n%ae%n%cn%n%ce'",
+        "what": "grep -rn \"_declared_commit_writers|%an|%ae|%cn|%ce\" src/ tests/"
+      },
+      {
+        "result": "only cli.py:1392 consumes build_report; no other surface derives the decision",
+        "what": "grep -rn \"build_report|\\.decision|accepted-over-findings\" --include=*.py src/"
+      },
+      {
+        "result": "assigned once at 1184/1186 — hoisting _range_emails above the verdict block cannot change the set",
+        "what": "grep -n \"resolved_commit = |merge_base = \" src/agentmarshal/journal/gate.py"
+      },
+      {
+        "result": "cli.py:1525 passes placement.host_root to status — same root report._writers_repository resolves",
+        "what": "grep -n \"print_task_detail|host_root\" src/agentmarshal/cli.py"
+      },
+      {
+        "result": "status's marks still pinned in test_status_view.py:262-286, test_pause_and_operational_acceptance.py:591-649, test_acceptance.py:185-229",
+        "what": "grep -rn \"self-accept|self_accept\" tests/"
+      },
+      {
+        "result": "only the MODIFIED requirement at 119-168 carries an output byte-for-byte clause the mark touches",
+        "what": "grep -n \"byte|unchanged|identical\" openspec/specs/operator-acceptance/spec.md"
+      },
+      {
+        "result": "accepted_commit is validated as exactly 40 lowercase hex on read — no option-injection into git show",
+        "what": "grep -n \"_validate_binding\" -A 35 src/agentmarshal/journal/records.py"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "read-only review and the snapshot is not a git repository; relying on the coordinator's note that the sequence passed on a71228f"
+      },
+      {
+        "what": "a git repo reproducing a commit whose committer differs from its author, to print both format strings side by side",
+        "why": "the sandbox refused the git/mkdir commands and the script run; the divergence is shown by report.py:454 against status_view.py:58 instead"
+      },
+      {
+        "what": "openspec validate / openspec archive",
+        "why": "read-only review, no node/openspec invocation attempted; the archived delta and the updated spec were compared by reading"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/journal/report.py:400-650,820-930",
+      "src/agentmarshal/journal/gate.py:470-520,1680-1940",
+      "src/agentmarshal/journal/status_view.py:40-170,772-800",
+      "src/agentmarshal/journal/placement.py:48-95",
+      "src/agentmarshal/journal/records.py:1824-1853,2027-2041",
+      "openspec/specs/operator-acceptance/spec.md:108-172,270-320",
+      "openspec/changes/archive/2026-10-25-self-acceptance-on-every-surface/ (proposal.md, design.md, tasks.md, specs/operator-acceptance/spec.md)",
+      "docs/adr/ADR-0007-operator-acceptance.md:104-188",
+      "tests/test_self_acceptance_on_every_surface.py",
+      "tests/test_pause_and_operational_acceptance.py:560-715",
+      "tests/test_gate.py:36-308",
+      "tests/test_quickstart.py:120-170",
+      "docs/quickstart.md:477-486"
+    ]
+  }
+}
