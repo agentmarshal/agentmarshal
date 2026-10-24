@@ -296,9 +296,14 @@ def test_validate_refuses_an_artifact_reached_through_a_symlinked_directory(
 def test_validate_refuses_an_artifact_ref_with_control_characters(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A ref is printed in validate's output; one that could forge a line is refused."""
+    """A ref is printed in validate's output; one that could forge a line is refused.
 
-    from agentmarshal.journal.records import create_review_record, write_record
+    `write_record` refuses the forged reference itself now, so the record is
+    written by hand, as an earlier release would have left it: `validate`
+    still reports it, the reader does not refuse it (ADR-0015).
+    """
+
+    from agentmarshal.journal.records import create_review_record
 
     repo = _project(tmp_path, monkeypatch, tasks=1)
     record = create_review_record(
@@ -318,7 +323,11 @@ def test_validate_refuses_an_artifact_ref_with_control_characters(
             }
         ],
     )
-    write_record(repo / ".agentmarshal" / "journal", "CR-001", record)
+    records_dir = _records_dir(repo, "CR-001")
+    (records_dir / f"{generate_ulid()}-review.json").write_text(
+        json.dumps(record, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
 
     report = validate_journal(repo)
 

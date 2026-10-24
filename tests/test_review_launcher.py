@@ -85,7 +85,7 @@ def _review_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path,
 
 def _reviewer_stub(
     tmp_path: Path,
-    output: str,
+    output: bytes | str,
     exit_code: int = 0,
     prompt_output: Path | None = None,
     error_output: str = "",
@@ -97,11 +97,16 @@ def _reviewer_stub(
         else "from pathlib import Path\n"
         f"Path({str(prompt_output)!r}).write_text(sys.stdin.read(), encoding='utf-8')\n"
     )
+    write_output = (
+        f"sys.stdout.buffer.write({output!r})\n"
+        if isinstance(output, bytes)
+        else f"sys.stdout.write({output!r})\n"
+    )
     stub.write_text(
         "#!/usr/bin/env python3\n"
         "import sys\n"
         f"{capture_prompt}"
-        f"sys.stdout.write({output!r})\n"
+        f"{write_output}"
         f"sys.stderr.write({error_output!r})\n"
         f"raise SystemExit({exit_code})\n",
         encoding="utf-8",
@@ -2095,6 +2100,39 @@ def test_rejected_verdict_still_keeps_the_prose(
         assert kept[0].read_text(encoding="utf-8") == output
         records = read_records(repo / ".agentmarshal" / "journal", "CR-001")
         assert [record["record_type"] for record in records] == ["opened"]
+    finally:
+        for path in kept:
+            path.unlink(missing_ok=True)
+
+
+def test_rejected_verdict_output_is_kept_as_the_bytes_the_reviewer_wrote(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: rejected output is kept as the bytes the reviewer wrote.
+
+    The verdict still parses from a decoded copy — a replacement character
+    marks what UTF-8 could not read — while the kept file holds the
+    reviewer's bytes unchanged.
+    """
+
+    _repo, commit = _review_repo(tmp_path, monkeypatch)
+    output = (
+        b"analysis a codec cannot read: \xff\xfe\n"
+        b"AGENTMARSHAL_VERDICT_BEGIN\n{}\nAGENTMARSHAL_VERDICT_END\n"
+    )
+    stub = _reviewer_stub(tmp_path, output)
+    monkeypatch.setenv("AGENTMARSHAL_REVIEWER_CMD", str(stub))
+
+    assert _run_review(commit) == 1
+
+    message = capsys.readouterr().err
+    kept = _kept_outputs(tmp_path)
+    try:
+        assert len(kept) == 1, message
+        assert str(kept[0]) in message
+        assert kept[0].read_bytes() == output
     finally:
         for path in kept:
             path.unlink(missing_ok=True)
