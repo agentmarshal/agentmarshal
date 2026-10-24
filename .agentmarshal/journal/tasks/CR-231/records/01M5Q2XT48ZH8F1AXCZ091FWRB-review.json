@@ -1,0 +1,107 @@
+{
+  "advisory_findings": [
+    "purpose-left-stale-fallback-report-only",
+    "install-output-unverifiable-here",
+    "validate-and-warning-count-unverified"
+  ],
+  "artifacts": [
+    {
+      "hash": "39f2b325c9a5e28d1c2668e57ca4a7ce36bda27cf9af493ceeb80179f45473f1",
+      "ref": ".agentmarshal/journal/tasks/CR-231/artifacts/01M5Q2XT48ZH8F1AXCZ091FWRB-review.md"
+    }
+  ],
+  "classes": {
+    "install-output-unverifiable-here": "claim-accuracy",
+    "purpose-left-stale-fallback-report-only": "contract-mismatch",
+    "validate-and-warning-count-unverified": "test-gap"
+  },
+  "created_at": "2026-10-24T13:52:10.376162Z",
+  "evidence": {
+    "install-output-unverifiable-here": ".agentmarshal/extensions/openspec.toml:4-11 and :34; opsx namespace corroborated by the skills' description lines and docs/adr/ADR-0010-process-extensions.md:50; `curl -sS -m 15 https://registry.npmjs.org/@fission-ai%2Fopenspec` -> command requires approval / no network",
+    "purpose-left-stale-fallback-report-only": "openspec/specs/extension-stages/spec.md:24-25 (stale sentence) against the same file's :879 and :925 requirements; the diff changes no path under openspec/, and ls openspec/changes/archive/ shows no extension-stages-purpose; fallback behaviour corroborated by .agents/skills/openspec-sync-specs/SKILL.md:158-160 and the new Purpose-preservation block in .agents/skills/openspec-archive-change/SKILL.md",
+    "validate-and-warning-count-unverified": "contract criterion 3 in .agentmarshal/journal/tasks/CR-231/contract.md:15; ls openspec/specs/ -> 23 capabilities, ls openspec/changes/ -> archive only; no validate transcript in the supplied material and no test in tests/ reads the real manifest or runs openspec"
+  },
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "a289b9d7eea53fcfb21e694df606dc0a7e32b372",
+  "reviewed_contract": "3fb186fdf55b7895f7e48147f0d5e47bde8f66d2ef2d83486db6462cc1d2d360",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-231",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "6/6 files report generatedBy: \"1.15.0\"",
+        "what": "grep -rn generatedBy .agents/skills/"
+      },
+      {
+        "result": "six openspec-* SKILL.md plus .agents/skills/.openspec-target; no seventh skill, no extra files",
+        "what": "find .agents -type f -o -type l"
+      },
+      {
+        "result": "remaining hits only in tests' synthetic manifests, archived changes' tasks.md, the ADR-0013 example at :328 and the append-only journal",
+        "what": "grep -rn '1\\.13\\.2' repository"
+      },
+      {
+        "result": "only archive/ exists; no extension-stages-purpose entry among the 92 archived changes",
+        "what": "ls openspec/changes/ and ls openspec/changes/archive/"
+      },
+      {
+        "result": "includes ':879 a stage with no declared network runs in a new user and network namespace' and ':925 a pre-gate stage's candidate is bound read-only over itself', while :24-25 still calls them later work",
+        "what": "grep -n '^### Requirement' openspec/specs/extension-stages/spec.md"
+      },
+      {
+        "result": "23 capability directories, matching the amendment's 23/23",
+        "what": "ls openspec/specs/"
+      },
+      {
+        "result": "only two comment lines in src/agentmarshal/journal/contracts.py:128-129; no version pinned in code",
+        "what": "grep -rn openspec src/ --include=*.py"
+      },
+      {
+        "result": "openspec/config.yaml and openspec/specs/.gitkeep only; neither changed in the diff",
+        "what": "find openspec -maxdepth 2 -type f (excluding archive)"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "OPENSPEC_TELEMETRY=0 npx -y @fission-ai/openspec@1.15.0 init --tools claude,codex and validate --specs/--changes",
+        "why": "no network in this sandbox; the curl probe to registry.npmjs.org was refused"
+      },
+      {
+        "what": "parsing the real manifest through src/agentmarshal/journal/extensions.py",
+        "why": "running python3 on the snapshot was not permitted in this session"
+      },
+      {
+        "what": "the full CI sequence (uv sync --locked, agentmarshal validate, pytest, ruff, mypy)",
+        "why": "read-only review; the coordinator states it passed on a289b9d7"
+      }
+    ],
+    "read": [
+      ".agentmarshal/extensions/openspec.toml",
+      ".agentmarshal/journal/tasks/CR-231/contract.md",
+      ".agents/skills/openspec-apply-change/SKILL.md",
+      ".agents/skills/openspec-archive-change/SKILL.md",
+      ".agents/skills/openspec-explore/SKILL.md",
+      ".agents/skills/openspec-propose/SKILL.md",
+      ".agents/skills/openspec-sync-specs/SKILL.md",
+      ".agents/skills/openspec-update-change/SKILL.md",
+      "openspec/specs/extension-stages/spec.md",
+      "openspec/config.yaml",
+      "docs/adr/ADR-0010-process-extensions.md",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md",
+      "tests/test_placement.py",
+      ".gitignore"
+    ]
+  }
+}
