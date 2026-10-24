@@ -1,0 +1,95 @@
+{
+  "advisory_findings": [
+    "CR-227-ADV-1",
+    "CR-227-ADV-2",
+    "CR-227-ADV-3"
+  ],
+  "artifacts": [
+    {
+      "hash": "4a266b8fb527555c9c88bc3c5e21ecdcb08e8e3d8a04ce67dbafc2ea6c539f23",
+      "ref": ".agentmarshal/journal/tasks/CR-227/artifacts/01M5PWBR3EYD65EJXW32QNT8VD-review.md"
+    }
+  ],
+  "classes": {
+    "CR-227-ADV-1": "test-gap",
+    "CR-227-ADV-2": "correctness",
+    "CR-227-ADV-3": "claim-accuracy"
+  },
+  "created_at": "2026-10-24T11:57:27.022650Z",
+  "evidence": {
+    "CR-227-ADV-1": "tests/test_stages.py:1930-1959 — the test now ends at 'assert \"every pause stands\" in journal_lines[0]'; the diff's last hunk deletes '-    assert \"paused before the gate\" in captured.err' while appending test_a_run_that_pauses_nothing_never_reads_the_journal at 1962",
+    "CR-227-ADV-2": "src/agentmarshal/cli.py:1208-1218 wraps the call site; src/agentmarshal/stages.py:1108 'with tempfile.TemporaryDirectory(prefix=\"agentmarshal-stage-\")' inside the per-stage loop is still unguarded, and src/agentmarshal/stages.py:1213-1227 (_run_stages) plus cli.py:1808 (main) catch nothing, so stage run --phase post-gate tracebacks; an abort on stage 1 of N skips the result lines ADR-0013 decision 7 owes stages 2..N",
+    "CR-227-ADV-3": "src/agentmarshal/stages.py:1214-1220 docstring ('A thin wrapper over run_stages — it resolves the placement and the clone's local state … then prints what the result owes this command's transcript') vs the new first step at stages.py:1208-1212; validate_task_id is now called at both stages.py:1209 and stages.py:802 with the same message text"
+  },
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "813f12797a542b9f850eb3fb2483279c3c1011fb",
+  "reviewed_contract": "0e1d816bc1a5c11f5af0e6812fc2785be4effb8dfd615c0fde29781b9c28532a",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-227",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "src/agentmarshal/stages.py:511 sets it to str(snapshot); tests/test_isolation.py:563 is the new independent source; tests/test_stages.py:635,761,767 already pin it",
+        "what": "grep -rn 'AGENTMARSHAL_SNAPSHOT' src tests"
+      },
+      {
+        "result": "only isolation.py:530 and journal/review.py:1230,1503 use TemporaryDirectory; the journal writers use mkstemp, so the F3 test's monkeypatch cannot hit the completion's own writes",
+        "what": "grep -rn 'tempfile|TemporaryDirectory|mkstemp|mkdtemp' src/agentmarshal (excluding stages.py)"
+      },
+      {
+        "result": "test_stages.py:1420,1435,1674,1695,1736, test_switches.py:410, test_complete_stages.py:141,531,582 — the line removed from test_stages.py:1959 stays covered elsewhere",
+        "what": "grep -rn 'paused before the gate' tests/"
+      },
+      {
+        "result": "--phase has choices=('pre-gate','post-gate'), so run_stages' unknown-phase branch is unreachable from the CLI and the new validation reorders nothing else",
+        "what": "grep -n 'choices' src/agentmarshal/stages.py (stage run parser)"
+      },
+      {
+        "result": "ruff lint select = E,W,F,I,UP,B,SIM,RUF — no BLE, so the new 'except Exception' matches both the ruleset and cli.py:1419's existing style",
+        "what": "grep -n 'select' pyproject.toml"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; uv run agentmarshal validate; uv run pytest; uv run ruff check; uv run ruff format --check; uv run mypy",
+        "why": "no .venv and no uv in this environment and python execution is not permitted here; CI status for this commit taken from the coordinator's note"
+      },
+      {
+        "what": "git diff / git log against the reviewed commit",
+        "why": "the snapshot is not a git repository"
+      },
+      {
+        "what": "grep -rn 'ST_NOSUID' /usr/include/ to confirm ADV-4's header attribution",
+        "why": "the sandbox refuses searches outside the snapshot; the claim is checked against isolation.py's own use of os.ST_* on os.statvfs().f_flag instead"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/stages.py (module docstring, _stage_env, _run_stage launch, run_stages, accepted_pause, the loop's TemporaryDirectory, _run_stages, _resolve, the stage run parser)",
+      "src/agentmarshal/cli.py (_run_complete in full, main dispatch, escape_for_display import, the switches except Exception at cli.py:1419)",
+      "src/agentmarshal/isolation.py (MS_*/ST_* constants, _locked_mount_flags, probe's TemporaryDirectory)",
+      "src/agentmarshal/journal/records.py (validate_task_id, read_records signature)",
+      "src/agentmarshal/journal/display.py (escape_for_display)",
+      "tests/test_isolation.py (the read-only e2e test and its neighbours)",
+      "tests/test_stages.py (helpers _manifest/_extension/_repo_with_extension/_stage_run, the invalid-task-id test, the journal-unreadable test, the new lazy-read test)",
+      "tests/test_complete_stages.py (helpers, the one-runner test, the new post-gate-raises test)",
+      "openspec/specs/extension-stages/spec.md (stage run requirements and scenarios; the added complete/post-gate requirements)",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md (section A decisions 1-7)",
+      ".agentmarshal/journal/tasks/CR-223/artifacts/01M5PKPDXN1GW6S57H7SZ9Z40E-review.md (ADV-2/3/4)",
+      ".agentmarshal/journal/tasks/CR-224/artifacts/01M5PNJFKJ4ZK4XDRGARZXMF7G-review.md (lazy-read-untested)",
+      ".agentmarshal/journal/tasks/CR-225/artifacts/01M5PT3FS64X65DPM1XYH77YTH-review.md (F2/F3/F4)",
+      "pyproject.toml (ruff select, mypy strict, line-length)"
+    ]
+  }
+}

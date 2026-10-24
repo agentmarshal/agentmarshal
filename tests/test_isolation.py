@@ -514,10 +514,12 @@ def test_an_isolated_stage_cannot_reach_the_network_or_write_the_candidate(
     Scenario: a stage cannot write the candidate by a relative or an absolute path.
     """
     verdicts = isolation.probe()
-    if verdicts.network is not None and verdicts.readonly is not None:
+    # The read-only floor is what both scenarios exercise: where the probe
+    # cannot enforce it the write assertions would only be dropped — skip
+    # with the probe's reason instead of demonstrating half the scenario.
+    if verdicts.readonly is not None:
         pytest.skip(
-            "the probe reports nothing it can enforce: "
-            f"network ({verdicts.network}); "
+            "the probe cannot enforce the read-only floor: "
             f"read-only candidate ({verdicts.readonly})"
         )
     _repo_with_extension(
@@ -557,8 +559,9 @@ def test_an_isolated_stage_cannot_reach_the_network_or_write_the_candidate(
                 "except OSError:\n"
                 '    print("WRITE:blocked")\n'
                 "try:\n"
-                '    open(os.path.join(os.getcwd(), "probe-abs.txt"), "w")'
-                '.write("x")\n'
+                "    absolute = os.path.join(\n"
+                '        os.environ["AGENTMARSHAL_SNAPSHOT"], "probe-abs.txt")\n'
+                '    open(absolute, "w").write("x")\n'
                 '    print("ABSWRITE:ok")\n'
                 "except OSError:\n"
                 '    print("ABSWRITE:blocked")\n'
@@ -582,14 +585,9 @@ def test_an_isolated_stage_cannot_reach_the_network_or_write_the_candidate(
         assert "not enforced: network" not in captured.err
     else:
         assert f"not enforced: network ({verdicts.network})" in captured.err
-    if verdicts.readonly is None:
-        assert "openspec | WRITE:blocked" in captured.out
-        assert "openspec | ABSWRITE:blocked" in captured.out
-        assert "not enforced: read-only candidate" not in captured.err
-    else:
-        assert (
-            f"not enforced: read-only candidate ({verdicts.readonly})" in captured.err
-        )
+    assert "openspec | WRITE:blocked" in captured.out
+    assert "openspec | ABSWRITE:blocked" in captured.out
+    assert "not enforced: read-only candidate" not in captured.err
 
 
 # -- naming what is not enforced -----------------------------------------------

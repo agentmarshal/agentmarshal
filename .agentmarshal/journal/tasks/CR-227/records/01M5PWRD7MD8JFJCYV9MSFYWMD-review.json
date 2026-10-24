@@ -1,0 +1,87 @@
+{
+  "advisory_findings": [
+    "ADV-1-dropped-pause-line-assertion"
+  ],
+  "artifacts": [
+    {
+      "hash": "b2fc4907e94dbe6e19cb90aa245936cb00b62358f42ff6dfe5bd06baeb3a7818",
+      "ref": ".agentmarshal/journal/tasks/CR-227/artifacts/01M5PWRD7MD8JFJCYV9MSFYWMD-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-1-dropped-pause-line-assertion": "test-gap"
+  },
+  "created_at": "2026-10-24T12:04:21.876755Z",
+  "evidence": {
+    "ADV-1-dropped-pause-line-assertion": "diff tests/test_stages.py: '-    assert \"paused before the gate\" in captured.err' removed from test_a_journal_that_cannot_be_read_names_it_and_every_pause_stands (file now ends that test at tests/test_stages.py:1958 with the journal-line assertions only); nothing in the CR-227 contract asks for it. Residual coverage: the same test still asserts `_stage_run(...) == 3` (src/agentmarshal/stages.py:1190 returns 3 only when a pause stands) and grep -rn 'paused before the gate' tests/ lists tests/test_stages.py:1420,1435,1674,1695,1736 and tests/test_switches.py:410."
+  },
+  "findings": [],
+  "previous_review": "01M5PWBR3EYD65EJXW32QNT8VD",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "813f12797a542b9f850eb3fb2483279c3c1011fb",
+  "reviewed_contract": "0e1d816bc1a5c11f5af0e6812fc2785be4effb8dfd615c0fde29781b9c28532a",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-227",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "src/agentmarshal/stages.py:511 exports it in _stage_env; tests/test_isolation.py:563 is the new independent absolute path; spec openspec/specs/extension-stages/spec.md:178,197",
+        "what": "grep -rn 'AGENTMARSHAL_SNAPSHOT' src/ tests/ openspec/"
+      },
+      {
+        "result": "tests/test_stages.py:1420,1435,1674,1695,1736; tests/test_switches.py:410; tests/test_complete_stages.py:141; src/agentmarshal/stages.py:1224 — the deleted assertion's text stays covered elsewhere",
+        "what": "grep -rn 'paused before the gate' tests/ src/"
+      },
+      {
+        "result": "stages.py:1111 and isolation.py:530 are the only TemporaryDirectory uses; journal writes use mkstemp/mkdtemp, so the test's patch cannot block the completed record",
+        "what": "grep -rn 'TemporaryDirectory|mkstemp|mkdtemp' src/agentmarshal/"
+      },
+      {
+        "result": "stages.py:237-242 — choices=('pre-gate','post-gate'), so argparse refuses an unknown phase before the new task-id check",
+        "what": "grep -rn '\"--phase\"' -A 6 src/agentmarshal/"
+      },
+      {
+        "result": "only archive/; the docstring convention pre-exists in tests/test_stages.py, test_doctor_extensions.py, test_doctor_wrapper_runtime.py",
+        "what": "ls openspec/changes; grep -rc 'Not a spec scenario' tests/*.py"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "no .venv and no uv in this sandbox, interpreters/package tools are not runnable here; CI status taken from the coordinator's note for this commit"
+      },
+      {
+        "what": "git diff/log against the parent commit",
+        "why": "the snapshot is not a git repository"
+      },
+      {
+        "what": "grep ST_RELATIME over /usr/include to confirm ADV-4's header attribution",
+        "why": "the sandbox refuses reads outside the snapshot; the criterion itself is textual and is met"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/cli.py:1086-1222 (_run_complete, the new post-gate try/except)",
+      "src/agentmarshal/stages.py:230-300 (parser, _resolve), 470-660 (_stage_env, _run_stage), 758-860 (run_stages head), 1020-1227 (lazy acceptance read, loop, _run_stages)",
+      "src/agentmarshal/isolation.py:55-90, 300-320 (statvfs comment, readonly setup chdir)",
+      "src/agentmarshal/journal/records.py:331-336 (validate_task_id message carries no user input)",
+      "tests/test_stages.py:1-140 (helpers), 376-422, 1929-2001",
+      "tests/test_complete_stages.py:1-185, 685-722",
+      "tests/test_isolation.py:495-595",
+      "openspec/specs/extension-stages/spec.md (searched for refusal-order and byte-for-byte clauses)",
+      ".agentmarshal/journal/tasks/CR-225/records/*review.json and artifacts/01M5PT3FS64X65DPM1XYH77YTH-review.md (F2/F3/F4 wording)",
+      ".agentmarshal/journal/tasks/CR-223/artifacts/01M5PKPDXN1GW6S57H7SZ9Z40E-review.md (ADV-2/3/4), CR-224 artifact (lazy-read-untested)",
+      "pyproject.toml (ruff/mypy configuration)"
+    ]
+  }
+}

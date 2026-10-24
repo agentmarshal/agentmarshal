@@ -798,11 +798,11 @@ def run_stages(
     if phase not in _PHASE_MODES:
         print(f"{voice}: unknown phase {escape_for_display(phase)}", file=stderr)
         return StageRunResult(1)
-    try:
-        validate_task_id(task_id)
-    except JournalRecordError as error:
-        print(f"{voice}: {error}", file=stderr)
-        return StageRunResult(1)
+    # The task identifier reaches the runner already refused: ``stage
+    # run`` validates it before the placement is even resolved, and
+    # ``complete`` loads the task — the loader validates it the same
+    # way — before either stage is invoked. The runner keeps no check
+    # of its own, so the refusal text lives in exactly one place.
     if placement.is_sidecar:
         print(
             f"{voice}: a sidecar runs no stages — the base its extensions "
@@ -1108,23 +1108,54 @@ def run_stages(
             # longer speak for the base. The directory is materialized
             # afresh and the grant check recomputed on it for every stage,
             # and the copy goes away with the stage's own context.
-            with tempfile.TemporaryDirectory(prefix="agentmarshal-stage-") as temporary:
-                temp_root = Path(temporary)
-                prepared = _prepare_extension(
-                    project_root, merge_base, name, temp_root, ci, grants
-                )
-                outcome = _run_stage(
-                    project_root,
-                    resolved_commit,
-                    merge_base,
-                    task_id,
-                    phase,
-                    name,
-                    manifest,
-                    stage,
-                    prepared,
-                    temp_root / f"snapshot-{index}",
-                    probe_once,
+            try:
+                temporary = tempfile.TemporaryDirectory(prefix="agentmarshal-stage-")
+                try:
+                    temp_root = Path(temporary.name)
+                    prepared = _prepare_extension(
+                        project_root, merge_base, name, temp_root, ci, grants
+                    )
+                    outcome = _run_stage(
+                        project_root,
+                        resolved_commit,
+                        merge_base,
+                        task_id,
+                        phase,
+                        name,
+                        manifest,
+                        stage,
+                        prepared,
+                        temp_root / f"snapshot-{index}",
+                        probe_once,
+                    )
+                finally:
+                    try:
+                        temporary.cleanup()
+                    except OSError as error:
+                        # The teardown's refusal never rewrites the
+                        # outcome the stage computed — it ran, and its
+                        # result line stands; the refusal is named on
+                        # one stderr line like the run's other notes.
+                        print(
+                            f"stage run: note: {escape_for_display(name)}: "
+                            "the stage's temporary directory could not be "
+                            f"removed: {escape_for_display(str(error))}",
+                            file=stderr,
+                        )
+            except OSError as error:
+                # ``_prepare_extension`` and ``_run_stage`` hand every
+                # failure of theirs back as an outcome, so an OS-level
+                # refusal reaching here is the stage's own machinery —
+                # the temporary directory is created for each stage and
+                # torn down with it. It is the stage's ``not run``
+                # reason — a pre-gate-stop one pauses like any other
+                # not-run stage — never the run's abort: the later
+                # stages are still owed their lines (ADR-0013 decision
+                # 7).
+                outcome = _Outcome(
+                    "not-run",
+                    f"the stage's own machinery: {escape_for_display(str(error))}",
+                    b"",
                 )
         shown = escape_for_display(name)
         text = outcome.output.decode("utf-8", errors="replace")
@@ -1193,14 +1224,25 @@ def run_stages(
 
 
 def _run_stages(args: argparse.Namespace, stderr: TextIO) -> int:
-    """The ``stage run`` invocation: resolve, run, render the result.
+    """The ``stage run`` invocation: refuse, resolve, run, render the result.
 
-    A thin wrapper over :func:`run_stages` — it resolves the placement
-    and the clone's local state the way ``extension trust`` does, then
-    prints what the result owes this command's transcript: the no-stage
-    line on an empty plan and the per-entry pause lines.
+    A thin wrapper over :func:`run_stages` — it refuses an invalid task
+    identifier before the placement is resolved, the refusal order the
+    command printed before the runner was shared; then it resolves the
+    placement and the clone's local state the way ``extension trust``
+    does and prints what the result owes this command's transcript: the
+    no-stage line on an empty plan and the per-entry pause lines.
     """
 
+    # The task id is refused before the placement is resolved — the
+    # refusal order the command printed before the runner was shared, so
+    # ``stage run`` outside an initialized project still names a bad id
+    # rather than the missing project.
+    try:
+        validate_task_id(args.task)
+    except JournalRecordError as error:
+        print(f"stage run: {error}", file=stderr)
+        return 1
     resolved = _resolve(stderr)
     if resolved is None:
         return 1
