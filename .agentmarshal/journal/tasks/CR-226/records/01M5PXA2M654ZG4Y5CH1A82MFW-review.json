@@ -1,0 +1,92 @@
+{
+  "advisory_findings": [
+    "ADV-RESULT-LINE-LANE",
+    "ADV-WRITES-NOTE-CONDITION",
+    "ADV-NO-CITATION-TEST"
+  ],
+  "artifacts": [
+    {
+      "hash": "6f164d0ec55e21e85647e7c7aa660f887707a77d65f62e4976feba3aa5d10e4b",
+      "ref": ".agentmarshal/journal/tasks/CR-226/artifacts/01M5PXA2M654ZG4Y5CH1A82MFW-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-NO-CITATION-TEST": "test-gap",
+    "ADV-RESULT-LINE-LANE": "claim-accuracy",
+    "ADV-WRITES-NOTE-CONDITION": "claim-accuracy"
+  },
+  "created_at": "2026-10-24T12:14:00.838298Z",
+  "evidence": {
+    "ADV-NO-CITATION-TEST": "grep -rln openspec tests/ returns only docstring references (tests/test_stages.py, tests/test_isolation.py, …); no test reads docs/threat-model.md or docs/self-hosting-workflow.md, while tests/test_quickstart.py:18-28 does execute docs/quickstart.md's blocks",
+    "ADV-RESULT-LINE-LANE": "docs/threat-model.md:257-272 places the stage result-line vocabulary in the gate-output paragraph; the lines are printed by the stage runner at src/agentmarshal/stages.py:1148-1156, and the same document states at docs/threat-model.md:207-209 that nothing extension-defined runs inside the gate",
+    "ADV-WRITES-NOTE-CONDITION": "docs/threat-model.md:431-434 ties the note to a declared writes, as does openspec/specs/extension-stages/spec.md:1023 ('WHEN a stage runs whose manifest declares isolation.writes'); src/agentmarshal/stages.py:584-590 appends ('writes beyond the candidate', ...) whenever manifest.isolation is not None"
+  },
+  "findings": [],
+  "previous_review": "01M5PWTDZST15X39CGYB45KKG9",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "2cffdc090e9ffa5158c308d8db9331ad6ace8b20",
+  "reviewed_contract": "0ee0eaf166e335493b509d07c77e6c961dacb79a2fe1fc05c81e8e41009bface",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-226",
+  "tool_version": "0.6.0.dev0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "every quoted name exists verbatim, including gate-lanes:344 'pre-gate stages do not run on an operational change' and extension-stages:313/476 for the result-line vocabulary",
+        "what": "grep -rn '^### Requirement' over openspec/specs/{extension-stages,gate-lanes,leak-scan,process-log,extension-records,record-schema,review-evidence,session-activity}/spec.md, matched against every requirement name quoted in the diff"
+      },
+      {
+        "result": "status_view.py:141, validate.py:190, status_view.py:419-424, status_view.py:772-773, stages.py:584-590 — all present",
+        "what": "grep for the behaviours the new text asserts: 'not a declared actor', 'addressee not found', fallback_reason, operational acceptance, writes-note"
+      },
+      {
+        "result": "openspec/changes/ holds only archive/ (extension-stages-purpose removed); templates/journal-transaction.sh present with the ADAPT marker",
+        "what": "ls openspec/changes/ and ls templates/"
+      },
+      {
+        "result": "no hits — no stale companion claim left behind",
+        "what": "grep -rn 'not yet implemented|no extension code' over README.md, SECURITY.md, docs/overview.md, docs/quickstart.md, docs/README.md, docs/known-defects.md, docs/self-hosting-workflow.md"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "read-only review; the coordinator states the full sequence passed on the reviewed commit"
+      },
+      {
+        "what": "end-to-end execution of the README recipe in a scratch git repository",
+        "why": "running a script in the sandbox required an approval that was declined; verified statically instead (open writes only under tasks/<id>, markers_from_tree treats an absent project.json as no markers)"
+      },
+      {
+        "what": "git-level confirmation that this commit is the one that deleted openspec/changes/extension-stages-purpose/",
+        "why": "the snapshot is not a git repository and the supplied diff shows no deletion; only the end state could be checked"
+      }
+    ],
+    "read": [
+      "docs/threat-model.md (whole)",
+      "README.md:100-175",
+      "docs/self-hosting-workflow.md:1-110",
+      "docs/quickstart.md:300-350",
+      "src/agentmarshal/isolation.py (whole)",
+      "src/agentmarshal/stages.py:225-740, 1025-1219",
+      "src/agentmarshal/cli.py:340-360, 995-1210",
+      "src/agentmarshal/journal/gate.py:185-215, 645-700",
+      "src/agentmarshal/journal/open_task.py:377-403",
+      "openspec/specs/extension-stages/spec.md (requirement index, 313-350, 1018-1040)",
+      "openspec/specs/gate-lanes/spec.md:170-245",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md:113-133, 243-290",
+      "templates/journal-transaction.sh",
+      "tests/test_isolation.py, tests/test_stages.py, tests/test_complete_stages.py, tests/test_journal_transaction.py, tests/test_quickstart.py (test name inventories)"
+    ]
+  }
+}
