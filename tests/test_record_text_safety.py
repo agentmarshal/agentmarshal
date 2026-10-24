@@ -16,9 +16,13 @@ from agentmarshal.cli import main
 from agentmarshal.journal.contracts import JournalContractError, parse_contract_text
 from agentmarshal.journal.records import (
     JournalRecordError,
+    create_opened_record,
     create_review_record,
+    create_session_record,
     generate_ulid,
+    read_records,
     validate_record_content,
+    write_record,
 )
 from agentmarshal.journal.validate import validate_journal
 
@@ -310,3 +314,121 @@ def test_the_rule_guards_every_place_that_renders_record_text(
 
     assert not refused.passed
     assert any("contains control characters" in line for line in refused.lines)
+
+
+def test_a_timestamp_carrying_a_refused_character_is_refused(
+    tmp_path: Path,
+) -> None:
+    """Scenario: a timestamp carrying a refused character is refused.
+
+    `datetime.fromisoformat` accepts any single character as the date-time
+    separator, so `created_at` and the session's `started_at`, `ended_at`
+    and `resets_at` could each carry a refused character through the parse —
+    a newline for `created_at`, U+200E standing in for `started_at`'s
+    separator, U+2028 for `ended_at`'s and a surrogate for `resets_at`.
+    Each refusal names the field and leaves nothing behind.
+    """
+
+    journal_root = tmp_path / "journal"
+
+    opened = create_opened_record("CR-001", "test")
+    opened["created_at"] = "2026-10-01T10:00\n:00Z"
+    with pytest.raises(JournalRecordError, match=r"'created_at'.*control characters"):
+        write_record(journal_root, "CR-001", opened)
+
+    for field, value in (
+        ("started_at", "2026-10-01\u200e10:00:00Z"),
+        ("ended_at", "2026-10-01T11:00\u202800Z"),
+        ("resets_at", "2026-10-02T00:00:00\ud800Z"),
+    ):
+        record = create_session_record(
+            "CR-001",
+            "test",
+            "implementer",
+            "agent",
+            "implementation",
+            "provider-limit",
+            1,
+            2,
+            3,
+            started_at="2026-10-01T10:00:00Z",
+            ended_at="2026-10-01T11:00:00Z",
+            resets_at="2026-10-02T00:00:00Z",
+        )
+        record[field] = value
+        with pytest.raises(JournalRecordError, match=rf"'{field}'.*control characters"):
+            write_record(journal_root, "CR-001", record)
+
+    assert not journal_root.exists()
+
+
+def test_an_artifact_ref_carrying_a_refused_character_is_refused_at_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: an artifact ref carrying a refused character is refused at write.
+
+    The gate's path — `validate_record_content` — refuses the reference
+    before a candidate record could be added, while a record an earlier
+    release wrote still reads and is reported by `validate`, never refused
+    on read (ADR-0015).
+    """
+
+    repo = _project(tmp_path, monkeypatch)
+    ref = ".agentmarshal/journal/tasks/CR-001/artifacts/x\nPASS: forged.md"
+    record = create_review_record(
+        "CR-001",
+        "0.0.0-test",
+        "a" * 40,
+        "approved",
+        *_REVIEWER,
+        [],
+        artifacts=[{"ref": ref, "hash": "0" * 64}],
+    )
+
+    with pytest.raises(
+        JournalRecordError,
+        match="artifact field 'ref' must not contain control characters",
+    ):
+        validate_record_content(
+            f"{generate_ulid()}-review.json", json.dumps(record, ensure_ascii=False)
+        )
+
+    _hand_written_review(repo, ["F-001"], [{"ref": ref, "hash": "0" * 64}])
+
+    stored = read_records(repo / ".agentmarshal" / "journal", "CR-001")[-1]
+    artifacts = stored["artifacts"]
+    assert isinstance(artifacts, list)
+    artifact = artifacts[0]
+    assert isinstance(artifact, dict)
+    assert artifact["ref"] == ref
+    report = validate_journal(repo)
+    assert not report.passed
+    assert any("control characters" in line for line in report.lines)
+
+
+def test_a_failure_while_encoding_leaves_no_file(tmp_path: Path) -> None:
+    """Scenario: a failure while encoding leaves no file.
+
+    A session's `outcome` is free text the forgeable-text rule does not
+    reach, so an unpaired surrogate inside it passes validation and fails
+    where the record encodes — ahead of the file's exclusive creation now,
+    so nothing is left behind.
+    """
+
+    journal_root = tmp_path / "journal"
+    record = create_session_record(
+        "CR-001",
+        "test",
+        "implementer",
+        "agent",
+        "implementation",
+        "stalled\ud800",
+        1,
+        2,
+        3,
+    )
+
+    with pytest.raises(UnicodeEncodeError):
+        write_record(journal_root, "CR-001", record)
+
+    assert not journal_root.exists()
