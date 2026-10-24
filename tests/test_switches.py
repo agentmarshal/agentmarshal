@@ -11,6 +11,7 @@ docstring names it.
 
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -22,6 +23,7 @@ from agentmarshal.switches import (
     SwitchesError,
     parse_switches,
     read_switches,
+    toml_values_equal,
 )
 
 _OFF = """format = 1
@@ -178,6 +180,25 @@ def test_a_switch_entry_outside_its_shape_is_refused_naming_the_file_and_the_ent
             parse_switches(text.encode("utf-8"), "the-file", {"openspec"})
         assert "the-file" in str(error.value)
         assert "'openspec'" in str(error.value), body
+
+
+def test_toml_values_equal_holds_an_unchanged_value_equal_to_itself() -> None:
+    """The rewrite verification's comparison: ``nan`` equals itself, types distinct."""
+    text = (
+        "scalar = nan\n"
+        "signed = -0.0\n"
+        "when = 1979-05-27T07:32:00Z\n"
+        "array = [1, {entry = 'x'}]\n"
+    )
+    assert toml_values_equal(tomllib.loads(text), tomllib.loads(text))
+    for left, right in (
+        ("value = 1\n", "value = 1.0\n"),  # an int and a float differ in type
+        ("value = 1\n", "value = true\n"),  # a bool is no int either
+        ("value = -0.0\n", "value = 0.0\n"),
+        ("value = 1979-05-27T07:32:00Z\n", "value = 1979-05-27T00:32:00-07:00\n"),
+        ("value = [1, 2]\n", "value = [2, 1]\n"),
+    ):
+        assert not toml_values_equal(tomllib.loads(left), tomllib.loads(right))
 
 
 # -- stage run -----------------------------------------------------------------

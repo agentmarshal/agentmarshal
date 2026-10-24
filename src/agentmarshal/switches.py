@@ -345,3 +345,38 @@ def read_personal_switches(
             f"{path}: cannot read the switches file: {error.strerror or error}"
         ) from error
     return parse_personal_switches(data, path, names)
+
+
+def toml_values_equal(left: object, right: object) -> bool:
+    """Whether two values parsed from TOML are the same document content.
+
+    The rewrites the switch commands carry out verify themselves on the
+    parsed file — the rewritten text against the old document with only
+    the named switch changed — and plain ``==`` answers wrongly at both
+    ends: it is type-blind where TOML is not, ``1 == 1.0`` and
+    ``True == 1``, so a change of a value's type alone would pass
+    unnoticed, and it denies a value its own identity, ``nan != nan``,
+    so a file carrying an untouched ``nan`` fails every verification.
+    A table compares key by key and an array item by item in order; a
+    scalar equals a scalar of its own exact type whose ``repr`` is the
+    same — which keeps ``nan`` equal to itself, ``-0.0`` different from
+    ``0.0`` and two equal-instant datetimes with different offsets
+    different, each a difference of the file's content.
+    """
+
+    if isinstance(left, dict):
+        return (
+            isinstance(right, dict)
+            and left.keys() == right.keys()
+            and all(toml_values_equal(left[key], right[key]) for key in left)
+        )
+    if isinstance(left, list):
+        return (
+            isinstance(right, list)
+            and len(left) == len(right)
+            and all(
+                toml_values_equal(item, other)
+                for item, other in zip(left, right, strict=True)
+            )
+        )
+    return type(left) is type(right) and repr(left) == repr(right)
