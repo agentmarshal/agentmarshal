@@ -1,12 +1,14 @@
 ## 1. The gate's line
 
-- [x] 1.1 `gate.py` computes the candidate's writer-emails set once,
-  ahead of the verdict block, shared with the reviewer-independence
-  check — verify: pytest.
+- [x] 1.1 `gate.py` computes the candidate's writer identities — the
+  range's declared author and committer names and emails — ahead of
+  the verdict block, beside the emails-only set the
+  reviewer-independence check keeps — verify: pytest.
 - [x] 1.2 The acceptance PASS line appends ` (self-accepted: accepting
   party is a declared writer of the candidate)` after the party when
-  `accepted_by` case-folded matches the set — byte-for-byte today for
-  any other party — verify: pytest.
+  the shared comparison `report._accepting_party_is_declared_writer`
+  matches `accepted_by` to the range's names and emails —
+  byte-for-byte today for any other party — verify: pytest.
 
 ## 2. The report's line
 
@@ -20,12 +22,14 @@
   acceptance's `accepted_by` against the accepted commit's declared
   writers in the placement's host repository, and `format_report`
   appends ` self-accepted` after the decision field — verify: pytest.
-- [x] 2.3 `report.py` reuses `status`'s writer lookup and comparison —
-  `status_view._is_self_accepted`, imported where it runs since that
-  module imports `report` — so the mark is one derivation, carries the
-  tri-state through `TaskReport.self_accepted`, and prints
-  ` self-acceptance-unchecked` where git cannot answer — verify:
-  pytest.
+- [x] 2.3 `report.py` applies the shared comparison —
+  `_accepting_party_is_declared_writer` — to the accepted commit's
+  declared writers looked up through
+  `status_view._declared_commit_writers`, imported where it runs since
+  that module imports `report`; the line carries the mark only where
+  the self-acceptance is confirmed — where git cannot answer it prints
+  as for any other acceptance and `status` alone says the check could
+  not run — verify: pytest.
 
 ## 3. Scenarios and pins
 

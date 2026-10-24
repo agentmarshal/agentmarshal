@@ -156,11 +156,18 @@ def _report_line(capsys: pytest.CaptureFixture[str], task_id: str) -> str:
     return line
 
 
-@pytest.mark.parametrize("party", ["worker@test.invalid", "Worker@Test.Invalid"])
+@pytest.mark.parametrize(
+    "party", ["worker@test.invalid", "Worker@Test.Invalid", "Worker"]
+)
 def test_the_gates_acceptance_line_marks_a_self_acceptance(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, party: str
 ) -> None:
-    """Scenario: the gate's acceptance line marks a self-acceptance."""
+    """Scenario: the gate's acceptance line marks a self-acceptance.
+
+    ``Worker`` alone names the writer — the shared comparison reads the
+    candidate range's declared names and emails alike, so a name-valued
+    accepting party marks as readily as an address.
+    """
 
     repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
     head = _implement(repo, "src/module.py")
@@ -178,28 +185,30 @@ def test_the_gates_acceptance_line_marks_a_self_acceptance(
     ) in output
 
 
+@pytest.mark.parametrize("party", ["committer@test.invalid", "Committer"])
 def test_the_gates_acceptance_line_marks_a_committer_self_acceptance(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, party: str
 ) -> None:
     """Scenario: the gate's acceptance line marks a self-acceptance.
 
-    The accepting party is the commit's committer, not its author — the
-    writer-emails set must still find it.
+    The accepting party is the commit's committer, not its author — by
+    email and by name alike, since the declared writers are the names
+    and emails of both.
     """
 
     repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
     head = _implement_distinct_committer(repo, "src/module.py")
     _require_changes(repo, head, "F-001")
-    _accept(repo, head, accepted_by="committer@test.invalid")
+    _accept(repo, head, accepted_by=party)
 
     report = run_gate(repo, "CR-001", head, base, head)
 
     output = "\n".join(report.lines)
     assert report.passed, output
     assert (
-        "PASS: accepted over findings F-001 by committer@test.invalid "
-        "(self-accepted: accepting party is a declared writer of the "
-        "candidate); not an approving review"
+        f"PASS: accepted over findings F-001 by {party} (self-accepted: "
+        "accepting party is a declared writer of the candidate); "
+        "not an approving review"
     ) in output
 
 
@@ -293,17 +302,17 @@ def test_reports_task_line_marks_a_committer_self_acceptance(
     )
 
 
-def test_reports_task_line_says_when_the_check_cannot_run(
+def test_reports_task_line_prints_unmarked_when_the_check_cannot_run(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Scenario: report's task line says when the check cannot run."""
+    """Scenario: report's task line prints unmarked when the check cannot run."""
 
     repo, journal = _report_repo(tmp_path, monkeypatch)
     # The accepted commit exists nowhere in the journal's repository —
-    # the line says the check was not made rather than reading as
-    # "not self-accepted".
+    # the line prints as for any other acceptance; status alone says
+    # the check could not run.
     write_record(
         journal,
         "CR-001",
@@ -314,16 +323,14 @@ def test_reports_task_line_says_when_the_check_cannot_run(
     capsys.readouterr()
 
     assert _report_line(capsys, "CR-001") == (
-        "CR-001\topen\treviews=0\ttokens=0"
-        "\tdecision=accepted-over-findings\tself-acceptance-unchecked"
+        "CR-001\topen\treviews=0\ttokens=0\tdecision=accepted-over-findings"
     )
 
     # And when no repository answers for the journal at all.
     (repo / ".agentmarshal" / "project.json").unlink()
     report = build_report(journal)
     assert format_report(report)[0] == (
-        "CR-001\topen\treviews=0\ttokens=0"
-        "\tdecision=accepted-over-findings\tself-acceptance-unchecked"
+        "CR-001\topen\treviews=0\ttokens=0\tdecision=accepted-over-findings"
     )
 
 
@@ -447,6 +454,44 @@ def test_a_finding_completed_over_findings_reports_accepted_over_findings(
 
     assert _report_line(capsys, "CR-001") == (
         "CR-001\tdone\treviews=1\ttokens=0\tdecision=accepted-over-findings"
+    )
+
+
+def test_a_commit_approved_after_its_own_acceptance_reports_approved(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a commit approved after its own acceptance reports approved.
+
+    review(changes_required) → acceptance → review(approved) → completed,
+    all on one commit: the completed commit's latest review decides, so
+    the task reports closed on approval — `accepted-over-findings` is for
+    a completion whose commit's latest review is non-approving and an
+    acceptance covers it. The standing self-acceptance earns no mark.
+    """
+
+    repo, journal = _report_repo(tmp_path, monkeypatch)
+    commit = _commit(repo, "tracked.py")
+    write_record(journal, "CR-001", _review(commit, "changes_required", "F-1"))
+    write_record(
+        journal,
+        "CR-001",
+        create_acceptance_record(
+            "CR-001",
+            "test",
+            commit,
+            "test@example.invalid",
+            ["F-1"],
+            "accepted",
+        ),
+    )
+    write_record(journal, "CR-001", _review(commit, "approved"))
+    write_record(journal, "CR-001", create_completed_record("CR-001", "test", commit))
+    capsys.readouterr()
+
+    assert _report_line(capsys, "CR-001") == (
+        "CR-001\tdone\treviews=2\ttokens=0\tdecision=approved"
     )
 
 

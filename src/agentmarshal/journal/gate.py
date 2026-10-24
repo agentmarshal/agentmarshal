@@ -61,6 +61,7 @@ from agentmarshal.journal.records import (
     read_records,
     validate_record_content,
 )
+from agentmarshal.journal.report import _accepting_party_is_declared_writer
 from agentmarshal.journal.status import (
     TaskStatusError,
     load_task_status,
@@ -503,6 +504,27 @@ def _range_emails(project_root: Path, merge_base: str, commit: str) -> set[str]:
         project_root, ["log", "--format=%ae%n%ce", f"{merge_base}..{commit}"]
     )
     return {line.strip() for line in output.splitlines() if line.strip()}
+
+
+def _range_writer_identities(
+    project_root: Path, merge_base: str, commit: str
+) -> set[str]:
+    """The candidate range's declared author and committer names and emails.
+
+    The fields ``status_view._declared_commit_writers`` reads for the
+    accepted commit, read over ``merge-base..candidate`` and case-folded
+    the same way — the set the shared comparison
+    ``report._accepting_party_is_declared_writer`` matches ``accepted_by``
+    against. The reviewer-independence check keeps the emails-only
+    ``_range_emails`` set: a name in it could only collide with a
+    reviewer identity declared as an address.
+    """
+
+    output = _run_git(
+        project_root,
+        ["log", "--format=%an%n%ae%n%cn%n%ce", f"{merge_base}..{commit}"],
+    )
+    return {line.strip().casefold() for line in output.splitlines() if line.strip()}
 
 
 def _range_commits(project_root: Path, merge_base: str, commit: str) -> set[str]:
@@ -1782,17 +1804,25 @@ def run_gate(
         # decision 1).
         if latest is not None and (approved or valid_acceptance is not None):
             resolved_review = cast(str, latest["id"])
-        # The candidate's declared writer emails — the set the reviewer
-        # independence check below compares against — also answer whether an
-        # acceptance is a self-acceptance (ADR-0007 decision 4): the mark the
-        # acceptance line carries is derived from the same set, computed once
-        # for both. A valid acceptance implies a latest review, so the set is
-        # always present where the line needs it.
+        # The candidate's declared writers answer two questions. The
+        # reviewer-independence check below compares the reviewer email
+        # against the range's author and committer emails. And an
+        # acceptance's self-acceptance mark (ADR-0007 decision 4) applies
+        # the shared comparison `_accepting_party_is_declared_writer`:
+        # the gate applies it over the candidate's commit range — the
+        # names and emails read here — while report and status apply it
+        # to the accepted commit. A valid acceptance implies a latest
+        # review, so both sets are present wherever the lines need them.
         writer_emails = (
             {
                 email.strip().casefold()
                 for email in _range_emails(project_root, merge_base, resolved_commit)
             }
+            if latest is not None
+            else set()
+        )
+        writer_identities = (
+            _range_writer_identities(project_root, merge_base, resolved_commit)
             if latest is not None
             else set()
         )
@@ -1802,7 +1832,7 @@ def run_gate(
             mark = (
                 " (self-accepted: accepting party is a declared writer of the "
                 "candidate)"
-                if accepted_by.strip().casefold() in writer_emails
+                if _accepting_party_is_declared_writer(accepted_by, writer_identities)
                 else ""
             )
             say(

@@ -315,16 +315,19 @@ same review checks, the same record.
 
 ### Requirement: every surface marks a self-acceptance
 Where an acceptance's `accepted_by` matches a declared writer of the
-candidate — the case-insensitive comparison the surface already makes —
-the gate's acceptance line SHALL carry ` (self-accepted: accepting party
-is a declared writer of the candidate)` and `report`'s task line SHALL
-carry ` self-accepted` after the decision field, or
-` self-acceptance-unchecked` where the accepted commit's writers cannot
-be read — never a silent "not self-accepted" (ADR-0007 decision 4).
+candidate — a declared author or committer name or email, compared
+case-insensitively — the gate's acceptance line SHALL carry
+` (self-accepted: accepting party is a declared writer of the
+candidate)` and `report`'s task line SHALL carry ` self-accepted` after
+the decision field. `report` marks a confirmed self-acceptance only —
+where the accepted commit's writers cannot be read its line prints
+unmarked, and `status` alone says the check could not run (ADR-0007
+decision 4).
 
 #### Scenario: the gate's acceptance line marks a self-acceptance
 - **WHEN** the acceptance over findings the gate judges carries an
-  `accepted_by` matching a declared writer email of the candidate range
+  `accepted_by` matching a declared writer name or email of the
+  candidate range
 - **THEN** the acceptance line reads `accepted over findings <ids> by
   <party> (self-accepted: accepting party is a declared writer of the
   candidate); not an approving review`
@@ -341,13 +344,13 @@ be read — never a silent "not self-accepted" (ADR-0007 decision 4).
 - **THEN** the gate's acceptance line and the `report` task line print
   exactly what they print today, with no mark
 
-#### Scenario: report's task line says when the check cannot run
+#### Scenario: report's task line prints unmarked when the check cannot run
 - **WHEN** the acceptance a `decision` derives from binds a commit whose
   declared writers git cannot read — or no repository answers for the
   journal at all
-- **THEN** the `report` line carries ` self-acceptance-unchecked` after
-  the `decision=accepted-over-findings` field — the tri-state `status`
-  uses, never a silent "not self-accepted"
+- **THEN** the `report` line prints as for any other acceptance —
+  `decision=accepted-over-findings` and no mark; `status` alone says
+  the check could not run
 
 ### Requirement: `report` derives a completed task's decision from the completed record's binding
 A completed task's `decision` SHALL come from the review and the
@@ -362,6 +365,13 @@ a task with no `completed` record keeps today's rule.
   completed commit's latest review is approved
 - **THEN** its report line reads `decision=approved` and no acceptance
   mark
+
+#### Scenario: a commit approved after its own acceptance reports approved
+- **WHEN** the completed commit's latest review is approved and a
+  `findings` acceptance also binds to it
+- **THEN** its report line reads `decision=approved` — the binding's
+  latest review decides; an acceptance covers a completion whose review
+  is non-approving
 
 #### Scenario: a commit completed over findings reports accepted-over-findings
 - **WHEN** the completed commit's latest review is non-approving and an

@@ -12,9 +12,9 @@ distinguish how the completed commit actually closed.
 ## What Changes
 
 - Where the acceptance the gate judges carries an `accepted_by` matching
-  one of the candidate range's declared writer emails — the set the
-  reviewer-independence check already reads — the acceptance line says
-  so: ` (self-accepted: accepting party is a declared writer of the
+  one of the candidate range's declared writer names or emails — the
+  comparison `status` makes — the acceptance line says so:
+  ` (self-accepted: accepting party is a declared writer of the
   candidate)` after the party.
 - `report` derives a completed task's `decision` from the review and the
   acceptance that apply to the `completed` record's own binding: an
@@ -22,9 +22,9 @@ distinguish how the completed commit actually closed.
   a latest acceptance carrying `findings` bound to it reports
   `accepted-over-findings`, and where that acceptance's `accepted_by`
   is a declared writer of the accepted commit the task line carries
-  ` self-accepted` — the mark `status` prints — or
-  ` self-acceptance-unchecked` where the commit's writers cannot be
-  read.
+  ` self-accepted` — the mark `status` prints, only where the
+  self-acceptance is confirmed; `status` alone says when the check
+  could not run.
 - A journal holding no self-acceptance and no acceptance bound to an
   earlier commit prints byte-for-byte what it prints today.
 
@@ -34,13 +34,14 @@ distinguish how the completed commit actually closed.
 
 ## Impact
 
-`gate.py` computes the candidate's writer-emails set once, ahead of the
-verdict block, so the acceptance line and the independence check read
-the same set. `report.py` derives the decision per completed binding,
-reuses the commit-writers check `status` makes for the mark —
-`status_view._is_self_accepted`, called where it runs since
-`status_view` imports `report` — resolving the repository through the
-placement as `status` resolves it, and carries a tri-state
-`self_accepted` on `TaskReport` rendered as ` self-accepted` or
-` self-acceptance-unchecked` after the decision field. `status` is
-untouched — it already marks.
+`gate.py` reads the candidate range's declared writer names and emails
+ahead of the verdict block, beside the emails-only set the
+independence check keeps. `report.py` derives the decision per
+completed binding and holds the one shared comparison —
+`_accepting_party_is_declared_writer`, the check `status_view` makes —
+applied by the gate over the candidate's commit range and by `report`
+and `status` over the accepted commit, whose declared writers are
+looked up through `status_view._declared_commit_writers` in the
+repository the placement resolves, as `status` resolves it. The line
+carries ` self-accepted` only where the self-acceptance is confirmed.
+`status` is untouched — it already marks.

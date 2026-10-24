@@ -138,11 +138,11 @@ class TaskReport:
     # True when the acceptance the decision derives from was recorded by
     # a declared writer of the accepted commit — the `self-accepted` mark
     # status prints, carried here so no surface reports a self-acceptance
-    # as someone else's (ADR-0007 decision 4). The tri-state is status's
-    # too: None when the commit's declared writers cannot be read here —
-    # printed `self-acceptance-unchecked`, never a silent "not
-    # self-accepted".
-    self_accepted: bool | None = False
+    # as someone else's (ADR-0007 decision 4). Only a confirmed
+    # self-acceptance marks the line: where the commit's declared writers
+    # cannot be read here the line prints as for any other acceptance —
+    # status alone says the check could not run.
+    self_accepted: bool = False
     phases: tuple[PhaseBoundary, ...] = ()
     rounds: tuple[ReviewRound, ...] = ()
     lead_time: timedelta | None = None
@@ -446,7 +446,8 @@ def _writers_repository(journal_root: Path) -> Path | None:
     placement's host root, which for an embedded journal is the project
     root itself; ``status`` resolves the same root before it derives the
     mark. A journal whose project file cannot be read yields ``None``,
-    and the line then reports the check unchecked rather than guessing.
+    and the line then prints no mark — ``status`` alone says a check
+    could not run.
     """
 
     try:
@@ -455,33 +456,50 @@ def _writers_repository(journal_root: Path) -> Path | None:
         return None
 
 
-def _self_accepted(
-    repository: Path | None, acceptance: dict[str, object]
+def _accepting_party_is_declared_writer(
+    accepted_by: str, writers: set[str] | None
 ) -> bool | None:
-    """Whether the accepting party is a declared writer of the commit.
+    """The one self-acceptance comparison — gate, report and status.
 
-    The check ``status`` makes — ``_is_self_accepted`` in
-    ``status_view.py``, applied to the acceptance a decision derives
-    from (ADR-0007 decision 4). ``None`` — printed
-    ``self-acceptance-unchecked`` — when a commit-bound acceptance's
-    declared writers cannot be read here, so an unanswerable check is
-    never shown as "not self-accepted". ``False`` when the party
-    matches no writer, and also when the acceptance binds a finding:
-    a binding with no ``accepted_commit`` has no writers to compare,
-    and ``status`` prints no mark on one either.
+    The accepting party, stripped and case-folded, against the declared
+    author and committer names and emails — the comparison
+    ``status_view._is_self_accepted`` makes. The gate applies it over
+    the candidate's commit range; ``report`` and ``status`` apply it to
+    the accepted commit. ``writers`` of ``None`` — git could not
+    answer — yields ``None``, the unchecked leg of ``status``'s
+    tri-state.
     """
 
-    if "accepted_commit" not in acceptance:
-        return False
-    if repository is None:
+    if writers is None:
         return None
-    # Imported where it runs rather than copied: status_view imports
-    # this module, so a module-level import back would cycle. One
-    # lookup and one comparison — gate, report and status mark the
-    # same identities the same way.
-    from agentmarshal.journal.status_view import _is_self_accepted
+    return accepted_by.strip().casefold() in writers
 
-    return _is_self_accepted(repository, acceptance)
+
+def _self_accepted(repository: Path | None, acceptance: dict[str, object]) -> bool:
+    """Whether the accepting party is a declared writer of the commit.
+
+    The shared comparison — ``_accepting_party_is_declared_writer`` —
+    over the accepted commit's declared writers, looked up the way
+    ``status`` looks them up (ADR-0007 decision 4).
+    ``status_view._declared_commit_writers`` is imported where it runs
+    rather than copied: ``status_view`` imports this module, so a
+    module-level import back would cycle. ``False`` when the party
+    matches no writer, when the acceptance binds a finding — a binding
+    with no ``accepted_commit`` has no writers to compare — and when
+    git cannot read the writers here: ``report`` then prints the line
+    as for any other acceptance, and ``status`` alone says the check
+    could not run.
+    """
+
+    if "accepted_commit" not in acceptance or repository is None:
+        return False
+    from agentmarshal.journal.status_view import _declared_commit_writers
+
+    checked = _accepting_party_is_declared_writer(
+        str(acceptance["accepted_by"]),
+        _declared_commit_writers(repository, str(acceptance["accepted_commit"])),
+    )
+    return checked is True
 
 
 def _task_report(status: TaskStatus, repository: Path | None) -> TaskReport:
@@ -866,13 +884,11 @@ def format_report(
             if task.self_accepted:
                 # The mark status's acceptance lines carry, on the line
                 # whose decision the acceptance earned (ADR-0007
-                # decision 4); `unmeasured` keeps the last field.
+                # decision 4); `unmeasured` keeps the last field. Only a
+                # confirmed self-acceptance marks: a check git cannot
+                # answer here prints the line as for any other
+                # acceptance, and status alone says it could not run.
                 line += "\tself-accepted"
-            elif task.self_accepted is None:
-                # Status's unchecked form: the accepted commit's writers
-                # could not be read, so the line says the check was not
-                # made rather than reading as "not self-accepted".
-                line += "\tself-acceptance-unchecked"
         if task.unmeasured:
             line += f"\tunmeasured={task.unmeasured}"
         lines.append(line)
