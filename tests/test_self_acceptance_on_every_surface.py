@@ -28,9 +28,15 @@ from test_journal import initialize_status_repo
 
 @pytest.fixture(autouse=True)
 def _actor_environment(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Keep the recorder resolution independent of the runner's environment."""
+    """Keep the recorder resolution independent of the runner's environment.
 
-    monkeypatch.delenv("AGENTMARSHAL_ACTOR", raising=False)
+    A finding record must name its recorder, and CI has neither
+    AGENTMARSHAL_ACTOR nor a git identity — so every test sets one the way
+    tests/test_status_view.py does, rather than inheriting whatever the
+    runner happens to provide.
+    """
+
+    monkeypatch.setenv("AGENTMARSHAL_ACTOR", "tester")
 
 
 def _report_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
@@ -200,8 +206,7 @@ def test_a_commit_approved_after_an_earlier_commits_acceptance_reports_approved(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Scenario: a commit approved after an earlier commit's acceptance
-    reports approved.
+    """Scenario: a commit approved after an earlier commit's acceptance reports approved
 
     The earlier commit's acceptance is even a self-acceptance by party —
     nothing it carries may leak onto the commit that closed on approval.
