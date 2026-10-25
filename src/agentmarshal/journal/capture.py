@@ -32,7 +32,7 @@ This module is pure policy: it writes nothing and stores nothing.
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -405,6 +405,8 @@ def _acknowledgement_mark(
     hit: LeakHit,
     acknowledgements: Sequence[Mapping[str, object]],
     private_markers: tuple[str, ...],
+    *,
+    self_acknowledged: Callable[[Mapping[str, object]], bool | None] | None = None,
 ) -> str | None:
     """The mark an acknowledged hit's entry carries, or ``None``.
 
@@ -420,6 +422,17 @@ def _acknowledgement_mark(
     operator's own text and can itself be the string the scan caught —
     so the whole mark passes the leak mask before it is escaped on
     display the way every displayed record value is.
+
+    ``self_acknowledged`` is the caller's check of whether the matched
+    record's acknowledging party is a declared writer — the shared
+    ``report.acknowledging_party_is_declared_writer`` over the writer set
+    the surface scans (the gate's candidate range, the command's scanned
+    commit — the mark builder cannot import the comparison, which stands
+    on this module through records.py). A ``True`` answer makes the mark
+    say self-acknowledged — the word ``status`` prints on the same record;
+    any other answer, and a caller that supplies no check at all, leaves
+    the mark exactly what it is today: only a confirmed
+    self-acknowledgement is ever marked.
     """
 
     # Imported where it runs rather than copied: display.py stands on
@@ -432,11 +445,13 @@ def _acknowledgement_mark(
             continue
         if _acknowledgement_identification(record) != hit.identification:
             continue
+        verb = (
+            "self-acknowledged"
+            if self_acknowledged is not None and self_acknowledged(record) is True
+            else "acknowledged"
+        )
         masked, _ = mask_leaks(
-            "acknowledged by "
-            + str(record["recorded_by"])
-            + ": "
-            + str(record["reason"]),
+            verb + " by " + str(record["recorded_by"]) + ": " + str(record["reason"]),
             private_markers,
         )
         return escape_for_display(masked)
