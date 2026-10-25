@@ -66,6 +66,7 @@ from agentmarshal.journal.records import (
 from agentmarshal.journal.report import (
     SELF_ACCEPTED_MARK,
     accepting_party_is_declared_writer,
+    acknowledging_party_is_declared_writer,
     decode_writer_field,
 )
 from agentmarshal.journal.status import (
@@ -1470,6 +1471,12 @@ def run_gate(
             f"task {task_id} is already closed at base (candidate state: {task.state})",
         )
 
+    # The candidate range's declared writer identities answer two questions
+    # on different lanes: the verdict block's reviewer-independence check and
+    # self-acceptance mark, and the advisory leak-scan's self-acknowledgement
+    # mark. ``None`` until the first caller looks the range up — whichever
+    # asks first leaves the answer for the other, so the range is read once.
+    writer_identities: set[str] | None = None
     if journal_only:
         say("PASS: journal-only transaction (deterministic lane; review not required)")
     elif operational is not None:
@@ -2363,8 +2370,33 @@ def run_gate(
                 if record.get("record_type") == "acknowledgement"
                 and record.get("commit") == resolved_commit
             ]
+            # ADR-0021 decision 5: where the acknowledging party is a
+            # declared writer the mark says so — the same shared
+            # comparison `status` makes, held by the gate over the
+            # candidate range's writers (the verdict block's lookup,
+            # reused when it already ran; read here when it did not).
+            # `leak-scan` holds it over the scanned commit alone, so a
+            # writer of an earlier commit of the range marks here alone.
+            # A git answer the lookup cannot get degrades like the scan
+            # itself: the hits still print, never wrongly self-acknowledged.
+            if acknowledgements and not writer_identities:
+                try:
+                    _, writer_identities = _range_writer_identities(
+                        project_root, merge_base, resolved_commit
+                    )
+                except GateError:
+                    writer_identities = None
             marks = [
-                _acknowledgement_mark(hit, acknowledgements, markers)
+                _acknowledgement_mark(
+                    hit,
+                    acknowledgements,
+                    markers,
+                    self_acknowledged=(
+                        lambda record: acknowledging_party_is_declared_writer(
+                            record, writer_identities, journal_root
+                        )
+                    ),
+                )
                 for hit in leak_hits
             ]
             say(

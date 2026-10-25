@@ -17,7 +17,6 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TextIO, cast
 
-from agentmarshal.journal.actors import _actor_git_identities
 from agentmarshal.journal.contracts import JournalContractError, contract_sha256
 from agentmarshal.journal.display import escape_for_display
 from agentmarshal.journal.records import _project_root_for
@@ -25,6 +24,7 @@ from agentmarshal.journal.report import (
     SELF_ACCEPTED_MARK,
     _is_unmeasured,
     accepting_party_is_declared_writer,
+    acknowledging_party_is_declared_writer,
     declared_commit_writers,
 )
 from agentmarshal.journal.status import (
@@ -78,17 +78,16 @@ def _is_self_acknowledged(
     than a typed name, so its side of the comparison goes through
     ``_actor_git_identities`` — the actors table of the journal's own
     project file — plus the recorded name itself, matching the author and
-    committer names and emails the commit declares.
+    committer names and emails the commit declares: the shared
+    ``acknowledging_party_is_declared_writer``, the same one the
+    acknowledgement marks derive the check from.
     """
 
-    writers = declared_commit_writers(project_root, str(record["commit"]))
-    if writers is None:
-        return None
-    identities = _actor_git_identities(_project_root_for(journal_root), record)
-    recorded_by = record["recorded_by"]
-    if isinstance(recorded_by, str) and recorded_by.strip():
-        identities.add(recorded_by.strip().casefold())
-    return not identities.isdisjoint(writers)
+    return acknowledging_party_is_declared_writer(
+        record,
+        declared_commit_writers(project_root, str(record["commit"])),
+        journal_root,
+    )
 
 
 def _is_declared_recorder(journal_root: Path, record: dict[str, object]) -> bool:

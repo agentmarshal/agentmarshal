@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import subprocess
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import MAX_PREC, Decimal, Inexact, localcontext
 from pathlib import Path
 from typing import cast
 
+from agentmarshal.journal.actors import _actor_git_identities
 from agentmarshal.journal.display import escape_for_display
 from agentmarshal.journal.placement import PlacementError, resolve_placement
 from agentmarshal.journal.records import (
@@ -548,6 +549,41 @@ def accepting_party_is_declared_writer(
     if writers is None:
         return None
     return accepted_by.strip().casefold() in writers
+
+
+def acknowledging_party_is_declared_writer(
+    record: Mapping[str, object], writers: set[str] | None, journal_root: Path
+) -> bool | None:
+    """Whether the acknowledging party is a declared writer — the tri-state.
+
+    An acknowledgement's recorder is a resolved actor rather than a typed
+    name, so the party's side of the comparison is the actor's declared git
+    identities — read through ``_actor_git_identities`` against the actors
+    table of the journal's own project — plus the recorded name itself (an
+    override can name a git identity outright): the derivation ``status``
+    makes for the same record, held here so the marks ``leak-scan`` and the
+    gate print derive it the same way and agree with ``status`` wherever the
+    writer set is the same (ADR-0021 decision 5). Each identity is held
+    against ``accepting_party_is_declared_writer`` — the one comparison the
+    surfaces share — so there is no second copy of it. ``writers`` of
+    ``None`` — git could not answer — yields ``None``, the unchecked leg of
+    ``status``'s tri-state.
+    """
+
+    if writers is None:
+        return None
+    identities = _actor_git_identities(
+        # The loaders hand every surface dicts; the Mapping parameter only
+        # widens the read view the mark's callers type their records as.
+        _project_root_for(journal_root),
+        cast(dict[str, object], record),
+    )
+    recorded_by = record.get("recorded_by")
+    if isinstance(recorded_by, str) and recorded_by.strip():
+        identities.add(recorded_by.strip().casefold())
+    return any(
+        accepting_party_is_declared_writer(identity, writers) for identity in identities
+    )
 
 
 def _self_accepted(repository: Path | None, acceptance: dict[str, object]) -> bool:
