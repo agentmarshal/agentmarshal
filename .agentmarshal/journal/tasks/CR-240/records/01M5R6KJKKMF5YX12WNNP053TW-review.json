@@ -1,0 +1,81 @@
+{
+  "advisory_findings": [
+    "ADV-1",
+    "ADV-2"
+  ],
+  "artifacts": [
+    {
+      "hash": "4dbfe82ef403ff9822dc95d99923a33b8d72ca98128131cda5e7f3df1c4cd7b8",
+      "ref": ".agentmarshal/journal/tasks/CR-240/artifacts/01M5R6KJKKMF5YX12WNNP053TW-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-1": "contract-mismatch",
+    "ADV-2": "claim-accuracy"
+  },
+  "created_at": "2026-10-25T00:15:43.731545Z",
+  "evidence": {
+    "ADV-1": "src/agentmarshal/journal/gate.py:1261-1265 assigns task=None in except after task=load_task_status(...); src/agentmarshal/journal/status.py:144 declares load_task_status(...) -> TaskStatus (non-optional); repo style for the same shape annotates explicitly (src/agentmarshal/doctor.py:584) or relies on an Optional return (src/agentmarshal/project.py:77 for src/agentmarshal/cli.py:1688). Expected mypy rule: [assignment]. Not executed — no mypy available here.",
+    "ADV-2": "src/agentmarshal/journal/gate.py:403-419 returns parts[0] without validating the task id, while src/agentmarshal/journal/records.py:2727-2728 calls validate_task_id (pattern CR-[0-9]+ at records.py:331-334) before reading, and records.py:590 validates a record's own 'task' field only as a non-empty string."
+  },
+  "findings": [],
+  "previous_review": "01M5R5ZZHTNEK71TD8DCSHPWSN",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "4f42123d08d85838af8aa11064ffc3c014a91b84",
+  "reviewed_contract": "79580e729d5b234fbbc7814674589149c59ec8f0876bf6aade2f734b326a2f0c",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-240",
+  "tool_version": "0.6.0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "only task_id's records are read from the filesystem in run_gate (gate.py:1617, 1858); other tasks are judged from base_tree plus added paths",
+        "what": "grep -rn \"_is_record_path|_record_path_task|read_records\" src/agentmarshal"
+      },
+      {
+        "result": "297, 1365, 2419 — the new branch is the only early return in run_gate, so the added-records check at 2148 is otherwise always reached",
+        "what": "grep -n \"return GateReport\" src/agentmarshal/journal/gate.py"
+      },
+      {
+        "result": "no match; the four fixtures hold only PASS lines for flat record paths, so the new wording cannot reach them",
+        "what": "grep -rln \"invalid added records\" tests/fixtures/gate"
+      },
+      {
+        "result": "first use in run_gate is line 1419, after the task-is-None branch returns or raises",
+        "what": "grep -n \"task\\.\" src/agentmarshal/journal/gate.py"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; uv run pytest; uv run ruff check; uv run ruff format --check; uv run mypy; uv run agentmarshal validate",
+        "why": "uv is absent and python execution is not permitted in this read-only review environment; CI status taken from the coordinator's note"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/journal/gate.py:83-92,389-425,1248-1420,1425-1470,1596-1690,2140-2300",
+      "src/agentmarshal/journal/records.py:325-345,584-596,1330-1348,2696-2780,2330-2354",
+      "src/agentmarshal/journal/status.py:103-150",
+      "src/agentmarshal/journal/validate.py:205-270",
+      "src/agentmarshal/journal/complete.py:40-80",
+      "src/agentmarshal/journal/gate_context.py:105-125",
+      "src/agentmarshal/cli.py:910-1010,1680-1695",
+      "tests/test_gate.py:1-45,87-200,300-430,1857-1865,2026-2200,2255-2325,2490-2570",
+      "tests/fixtures/gate/embedded-journal-only.stdout",
+      "tests/fixtures/gate/embedded-implementation.stdout",
+      "docs/adr/ADR-0004-journal-data-model.md",
+      "AGENTS.md",
+      "CONTRIBUTING.md:135-195",
+      "pyproject.toml"
+    ]
+  }
+}

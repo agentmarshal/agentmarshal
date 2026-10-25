@@ -1,0 +1,74 @@
+{
+  "advisory_findings": [
+    "ADV-WORDING-1"
+  ],
+  "artifacts": [
+    {
+      "hash": "013a05dece42f83672180da0c4d6ffff565f497ac5af4ea8f5fb3b145106f2e1",
+      "ref": ".agentmarshal/journal/tasks/CR-240/artifacts/01M5R7NS0V4MN32RNH8WTNV2MK-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-WORDING-1": "style"
+  },
+  "created_at": "2026-10-25T00:34:24.411072Z",
+  "evidence": {
+    "ADV-WORDING-1": "src/agentmarshal/journal/gate.py:415-419 returns None when validate_task_id rejects the segment, and gate.py:2158-2160 reports the single reason defined at gate.py:87-91 ('only tasks/<id>/records/<file> is a record path'); tests/test_gate.py:test_gate_refuses_a_record_below_a_directory_that_is_not_a_task_id asserts that message for .agentmarshal/journal/tasks/cr-2/records/<ULID>-session.json, a path that does have that shape"
+  },
+  "findings": [],
+  "previous_review": "01M5R6KJKKMF5YX12WNNP053TW",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "396ff3c8d26fb3269c13827217adc4a5a4190e6e",
+  "reviewed_contract": "79580e729d5b234fbbc7814674589149c59ec8f0876bf6aade2f734b326a2f0c",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-240",
+  "tool_version": "0.6.0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "only the four unchanged PASS lines; no fixture carries an invalid-added-records transcript, so the new reason string changes no fixture",
+        "what": "grep -rn 'added records' tests/fixtures/gate"
+      },
+      {
+        "result": "no output - every records/ directory in the project journal is tasks/<id>/records/, so _record_path_task refuses no legitimate path",
+        "what": "find .agentmarshal/journal -type d -name records -not -path '*/tasks/CR-*/records'"
+      },
+      {
+        "result": "tests/test_gate.py:2010 and tests/test_record_schema.py:695 only, both on flat tasks/CR-001/records/<file> paths whose behaviour is unchanged",
+        "what": "grep -rn 'does not match its directory' tests/ src/"
+      },
+      {
+        "result": "callers are cli.py:965, cli.py:1089 and complete.py:64; all treat passed=False as a refusal, so the new early return is handled",
+        "what": "grep -rn 'run_gate(' src/"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv run pytest / ruff / mypy",
+        "why": "no .venv in the snapshot and uv invocation was denied by the sandbox permission prompt; CI results taken from the coordinator's note"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/journal/gate.py (lines 60-95, 380-435, 1200-1400, 1425-1530, 2140-2330, 2415-2432)",
+      "src/agentmarshal/journal/records.py (validate_task_id 331-335, validate_record_content 2696-2722, read_records 2725-2780, create_session_record 2330-2354)",
+      "src/agentmarshal/journal/status.py (load_task_status 144-152)",
+      "src/agentmarshal/cli.py (_run_gate 910-1010)",
+      "src/agentmarshal/journal/gate_context.py (derive_gate_context 105-125)",
+      "src/agentmarshal/journal/complete.py (50-78)",
+      "tests/test_gate.py (imports 1-45, helpers 87-200, 300-430, 1857-1865, existing added-record tests 1984-2056, new tests 2060-2230)",
+      "tests/fixtures/gate/embedded-journal-only.stdout and the other three fixture triples",
+      "docs/adr/ADR-0004-journal-data-model.md",
+      "CONTRIBUTING.md (Releases section), CHANGELOG.md (0.6.0 section), AGENTS.md"
+    ]
+  }
+}
