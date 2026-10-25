@@ -1,0 +1,94 @@
+{
+  "advisory_findings": [
+    "ADV-cli-writer-lookup-guard"
+  ],
+  "artifacts": [
+    {
+      "hash": "3b06d56c57cad6cd3eb52d68993cb3a34793eb14713aed9ef9e4bab21d5ce413",
+      "ref": ".agentmarshal/journal/tasks/CR-242/artifacts/01M5RQW139BR47TWSHBGXE23HK-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-cli-writer-lookup-guard": "claim-accuracy"
+  },
+  "created_at": "2026-10-25T05:17:26.505612Z",
+  "evidence": {
+    "ADV-cli-writer-lookup-guard": "src/agentmarshal/cli.py:1793-1802 — comment claims the lookup 'runs only where an acknowledgement could be qualified, as the gate's guard does', but the guard is `if acknowledgements:` alone; the gate's equivalent is `if leak_hits:` (src/agentmarshal/journal/gate.py:2358) enclosing `if acknowledgements and not writer_identities:` (gate.py:2382). `hits` is already computed at cli.py:1756, before the acknowledgement block, so a clean scan with acknowledgements in the journal still issues `git show -s` that the gate would skip."
+  },
+  "findings": [],
+  "previous_review": "01M5RQCV4AQKSTK418MZ088G59",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "3e735da29faf7866e4d028bf3b296cfa98c86031",
+  "reviewed_contract": "978ecb7170def928ec607ead183f6e17c9cddbe91ff7bca4c5732e590d585f5f",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-242",
+  "tool_version": "0.6.0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "no output — no committed transcript fixture carries an acknowledgement mark, so none can flip to self-acknowledged",
+        "what": "grep -rn \"acknowledged by\" tests/fixtures/"
+      },
+      {
+        "result": "every existing acknowledgement test records as 'an-operator', '<marker>' or 'op\\nera\\u202etor' — none is a declared writer of the test commits (committer worker@test.invalid / test@example.invalid), so existing expected output is unchanged",
+        "what": "grep -rn AGENTMARSHAL_ACTOR tests/test_leak_scan_acknowledgements.py tests/test_gate_marks_acknowledged_hits.py"
+      },
+      {
+        "result": "only cli.py:1830 and gate.py:2390 call it; both pass the new keyword-only predicate, no caller left on the old signature",
+        "what": "grep -rn _acknowledgement_mark --include=*.py ."
+      },
+      {
+        "result": "records.py:30 imports capture, report.py:16 imports records, capture.py imports only agentmarshal.project — confirms capture stands under report, so the predicate must be injected; report->actors adds no cycle",
+        "what": "grep -n '^from agentmarshal' on records.py/capture.py/report.py"
+      },
+      {
+        "result": "each assigned exactly once in run_gate (1277, 1279) — the verdict block's lookup and the advisory's lazy lookup cover the identical range, so reuse is sound",
+        "what": "grep -n 'merge_base\\s*=\\|resolved_commit\\s*=' src/agentmarshal/journal/gate.py"
+      },
+      {
+        "result": "_project_root_for still used at lines 108 and 553, so dropping the _actor_git_identities import leaves no unused import",
+        "what": "grep -n '_project_root_for|_actor_git_identities' src/agentmarshal/journal/status_view.py"
+      },
+      {
+        "result": "both MODIFIED requirements keep every scenario they had; the ADDED requirement lands at line 819 with all 8 scenarios",
+        "what": "grep -n '^### Requirement|^#### Scenario' openspec/specs/leak-scan/spec.md"
+      },
+      {
+        "result": "proposal.md, design.md, tasks.md, specs/leak-scan/spec.md present under archive; openspec/changes/ holds only 'archive'",
+        "what": "find openspec/changes/archive/2026-10-25-self-acknowledgement-mark -type f; ls openspec/changes/"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; uv run agentmarshal validate; uv run pytest; uv run ruff check; uv run ruff format --check; uv run mypy",
+        "why": "the review snapshot has no .venv and no uv/network available, so the CI sequence could not be executed here; the coordinator reports it green on this commit"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/journal/report.py (declared_commit_writers, accepting_party_is_declared_writer, acknowledging_party_is_declared_writer, _self_accepted)",
+      "src/agentmarshal/journal/capture.py (_acknowledgement_mark, _acknowledgement_identification, scan_diff_for_leaks)",
+      "src/agentmarshal/journal/gate.py (run_gate: 1479 init, 1900-1940 verdict block, 2320-2410 advisory leak-scan, _range_writer_identities, _run_git_bytes)",
+      "src/agentmarshal/cli.py (_run_leak_scan, 1690-1850)",
+      "src/agentmarshal/journal/status_view.py (_is_self_accepted, _is_self_acknowledged, _is_declared_recorder)",
+      "src/agentmarshal/journal/actors.py (_actor_git_identities, resolve_recorded_by, _actors_table)",
+      "src/agentmarshal/journal/records.py (create_acknowledgement_record, write_record)",
+      "docs/adr/ADR-0021-an-acknowledged-leak-scan-hit.md (decisions 2, 3, 5)",
+      "openspec/specs/leak-scan/spec.md (requirements at 640, 713, 819)",
+      "openspec/changes/archive/2026-10-25-self-acknowledgement-mark/{proposal,design,tasks}.md and specs/leak-scan/spec.md",
+      "tests/test_self_acknowledgement_mark.py (all 8 tests)",
+      "tests/test_gate.py helpers (_gate_repo, _implement, _approve, _run, _WRITER, _commit_all)",
+      "tests/test_leak_scan_acknowledgements.py helpers (_git, _repo, _add_file, _head, _open, _write_acknowledgement, _GITHUB_TOKEN)",
+      "tests/test_gate_marks_acknowledged_hits.py (test_the_mark_is_the_one_the_standalone_command_prints)"
+    ]
+  }
+}
