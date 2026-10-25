@@ -72,3 +72,12 @@ the journal, in a local temporary file whose path the command prints — for an
 approval too, which is the literal form of the third request above. The
 durable, pinned prose this disposition accepted is what
 `"capture": {"overrides": {"reviews": "commit"}}` gives.
+
+## Where
+
+The capture-policy choice shipped in 0.4.0 as the dated note describes.
+The `hash` level's landing place moved in 0.5.0: an accepted review's
+output — an approval's included — is kept under the clone's local state
+and announced by a `review-prose` event; the local temporary file whose
+path the command prints is now only the fallback, taken when the local
+state cannot be used.

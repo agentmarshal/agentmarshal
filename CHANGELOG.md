@@ -246,7 +246,7 @@ record a read can load — an earlier journal's timestamps parse as
 they always did, and an artifact reference it holds stays
 `validate`'s to report. `write_record` encodes the record to bytes
 before its file is created, so a write that fails at that step — an
-encoding or serialisation failure — leaves no record file behind; a
+encoding or serialization failure — leaves no record file behind; a
 failure while writing or closing the created file is not rolled back.
 And the reviewer output kept on a refused
 verdict is now the reviewer's bytes exactly — the preserved file
