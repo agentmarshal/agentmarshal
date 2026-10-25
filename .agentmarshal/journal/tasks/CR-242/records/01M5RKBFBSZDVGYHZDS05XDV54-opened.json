@@ -1,0 +1,11 @@
+{
+  "contract": "978ecb7170def928ec607ead183f6e17c9cddbe91ff7bca4c5732e590d585f5f",
+  "created_at": "2026-10-25T03:58:29.753657Z",
+  "record_type": "opened",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "schema": 7,
+  "source": "live",
+  "task": "CR-242",
+  "tool_version": "0.6.0"
+}
