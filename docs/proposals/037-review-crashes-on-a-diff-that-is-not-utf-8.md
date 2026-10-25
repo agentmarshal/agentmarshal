@@ -81,6 +81,7 @@ cost of a reviewer run rather than on the crash, which the defect fix covers.
 
 ## Where
 
-Nothing here is shipped yet. The decode fix is accepted and shared with the
-per-file scan of proposal 026's fourth finding — one root cause, one fix. The
-diff-size limit is deferred by us.
+The decode fix shipped in 0.5.0, shared with the per-file leak scan of
+proposal 026's fourth finding — one root cause, one fix: the diff is
+decoded per file and reaches the reviewer, with each undecodable file
+named. The diff-size limit is deferred by us.

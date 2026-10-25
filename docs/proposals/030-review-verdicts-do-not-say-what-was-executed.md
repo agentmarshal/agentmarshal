@@ -77,6 +77,8 @@ field at a time. Accepted; not shipped yet.
 
 ## Where
 
-Accepted; not shipped yet. The executed-versus-read field goes with the
+The executed-versus-read field shipped in 0.5.0 with the
 review-evidentiality decision — with the `evidence` field of
-proposal 026 and the `check` record of proposal 028.
+proposal 026 and the `check` record of proposal 028: a review's verdict
+may carry `verification`, what the reviewer executed, read and could not
+run.

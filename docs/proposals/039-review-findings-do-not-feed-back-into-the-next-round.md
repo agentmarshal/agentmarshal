@@ -157,16 +157,17 @@ Decided; not shipped yet — the ADR's stages follow in their own tasks.
 
 ## Where
 
-Nothing here is shipped yet. Finding classes and their aggregation, and the
-`changes_required` count in `status` and the gate output, go with the
-finding-lifecycle work of proposals 027 and 026's second finding; the
-contract principles — the edge-case principle and the whole-set check — are
-accepted as documentation, to be written. The executor self-check and the
-findings base are deferred by us, waiting on the same decision; the plugin
-interface is declined by us, for the trust boundary ADR-0010 draws — the
-decline superseded on 2026-10-03, when
-[ADR-0013](../adr/ADR-0013-extensions-stages-scopes-isolation-trust.md)
-answered it.
+Finding classes and their aggregation, and the `changes_required` count in
+`status` and the gate output, shipped in 0.5.0 with the finding-lifecycle
+work of proposals 027 and 026's second finding: a verdict may carry
+`classes` — one class per finding id from the project's vocabulary — and
+`report --findings` lists the recurring classes across tasks. The contract
+principles — the edge-case principle and the whole-set check — stand in
+the quickstart's contract guidance (the note below). The executor
+self-check and the findings base remain deferred by us; the plugin
+interface, answered by
+[ADR-0013](../adr/ADR-0013-extensions-stages-scopes-isolation-trust.md)'s
+extension stages before the gate, shipped in 0.6.0.
 
 Written 2026-10-23: the contract principles — the principle criterion and
 the whole-set check — now stand in the quickstart's contract guidance,

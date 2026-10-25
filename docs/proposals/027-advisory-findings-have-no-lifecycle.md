@@ -93,6 +93,11 @@ Accepted for documentation; not shipped yet.
 
 ## Where
 
-Nothing here is shipped yet. The advisory-finding dispositions wait on the
-finding-lifecycle decision; the documentation stating what `approved` means
-is accepted, to be written. The rename is declined by us.
+The dispositions shipped in 0.5.0 with the finding-lifecycle decision:
+`complete` takes a recorded disposition for each advisory finding of the
+review the gate passed on, kept in the `completed` record's
+`advisory_dispositions`, and `status` lists the deferrals still open. The
+documentation stating what `approved` means stands in
+[ADR-0018](../adr/ADR-0018-governing-the-contract.md) — a verdict means
+"this candidate satisfies the contract" and nothing more. The rename is
+declined by us.

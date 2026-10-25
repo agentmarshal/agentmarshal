@@ -76,8 +76,10 @@ hash. Its name will not be `finding`. Accepted; not shipped yet.
 
 ## Where
 
-Nothing here is shipped yet. The scaffold and the outbox validation are
-accepted into the command group proposal 023 asked for — one group covering
-the life of a finding: scaffold, validation, batching and sending, and
-reporting back the disposition of what was sent. Its name will not be
+The scaffold and the outbox validation shipped in 0.5.0, in the command
+group proposal 023 asked for — one group covering the life of a finding:
+`agentmarshal outbox new` scaffolds a draft carrying the finding form,
+`outbox check` names what each draft lacks and runs the leak scan,
+`outbox send` commits the batch, and `outbox status` reports the
+disposition of what was sent. The group is named `outbox`, not
 `finding`.

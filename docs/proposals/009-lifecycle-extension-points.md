@@ -81,3 +81,11 @@ reason behind both deferrals is answered by construction — the gate takes
 nothing from an extension's run — rather than by trusting the hook.
 
 Decided; not shipped yet — the ADR's stages follow in their own tasks.
+
+## Where
+
+The stages the ADR named shipped in 0.6.0: a declared `pre-gate` stage
+runs in CI and at the merge step before the gate, a `post-gate` stage
+runs after `complete`, and a `pre-gate-stop` stage pauses the process
+while its pause stands. "After open" and a `pre-complete` remain stages
+nobody has asked for — new stages are added at an adopter's request.

@@ -124,5 +124,7 @@ these records.
 ## Where
 
 The narrowed rule and the release check shipped in 0.4.1 (CR-114, CR-115).
-The retroactivity principle is accepted; the mechanism for it is undecided.
-The allowlist is declined.
+The retroactivity principle was decided by
+[ADR-0015](../adr/ADR-0015-a-rule-applies-from-the-schema-that-introduced-it.md)
+— a record is read by the rules of the schema it declares — and shipped in
+0.5.0. The allowlist is declined.

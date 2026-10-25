@@ -54,3 +54,9 @@ it. That rework is not scheduled in any published release yet.
 The cost field's deferral is lifted: the project has taken every adopter
 finding into the next release, and this field is among them, still with the
 rework of accounting the deferral named. Accepted; not shipped yet.
+
+## Where
+
+The `coordination` activity shipped in 0.4.0; the `cost` field —
+`{amount, currency, source}` on a session record — shipped in 0.5.0 with
+the accounting rework.

@@ -108,7 +108,10 @@ retraction in that file's own digest. The first two parts stand unaffected.
 
 ## Where
 
-Nothing here is shipped yet. The contract hashes in `opened` and `amendment`
-are accepted; the agreement record is accepted, with the contract-governance
-decision; the withdrawal of the third suggestion is accepted —
+The contract hashes shipped in 0.5.0: an `opened` or `amendment` record
+written since carries `contract`, the sha256 of the contract text it
+establishes. The agreement record shipped in the same release with the
+contract-governance decision — `agentmarshal agree` records an actor's
+agreement with the contract at a stated hash. The withdrawal of the third
+suggestion is accepted —
 [033](033-contract-review-before-implementation-does-not-pay-off.md).

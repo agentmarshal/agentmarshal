@@ -69,6 +69,7 @@ alone. Accepted; not shipped yet.
 
 ## Where
 
-The statement and the vocabulary ship in 0.4.1. The reset-time field is
-accepted into the accounting rework, alongside proposal 018's cost field;
-not shipped yet.
+The statement and the vocabulary ship in 0.4.1. The reset-time field
+shipped in 0.5.0 with the accounting rework, alongside proposal 018's
+cost field: a `provider-limit` session may carry `resets_at`, the
+provider's stated reset time.

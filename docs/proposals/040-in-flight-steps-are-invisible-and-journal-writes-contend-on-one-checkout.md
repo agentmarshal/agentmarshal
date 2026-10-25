@@ -98,8 +98,10 @@ question answered further. Accepted; not shipped yet.
 
 ## Where
 
-Nothing here is shipped yet. The fail-fast rule for waits on provider checks
-is accepted as documentation, to be written; the stuck-step visibility need
-is accepted, with a record or a supplied watcher template not yet decided;
-the checkout-free journal write goes with the transaction helper of
-proposals 019 and 035.
+The stuck-step visibility shipped in 0.5.0 — `step start` and `step end`
+write `step-started`/`step-ended` events to the process log with the
+step's deadline, and `status` and `doctor` show a step past its deadline.
+The checkout-free journal write is not shipped — the transaction helper
+of proposals 019 and 035 (0.6.0) stages one task's records and still
+switches the working tree. The fail-fast rule for waits on provider
+checks is accepted as documentation, not yet written.

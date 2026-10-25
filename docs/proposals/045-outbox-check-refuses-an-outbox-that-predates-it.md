@@ -105,7 +105,7 @@ instead of the refusal.
 ## Where
 
 `outbox check` and `outbox send` skip the draft-form check for files
-already sent — known by a manifest of sent hashes that `send` writes,
-or by the index `outbox status` takes — with the skipped files reported
-rather than silent and the leak scan still covering every file `send`
-stages, in 0.6.0. Not shipped yet.
+already sent — known by the `SENT` manifest `send` writes, or by the
+index `outbox status` takes — with the skipped files reported as
+`skipped as sent: <n>` and the leak scan still covering every file `send`
+stages. Shipped in 0.6.0.

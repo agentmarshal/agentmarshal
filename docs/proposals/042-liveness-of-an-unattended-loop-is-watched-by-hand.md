@@ -191,16 +191,15 @@ later decision on the record model; nothing else decided here changes.
 
 ## Where
 
-Nothing here is shipped yet. The `step` stage with its lifecycle events, the
-manifest-declared activity probes, the `stalled` / `safety-limit` outcomes
-with a session handle and the per-run progress record are accepted — the
-outcomes with the accounting rework, the session-id field with the records
-of a later decision, the events and the progress in the process log.
-Actions through the tool are declined for the core by us — a pause is
+The step commands and their process-log events shipped in 0.5.0 — `step
+start` and `step end` write `step-started`/`step-ended` events with the
+step's deadline, and `status`/`doctor` show a step past it — the `step`
+stage stayed declined, and the events landed in the process log without
+it. The `stalled`/`safety-limit` outcome values stand in the vocabulary
+[ADR-0022](../adr/ADR-0022-the-0-5-0-record-model-one-transition.md)
+section 4 documents, and the `cli_session` session-id field shipped in
+0.5.0. Actions through the tool stay declined for the core — a pause is
 proposal 041's plan file, a stop or a resume is the watchdog's own. The
-offered watchdog and monitor are accepted in principle as a supplied
-extension; the code arrives through the reporter's outbox under an
-explicit Apache-2.0 license line and is adapted by a project task naming
-its source (decided 2026-10-03). Amended the same day: the `step` stage
-is declined — the events land in the process log without it, and the
-activity probes are declared to the supplied watchdog the harness runs.
+offered watchdog and monitor — supplied components the harness runs, the
+core starting no background process — with their declared activity
+probes and the per-run progress record are not shipped.

@@ -80,6 +80,9 @@ question, and it should be answered once. Accepted; not shipped yet.
 
 ## Where
 
-Accepted; not shipped yet. The `check` record goes with the
-review-evidentiality decision — the same one the `evidence` field of
-proposal 026 and the executed-versus-read field of proposal 030 are in.
+The `check` record shipped in 0.5.0 with the review-evidentiality
+decision — the same one the `evidence` field of proposal 026 and the
+executed-versus-read field of proposal 030 were in: `record-check` writes
+it, the gate decides nothing from it, and `report` counts the candidates
+a check marked `failed` or `error`. `brief` names the task's last failing
+check — and says when a later run of the same name passed.
