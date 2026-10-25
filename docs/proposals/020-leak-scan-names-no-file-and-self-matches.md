@@ -75,3 +75,11 @@ next release, and this path is among them. It remains a new kind of record
 — this project still decides record types in an architecture decision
 before it builds them — so it arrives through a decision record rather than
 as a flag. Accepted; not shipped yet.
+
+## Where
+
+Naming the file and the matched marker or signature, and refusing a hit
+whose only occurrence is the declaration it was loaded from, shipped in
+0.4.0. The acknowledged-and-proceed path shipped in 0.5.0: the
+`acknowledgement` record and `agentmarshal acknowledge`, decided by
+[ADR-0021](../adr/ADR-0021-an-acknowledged-leak-scan-hit.md).

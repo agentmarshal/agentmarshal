@@ -99,9 +99,11 @@ and it should be settled once. Accepted; not shipped yet.
 
 ## Where
 
-`provider-limit` is already shipped, a documented outcome since 0.4.1;
-the outcome value for an output-limit truncation is accepted, not shipped
-yet. The header fields, the gate checks and the `status` display of the
-declared assignment next to what ran are accepted, not shipped yet —
-where the assignment will live sits with the contract-governance
-decision, which is not yet made.
+`provider-limit` is already shipped, a documented outcome since 0.4.1.
+The header fields — `implementers`, `reviewers`, `independence` — the
+gate checks against them and the `status` display of the declared
+assignment next to what ran shipped in 0.5.0 with the
+contract-governance decision; the `output-limit` outcome value stands in
+the vocabulary
+[ADR-0022](../adr/ADR-0022-the-0-5-0-record-model-one-transition.md)
+section 4 documents.

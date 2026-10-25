@@ -97,8 +97,13 @@ change is already the question on the table. Accepted; not shipped yet.
 
 ## Where
 
-Nothing here is shipped yet. The documentation sentence is accepted, to be
-written; session duration and lead time are accepted into the accounting
+Session duration and lead time shipped in 0.5.0 with the accounting
 rework, alongside the cost field of proposal 018 and the reset-time field
-of proposal 024; exposing the gate's journal-only lane to the required
-check goes with the journal-transactions work of proposals 019 and 035.
+of proposal 024: a session may carry `started_at`/`ended_at`, and
+`report` shows a task's lead time and its phases. The journal-transactions
+work of proposals 019 and 035 shipped in 0.6.0 — the transaction helper
+branches per task and stages one task's directory — but the lane's
+exposure to the required check did not: nothing answers which lane a
+candidate takes short of the full gate, and the shipped required-check
+template runs all of it. The documentation sentence on the CI cost of a
+journal transaction is not yet written.

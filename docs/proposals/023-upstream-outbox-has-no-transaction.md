@@ -66,3 +66,11 @@ command will both produce the batch and report the disposition of what was sent
 before, matching by the source hash this batch introduces. That is a release
 later than the documentation, and it is the first product feature this outbox
 convention has earned.
+
+## Where
+
+The README `init` writes into the outbox has stated the convention
+since 0.2.0; 0.4.0 added its line that the outbox is not journal
+evidence. The command shipped in 0.5.0 as the `outbox` group — `new`,
+`check`, `send`, `status` — producing the batch and reporting which
+drafts an upstream index claims, matching by the source hash.

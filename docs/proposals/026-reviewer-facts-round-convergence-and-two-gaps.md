@@ -132,9 +132,11 @@ file's.
 
 ## Where
 
-Nothing here is shipped yet. The protocol wording, `record-session
---if-missing`, and the per-file leak scan are accepted; the release that
-carries them will say so in its changelog. The `evidence` field is accepted
-into the review-evidentiality decision, the lifecycle machinery waits on the
-finding-lifecycle decision, and `review --since` is deferred until it
-settles whether rounds link at all.
+The protocol wording — a finding about a fact the reviewer could not check
+is advisory — and the `evidence` field shipped in 0.5.0 with the
+review-evidentiality decision; the lifecycle machinery — reviews of a task
+linked by `previous_review`, the `changes_required` count in `status` and
+the gate — shipped in the same release with the finding-lifecycle
+decision, which automates no per-finding status across the link;
+`record-session --if-missing` and the per-file leak scan shipped there
+too. `review --since` stays deferred.

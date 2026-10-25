@@ -103,7 +103,9 @@ actor in the journal.
 
 ## Where
 
-The reading side — `status` and `report` showing an unmeasured session
-as unmeasured — is accepted for 0.6.0. The write side — optional token
-counts with an explicit unmeasured marker — is accepted with the next
-record schema. Neither is shipped yet.
+The reading side shipped in 0.6.0: a session record carrying zero token
+counts and no `usage` block renders as unmeasured — `status` prints
+`tokens=unmeasured` and `report` carries `unmeasured=<n>` on the task,
+Summary and Cost lines — while an unmeasured session that carries a
+cost still sums. The write side — optional token counts with an explicit
+unmeasured marker — stays accepted with the next record schema.

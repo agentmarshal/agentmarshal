@@ -84,7 +84,9 @@ as it is now. Accepted; not shipped yet.
 
 ## Where
 
-Nothing here is shipped yet. The `commit` field on the implementer's
-session record, the refusal in `review` and `gate`, and the `status`
-display of the producing session are accepted; the release that carries
-them will say so in its changelog.
+The `commit` field on the implementer's session record shipped in 0.5.0
+— a session may name the commit it produced — and the `status` display
+of the producing session shipped in 0.6.0: `Reviewed commit <sha7>:
+implementer session <id>`, marked `(did not end 'implemented')` when it
+ended otherwise. The refusal in `review` and `gate` waits on a later
+record schema — not shipped yet.

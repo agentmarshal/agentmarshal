@@ -41,10 +41,19 @@ That honesty cuts both ways — the shipped design docs are explicit about the
 historical 0.1.0 boundary and note what has changed since:
 
 - [ADR-0004](docs/adr/ADR-0004-journal-data-model.md) and
-  [ADR-0005](docs/adr/ADR-0005-evidence-capture-and-format.md) mark planned
+  [ADR-0005](docs/adr/ADR-0005-evidence-capture-and-format.md) mark the
   supplementary-artifact capture policy, the private store, and the
-  in-toto/attestation projection as roadmap. They remain inactive in 0.6.0;
-  ADR-0005 separately records the advisory leak-scan that has shipped.
+  in-toto/attestation projection as roadmap. The capture policy's review
+  class has shipped: the reviews level comes from the capture preset —
+  `attested` (the default) gives `hash`, `full` gives `commit` and
+  `minimal` gives `off`, and `capture.overrides.reviews` can override
+  it. `commit` pins the reviewer's prose as a journal artifact, `hash`
+  keeps it under the clone's local state announced by a `review-prose`
+  event, and `off` keeps nothing. Still roadmap: the `economics` and `sessions`
+  classes are not read, the durable private store stays unbuilt (`hash`
+  prose lives in the process-log area instead), and `attestation.py`
+  emits no Statement. ADR-0005 separately records the advisory leak-scan
+  that has shipped.
 - [docs/migration-v1-to-v2.md](docs/migration-v1-to-v2.md) records what the
   v1→v2 migration lost (contract prose) and that the machine-readable
   acceptance array was empty in every contract through CR-038 — without

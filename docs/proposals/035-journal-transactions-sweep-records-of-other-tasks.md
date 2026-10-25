@@ -104,3 +104,7 @@ the same work. Accepted; not shipped yet.
   guide and the outbox README `init` writes. Still open: the gate warning
   about another task's `opened` or `amendment` records, and the `status`
   listing of unpublished records — a later task.
+- 2026-10-26: the rest shipped in 0.6.0 — the gate warns `candidate adds
+  opened/amendment records of other tasks`, and `status <task> --base
+  <ref>` lists the task's records the base ref does not hold under
+  `Records absent from <base>`.

@@ -139,11 +139,12 @@ proposal 038's layer templates live. Accepted; not shipped yet.
 
 ## Where
 
-Nothing here is shipped yet. `agentmarshal next` and the session failure
-classes — the new outcome values and the "report finished" flag — are
-accepted into the tool, the classes with the accounting rework; the plan
-is accepted as a supplied file in local state with a documented format; the
-reference driver goes into the adopter kit.
+The session failure classes stand in the outcome vocabulary
+[ADR-0022](../adr/ADR-0022-the-0-5-0-record-model-one-transition.md)
+section 4 documents — `provider-limit`, `output-limit`, `stalled`,
+`safety-limit`, `time-limit` — and the "report finished" flag shipped in
+0.5.0 as the session's `report_ready` field. `agentmarshal next`, the
+plan file and the reference driver are not shipped.
 
 ## Corrections
 

@@ -34,3 +34,12 @@ the original stays with the reporter.
 Not yet done: `agentmarshal init` does not scaffold the outbox directory or say
 anything about it, so a new adopter still has to read this to learn the
 convention. That is the remaining part of the fix.
+
+## Where
+
+The scaffold the disposition left open shipped in 0.2.0: `agentmarshal
+init` creates `.agentmarshal/upstream/` with a README stating the
+convention, so a new adopter meets it at setup. The batch tooling arrived
+in 0.5.0 as the `outbox` group — `new`, `check`, `send`, `status` —
+under [proposal 023](023-upstream-outbox-has-no-transaction.md) and
+[proposal 029](029-outbox-has-no-scaffold-and-its-name-is-taken.md).
