@@ -14,14 +14,17 @@ display-escaping every other subcommand applies.
 
 ## What Changes
 
-- Every `outbox` subcommand refuses — one line naming the path, before
-  creating or writing anything — when `.agentmarshal/upstream` or a
-  component between it and the project root is a symbolic link, and
-  `init`'s outbox scaffold refuses the same.
-- `outbox send` refuses, naming the file, when the blob id a checked
-  file stages as under its path — clean filters and end-of-line
-  conversion applied — differs from the blob id of the bytes the check
-  read; the sent manifest's update is held to the same rule.
+- Every `outbox` subcommand refuses — one line naming the path, masked
+  like every outbox path, before creating or writing anything — when
+  `.agentmarshal/upstream` or a component between it and the project
+  root is a symbolic link, and `init`'s outbox scaffold refuses the
+  same.
+- `outbox check` refuses, naming the file and the remedy, when the
+  blob id a file stages as under its path — clean filters and
+  end-of-line conversion applied — differs from the blob id of the
+  bytes it read, so a batch wrapper refuses before sending; `outbox
+  send` runs the same check, and the sent manifest's update is held
+  to the same rule.
 - `outbox status` prints every name through the masked,
   display-escaped rendering the other subcommands use.
 
@@ -29,12 +32,14 @@ display-escaping every other subcommand applies.
 
 ### Existing Capabilities
 
-- `outbox`: the commands gain the linked-path refusal; `send` gains the
-  transformed-staging refusal; `status` gains display escaping.
+- `outbox`: the commands gain the linked-path refusal; `check` gains
+  the transformed-staging refusal `send` inherits; `status` gains
+  display escaping.
 
 ## Impact
 
-`src/agentmarshal/outbox.py` gains the component check in `_locate` and
-the two-id pin in `_pinned_blob`; `src/agentmarshal/project.py` gains
-the same component check in `_scaffold_outbox`; `tests/` gains the
-scenario tests. No new dependencies, no new configuration, no network.
+`src/agentmarshal/outbox.py` gains the component check in `_locate`, the
+two-id pin in `_pinned_blob` and the remedy naming in
+`_transform_cause`; `src/agentmarshal/project.py` gains the same
+component check in `_scaffold_outbox`; `tests/` gains the scenario
+tests. No new dependencies, no new configuration, no network.

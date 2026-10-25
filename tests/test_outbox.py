@@ -1150,8 +1150,7 @@ def test_the_markdown_decorated_source_line_is_parsed_like_the_bare_one(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Scenario: the markdown-decorated Source line is parsed like the bare
-    one."""
+    """Scenario: the markdown-decorated Source line is parsed like the bare one."""
     repo = _project(tmp_path, monkeypatch)
     draft = _conforming_draft(_outbox(repo))
     digest = hashlib.sha256(draft.read_bytes()).hexdigest()
@@ -1209,8 +1208,7 @@ def test_a_name_that_is_not_utf8_is_printed_escaped_under_the_masking(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Scenario: a name that is not UTF-8 is printed escaped under the
-    masking."""
+    """Scenario: a name that is not UTF-8 is printed escaped under the masking."""
     repo = _project(tmp_path, monkeypatch)
     _configure_markers(repo, ["internal.example.invalid"])
     _byte_named_file(_outbox(repo), b"\xffinternal.example.invalid.md", b"# nothing\n")
@@ -2111,3 +2109,115 @@ def test_a_control_character_in_a_file_name_is_escaped_in_the_report(
     captured = capsys.readouterr()
     assert "bad\\nname.md: no index entry" in captured.out
     assert "bad\nname.md" not in captured.out
+
+
+def test_check_refuses_a_draft_a_clean_filter_would_transform(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: check refuses a draft a clean filter would transform."""
+    repo = _project(tmp_path, monkeypatch)
+    # The same real clean filter the send refusal is demonstrated with —
+    # the check is the refusal point a batch wrapper consults (ADR-0020
+    # decision 3), so it sees the transformation before any staging.
+    (repo / ".gitattributes").write_text(
+        ".agentmarshal/upstream/0*.md filter=x\n", encoding="utf-8"
+    )
+    _git(repo, "config", "filter.x.clean", "sed s/a/b/")
+    _conforming_draft(_outbox(repo))
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    assert main(["outbox", "check"]) == 1
+
+    captured = capsys.readouterr()
+    assert "0001-filled.md: git would transform it on staging" in captured.out
+    assert "the filter must not apply to the outbox" in captured.out
+    assert "outbox check: refused" in captured.err
+
+
+def test_an_end_of_line_refusal_names_the_attribute_that_turns_it_off(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: an end-of-line refusal names the attribute that turns it off."""
+    repo = _project(tmp_path, monkeypatch)
+    # `text` on the drafts makes git normalise CRLF to LF on staging —
+    # the remedy the refusal names is `-text` on the outbox.
+    (repo / ".gitattributes").write_text(
+        ".agentmarshal/upstream/0*.md text\n", encoding="utf-8"
+    )
+    (_outbox(repo) / "0001-filled.md").write_bytes(
+        _CONFORMING.replace("\n", "\r\n").encode()
+    )
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    assert main(["outbox", "check"]) == 1
+
+    captured = capsys.readouterr()
+    assert "0001-filled.md: git would transform it on staging" in captured.out
+    assert "end-of-line conversion applies" in captured.out
+    assert "`.agentmarshal/upstream/** -text` in .gitattributes" in captured.out
+    assert "outbox check: refused" in captured.err
+
+
+def test_an_autocrlf_refusal_names_the_same_remedy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """`core.autocrlf` converts with no attribute involved — the refusal
+    names the same `-text` remedy as a `text` attribute does."""
+    repo = _project(tmp_path, monkeypatch)
+    _git(repo, "config", "core.autocrlf", "true")
+    (_outbox(repo) / "0001-filled.md").write_bytes(
+        _CONFORMING.replace("\n", "\r\n").encode()
+    )
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    assert main(["outbox", "check"]) == 1
+
+    captured = capsys.readouterr()
+    assert "end-of-line conversion applies" in captured.out
+    assert "`.agentmarshal/upstream/** -text` in .gitattributes" in captured.out
+
+
+def test_a_linked_components_path_is_masked_in_the_refusal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: the refusal line names the linked component masked.
+
+    A directory on the outbox's path can itself carry a marker — the
+    refusal names the linked component through the masking every outbox
+    path gets."""
+    repo = tmp_path / "internal.example.invalid"
+    repo.mkdir()
+    _git(repo, "init", "--quiet", "-b", "master")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    # The link's target carries a real project.json — one that names the
+    # marker — so discovery finds the project through the link and the
+    # refusal has markers to mask with.
+    (outside / "project.json").write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "leak_scan": {"private_markers": ["internal.example.invalid"]},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (repo / ".agentmarshal").symlink_to(outside)
+    monkeypatch.chdir(repo)
+
+    assert main(["outbox", "check"]) == 1
+
+    captured = capsys.readouterr()
+    assert "refusing a symbolic link" in captured.err
+    assert "internal.example.invalid" not in captured.out
+    assert "internal.example.invalid" not in captured.err
+    assert "<private marker #1>" in captured.err

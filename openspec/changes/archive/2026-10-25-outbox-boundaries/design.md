@@ -35,16 +35,24 @@ out (`status` printing raw names).
   refusal `extension_trust._managed_directory` applies to the managed
   extensions directory and `write_project_file` applies to the project
   file's parent. It lives in `_locate`, so all four subcommands refuse
-  identically, before any outbox I/O. `init`'s scaffold is best-effort:
-  it returns the refusal as its error text and `init` reports it on its
-  one warning line, still succeeding as a project.
-- **The pin is compared, not re-derived.** `hash-object --stdin --path`
-  yields the blob id staging writes; `hash-object --stdin --no-filters`
-  yields the blob of the bytes read. Asking git twice keeps the check
-  object-format-agnostic (sha256 repositories included) and covers
-  every transformation git knows — clean filter, `ident`, eol — rather
-  than enumerating them. A mismatch is a check problem on the file,
-  named like every other, so a refused `send` stages nothing.
+  identically, before any outbox I/O, and the line is printed through
+  `_printable` — a directory on the path can itself carry a marker.
+  `init`'s scaffold is best-effort: it returns the refusal as its error
+  text and `init` reports it on its one warning line, still succeeding
+  as a project.
+- **The pin is compared, not re-derived — and it is the check's.** `git
+  hash-object --stdin --path` yields the blob id staging writes;
+  `--no-filters` yields the blob of the bytes read. Asking git twice
+  keeps the check object-format-agnostic (sha256 repositories included)
+  and covers every transformation git knows — clean filter, `ident`,
+  eol — rather than enumerating them. The comparison runs in `check`,
+  not only in `send`: ADR-0020 decision 3 makes the check's exit status
+  the refusal point a batch wrapper consults before publication, so a
+  transformable file must fail there. A mismatch names the remedy the
+  attributes say applies — `check-attr` reads them — a clean filter
+  gets "must not apply to the outbox", end-of-line conversion gets the
+  `-text` attribute line (or committing the staged bytes). A refused
+  `send` still stages nothing.
 - **`status` reuses `_printable`.** The masked-then-escaped order the
   helper already implements is the audited property — escaping first
   would insert word characters a signature's anchors do not see past —
