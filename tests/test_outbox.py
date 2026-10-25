@@ -2162,15 +2162,18 @@ def test_an_end_of_line_refusal_names_the_attribute_that_turns_it_off(
     assert "outbox check: refused" in captured.err
 
 
+@pytest.mark.parametrize("spelling", ["true", "yes", "1"])
 def test_an_autocrlf_refusal_names_the_same_remedy(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    spelling: str,
 ) -> None:
-    """`core.autocrlf` converts with no attribute involved — the refusal
-    names the same `-text` remedy as a `text` attribute does."""
+    """`core.autocrlf` converts with no attribute involved — in any of
+    git's boolean spellings — and the refusal names the same `-text`
+    remedy as a `text` attribute does."""
     repo = _project(tmp_path, monkeypatch)
-    _git(repo, "config", "core.autocrlf", "true")
+    _git(repo, "config", "core.autocrlf", spelling)
     (_outbox(repo) / "0001-filled.md").write_bytes(
         _CONFORMING.replace("\n", "\r\n").encode()
     )
@@ -2221,3 +2224,89 @@ def test_a_linked_components_path_is_masked_in_the_refusal(
     assert "internal.example.invalid" not in captured.out
     assert "internal.example.invalid" not in captured.err
     assert "<private marker #1>" in captured.err
+
+
+def test_a_filter_refusal_names_no_eol_remedy_under_unset_text(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: check refuses a draft a clean filter would transform —
+    and the remedy is the filter's alone: with `-text` already on the
+    outbox git does not normalise, so no `-text` remedy is suggested,
+    `core.autocrlf` notwithstanding."""
+    repo = _project(tmp_path, monkeypatch)
+    (repo / ".gitattributes").write_text(
+        ".agentmarshal/upstream/0*.md -text filter=x\n", encoding="utf-8"
+    )
+    _git(repo, "config", "filter.x.clean", "sed s/a/b/")
+    _git(repo, "config", "core.autocrlf", "true")
+    _conforming_draft(_outbox(repo))
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    assert main(["outbox", "check"]) == 1
+
+    captured = capsys.readouterr()
+    assert "0001-filled.md: git would transform it on staging" in captured.out
+    assert "the filter must not apply to the outbox" in captured.out
+    assert "end-of-line conversion" not in captured.out
+    assert "`.agentmarshal/upstream/** -text`" not in captured.out
+
+
+def test_init_names_the_linked_outbox_escaped(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The init half of "init never scaffolds through a linked outbox":
+    the refusal is printed masked and display-escaped like every outbox
+    path, so a control character on the path cannot add a line to the
+    warning."""
+    repo = tmp_path / "re\npo"
+    repo.mkdir()
+    _git(repo, "init", "--quiet", "-b", "master")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (repo / ".agentmarshal").mkdir()
+    (repo / ".agentmarshal" / "upstream").symlink_to(outside)
+    monkeypatch.chdir(repo)
+
+    assert main(["init"]) == 0
+
+    captured = capsys.readouterr()
+    # The warning is one line — the escaped name cannot add another.
+    assert captured.err.count("\n") == 1
+    warning = captured.err.strip()
+    assert "could not create" in warning
+    assert "refusing to write through a symlink" in warning
+    outbox = repo / ".agentmarshal" / "upstream"
+    assert str(outbox).replace("\n", "\\n") in warning
+    assert str(outbox) not in warning
+    assert list(outside.iterdir()) == []
+
+
+def test_init_names_the_linked_outbox_masked(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The init half of "the refusal line names the linked component
+    masked": the configured markers are empty at init — the file
+    carrying them is what init writes — so a directory on the path
+    matching a built-in signature is named by it instead."""
+    repo = tmp_path / _TOKEN
+    repo.mkdir()
+    _git(repo, "init", "--quiet", "-b", "master")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (repo / ".agentmarshal").mkdir()
+    (repo / ".agentmarshal" / "upstream").symlink_to(outside)
+    monkeypatch.chdir(repo)
+
+    assert main(["init"]) == 0
+
+    captured = capsys.readouterr()
+    assert "refusing to write through a symlink" in captured.err
+    assert "<github-token>" in captured.err
+    assert _TOKEN not in captured.err
+    assert list(outside.iterdir()) == []

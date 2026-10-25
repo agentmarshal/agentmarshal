@@ -283,16 +283,39 @@ class InitializedProject:
 
     A named type rather than a tuple, because the outbox carries two facts —
     where it belongs and whether it is there — and a caller reading them
-    positionally would not say which is which.
+    positionally would not say which is which. ``outbox`` is where it
+    belongs in the form ``init``'s output prints it — masked and
+    display-escaped like every outbox path, so nothing it carries can add
+    a line to what prints — and ``outbox_error`` is why it is not there.
     """
 
     project_root: Path
-    outbox: Path
+    outbox: str
     outbox_error: str | None
 
     @property
     def outbox_created(self) -> bool:
         return self.outbox_error is None
+
+
+def _printable_path(path: Path) -> str:
+    """The path as ``init``'s output prints it: masked and display-escaped.
+
+    The same pipeline the ``outbox`` commands print a path through —
+    bytes that are not UTF-8 as one ``\\xNN`` escape each, the leak
+    scan's masking, then the display escaping — so nothing on the path
+    can carry a secret or add a line to the report. The masking's
+    configured markers are empty here: the project file that would
+    carry them is the one ``init`` has just written. The journal
+    helpers are imported where they are used — they import this module,
+    so a module-level import would be circular.
+    """
+
+    from agentmarshal.journal.capture import safe_path
+    from agentmarshal.journal.display import escape_for_display
+
+    shown = os.fsencode(path).decode("utf-8", errors="backslashreplace")
+    return escape_for_display(safe_path(shown, ()))
 
 
 def _scaffold_outbox(project_directory: Path) -> tuple[Path, str | None]:
@@ -309,14 +332,18 @@ def _scaffold_outbox(project_directory: Path) -> tuple[Path, str | None]:
     ``.agentmarshal`` or ``upstream`` would land the outbox's files wherever
     the link points — in a sidecar the host — so each component is checked
     with ``lstat`` (``is_symlink``) before anything is created or written,
-    the same refusal ``write_project_file`` applies to the project file.
+    the same refusal ``write_project_file`` applies to the project file,
+    and the refusal names the linked component masked and display-escaped
+    like every outbox path.
     """
 
     outbox = project_directory / "upstream"
     readme = outbox / "README.md"
     for component in (project_directory, outbox):
         if component.is_symlink():
-            return outbox, f"refusing to write through a symlink: {component}"
+            return outbox, (
+                f"refusing to write through a symlink: {_printable_path(component)}"
+            )
     # The two steps are kept apart on purpose. FileExistsError means different
     # things in each: from mkdir it means the path is taken by something that is
     # not a directory, which is a failure; from opening the README it means the
@@ -451,4 +478,4 @@ def initialize_project(
         raise AlreadyInitializedError(git_root) from error
     _assert_readable(project_file)
     outbox, outbox_error = _scaffold_outbox(project_file.parent)
-    return InitializedProject(git_root, outbox, outbox_error)
+    return InitializedProject(git_root, _printable_path(outbox), outbox_error)

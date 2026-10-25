@@ -847,14 +847,20 @@ def _pinned_blob(project_root: Path, relative: str, content: bytes) -> bytes | N
 def _autocrlf(project_root: Path) -> bool:
     """Whether ``core.autocrlf`` is set to a value that converts.
 
-    ``true`` and ``input`` both rewrite CRLF on staging for a file no
-    attribute names; ``false`` and an unset key — ``config --get``
-    exits non-zero on it — do not.
+    Asked of git with its own ``--type=bool-or-str`` read, so every
+    spelling git takes for true — ``yes``, ``on``, ``1``, the key
+    without a value — lands as ``true`` beside the literal, and
+    ``input`` converts as well; ``false``'s spellings, an unset key —
+    ``config --get`` exits non-zero on it — and a value that is no
+    spelling of either do not.
     """
 
     try:
         value = (
-            _git(project_root, ["config", "--get", "core.autocrlf"])
+            _git(
+                project_root,
+                ["config", "--type=bool-or-str", "--get", "core.autocrlf"],
+            )
             .decode("ascii", errors="replace")
             .strip()
         )
@@ -868,11 +874,14 @@ def _transform_cause(project_root: Path, relative: str) -> str:
 
     The attributes applying at *relative* name the conversion the
     mismatched blob id came from: a set ``filter`` is a clean filter —
-    refused with the rule that it must not apply to the outbox — and
-    ``text`` or ``eol`` attributes, or ``core.autocrlf`` where no
-    attribute speaks, are end-of-line conversion, which ``-text`` on the
-    outbox turns off. Anything else — an encoding conversion, say — is
-    refused without a named remedy, exactly as before.
+    refused with the rule that it must not apply to the outbox. For
+    end-of-line conversion the attributes speak first: ``text`` or
+    ``eol`` applying is conversion, ``-text`` turns normalisation off
+    for good — neither ``eol`` nor ``core.autocrlf`` re-enables it —
+    and only where no attribute speaks does ``core.autocrlf`` decide,
+    so the ``-text`` remedy is named only where it would change
+    anything. Anything else — an encoding conversion, say — is refused
+    without a named remedy, exactly as before.
     """
 
     attributes: dict[str, str] = {}
@@ -893,9 +902,11 @@ def _transform_cause(project_root: Path, relative: str) -> str:
         causes.append(
             "a clean filter applies — the filter must not apply to the outbox"
         )
-    if (
-        attributes.get("text", "unspecified") not in ("unspecified", "unset")
-        or attributes.get("eol", "unspecified") not in ("unspecified", "unset")
+    text = attributes.get("text", "unspecified")
+    eol = attributes.get("eol", "unspecified")
+    if text != "unset" and (
+        text != "unspecified"
+        or eol not in ("unspecified", "unset")
         or _autocrlf(project_root)
     ):
         causes.append(
