@@ -1,0 +1,84 @@
+{
+  "advisory_findings": [
+    "CR242-R2"
+  ],
+  "artifacts": [
+    {
+      "hash": "c974c0bd79dbcf0a66e74851905cde5a1bb41bfe1847b7c9f72608c3aa5e5d13",
+      "ref": ".agentmarshal/journal/tasks/CR-242/artifacts/01M5RNTP7JPZW5ZCAAS3ZY07H7-review.md"
+    }
+  ],
+  "classes": {
+    "CR242-R1": "contract-mismatch",
+    "CR242-R2": "test-gap"
+  },
+  "created_at": "2026-10-25T04:41:45.458493Z",
+  "evidence": {
+    "CR242-R1": "openspec/specs/leak-scan/spec.md:654 ('the same mark over the same naming, the one mark-builder the two surfaces share') and openspec/specs/leak-scan/spec.md:741-745 ('the mark on the line is the mark on the command's output — same wording, same masking, same escaping'), reaffirmed by docs/adr/ADR-0021-an-acknowledged-leak-scan-hit.md:187-191, versus tests/test_self_acknowledgement_mark.py:190-241, where the same hit and record print 'self-acknowledged by earlier@test.invalid' on the gate's line and 'acknowledged by earlier@test.invalid' from the command (line 241 asserts 'self-acknowledged' is absent from the command's output); the delta openspec/changes/archive/2026-10-25-self-acknowledgement-mark/specs/leak-scan/spec.md contains only '## ADDED Requirements' and no MODIFIED block for either.",
+    "CR242-R2": "src/agentmarshal/journal/gate.py:2382-2388 makes 'except GateError: writer_identities = None' the gate's only unchecked leg, while src/agentmarshal/journal/gate.py:538-586 shows _range_writer_identities returns tuple[set[str], set[str]] or raises GateError; tests/test_self_acknowledgement_mark.py:298-302 pins the scenario with monkeypatch.setattr(gate_module, '_range_writer_identities', lambda *args: ({'worker@test.invalid'}, None)), a return value the function cannot produce, so the except branch stays uncovered."
+  },
+  "findings": [
+    "CR242-R1"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "3d54e73601eacb9879828e5f8254ce69febc2202",
+  "reviewed_contract": "978ecb7170def928ec607ead183f6e17c9cddbe91ff7bca4c5732e590d585f5f",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-242",
+  "tool_version": "0.6.0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "only two call sites: src/agentmarshal/cli.py:1827 and src/agentmarshal/journal/gate.py:2390 — both updated",
+        "what": "grep -rn \"_acknowledgement_mark\" src tests"
+      },
+      {
+        "result": "1479 declaration, 1926 verdict-lane assignment, 2382-2396 advisory — all inside run_gate (next def after 1204 is the nested _task_of at 2221), so the reuse is real",
+        "what": "grep -n \"writer_identities|writer_emails\" src/agentmarshal/journal/gate.py"
+      },
+      {
+        "result": "only src/agentmarshal/stages.py:653 — the duplicated comparison in status_view is gone",
+        "what": "grep -rn isdisjoint src/"
+      },
+      {
+        "result": "no match — no transcript fixture carries an acknowledgement mark",
+        "what": "grep -rln acknowledged tests/fixtures"
+      },
+      {
+        "result": "single difference at the window's first line (the '## ADDED Requirements' header offset); the requirement and all eight scenarios are byte-identical",
+        "what": "diff of the 54-line tails of openspec/changes/archive/2026-10-25-self-acknowledgement-mark/specs/leak-scan/spec.md and openspec/specs/leak-scan/spec.md"
+      },
+      {
+        "result": "654 and 741 — the parity requirement and scenario the diff leaves unmodified",
+        "what": "grep -n \"same mark over the same naming|Scenario: the mark is the one the standalone command prints\" openspec/specs/leak-scan/spec.md"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; uv run agentmarshal validate; uv run pytest; uv run ruff check; uv run ruff format --check; uv run mypy",
+        "why": "the review snapshot is not a git repository and carries no virtualenv or lockfile-installed environment, so the CI sequence could not be executed here; the coordinator states it passed on the reviewed commit"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/journal/report.py (declared_commit_writers, accepting_party_is_declared_writer, acknowledging_party_is_declared_writer, _self_accepted)",
+      "src/agentmarshal/journal/gate.py (run_gate head and lanes, _range_writer_identities, _run_git_bytes, advisory leak-scan block)",
+      "src/agentmarshal/cli.py _run_leak_scan",
+      "src/agentmarshal/journal/capture.py _acknowledgement_mark",
+      "src/agentmarshal/journal/status_view.py (_is_self_acknowledged and the mark wording table)",
+      "src/agentmarshal/journal/actors.py (_actor_git_identities) and src/agentmarshal/project.py (read_project_file)",
+      "docs/adr/ADR-0021-an-acknowledged-leak-scan-hit.md decisions 3-5 and 'What this revises'",
+      "openspec/specs/leak-scan/spec.md (acknowledgement requirements and the new requirement)",
+      "tests/test_self_acknowledgement_mark.py, tests/test_gate_marks_acknowledged_hits.py, tests/test_leak_scan_acknowledgements.py and test_gate.py helpers"
+    ]
+  }
+}

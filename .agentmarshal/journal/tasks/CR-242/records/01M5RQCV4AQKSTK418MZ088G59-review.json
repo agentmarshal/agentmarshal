@@ -1,0 +1,98 @@
+{
+  "advisory_findings": [
+    "ADV-design-scans-one-commit",
+    "ADV-report-docstring-callers",
+    "ADV-mark-wording-duplicated"
+  ],
+  "artifacts": [
+    {
+      "hash": "00686df27b448c0fc8eb1daa56b0cd7c53bf80003f14e3c13a426e88acaf5710",
+      "ref": ".agentmarshal/journal/tasks/CR-242/artifacts/01M5RQCV4AQKSTK418MZ088G59-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-design-scans-one-commit": "claim-accuracy",
+    "ADV-mark-wording-duplicated": "style",
+    "ADV-report-docstring-callers": "claim-accuracy"
+  },
+  "created_at": "2026-10-25T05:09:08.874366Z",
+  "evidence": {
+    "ADV-design-scans-one-commit": "openspec/changes/archive/2026-10-25-self-acknowledgement-mark/design.md:39-41 ('`leak-scan` scans one commit, so it compares over that commit's declared writers') against src/agentmarshal/cli.py:1721 (merge-base resolved from the explicit --base) and src/agentmarshal/cli.py:1748 (leak_scan_diff(scan_root, merge_base, args.commit) — the scan is over the range's additions)",
+    "ADV-mark-wording-duplicated": "src/agentmarshal/journal/capture.py:449 ('self-acknowledged') and src/agentmarshal/journal/status_view.py:262 (' self-acknowledged'), against the stated precedent at src/agentmarshal/journal/report.py:41-49 — SELF_ACCEPTED_MARK 'lives here … so the wording is one constant rather than a phrase each surface retypes'",
+    "ADV-report-docstring-callers": "src/agentmarshal/journal/report.py:495 ('The one writer lookup `report` and `status` share: `status_view` calls this function…') vs the new third caller src/agentmarshal/cli.py:1801 (declared_commit_writers(scan_root, resolved_commit)); src/agentmarshal/journal/report.py:538 ('The one self-acceptance comparison — gate, report and status') vs its new use inside acknowledging_party_is_declared_writer at report.py:586-588"
+  },
+  "findings": [],
+  "previous_review": "01M5RP965S2SVPHX7TPFEEEHAP",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "3e735da29faf7866e4d028bf3b296cfa98c86031",
+  "reviewed_contract": "978ecb7170def928ec607ead183f6e17c9cddbe91ff7bca4c5732e590d585f5f",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-242",
+  "tool_version": "0.6.0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "two printing callers only — cli.py:1830 and gate.py:2390, both now pass the self_acknowledged predicate; capture.py:404 is the single builder; no third surface prints the mark (attestation.py only registers the record type)",
+        "what": "grep -rn '_acknowledgement_mark' src/ tests/"
+      },
+      {
+        "result": "capture.py:449 and status_view.py:262 each hold the wording as a literal; no shared constant, unlike SELF_ACCEPTED_MARK at report.py:47",
+        "what": "grep -rn 'self-acknowledged|acknowledged by' src/"
+      },
+      {
+        "result": "every pre-existing leak-scan/gate assertion uses actor 'an-operator', which matches no declared writer, so today's unmarked text still holds",
+        "what": "grep -rn 'acknowledged by' tests/"
+      },
+      {
+        "result": "1479 init to None, 1926 verdict-block assignment, 2382-2388 lazy lookup guarded by 'acknowledgements and not writer_identities' — one function scope, advisory block strictly after the verdict block, so the range is read once",
+        "what": "grep -n 'writer_identities' src/agentmarshal/journal/gate.py"
+      },
+      {
+        "result": "status_view no longer imports _actor_git_identities but still uses _project_root_for at 108/553 (no dead import); report.py imports actors, which imports only agentmarshal.project — no cycle with records/capture",
+        "what": "grep -n '_project_root_for|_actor_git_identities' src/agentmarshal/journal/status_view.py src/agentmarshal/journal/report.py src/agentmarshal/journal/actors.py"
+      },
+      {
+        "result": "headings and all scenarios identical; spec holds exactly one copy of each requirement heading",
+        "what": "line-by-line comparison of the delta's MODIFIED/ADDED requirements against openspec/specs/leak-scan/spec.md"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; uv run agentmarshal validate; uv run pytest; uv run ruff check; uv run ruff format --check; uv run mypy",
+        "why": "the snapshot carries no uv or virtualenv and the sandbox denied running python/pytest; the CI result is taken from the coordinator's note on 3e735da"
+      },
+      {
+        "what": "OPENSPEC_TELEMETRY=0 npx @fission-ai/openspec@1.15.0 validate / archive",
+        "why": "no node/npx available in the sandbox; the archive's effect was checked in the tree instead"
+      }
+    ],
+    "read": [
+      "docs/adr/ADR-0021-an-acknowledged-leak-scan-hit.md",
+      "openspec/specs/leak-scan/spec.md:630-871",
+      "openspec/changes/archive/2026-10-25-self-acknowledgement-mark/specs/leak-scan/spec.md",
+      "openspec/changes/archive/2026-10-25-self-acknowledgement-mark/design.md",
+      "openspec/changes/archive/2026-10-25-self-acknowledgement-mark/proposal.md",
+      "openspec/changes/archive/2026-10-25-self-acknowledgement-mark/tasks.md",
+      "src/agentmarshal/cli.py:1690-1850",
+      "src/agentmarshal/journal/capture.py:360-460",
+      "src/agentmarshal/journal/gate.py:520-600, 1470-1500, 1880-1960, 2320-2430",
+      "src/agentmarshal/journal/report.py:1-40, 480-620",
+      "src/agentmarshal/journal/status_view.py:55-130, 240-270",
+      "src/agentmarshal/journal/actors.py:60-140",
+      "src/agentmarshal/journal/records.py:2027-2130, 2587-2626",
+      "tests/test_self_acknowledgement_mark.py",
+      "tests/test_gate.py (helpers _gate_repo/_implement/_approve/_run)",
+      "tests/test_leak_scan_acknowledgements.py (helpers _repo/_git/_add_file/_write_acknowledgement)"
+    ]
+  }
+}
