@@ -23,7 +23,12 @@ The outbox is ``project_root/.agentmarshal/upstream`` — the directory
 ``init`` scaffolds beside ``project.json`` — which is the same expression
 in both placements: in an embedded project it is the host repository's
 ``.agentmarshal``, in a sidecar the journal repository's, so a batch
-commit lands in the journal repository and never touches the host.
+commit lands in the journal repository and never touches the host. Every
+subcommand refuses a symbolic link at ``.agentmarshal`` or ``upstream``
+before creating or writing anything — a linked outbox would write
+wherever the link points — and ``send`` refuses a file git's attributes
+would transform on staging, so only the bytes the check vetted are ever
+committed.
 """
 
 from __future__ import annotations
@@ -167,6 +172,20 @@ def _locate(command: str, stderr: TextIO) -> tuple[Path, Path] | None:
         )
         return None
     outbox = project_root / PROJECT_DIR_NAME / _UPSTREAM_DIR
+    # Every component below the resolved project root is judged with
+    # lstat before anything is created, written or staged: a linked
+    # `.agentmarshal` or `upstream` would land the outbox's files
+    # wherever the link points — in a sidecar the host — which the
+    # threat model forbids. The same refusal `extension_trust` applies
+    # to the managed extensions directory.
+    for component in (outbox.parent, outbox):
+        if component.is_symlink():
+            print(
+                f"outbox {command}: refusing a symbolic link: "
+                f"{escape_for_display(_shown_name(component))}",
+                file=stderr,
+            )
+            return None
     if not outbox.is_dir():
         print(
             f"outbox {command}: no outbox — init scaffolds "
@@ -511,11 +530,15 @@ def _check(stderr: TextIO, *, pin: bool, index: Path | None) -> _CheckResult:
     A pin is the blob id the file stages as, computed by ``git
     hash-object --stdin --path`` from the very bytes this run read — the
     same clean filters the add applies, so the id is the one staging
-    writes. Pinning at the read leaves no second read for an edit to
-    slip through: a later send verifies it commits what was checked. The
-    manifest is pinned once, the same way, on the manifest's next
-    content — computed here, where the checked bytes are — so the
-    update lands in the batch commit pinned like every file.
+    writes. The same bytes hashed ``--no-filters`` are the blob of what
+    the scan saw: when the two ids differ, staging would commit content
+    nobody checked and the file is refused rather than pinned
+    (``_pinned_blob``). Pinning at the read leaves no second read for an
+    edit to slip through: a later send verifies it commits what was
+    checked. The manifest is pinned once, the same way, on the
+    manifest's next content — computed here, where the checked bytes
+    are — so the update lands in the batch commit pinned like every
+    file.
     """
     located = _locate("check", stderr)
     if located is None:
@@ -658,15 +681,19 @@ def _check(stderr: TextIO, *, pin: bool, index: Path | None) -> _CheckResult:
                 # bytes it found.
                 relative = f"{_OUTBOX_PREFIX}{entry.name}"
                 try:
-                    pinned[os.fsencode(relative)] = _git(
-                        project_root,
-                        ["hash-object", "--stdin", f"--path={relative}"],
-                        raw,
-                    ).strip()
+                    pinned_blob = _pinned_blob(project_root, relative, raw)
                 except _OutboxGitError as error:
                     problems.append(
                         f"cannot be pinned: {safe_path(str(error), markers)}"
                     )
+                else:
+                    if pinned_blob is None:
+                        problems.append(
+                            "git would transform it on staging — a clean "
+                            "filter or eol conversion applies"
+                        )
+                    else:
+                        pinned[os.fsencode(relative)] = pinned_blob
             try:
                 text = raw.decode("utf-8")
             except UnicodeDecodeError:
@@ -704,21 +731,28 @@ def _check(stderr: TextIO, *, pin: bool, index: Path | None) -> _CheckResult:
     )
     # The manifest's one pin is the blob of the content send writes —
     # not of the bytes it found. A manifest that does not exist and has
-    # nothing to record stages nothing, so it takes no pin either.
+    # nothing to record stages nothing, so it takes no pin either. It is
+    # held to the same checked-bytes rule as every file: a filter that
+    # would rewrite it on staging refuses the run.
     if pin and (manifest_old is not None or manifest_new):
         relative = f"{_OUTBOX_PREFIX}{_SENT}"
         try:
-            pinned[os.fsencode(relative)] = _git(
-                project_root,
-                ["hash-object", "--stdin", f"--path={relative}"],
-                manifest_new,
-            ).strip()
+            manifest_blob = _pinned_blob(project_root, relative, manifest_new)
         except _OutboxGitError as error:
             refused = True
             print(
                 f"{_printable(_SENT, markers)}: cannot be pinned: "
                 f"{safe_path(str(error), markers)}"
             )
+        else:
+            if manifest_blob is None:
+                refused = True
+                print(
+                    f"{_printable(_SENT, markers)}: git would transform it "
+                    "on staging — a clean filter or eol conversion applies"
+                )
+            else:
+                pinned[os.fsencode(relative)] = manifest_blob
     if skipped:
         print(f"skipped as sent: {skipped}")
     if hits:
@@ -778,6 +812,28 @@ def _git(project_root: Path, arguments: list[str], feed: bytes = b"") -> bytes:
             f"git {arguments[0]} failed" + (f": {detail}" if detail else "")
         )
     return result.stdout
+
+
+def _pinned_blob(project_root: Path, relative: str, content: bytes) -> bytes | None:
+    """The blob id *content* stages as at *relative* — or ``None``.
+
+    ``--path`` applies the attributes the ``add`` will apply, so the id
+    is the one staging writes; ``--no-filters`` is the blob of the bytes
+    exactly as the check read them. A difference means a clean filter or
+    an end-of-line conversion would commit content the check never saw —
+    the caller refuses the file instead of pinning it, so only checked
+    bytes are ever committed.
+    """
+
+    staged = _git(
+        project_root,
+        ["hash-object", "--stdin", f"--path={relative}"],
+        content,
+    ).strip()
+    plain = _git(
+        project_root, ["hash-object", "--stdin", "--no-filters"], content
+    ).strip()
+    return staged if staged == plain else None
 
 
 def _staged_name_status(project_root: Path) -> list[tuple[str, list[str]]]:
@@ -1089,7 +1145,7 @@ def _run_status(index_path: Path, stderr: TextIO) -> int:
     except OSError as error:
         print(
             f"outbox status: cannot read the index "
-            f"{safe_path(_shown_name(index_path), markers)}: "
+            f"{_printable(index_path, markers)}: "
             f"{_os_error_text(error)}",
             file=stderr,
         )
@@ -1099,7 +1155,7 @@ def _run_status(index_path: Path, stderr: TextIO) -> int:
     except OSError as error:
         print(
             f"outbox status: cannot read the outbox at "
-            f"{safe_path(_shown_name(outbox), markers)}: {_os_error_text(error)}",
+            f"{_printable(outbox, markers)}: {_os_error_text(error)}",
             file=stderr,
         )
         return 1
@@ -1107,7 +1163,7 @@ def _run_status(index_path: Path, stderr: TextIO) -> int:
     refused = False
     claimed: set[str] = set()
     for entry in entries:
-        name = safe_path(_shown_name(entry.name), markers)
+        name = _printable(entry.name, markers)
         if not _is_regular(entry):
             # Not a file and not hashable — the check's "nothing passes in
             # silence" rule, applied to the channel's other direction.

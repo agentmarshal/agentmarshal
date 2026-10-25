@@ -305,11 +305,18 @@ def _scaffold_outbox(project_directory: Path) -> tuple[Path, str | None]:
 
     Best effort by design — a project that could not write this directory is
     still an initialized project, and failing here would trade a working setup
-    for a convenience.
+    for a convenience. The one refusal is a symbolic link: a linked
+    ``.agentmarshal`` or ``upstream`` would land the outbox's files wherever
+    the link points — in a sidecar the host — so each component is checked
+    with ``lstat`` (``is_symlink``) before anything is created or written,
+    the same refusal ``write_project_file`` applies to the project file.
     """
 
     outbox = project_directory / "upstream"
     readme = outbox / "README.md"
+    for component in (project_directory, outbox):
+        if component.is_symlink():
+            return outbox, f"refusing to write through a symlink: {component}"
     # The two steps are kept apart on purpose. FileExistsError means different
     # things in each: from mkdir it means the path is taken by something that is
     # not a directory, which is a failure; from opening the README it means the
