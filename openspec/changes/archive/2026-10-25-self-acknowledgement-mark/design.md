@@ -24,7 +24,6 @@ The shared mark `leak-scan` and the gate's advisory line print —
 ## Non-Goals
 
 - Who may acknowledge; the acknowledgement records themselves.
-- The merge boundary's line — it carries no acknowledgement marks.
 
 ## Decisions
 

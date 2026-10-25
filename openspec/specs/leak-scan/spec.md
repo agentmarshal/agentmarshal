@@ -651,8 +651,13 @@ one is acknowledged, SHALL exit 1 when any hit is unacknowledged, and
 SHALL print and exit exactly as today when the scan finds nothing or
 finds no acknowledgement. The mark the command prints is the mark the
 merge boundary shows on the hits its bound lets its line show — the
-same mark over the same naming, the one mark-builder the two surfaces
-share (ADR-0021 decision 3).
+same mark text, produced by the one mark-builder the two surfaces
+share (ADR-0021 decision 3). The `self-acknowledged` qualification
+alone is judged over different writer sets on the two surfaces — the
+merge boundary over the candidate range, the command over the commit
+it scans — so where the acknowledging party wrote only an earlier
+commit of the range the two marks read differently, a difference
+stated here and not hidden (ADR-0021 decision 5).
 
 #### Scenario: an acknowledged hit prints marked
 - **WHEN** a hit is acknowledged
@@ -719,7 +724,13 @@ the command and for the line, so the mark's wording, masking and
 escaping cannot drift between the surfaces: acknowledged, who
 acknowledged it (the record's `recorded_by`) and the `reason`, masked
 with the scan's markers and escaped on display the same way (ADR-0021
-decisions 2 and 3). There is no other matching: an acknowledgement
+decisions 2 and 3). The mark's `self-acknowledged` qualification is
+the one judgement the two surfaces make over different writer sets —
+the line over the candidate range's writers, the command over the
+scanned commit's — so where the acknowledging party wrote only an
+earlier commit of the range the line marks `self-acknowledged` and
+the command does not: the difference is stated here, not hidden
+(ADR-0021 decision 5). There is no other matching: an acknowledgement
 bound to another commit, carried on another task, spelled differently
 in `file`, or naming another identification marks nothing, and where
 several records of the task match one hit the earliest in journal
@@ -741,8 +752,11 @@ as without the record.
 #### Scenario: the mark is the one the standalone command prints
 - **WHEN** the gate's line and `agentmarshal leak-scan` report the
   same acknowledged hit
-- **THEN** the mark on the line is the mark on the command's output —
-  same wording, same masking, same escaping
+- **THEN** the mark on the line and the mark on the command's output
+  come from the one mark-builder — same wording, same masking, same
+  escaping; only the `self-acknowledged` qualification can differ
+  between them, judged over the candidate range on the line and the
+  scanned commit on the command
 
 #### Scenario: a marked hit adds no violation
 - **WHEN** a hit on the gate's line is marked acknowledged

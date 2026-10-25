@@ -1794,10 +1794,13 @@ def _run_leak_scan(args: argparse.Namespace, stderr: TextIO) -> int:
             # compares the acknowledging party against the scanned commit's
             # own declared writers — where the gate compares over the whole
             # candidate range — through the same shared comparison `status`
-            # makes. A lookup git cannot answer yields no writers, which is
-            # the unchecked leg: the mark then prints as for any other
-            # acknowledgement rather than answering either way.
-            ack_writers = declared_commit_writers(scan_root, resolved_commit)
+            # makes. The lookup runs only where an acknowledgement could be
+            # qualified, as the gate's guard does. A lookup git cannot answer
+            # yields no writers, which is the unchecked leg: the mark then
+            # prints as for any other acknowledgement rather than answering
+            # either way.
+            if acknowledgements:
+                ack_writers = declared_commit_writers(scan_root, resolved_commit)
             ack_journal_root = placement.journal_root
     elif args.task is not None:
         print(

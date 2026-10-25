@@ -281,27 +281,34 @@ def test_a_check_git_cannot_answer_marks_nothing(
 ) -> None:
     """Scenario: a check git cannot answer marks nothing.
 
-    The writer lookup fails for both surfaces — `None` where the
-    writers would be — so a record that would mark as the writer's own
-    prints the mark it always prints; `status` alone reports the check
-    did not run.
+    The writer lookup fails for both surfaces — the gate's range lookup
+    raises `GateError`, as it does on a git failure, and the command's
+    commit lookup answers `None` — so a record that would mark as the
+    writer's own prints the mark it always prints; `status` alone
+    reports the check did not run.
     """
 
     repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
     head = _implement(repo, "src/leak.py", f"key = '{_GITHUB_TOKEN}'\n")
-    _approve(repo, head)
     # The recorder names a real writer; only the unanswered lookup
     # stands between the record and the mark — and nothing is marked.
     monkeypatch.setenv("AGENTMARSHAL_ACTOR", "worker@test.invalid")
     _write_acknowledgement(repo, "CR-001", head, "src/leak.py", "reviewed")
     capsys.readouterr()
-    monkeypatch.setattr(
-        gate_module,
-        "_range_writer_identities",
-        lambda *args: ({"worker@test.invalid"}, None),
-    )
 
-    passed, output = _run(repo, head, base, head)
+    def _unanswered(*args: object) -> tuple[set[str], set[str]]:
+        raise gate_module.GateError("git log failed")
+
+    monkeypatch.setattr(gate_module, "_range_writer_identities", _unanswered)
+
+    # review_required=False with no review record leaves the verdict
+    # block's writer_identities empty, so the advisory's lazy lookup is
+    # the call that runs — and the GateError it raises is the lookup
+    # failure the mark must survive.
+    report = gate_module.run_gate(
+        repo, "CR-001", head, base, head, review_required=False
+    )
+    passed, output = report.passed, "\n".join(report.lines)
 
     gate_line = next(line for line in output.splitlines() if line.startswith("WARN:"))
     assert passed, output
