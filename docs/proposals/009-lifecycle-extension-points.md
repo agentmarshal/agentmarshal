@@ -87,5 +87,5 @@ Decided; not shipped yet — the ADR's stages follow in their own tasks.
 The stages the ADR named shipped in 0.6.0: a declared `pre-gate` stage
 runs in CI and at the merge step before the gate, a `post-gate` stage
 runs after `complete`, and a `pre-gate-stop` stage pauses the process
-while its pause stands. "After open" and a `pre-complete` remain stages
-nobody has asked for — new stages are added at an adopter's request.
+while its pause stands. "After open" still waits on an adopter's
+request, and there is no `pre-complete`.

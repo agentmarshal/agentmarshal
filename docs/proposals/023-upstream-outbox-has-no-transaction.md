@@ -69,8 +69,8 @@ convention has earned.
 
 ## Where
 
-The documentation shipped in 0.4.0 — the README `init` writes into the
-outbox states the convention and says the outbox is not journal evidence.
-The command shipped in 0.5.0 as the `outbox` group — `new`, `check`,
-`send`, `status` — producing the batch and reporting which drafts an
-upstream index claims, matching by the source hash.
+The README `init` writes into the outbox has stated the convention
+since 0.2.0; 0.4.0 added its line that the outbox is not journal
+evidence. The command shipped in 0.5.0 as the `outbox` group — `new`,
+`check`, `send`, `status` — producing the batch and reporting which
+drafts an upstream index claims, matching by the source hash.
