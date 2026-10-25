@@ -1,0 +1,85 @@
+{
+  "advisory_findings": [
+    "ADV-outbox-symlink-toctou",
+    "ADV-check-requires-git"
+  ],
+  "artifacts": [
+    {
+      "hash": "c8fd3bee7adbd95041d95276daa278d11d6de37c5d4b6b5fe9504d6e86f74ccf",
+      "ref": ".agentmarshal/journal/tasks/CR-241/artifacts/01M5RTAMGAGN2GCWHDT6RBJTZW-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-check-requires-git": "correctness",
+    "ADV-outbox-symlink-toctou": "security"
+  },
+  "created_at": "2026-10-25T06:00:22.282794Z",
+  "evidence": {
+    "ADV-check-requires-git": "src/agentmarshal/outbox.py:692-697 — `pinned_blob = _pinned_blob(...)` is now unconditional for every non-SENT entry and `except _OutboxGitError` appends to `problems`, which sets `refused = True` (outbox.py:731-733) and makes `_run_check` return 1; before the diff this ran only under `if pin and entry.name != _SENT`, and `_run_check` passed `pin=False`",
+    "ADV-outbox-symlink-toctou": "src/agentmarshal/outbox.py:182 (is_symlink check in _locate) versus the later path-named writes at src/agentmarshal/outbox.py:357 (draft.open(\"x\")) and src/agentmarshal/outbox.py:1106 (sent_path.write_bytes), and src/agentmarshal/project.py:352 (outbox.mkdir); the stronger no-follow primitive the repo already has is src/agentmarshal/project.py:180-207 (write_project_file / _create_exclusive)"
+  },
+  "findings": [],
+  "previous_review": "01M5RST4N3WD0RYSHZMWZETTEB",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "d9af69c5b10641e5ff1006b5ec7ad63e24c696f2",
+  "reviewed_contract": "4c9362979a6a092c83c79053a9bc68135fcd996602237f8bc80a1f51c724bc9a",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-241",
+  "tool_version": "0.6.0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "openspec/changes/ holds only 'archive'; 2026-10-25-outbox-boundaries present there — the change was archived, not left in flight",
+        "what": "ls openspec/changes/ && ls openspec/changes/archive/"
+      },
+      {
+        "result": "only cli.py:555,560 consume InitializedProject.outbox, both inside f-strings; tests touch outbox_error only — the Path->str change needs no out-of-scope edit",
+        "what": "grep -rn '\\.outbox\\b|outbox_error|InitializedProject|initialize_project' over src and tests"
+      },
+      {
+        "result": "no output — no leftover references to the removed pin parameter",
+        "what": "grep -n 'pin=|pin:' src/agentmarshal/outbox.py tests/test_outbox.py"
+      },
+      {
+        "result": "status requirement carries 11 scenarios in the same order as the delta's MODIFIED block; the two ADDED requirements appear once each at lines 495 and 525",
+        "what": "grep -n '^### Requirement|^#### Scenario' openspec/specs/outbox/spec.md"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "snapshot is not a git repository and the sandbox declined to run python/git/uv here; relied on the coordinator's statement that the sequence passed on d9af69c"
+      },
+      {
+        "what": "a live probe of `git hash-object --stdin --no-filters` and of `git check-attr -z` output framing",
+        "why": "sandbox refused the git invocation; both are exercised indirectly by the added tests and by the existing suite's passing no-transformation cases"
+      },
+      {
+        "what": "an executed reproduction of ADV-check-requires-git in a project without a git work tree",
+        "why": "no execution available; the claim is derived from outbox.py:692-697 alone and reported as advisory"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/outbox.py (module docstring, _locate, _printable, _markers, _write_draft, _check, _pinned_blob, _autocrlf, _transform_cause, _batch_mismatch, _run_send, _run_status)",
+      "src/agentmarshal/project.py (_ancestors_from, find_project_root, write_project_file, InitializedProject, _printable_path, _scaffold_outbox, initialize_project)",
+      "src/agentmarshal/cli.py:535-575 (_run_init, the only consumer of InitializedProject.outbox)",
+      "src/agentmarshal/journal/display.py:27-43 (escape_for_display)",
+      "openspec/specs/outbox/spec.md (requirement and scenario headings; status requirement body at 276-349; new requirements at 495-556)",
+      "openspec/changes/archive/2026-10-25-outbox-boundaries/{proposal.md,design.md,tasks.md,specs/outbox/spec.md}",
+      "docs/adr/ADR-0020-the-outbox-command-group.md decisions 3-5",
+      "docs/threat-model.md:188-200 (\"A sidecar never writes its host\")",
+      "tests/test_outbox.py (_project/_project_sha256 helpers and all tests added by the diff)",
+      "AGENTS.md, CONTRIBUTING.md (grep for CHANGELOG convention)"
+    ]
+  }
+}

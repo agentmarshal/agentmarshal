@@ -1,0 +1,102 @@
+{
+  "advisory_findings": [
+    "ADV-init-agentmarshal-link-dead-branch",
+    "ADV-init-project-root-unescaped"
+  ],
+  "artifacts": [
+    {
+      "hash": "663f74e564fcd380f774b90d5e5f966597e77abf6c2c0318f48953ecbcd14684",
+      "ref": ".agentmarshal/journal/tasks/CR-241/artifacts/01M5RWCN3C5J1NZ9WMD787KCKQ-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-init-agentmarshal-link-dead-branch": "test-gap",
+    "ADV-init-project-root-unescaped": "scope"
+  },
+  "created_at": "2026-10-25T06:36:25.580464Z",
+  "evidence": {
+    "ADV-init-agentmarshal-link-dead-branch": "src/agentmarshal/project.py:343-346 adds `for component in (project_directory, outbox): if component.is_symlink(): return outbox, f\"refusing to write through a symlink: {_printable_path(component)}\"`, but initialize_project calls write_project_file first (project.py:480 after :477), and write_project_file already refuses at project.py:189-193 with `msg = f\"refusing to write through a symlink: {offender}\"` (raw, unmasked, unescaped) raising UnsafeProjectPathError, which cli.py:546-548 turns into exit 1. No test linksomething at .agentmarshal and then runs init: tests/test_outbox.py:1985 and :2346 and :2378 all link .agentmarshal/upstream, and tests/test_project.py:15,33 call _scaffold_outbox on a plain tmp_path.",
+    "ADV-init-project-root-unescaped": "src/agentmarshal/cli.py:550 `print(f\"Initialized AgentMarshal project at {initialized.project_root}\")` interpolates a raw Path, while cli.py:555 and :560 now print the escaped str from project.py:481 `_printable_path(outbox)`. tests/test_outbox.py:2346-2376 builds `repo = tmp_path / \"re\\npo\"`, asserts `captured.err.count(\"\\n\") == 1`, and never inspects stdout, where the unescaped project_root adds a second line."
+  },
+  "findings": [],
+  "previous_review": "01M5RVTDFC4KCN642KWDGSPCDQ",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "57b3953a36d3e9aae383df930ee2978d636c8222",
+  "reviewed_contract": "4c9362979a6a092c83c79053a9bc68135fcd996602237f8bc80a1f51c724bc9a",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-241",
+  "tool_version": "0.6.0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "docs/threat-model.md:192 '**A sidecar never writes its host.**' — the quoted threat-model property exists",
+        "what": "grep -rn 'a sidecar never writes its host' / 'never writes' docs/"
+      },
+      {
+        "result": "extension_trust.py:212-227 checks (managed.parent, managed) with is_symlink() and raises 'refusing a symbolic link' — the comment's claim in _locate is accurate",
+        "what": "grep -n '_managed_directory' -A 25 src/agentmarshal/extension_trust.py"
+      },
+      {
+        "result": "capture.py:41 and records.py:31 both import agentmarshal.project, so the function-level import in _printable_path is genuinely required to avoid a cycle",
+        "what": "grep -n '^from|^import' src/agentmarshal/journal/capture.py src/agentmarshal/journal/display.py src/agentmarshal/journal/records.py"
+      },
+      {
+        "result": "only cli.py:555,560 consume InitializedProject.outbox (f-string interpolation) and tests/test_project.py uses _scaffold_outbox's Path return — the Path->str field change breaks no caller",
+        "what": "grep -rn '\\.outbox\\b|InitializedProject|_scaffold_outbox' --include=*.py ."
+      },
+      {
+        "result": "each new requirement appears exactly once (:502, :532); check-scan requirement has 12 scenarios and status requirement 11, matching the delta's MODIFIED blocks one for one",
+        "what": "grep -n '^### Requirement|^#### Scenario' openspec/specs/outbox/spec.md"
+      },
+      {
+        "result": "project.py:192 prints the raw offender (reached when .agentmarshal is a link, before _scaffold_outbox runs); project.py:345 is the new masked one — evidence for ADV-init-agentmarshal-link-dead-branch",
+        "what": "grep -rn 'refusing to write through a symlink' --include=*.py ."
+      },
+      {
+        "result": "openspec/changes/ holds only archive/; the archived directory name and .openspec.yaml match the convention of neighbouring 2026-10-24/25 entries",
+        "what": "ls openspec/changes/ ; ls openspec/changes/archive/ | tail -5"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; uv run agentmarshal validate; uv run pytest; uv run ruff check; uv run ruff format --check; uv run mypy",
+        "why": "uv is not installed in this snapshot and executing python3 is not permitted in this environment; relying on the coordinator's statement that the sequence passed on 57b3953a"
+      },
+      {
+        "what": "git probes of hash-object --stdin --path vs --no-filters, core.autocrlf with --type=bool-or-str, and check-attr -z field shape",
+        "why": "running git and python3 is blocked here; verified instead by reading git's documented semantics and convert_attrs()/index_mem() behaviour against the tests that assert them"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/outbox.py",
+      "src/agentmarshal/project.py",
+      "src/agentmarshal/cli.py (init output, lines 540-580)",
+      "src/agentmarshal/extension_trust.py (_managed_directory)",
+      "src/agentmarshal/journal/capture.py (safe_path, imports)",
+      "src/agentmarshal/journal/display.py (escape_for_display)",
+      "src/agentmarshal/journal/records.py (imports)",
+      "tests/test_outbox.py",
+      "tests/test_project.py",
+      "openspec/specs/outbox/spec.md",
+      "openspec/changes/archive/2026-10-25-outbox-boundaries/specs/outbox/spec.md",
+      "openspec/changes/archive/2026-10-25-outbox-boundaries/design.md",
+      "openspec/changes/archive/2026-10-25-outbox-boundaries/proposal.md",
+      "openspec/changes/archive/2026-10-25-outbox-boundaries/tasks.md",
+      "docs/adr/ADR-0020-the-outbox-command-group.md",
+      "docs/threat-model.md (line 192)",
+      "AGENTS.md",
+      "CONTRIBUTING.md (changelog mentions)",
+      "pyproject.toml (pytest config)"
+    ]
+  }
+}

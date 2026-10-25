@@ -1,0 +1,98 @@
+{
+  "advisory_findings": [
+    "AUD-241-a1",
+    "AUD-241-a2",
+    "AUD-241-a3",
+    "AUD-241-a4"
+  ],
+  "artifacts": [
+    {
+      "hash": "109602ee44ac9de1cce7baa4320fd834f7898ce9a9ec9ceceacdfe8a12b3ddf4",
+      "ref": ".agentmarshal/journal/tasks/CR-241/artifacts/01M5RN5PH90SPVMVPVTGMBADBM-review.md"
+    }
+  ],
+  "classes": {
+    "AUD-241-a1": "contract-mismatch",
+    "AUD-241-a2": "style",
+    "AUD-241-a3": "scope",
+    "AUD-241-a4": "style"
+  },
+  "created_at": "2026-10-25T04:30:17.641274Z",
+  "evidence": {
+    "AUD-241-a1": "src/agentmarshal/outbox.py:524 `_run_check` calls `_check(stderr, pin=False, index=index)`; the transformation refusal lives behind `if pin and entry.name != _SENT:` at outbox.py:678 and `if pin and (manifest_old is not None or manifest_new):` at outbox.py:736, so `outbox check` reaches outbox.py:777 'outbox check: N draft(s) checked; all conform' and returns 0. Spec clause openspec/specs/outbox/spec.md:112 'so a batch wrapper can refuse to send'; ADR-0020 Decision 3 'Its exit status refuses on a failure, so a batch wrapper can refuse to send before publication rather than after it'.",
+    "AUD-241-a2": "openspec/specs/outbox/spec.md:290-292 (existing, inside 'Requirement: `outbox status` reports which findings an index file claims'): 'Every name the command prints SHALL be masked and a name that is not UTF-8 SHALL be written in escaped printable form, exactly as `outbox check` names files.' vs openspec/specs/outbox/spec.md:530-533 (new ADDED): 'Every name `outbox status` prints SHALL be masked and written in display-escaped printable form, exactly as `outbox check` names files'.",
+    "AUD-241-a3": "`grep -n outbox CHANGELOG.md` → CHANGELOG.md:186 '### The outbox skips files it already sent (CR-228)'; the '## 0.6.0 — unreleased' section (CHANGELOG.md:11) carries no CR-241 entry, and the contract's scope list does not include CHANGELOG.md.",
+    "AUD-241-a4": "`find openspec/changes/archive -maxdepth 2 -name README.md | wc -l` → 1 (openspec/changes/archive/2026-10-25-outbox-boundaries/README.md), against `find openspec/changes/archive -maxdepth 1 -type d | wc -l` → 100 (99 changes + archive itself); the comparison change openspec/changes/archive/2026-09-18-review-binds-to-a-finding holds only .openspec.yaml, proposal.md, design.md, tasks.md, specs/."
+  },
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "a16520d043f56b1e08536cec9ee972f40a6241b0",
+  "reviewed_contract": "4c9362979a6a092c83c79053a9bc68135fcd996602237f8bc80a1f51c724bc9a",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-241",
+  "tool_version": "0.6.0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "10 requirements; the three new ones at lines 489, 512, 530, each exactly once",
+        "what": "grep -n \"^### Requirement:\" openspec/specs/outbox/spec.md"
+      },
+      {
+        "result": "only 'archive' — the change is archived, nothing left unarchived",
+        "what": "ls openspec/changes/"
+      },
+      {
+        "result": "same set plus an extra README.md; .openspec.yaml present in both",
+        "what": "ls -a openspec/changes/archive/2026-10-25-outbox-boundaries and a prior change (2026-09-18-review-binds-to-a-finding)"
+      },
+      {
+        "result": "34 of 99 changes carry .openspec.yaml; exactly 1 README.md exists in the archive — this change's",
+        "what": "find openspec/changes/archive -name .openspec.yaml | wc -l; find openspec/changes/archive -maxdepth 2 -name README.md | wc -l"
+      },
+      {
+        "result": "lines 206, 292, 533 — 292 is the pre-existing status clause the new requirement at 533 restates",
+        "what": "grep -n \"escaped printable form, exactly as\" openspec/specs/outbox/spec.md"
+      },
+      {
+        "result": "CHANGELOG.md:186 '### The outbox skips files it already sent (CR-228)'; no CR-241 entry under '## 0.6.0 — unreleased'",
+        "what": "grep -n outbox CHANGELOG.md"
+      },
+      {
+        "result": "tests/test_smoke.py:231 already covers init refusing a symlinked .agentmarshal; no existing test relies on a symlinked outbox or .agentmarshal working for outbox commands",
+        "what": "grep -rn symlink_to tests/ (outside test_outbox.py)"
+      },
+      {
+        "result": "lines 212-227: same two-component is_symlink loop and the same 'refusing a symbolic link: {component}' wording — the design's cited precedent is exact",
+        "what": "grep -n \"_managed_directory\" -A 25 src/agentmarshal/extension_trust.py"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; uv run agentmarshal validate; uv run pytest; uv run ruff check; uv run ruff format --check; uv run mypy",
+        "why": "the sandbox denied approval for every uv/pytest invocation; AC-5's CI claim is taken from the coordinator's note on this commit and was verified only by reading"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/outbox.py (module docstring, _locate, _shown_name, _printable, _check, _pinned_blob, _git, _batch_mismatch, _run_send, _index_claims, _run_status)",
+      "src/agentmarshal/project.py (_ancestors_from, find_project_root, write_project_file, _scaffold_outbox, initialize_project)",
+      "src/agentmarshal/cli.py:540-562 (init's outbox warning line)",
+      "src/agentmarshal/journal/display.py:27-43 (escape_for_display)",
+      "src/agentmarshal/extension_trust.py:212-227",
+      "docs/adr/ADR-0020-the-outbox-command-group.md",
+      "openspec/specs/outbox/spec.md (requirements at 91, 174, 276 and the three new ones at 489, 512, 530)",
+      "openspec/changes/archive/2026-10-25-outbox-boundaries/{proposal.md,design.md,tasks.md,README.md,specs/outbox/spec.md}",
+      "tests/test_outbox.py (helpers _CONFORMING/_project/_outbox/_conforming_draft/_git_out, test_the_sent_manifest_is_pinned_once_with_the_content_send_writes, and all seven new tests)",
+      "CHANGELOG.md:1-40, 183-191"
+    ]
+  }
+}
