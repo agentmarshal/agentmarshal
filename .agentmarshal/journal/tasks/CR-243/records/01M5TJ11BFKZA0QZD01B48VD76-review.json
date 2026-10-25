@@ -1,0 +1,93 @@
+{
+  "advisory_findings": [
+    "ADV-012-stale-disposition-line"
+  ],
+  "artifacts": [
+    {
+      "hash": "44bcac7b26d7a63ef72383ba352a83e2d58c3f35c76f78483f47d8a8ac1ee353",
+      "ref": ".agentmarshal/journal/tasks/CR-243/artifacts/01M5TJ11BFKZA0QZD01B48VD76-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-012-stale-disposition-line": "claim-accuracy"
+  },
+  "created_at": "2026-10-25T22:13:48.015221Z",
+  "evidence": {
+    "ADV-012-stale-disposition-line": "docs/proposals/012-upstream-feedback-channel.md:34-36 says 'Not yet done: `agentmarshal init` does not scaffold the outbox directory or say anything about it', while src/agentmarshal/project.py:322-340 creates `.agentmarshal/upstream/` with its README and CHANGELOG.md:855 records it under 0.2.0; the new '## Where' section below is the only correction and carries no supersession marker"
+  },
+  "findings": [],
+  "previous_review": "01M5TH33BNAGQWR3ZBGX0F5SW1",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "5797c883853b3534cda3d42194f2b198d1a21637",
+  "reviewed_contract": "928d33f06659898372d4b983312ef2aab159aedb76c5aa4513b149efea930d08",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-243",
+  "tool_version": "0.6.0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "encode at line 2117 precedes _create_exclusive at 2120; no unlink/rollback around the write — CHANGELOG's narrowed promise holds",
+        "what": "grep -n 'def write_record' -A 80 src/agentmarshal/journal/records.py"
+      },
+      {
+        "result": "_PRESETS: minimal→OFF, attested→HASH, full→COMMIT for REVIEWS; DEFAULT_PRESET='attested' — matches README",
+        "what": "sed -n 60,90p src/agentmarshal/journal/capture.py"
+      },
+      {
+        "result": "no hits — economics and sessions classes are not read, as README states",
+        "what": "grep -rn 'CaptureClass\\.(ECONOMICS|SESSIONS|REVIEWS)' src/ | grep -v journal/capture.py"
+      },
+      {
+        "result": "review.py:727 writes the event; review.py:709-740 keeps prose under local state with a temporary file as fallback",
+        "what": "grep -rn 'review-prose' src/"
+      },
+      {
+        "result": "outbox new/check/send/status, step start/end, stage run, agree, acknowledge, record-check present; no 'next' subcommand — proposal 041's claim holds",
+        "what": "grep -n 'add_parser' src/ -r"
+      },
+      {
+        "result": "outbox.py:772, cli.py:1530, gate.py:2312, status_view.py:298, status_view.py:665 — all literal strings quoted by the proposals exist",
+        "what": "grep -rn 'skipped as sent|Records absent from|opened/amendment records of other tasks|tokens=unmeasured|Reviewed commit' src/"
+      },
+      {
+        "result": "lines 181-182 inside '### 4. The session outcome vocabulary' — the 'section 4' citation in proposals 034 and 041 is exact",
+        "what": "grep -n 'output-limit|safety-limit|time-limit|stalled' docs/adr/ADR-0022-...md and its section headings"
+      },
+      {
+        "result": "all targets exist; no broken link",
+        "what": "link check: every relative target in CHANGELOG.md, README.md and docs/proposals/*.md listed and tested with ls"
+      },
+      {
+        "result": "remaining occurrences are historical disposition prose or genuinely unshipped items (038, 043); no proposal with a shipped feature left without a current Where",
+        "what": "grep -rn 'not shipped|Nothing here is shipped|undecided|Not yet done' docs/proposals/*.md"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "command execution requires approval in this non-interactive read-only session; the coordinator states the sequence passed on 5797c88"
+      }
+    ],
+    "read": [
+      "CHANGELOG.md (0.6.0 and 0.5.0 sections, 0.4.x entries)",
+      "README.md (design-docs bullet)",
+      "docs/proposals/README.md (all batch tables)",
+      "docs/proposals/009,012,016,018,019,020,023,024,025,026,027,028,029,030,031,032,034,035,036,037,039,040,041,042,044,045",
+      "src/agentmarshal/journal/records.py, capture.py, review.py, submit_review.py, complete.py, report.py, status_view.py, brief.py, gate.py, session.py",
+      "src/agentmarshal/stages.py, steps.py, outbox.py, cli.py, doctor.py, project.py",
+      "templates/journal-transaction.sh, templates/github/agentmarshal-governance.yml",
+      "docs/adr/ADR-0009, ADR-0018, ADR-0022, ADR-0023; docs/quickstart.md (contract guidance)",
+      "tests/test_record_text_safety.py:444, tests/test_review_capture.py (test names)"
+    ]
+  }
+}

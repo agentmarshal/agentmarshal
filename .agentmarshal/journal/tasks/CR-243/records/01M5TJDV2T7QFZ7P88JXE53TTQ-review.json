@@ -1,0 +1,117 @@
+{
+  "advisory_findings": [
+    "ADV-readme-capture-off-1"
+  ],
+  "artifacts": [
+    {
+      "hash": "c144d3fe46cc5f93e6fa539d7571a5ec6a5f793681fbec5391c58114c74662a1",
+      "ref": ".agentmarshal/journal/tasks/CR-243/artifacts/01M5TJDV2T7QFZ7P88JXE53TTQ-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-readme-capture-off-1": "claim-accuracy"
+  },
+  "created_at": "2026-10-25T22:20:47.578453Z",
+  "evidence": {
+    "ADV-readme-capture-off-1": "README.md:52 states '`off` keeps nothing'; src/agentmarshal/journal/review.py:1619-1622 applies `off` only to the accepted verdict's prose, while review.py:813-824 (`_reject`, preserve_output=True by default) writes a refused verdict's raw reviewer bytes to a file and names it in the error — the behaviour CHANGELOG.md:249-253 advertises for refused verdicts at any level"
+  },
+  "findings": [],
+  "previous_review": "01M5TJ11BFKZA0QZD01B48VD76",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "5797c883853b3534cda3d42194f2b198d1a21637",
+  "reviewed_contract": "928d33f06659898372d4b983312ef2aab159aedb76c5aa4513b149efea930d08",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-243",
+  "tool_version": "0.6.0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "json.dumps + .encode() precede _create_exclusive; no rollback after creation — CHANGELOG's narrowed claim holds",
+        "what": "grep write_record in src/agentmarshal/journal/records.py (lines 2092-2125)"
+      },
+      {
+        "result": "attested->HASH, full->COMMIT, minimal->OFF for REVIEWS; 'overrides' key parsed — README's preset table matches",
+        "what": "grep _PRESETS / overrides parsing in src/agentmarshal/journal/capture.py"
+      },
+      {
+        "result": "only review_capture_level_from_journal imported (review.py:36, cli.py:39); economics and sessions classes read by no production caller",
+        "what": "grep -rn 'CaptureClass\\.|level_for' src/ excluding capture.py"
+      },
+      {
+        "result": "line 21: 'This module owns the declaration; it emits no Statement.'",
+        "what": "grep Statement in src/agentmarshal/journal/attestation.py"
+      },
+      {
+        "result": "gate.py:2312 and cli.py:1530 match proposal 035's new text verbatim",
+        "what": "grep -rn 'records of other tasks' / 'Records absent from' src/"
+      },
+      {
+        "result": "'Reviewed commit <sha7>: implementer session <id>' and \"(did not end 'implemented')\" match proposal 036 verbatim",
+        "what": "sed -n '630,680p' src/agentmarshal/journal/status_view.py"
+      },
+      {
+        "result": "every field named in proposals 018, 024, 026, 027, 030, 031, 032, 041, 042 exists in records.py/session.py/review.py/status_view.py",
+        "what": "grep -rn 'resets_at|report_ready|cli_session|started_at|verification|classes|previous_review|advisory_dispositions|_SESSION_COST_KEYS' src/"
+      },
+      {
+        "result": "0.6.0 ships extension stages (CR-206..CR-225) and complete running them; 0.5.0 ships cli_session/report_ready/--if-missing (line 379-381); 0.2.0 ships the init outbox scaffold (line 855); 0.4.0 ships the coordination activity (line 599) — the release attributions in 009, 012, 018, 023, 039, 040, 042 check out",
+        "what": "grep -n '^### ' CHANGELOG.md and version headers"
+      },
+      {
+        "result": "section 4 is the session outcome vocabulary and documents provider-limit, output-limit, stalled, safety-limit, time-limit; section 5 the implementers/reviewers/independence header — proposals 034 and 041 cite it correctly",
+        "what": "sed -n '176,205p' docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md"
+      },
+      {
+        "result": "line 115-116 creates journal/<task>-<slug> and git switch -c — proposal 032's 'branches per task' and 040's 'still switches the working tree' both hold",
+        "what": "grep -n 'switch|branch' templates/journal-transaction.sh"
+      },
+      {
+        "result": "--index on check (126), send (134) and status (142) — proposal 045's claim holds",
+        "what": "grep -n 'add_argument' src/agentmarshal/outbox.py"
+      },
+      {
+        "result": "every proposal whose README row states a shipped status now carries a matching Where; the remaining 'not shipped yet' lines sit in untouched disposition/finding text or belong to 038 and 043, which the index also lists as not shipped",
+        "what": "grep -c '^## Where' docs/proposals/*.md and grep for pending phrasings in untouched proposals"
+      },
+      {
+        "result": "test_a_failure_while_encoding_leaves_no_file asserts UnicodeEncodeError and that journal_root does not exist — the test behind criterion 1",
+        "what": "sed -n '435,470p' tests/test_record_text_safety.py"
+      },
+      {
+        "result": "preserve_output defaults to True, so a refused verdict's bytes are kept at any capture level — basis of ADV-readme-capture-off-1",
+        "what": "grep -n 'def _reject' -A 12 src/agentmarshal/journal/review.py"
+      },
+      {
+        "result": "all targets exist; no broken link",
+        "what": "resolved every relative link added by the diff against docs/adr/ and docs/proposals/ listings"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "read-only review; the coordinator states the full sequence passed on 5797c883853b3534cda3d42194f2b198d1a21637"
+      }
+    ],
+    "read": [
+      "CHANGELOG.md (0.6.0 section, 0.5.0/0.4.0/0.2.0 headers and the outbox, unmeasured and audit entries)",
+      "README.md:41-60",
+      "docs/proposals/README.md (all batch tables)",
+      "docs/proposals/009, 012, 016, 018, 019, 020, 023, 024, 025, 026, 027, 028, 029, 030, 031, 032, 034, 035, 036, 037, 039, 040, 041, 042, 044, 045",
+      "docs/adr/ADR-0013, ADR-0015, ADR-0016, ADR-0018, ADR-0022",
+      "src/agentmarshal/journal/records.py, capture.py, review.py, submit_review.py, report.py, status_view.py, brief.py, complete.py, open_task.py, gate.py, attestation.py",
+      "src/agentmarshal/stages.py, steps.py, doctor.py, outbox.py, cli.py, project.py",
+      "templates/journal-transaction.sh, templates/github/agentmarshal-governance.yml",
+      "tests/ listing, tests/test_record_text_safety.py, tests/test_release_audit_check.py"
+    ]
+  }
+}

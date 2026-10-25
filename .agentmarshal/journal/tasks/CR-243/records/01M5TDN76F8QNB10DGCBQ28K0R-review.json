@@ -1,0 +1,110 @@
+{
+  "advisory_findings": [
+    "ADV-records-write-comment-overclaim",
+    "ADV-016-hash-prose-location-stale"
+  ],
+  "artifacts": [
+    {
+      "hash": "bd94168176e0bd03baed8df13d1f5f392f38877d3cde262cb5421ec605def012",
+      "ref": ".agentmarshal/journal/tasks/CR-243/artifacts/01M5TDN76F8QNB10DGCBQ28K0R-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-016-hash-prose-location-stale": "claim-accuracy",
+    "ADV-records-write-comment-overclaim": "claim-accuracy"
+  },
+  "created_at": "2026-10-25T20:57:26.479399Z",
+  "evidence": {
+    "ADV-016-hash-prose-location-stale": "docs/proposals/016-reviewer-prose-not-durable-in-the-published-release.md:68-74 ('in a local temporary file whose path the command prints') vs CHANGELOG.md:414-416 ('At capture level `hash` a review's prose and diagnostics are kept under the local state and announced by `review-prose`/`review-diagnostics` events instead of sitting in temporary files', 0.5.0) and src/agentmarshal/journal/review.py:711-742",
+    "ADV-records-write-comment-overclaim": "src/agentmarshal/journal/records.py:2114-2116 — 'Encode before the file exists: ... so an exclusive create can never leave an empty or partial record behind.' contrasted with records.py:2123-2124 (`with record_file: record_file.buffer.write(body)`, no rollback) and the narrowed CHANGELOG.md:247-250"
+  },
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "1952617a1386647ee04f46bd06b0fbce69eb3779",
+  "reviewed_contract": "928d33f06659898372d4b983312ef2aab159aedb76c5aa4513b149efea930d08",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-243",
+  "tool_version": "0.6.0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "encode at 2113-2117 precedes _create_exclusive at 2120; no cleanup around buffer.write — CHANGELOG's narrowed claim holds",
+        "what": "grep -n 'def write_record' -A 80 src/agentmarshal/journal/records.py"
+      },
+      {
+        "result": "level_for reached only for REVIEWS (capture.py:259) from cli.py:694 and review.py:1780; resolve_session_disposition/may_commit_session_publicly have no callers in src/",
+        "what": "grep -rn 'level_for|CaptureClass\\.|review_capture_level_from_journal' --include=*.py src/"
+      },
+      {
+        "result": "1595 commit pins prose; 1619 hash -> _keep_accepted_output (local state + review-prose event); 1621 off -> 'reviewer prose was not kept'",
+        "what": "grep -n 'CaptureLevel.OFF|COMMIT|HASH' src/agentmarshal/journal/review.py"
+      },
+      {
+        "result": "line 21: 'This module owns the declaration; it emits no Statement.'",
+        "what": "grep -n 'Statement' src/agentmarshal/journal/attestation.py"
+      },
+      {
+        "result": "remaining occurrences are inside historical Disposition sections only; 038/043 Where legitimately pending per the index",
+        "what": "grep -rn 'not shipped yet|Nothing here is shipped|to be written|not yet decided' docs/proposals/*.md"
+      },
+      {
+        "result": "section 4 lists provider-limit, output-limit, stalled, safety-limit, time-limit — matches proposals 041/042/034",
+        "what": "sed -n '176,205p' docs/adr/ADR-0022-...md"
+      },
+      {
+        "result": "gate.py:2312 'WARN: candidate adds opened/amendment records of other tasks'; cli.py:1530 'Records absent from {base}:' — proposal 035's quoted strings are exact",
+        "what": "grep -rn 'records of other tasks|absent from' src/agentmarshal/journal/gate.py src/agentmarshal/cli.py"
+      },
+      {
+        "result": "_SENT='SENT' (65), 'skipped as sent: {skipped}' (772), --index on check/send/status — proposal 045 accurate",
+        "what": "grep -n 'SENT|skipped as sent|--index' src/agentmarshal/outbox.py"
+      },
+      {
+        "result": "test_a_failure_while_encoding_leaves_no_file asserts UnicodeEncodeError and not journal_root.exists()",
+        "what": "sed -n '444,470p' tests/test_record_text_safety.py"
+      },
+      {
+        "result": "tests for hash default, commit, off — the three README levels",
+        "what": "grep -n 'def test_' tests/test_review_capture.py"
+      },
+      {
+        "result": "every ADR and proposal target added by the diff exists (ADR-0013/0015/0018/0021/0022, 023, 029, 033)",
+        "what": "ls docs/adr/ and docs/proposals/"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "read-only review; the coordinator states the full sequence passed on this commit"
+      },
+      {
+        "what": "repo-wide markdown link resolution script",
+        "why": "python execution was not approved in this session; the links the diff adds were checked individually against docs/adr/ and docs/proposals/ listings"
+      }
+    ],
+    "read": [
+      "CHANGELOG.md (0.6.0, 0.5.0, 0.4.0, 0.2.0 sections)",
+      "README.md:28-67",
+      "docs/proposals/README.md",
+      "docs/proposals/009, 012, 016, 019, 029, 033, 038, 042, 043",
+      "src/agentmarshal/journal/records.py",
+      "src/agentmarshal/journal/capture.py",
+      "src/agentmarshal/journal/review.py (prose keeping, launch paths)",
+      "src/agentmarshal/journal/report.py, brief.py, status_view.py, complete.py, gate.py (targeted sections)",
+      "src/agentmarshal/cli.py (subparsers, complete flags, status --base)",
+      "src/agentmarshal/outbox.py, steps.py, agree.py registration",
+      "templates/journal-transaction.sh",
+      "docs/adr/ADR-0022 sections 4 and 5, ADR-0009 decision headings"
+    ]
+  }
+}
