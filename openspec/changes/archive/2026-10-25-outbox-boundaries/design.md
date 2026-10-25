@@ -51,8 +51,12 @@ out (`status` printing raw names).
   transformable file must fail there. A mismatch names the remedy the
   attributes say applies — `check-attr` reads them — a clean filter
   gets "must not apply to the outbox", end-of-line conversion gets the
-  `-text` attribute line (or committing the staged bytes). A refused
-  `send` still stages nothing.
+  `-text` attribute line (or committing the staged bytes), and a
+  difference none of them explains names no cause. A file git cannot
+  pin at all — a failed `hash-object`, no git to run — is refused with
+  the masked, display-escaped reason: the exit status covers a missing
+  verification, not only a failed one. A refused `send` still stages
+  nothing.
 - **`status` reuses `_printable`.** The masked-then-escaped order the
   helper already implements is the audited property — escaping first
   would insert word characters a signature's anchors do not see past —

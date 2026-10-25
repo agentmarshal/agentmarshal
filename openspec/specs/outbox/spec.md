@@ -108,8 +108,9 @@ is not UTF-8 SHALL be named in the escaped printable form the leak scan
 uses for undecodable diff header lines — one `\xNN` escape per
 undecodable byte — under that same masking, so no name can crash the
 command. The command's exit status SHALL be 0 only when every draft
-conforms, nothing in the outbox went unchecked and the scan finds
-nothing, and non-zero otherwise, so a batch wrapper can refuse to send.
+conforms, nothing in the outbox went unchecked, the scan finds
+nothing and git could verify each checked file's staged bytes, and
+non-zero otherwise, so a batch wrapper can refuse to send.
 
 #### Scenario: a hit names the file and what matched, never the matched text
 - **WHEN** a draft's content matches a built-in signature
@@ -170,6 +171,12 @@ nothing, and non-zero otherwise, so a batch wrapper can refuse to send.
 - **THEN** the check names it with one `\xNN` escape per undecodable
   byte, the marker is masked in that escaped name, and the command does
   not crash
+
+#### Scenario: check refuses when git cannot verify a file's staged bytes
+- **WHEN** git cannot pin a checked file — `git hash-object` fails or
+  cannot run
+- **THEN** the check names the file and the reason — masked and
+  display-escaped — and exits non-zero
 
 ### Requirement: `outbox send` commits the checked batch
 

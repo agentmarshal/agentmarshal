@@ -67,6 +67,96 @@ sent manifest's update is held to it.
 
 ## MODIFIED Requirements
 
+### Requirement: `outbox check` scans what would be sent and refuses by exit status
+
+`outbox check` SHALL also run the leak scan the merge boundary uses —
+the same signatures, and the private markers from the project's
+configuration — over what would be sent: each draft's whole content, and
+each entry's file name, which leaves with the batch, so a name carrying a
+configured marker or matching a signature SHALL be a hit by itself.
+Anything in the outbox that is not a regular file — a directory, a
+symlink, a FIFO — is not a draft and cannot be checked: the command SHALL
+name it as such, and nothing in the outbox passes in silence. Each hit
+SHALL be named by file and by what matched: a built-in signature by its
+identifier, a configured marker by its position. The matched text, a
+marker's value, and a name that itself carries a secret SHALL appear
+nowhere in the output; such a name is described the way the scan describes
+it, every path the command prints goes through that masking, and an error
+is described without the exception's path-carrying text. A file name that
+is not UTF-8 SHALL be named in the escaped printable form the leak scan
+uses for undecodable diff header lines — one `\xNN` escape per
+undecodable byte — under that same masking, so no name can crash the
+command. The command's exit status SHALL be 0 only when every draft
+conforms, nothing in the outbox went unchecked, the scan finds
+nothing and git could verify each checked file's staged bytes, and
+non-zero otherwise, so a batch wrapper can refuse to send.
+
+#### Scenario: a hit names the file and what matched, never the matched text
+- **WHEN** a draft's content matches a built-in signature
+- **THEN** the hit names the file and the signature's identifier, and the
+  matched text appears nowhere in the output
+
+#### Scenario: a configured private marker is named by position, not value
+- **WHEN** a draft's content contains a configured private marker
+- **THEN** the hit names the file and the marker's position, and the
+  marker's value appears nowhere in the output
+
+#### Scenario: a name that carries a secret is described, not printed
+- **WHEN** the file a hit names — or a draft the check names — has a name
+  containing a configured marker or matching a signature
+- **THEN** the output names it by that marker's position or that
+  signature's identifier, and the characters that matched appear nowhere
+  in the output
+
+#### Scenario: a draft that is not UTF-8 text is named and still searched
+- **WHEN** a draft's bytes are not UTF-8 but a span of them matches a
+  signature
+- **THEN** the file is named as one that is not UTF-8 text, and the hit is
+  reported
+
+#### Scenario: conforming drafts with a clean scan exit 0
+- **WHEN** every draft conforms and the scan finds nothing
+- **THEN** the command exits 0
+
+#### Scenario: a non-conforming draft fails the check even when nothing leaks
+- **WHEN** a draft does not conform and the scan finds nothing
+- **THEN** the command exits non-zero
+
+#### Scenario: a leak fails the check even when every draft conforms
+- **WHEN** every draft conforms and the scan reports a hit
+- **THEN** the command exits non-zero
+
+#### Scenario: a file name that carries a secret is a hit even with clean content
+- **WHEN** a draft's file name contains a configured marker or matches a
+  signature — the name leaves with the batch — and its content is clean
+- **THEN** the check reports a hit naming the file by that marker's
+  position or that signature's identifier, and exits non-zero
+
+#### Scenario: an entry that is not a regular file is named as not checked
+- **WHEN** the outbox holds a directory, a symlink or a FIFO — not a
+  regular file, so not a draft — beside conforming drafts
+- **THEN** the check names it as not a draft and not checked, and exits
+  non-zero
+
+#### Scenario: an unreadable draft is named without the error's path text
+- **WHEN** a draft cannot be read and its name contains a configured
+  marker
+- **THEN** the check names it through the scan's masking and describes the
+  error without the exception's path-carrying text
+
+#### Scenario: a file name that is not UTF-8 is named escaped and still masked
+- **WHEN** an outbox entry's name is not UTF-8 and carries a configured
+  marker
+- **THEN** the check names it with one `\xNN` escape per undecodable
+  byte, the marker is masked in that escaped name, and the command does
+  not crash
+
+#### Scenario: check refuses when git cannot verify a file's staged bytes
+- **WHEN** git cannot pin a checked file — `git hash-object` fails or
+  cannot run
+- **THEN** the check names the file and the reason — masked and
+  display-escaped — and exits non-zero
+
 ### Requirement: `outbox status` reports which findings an index file claims
 
 `agentmarshal outbox status --index <file>` SHALL read the index file

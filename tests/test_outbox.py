@@ -2253,6 +2253,96 @@ def test_a_filter_refusal_names_no_eol_remedy_under_unset_text(
     assert "`.agentmarshal/upstream/** -text`" not in captured.out
 
 
+def test_check_refuses_when_git_cannot_verify_a_files_staged_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: check refuses when git cannot verify a file's staged bytes."""
+    repo = _project(tmp_path, monkeypatch)
+    _conforming_draft(_outbox(repo))
+    empty_path = tmp_path / "no-git"
+    empty_path.mkdir()
+    capsys.readouterr()  # drain init's output — it names the project path
+    # The outbox always lives in a git repository, but the check is the
+    # refusal point a batch wrapper consults — a git it cannot run is a
+    # verification it cannot do, so it refuses rather than pass.
+    monkeypatch.setenv("PATH", str(empty_path))
+
+    assert main(["outbox", "check"]) == 1
+
+    captured = capsys.readouterr()
+    assert (
+        "0001-filled.md: cannot verify the bytes git would stage: "
+        "cannot run git" in captured.out
+    )
+    assert "outbox check: refused" in captured.err
+
+
+def test_the_cannot_verify_reason_is_masked_and_display_escaped(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The reason in "cannot verify the bytes git would stage" is masked
+    and display-escaped like every name the group prints — git's stderr
+    can carry a configured marker, or a clean filter's output a newline,
+    and neither may reach the report."""
+    repo = _project(tmp_path, monkeypatch)
+    _configure_markers(repo, ["s3cr3t-marker"])
+    _conforming_draft(_outbox(repo))
+    run_git = outbox_module._git
+
+    def fail_hash_object(
+        project_root: Path, arguments: list[str], feed: bytes = b""
+    ) -> bytes:
+        if arguments[0] == "hash-object":
+            raise outbox_module._OutboxGitError(
+                "git hash-object failed: s3cr3t-marker\nforged line"
+            )
+        return run_git(project_root, arguments, feed)
+
+    monkeypatch.setattr(outbox_module, "_git", fail_hash_object)
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    assert main(["outbox", "check"]) == 1
+
+    captured = capsys.readouterr()
+    assert "s3cr3t-marker" not in captured.out
+    assert "<private marker #1>" in captured.out
+    # The escaped newline keeps the refusal to its one line.
+    assert "\\nforged line" in captured.out
+    assert "\nforged line" not in captured.out
+
+
+def test_a_transformation_with_no_known_cause_names_none(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A staged-byte difference none of the queried attributes explains —
+    a working-tree-encoding conversion — is refused without a named cause
+    or remedy: the bytes differ and no known cause was found."""
+    repo = _project(tmp_path, monkeypatch)
+    (repo / ".gitattributes").write_text(
+        ".agentmarshal/upstream/0*.md working-tree-encoding=UTF-16\n",
+        encoding="utf-8",
+    )
+    # Local, so a developer's global autocrlf cannot leak an eol cause in.
+    _git(repo, "config", "core.autocrlf", "false")
+    (_outbox(repo) / "0001-filled.md").write_bytes(_CONFORMING.encode("utf-16"))
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    assert main(["outbox", "check"]) == 1
+
+    captured = capsys.readouterr()
+    assert "0001-filled.md: git would transform it on staging" in captured.out
+    assert "the bytes differ and no known cause was found" in captured.out
+    assert "a clean filter or eol conversion applies" not in captured.out
+    assert "the filter must not apply to the outbox" not in captured.out
+    assert "in .gitattributes" not in captured.out
+
+
 def test_init_names_the_linked_outbox_escaped(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

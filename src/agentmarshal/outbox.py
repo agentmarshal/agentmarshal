@@ -691,8 +691,14 @@ def _check(stderr: TextIO, index: Path | None) -> _CheckResult:
                 try:
                     pinned_blob = _pinned_blob(project_root, relative, raw)
                 except _OutboxGitError as error:
+                    # Git could not say what the file stages as — a
+                    # refused check covers a missing verification, not
+                    # just a failed one. The reason is masked and
+                    # display-escaped like every name this group prints:
+                    # git's stderr can carry a filter's output.
                     problems.append(
-                        f"cannot be pinned: {safe_path(str(error), markers)}"
+                        "cannot verify the bytes git would stage: "
+                        f"{escape_for_display(safe_path(str(error), markers))}"
                     )
                 else:
                     if pinned_blob is None:
@@ -749,8 +755,9 @@ def _check(stderr: TextIO, index: Path | None) -> _CheckResult:
         except _OutboxGitError as error:
             refused = True
             print(
-                f"{_printable(_SENT, markers)}: cannot be pinned: "
-                f"{safe_path(str(error), markers)}"
+                f"{_printable(_SENT, markers)}: cannot verify the bytes git "
+                f"would stage: "
+                f"{escape_for_display(safe_path(str(error), markers))}"
             )
         else:
             if manifest_blob is None:
@@ -915,7 +922,10 @@ def _transform_cause(project_root: Path, relative: str) -> str:
             "the file with the bytes git stages) makes the bytes match"
         )
     if not causes:
-        causes.append("a clean filter or eol conversion applies")
+        # A difference none of the queried attributes explains — an
+        # encoding conversion, say — names no cause it was not checked
+        # for, and offers no remedy.
+        causes.append("the bytes differ and no known cause was found")
     return "; ".join(causes)
 
 

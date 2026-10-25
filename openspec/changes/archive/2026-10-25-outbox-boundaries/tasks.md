@@ -25,7 +25,10 @@
   `test_an_end_of_line_refusal_names_the_attribute_that_turns_it_off`,
   `test_an_autocrlf_refusal_names_the_same_remedy`,
   `test_send_refuses_a_draft_a_clean_filter_would_transform`,
-  `test_send_refuses_when_a_filter_would_transform_the_sent_manifest`.
+  `test_send_refuses_when_a_filter_would_transform_the_sent_manifest`,
+  `test_check_refuses_when_git_cannot_verify_a_files_staged_bytes`,
+  `test_the_cannot_verify_reason_is_masked_and_display_escaped`,
+  `test_a_transformation_with_no_known_cause_names_none`.
 
 ## 3. `status` escapes names
 
