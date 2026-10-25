@@ -9,7 +9,7 @@ import sys
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TextIO
+from typing import TextIO, cast
 
 from agentmarshal import (
     __version__,
@@ -81,8 +81,10 @@ from agentmarshal.journal.records import (
 )
 from agentmarshal.journal.report import (
     ReportError,
+    acknowledging_party_is_declared_writer,
     build_findings_report,
     build_report,
+    declared_commit_writers,
     format_findings_report,
     format_report,
 )
@@ -1766,6 +1768,8 @@ def _run_leak_scan(args: argparse.Namespace, stderr: TextIO) -> int:
     # find and reads nothing; a read that fails acknowledges nothing and
     # says why — the failure direction is the exit 1 today already gave.
     acknowledgements: list[dict[str, object]] = []
+    ack_writers: set[str] | None = None
+    ack_journal_root: Path | None = None
     if placement is not None:
         try:
             resolved_commit = _leak_scan_git(
@@ -1785,6 +1789,16 @@ def _run_leak_scan(args: argparse.Namespace, stderr: TextIO) -> int:
                 + escape_for_display(str(error)),
                 file=stderr,
             )
+        else:
+            # ADR-0021 decision 5: the mark's self-acknowledgement check
+            # compares the acknowledging party against the scanned commit's
+            # own declared writers — where the gate compares over the whole
+            # candidate range — through the same shared comparison `status`
+            # makes. A lookup git cannot answer yields no writers, which is
+            # the unchecked leg: the mark then prints as for any other
+            # acknowledgement rather than answering either way.
+            ack_writers = declared_commit_writers(scan_root, resolved_commit)
+            ack_journal_root = placement.journal_root
     elif args.task is not None:
         print(
             "leak-scan: cannot read acknowledgements: this repository "
@@ -1804,8 +1818,24 @@ def _run_leak_scan(args: argparse.Namespace, stderr: TextIO) -> int:
     if hits:
         # The mark is capture.py's, the one the gate's advisory line
         # builds its marks with — one implementation, so the two
-        # surfaces cannot drift on wording, masking or escaping.
-        marks = [_acknowledgement_mark(hit, acknowledgements, markers) for hit in hits]
+        # surfaces cannot drift on wording, masking or escaping. The
+        # self-acknowledgement check comes in from the caller because the
+        # mark builder stands under the comparison in the import order;
+        # the cast is safe because the predicate only runs on a matched
+        # record, and records exist only where a journal was read.
+        marks = [
+            _acknowledgement_mark(
+                hit,
+                acknowledgements,
+                markers,
+                self_acknowledged=(
+                    lambda record: acknowledging_party_is_declared_writer(
+                        record, ack_writers, cast(Path, ack_journal_root)
+                    )
+                ),
+            )
+            for hit in hits
+        ]
         print(
             "leak-scan: possible leaks in added content "
             "(file: what matched): " + render_leak_hits(hits, limit=None, marks=marks)
