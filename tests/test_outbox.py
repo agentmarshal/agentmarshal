@@ -1150,8 +1150,7 @@ def test_the_markdown_decorated_source_line_is_parsed_like_the_bare_one(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Scenario: the markdown-decorated Source line is parsed like the bare
-    one."""
+    """Scenario: the markdown-decorated Source line is parsed like the bare one."""
     repo = _project(tmp_path, monkeypatch)
     draft = _conforming_draft(_outbox(repo))
     digest = hashlib.sha256(draft.read_bytes()).hexdigest()
@@ -1209,8 +1208,7 @@ def test_a_name_that_is_not_utf8_is_printed_escaped_under_the_masking(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Scenario: a name that is not UTF-8 is printed escaped under the
-    masking."""
+    """Scenario: a name that is not UTF-8 is printed escaped under the masking."""
     repo = _project(tmp_path, monkeypatch)
     _configure_markers(repo, ["internal.example.invalid"])
     _byte_named_file(_outbox(repo), b"\xffinternal.example.invalid.md", b"# nothing\n")
@@ -1920,3 +1918,485 @@ def test_the_sent_manifest_is_pinned_once_with_the_content_send_writes(
     assert main(["outbox", "send"]) == 0
 
     assert pins == [(outbox / "SENT").read_bytes()]
+
+
+def test_a_linked_outbox_refuses_a_command_before_it_writes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a linked outbox refuses a command before it writes."""
+    repo = _project(tmp_path, monkeypatch)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    shutil.rmtree(_outbox(repo))
+    _outbox(repo).symlink_to(outside)
+    index = tmp_path / "index.txt"
+    index.write_text("# index\n", encoding="utf-8")
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    for argv in (
+        ["outbox", "new", "gate hangs"],
+        ["outbox", "check"],
+        ["outbox", "send"],
+        ["outbox", "status", "--index", str(index)],
+    ):
+        assert main(argv) == 1, argv
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    lines = [
+        line for line in captured.err.splitlines() if "refusing a symbolic link" in line
+    ]
+    assert len(lines) == 4
+    for line in lines:
+        assert str(_outbox(repo)) in line
+    # Nothing was written through the link and nothing was committed.
+    assert list(outside.iterdir()) == []
+    assert _git_out(repo, "rev-list", "--count", "--all") == "0"
+
+
+def test_a_linked_agentmarshal_component_refuses_the_command(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a linked .agentmarshal component refuses the command."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "--quiet", "-b", "master")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    # The link's target carries a real project.json so the project root
+    # is found through it — the refusal is about the link, not discovery.
+    (outside / "project.json").write_text('{"schema": 1}\n', encoding="utf-8")
+    (repo / ".agentmarshal").symlink_to(outside)
+    monkeypatch.chdir(repo)
+
+    assert main(["outbox", "new", "gate hangs"]) == 1
+
+    captured = capsys.readouterr()
+    assert "refusing a symbolic link" in captured.err
+    assert str(repo.resolve() / ".agentmarshal") in captured.err
+    # Nothing was created or written through the link.
+    assert list(outside.iterdir()) == [outside / "project.json"]
+
+
+def test_init_never_scaffolds_through_a_linked_outbox(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: init never scaffolds through a linked outbox."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "--quiet", "-b", "master")
+    _git(repo, "config", "user.name", "Adopter")
+    _git(repo, "config", "user.email", "adopter@test.invalid")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (repo / ".agentmarshal").mkdir()
+    (repo / ".agentmarshal" / "upstream").symlink_to(outside)
+    monkeypatch.chdir(repo)
+
+    # The scaffold is best-effort: init still succeeds, but the refusal
+    # is reported on one line naming the path and nothing is written
+    # through the link.
+    assert main(["init"]) == 0
+
+    captured = capsys.readouterr()
+    warnings = [
+        line for line in captured.err.splitlines() if "could not create" in line
+    ]
+    assert len(warnings) == 1
+    assert str(repo / ".agentmarshal" / "upstream") in warnings[0]
+    assert "refusing to write through a symlink" in warnings[0]
+    assert list(outside.iterdir()) == []
+    assert (repo / ".agentmarshal" / "project.json").is_file()
+
+
+def test_a_sidecars_linked_outbox_never_writes_the_host(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The audit's shape: a sidecar's outbox linked into its host is
+    refused before a write, so the host gains nothing — the threat
+    model's "a sidecar never writes its host" holds at the outbox too."""
+    host = tmp_path / "host"
+    sidecar = tmp_path / "sidecar"
+    for repo in (host, sidecar):
+        repo.mkdir()
+        _git(repo, "init", "--quiet", "-b", "master")
+        _git(repo, "config", "user.name", "Adopter")
+        _git(repo, "config", "user.email", "adopter@test.invalid")
+    monkeypatch.chdir(sidecar)
+    assert main(["init", "--host", str(host)]) == 0
+    shutil.rmtree(sidecar / ".agentmarshal" / "upstream")
+    (sidecar / ".agentmarshal" / "upstream").symlink_to(host / "stolen")
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    assert main(["outbox", "new", "gate hangs"]) == 1
+
+    captured = capsys.readouterr()
+    assert "refusing a symbolic link" in captured.err
+    assert not (host / "stolen").exists()
+
+
+def test_send_refuses_a_draft_a_clean_filter_would_transform(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: send refuses a draft a clean filter would transform."""
+    repo = _project(tmp_path, monkeypatch)
+    # A real clean filter, wired the way a hostile checkout would wire
+    # it: `git add` runs the draft's bytes through `sed` and the blob
+    # committed is not the blob the leak scan read.
+    (repo / ".gitattributes").write_text(
+        ".agentmarshal/upstream/0*.md filter=x\n", encoding="utf-8"
+    )
+    _git(repo, "config", "filter.x.clean", "sed s/a/b/")
+    _conforming_draft(_outbox(repo))
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    assert main(["outbox", "send"]) == 1
+
+    captured = capsys.readouterr()
+    assert "0001-filled.md" in captured.out
+    assert "transform" in captured.out
+    assert "the check did not pass" in captured.err
+    assert _git_out(repo, "rev-list", "--count", "--all") == "0"
+    assert _git_out(repo, "diff", "--cached", "--name-only") == ""
+
+
+def test_send_refuses_when_a_filter_would_transform_the_sent_manifest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: send refuses when a filter would transform the sent manifest."""
+    repo = _project(tmp_path, monkeypatch)
+    (repo / ".gitattributes").write_text(
+        ".agentmarshal/upstream/SENT filter=x\n", encoding="utf-8"
+    )
+    _git(repo, "config", "filter.x.clean", "sed s/a/b/")
+    _conforming_draft(_outbox(repo))
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    assert main(["outbox", "send"]) == 1
+
+    captured = capsys.readouterr()
+    assert "SENT" in captured.out
+    assert "transform" in captured.out
+    assert _git_out(repo, "rev-list", "--count", "--all") == "0"
+
+
+def test_a_control_character_in_a_file_name_is_escaped_in_the_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: a control character in a file name is escaped in the report."""
+    repo = _project(tmp_path, monkeypatch)
+    (_outbox(repo) / "bad\nname.md").write_text(_CONFORMING, encoding="utf-8")
+    index = tmp_path / "index.txt"
+    index.write_text("# index\n", encoding="utf-8")
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    assert main(["outbox", "status", "--index", str(index)]) == 0
+
+    captured = capsys.readouterr()
+    assert "bad\\nname.md: no index entry" in captured.out
+    assert "bad\nname.md" not in captured.out
+
+
+def test_check_refuses_a_draft_a_clean_filter_would_transform(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: check refuses a draft a clean filter would transform."""
+    repo = _project(tmp_path, monkeypatch)
+    # The same real clean filter the send refusal is demonstrated with —
+    # the check is the refusal point a batch wrapper consults (ADR-0020
+    # decision 3), so it sees the transformation before any staging.
+    (repo / ".gitattributes").write_text(
+        ".agentmarshal/upstream/0*.md filter=x\n", encoding="utf-8"
+    )
+    _git(repo, "config", "filter.x.clean", "sed s/a/b/")
+    _conforming_draft(_outbox(repo))
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    assert main(["outbox", "check"]) == 1
+
+    captured = capsys.readouterr()
+    assert "0001-filled.md: git would transform it on staging" in captured.out
+    assert "the filter must not apply to the outbox" in captured.out
+    assert "outbox check: refused" in captured.err
+
+
+def test_an_end_of_line_refusal_names_the_attribute_that_turns_it_off(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: an end-of-line refusal names the attribute that turns it off."""
+    repo = _project(tmp_path, monkeypatch)
+    # `text` on the drafts makes git normalise CRLF to LF on staging —
+    # the remedy the refusal names is `-text` on the outbox.
+    (repo / ".gitattributes").write_text(
+        ".agentmarshal/upstream/0*.md text\n", encoding="utf-8"
+    )
+    (_outbox(repo) / "0001-filled.md").write_bytes(
+        _CONFORMING.replace("\n", "\r\n").encode()
+    )
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    assert main(["outbox", "check"]) == 1
+
+    captured = capsys.readouterr()
+    assert "0001-filled.md: git would transform it on staging" in captured.out
+    assert "end-of-line conversion applies" in captured.out
+    assert "`.agentmarshal/upstream/** -text` in .gitattributes" in captured.out
+    assert "outbox check: refused" in captured.err
+
+
+@pytest.mark.parametrize("spelling", ["true", "yes", "1"])
+def test_an_autocrlf_refusal_names_the_same_remedy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    spelling: str,
+) -> None:
+    """`core.autocrlf` converts with no attribute involved — in any of
+    git's boolean spellings — and the refusal names the same `-text`
+    remedy as a `text` attribute does."""
+    repo = _project(tmp_path, monkeypatch)
+    _git(repo, "config", "core.autocrlf", spelling)
+    (_outbox(repo) / "0001-filled.md").write_bytes(
+        _CONFORMING.replace("\n", "\r\n").encode()
+    )
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    assert main(["outbox", "check"]) == 1
+
+    captured = capsys.readouterr()
+    assert "end-of-line conversion applies" in captured.out
+    assert "`.agentmarshal/upstream/** -text` in .gitattributes" in captured.out
+
+
+def test_a_linked_components_path_is_masked_in_the_refusal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: the refusal line names the linked component masked.
+
+    A directory on the outbox's path can itself carry a marker — the
+    refusal names the linked component through the masking every outbox
+    path gets."""
+    repo = tmp_path / "internal.example.invalid"
+    repo.mkdir()
+    _git(repo, "init", "--quiet", "-b", "master")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    # The link's target carries a real project.json — one that names the
+    # marker — so discovery finds the project through the link and the
+    # refusal has markers to mask with.
+    (outside / "project.json").write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "leak_scan": {"private_markers": ["internal.example.invalid"]},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (repo / ".agentmarshal").symlink_to(outside)
+    monkeypatch.chdir(repo)
+
+    assert main(["outbox", "check"]) == 1
+
+    captured = capsys.readouterr()
+    assert "refusing a symbolic link" in captured.err
+    assert "internal.example.invalid" not in captured.out
+    assert "internal.example.invalid" not in captured.err
+    assert "<private marker #1>" in captured.err
+
+
+def test_a_filter_refusal_names_no_eol_remedy_under_unset_text(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: check refuses a draft a clean filter would transform —
+    and the remedy is the filter's alone: with `-text` already on the
+    outbox git does not normalise, so no `-text` remedy is suggested,
+    `core.autocrlf` notwithstanding."""
+    repo = _project(tmp_path, monkeypatch)
+    (repo / ".gitattributes").write_text(
+        ".agentmarshal/upstream/0*.md -text filter=x\n", encoding="utf-8"
+    )
+    _git(repo, "config", "filter.x.clean", "sed s/a/b/")
+    _git(repo, "config", "core.autocrlf", "true")
+    _conforming_draft(_outbox(repo))
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    assert main(["outbox", "check"]) == 1
+
+    captured = capsys.readouterr()
+    assert "0001-filled.md: git would transform it on staging" in captured.out
+    assert "the filter must not apply to the outbox" in captured.out
+    assert "end-of-line conversion" not in captured.out
+    assert "`.agentmarshal/upstream/** -text`" not in captured.out
+
+
+def test_check_refuses_when_git_cannot_verify_a_files_staged_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Scenario: check refuses when git cannot verify a file's staged bytes."""
+    repo = _project(tmp_path, monkeypatch)
+    _conforming_draft(_outbox(repo))
+    empty_path = tmp_path / "no-git"
+    empty_path.mkdir()
+    capsys.readouterr()  # drain init's output — it names the project path
+    # The outbox always lives in a git repository, but the check is the
+    # refusal point a batch wrapper consults — a git it cannot run is a
+    # verification it cannot do, so it refuses rather than pass.
+    monkeypatch.setenv("PATH", str(empty_path))
+
+    assert main(["outbox", "check"]) == 1
+
+    captured = capsys.readouterr()
+    assert (
+        "0001-filled.md: cannot verify the bytes git would stage: "
+        "cannot run git" in captured.out
+    )
+    assert "outbox check: refused" in captured.err
+
+
+def test_the_cannot_verify_reason_is_masked_and_display_escaped(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The reason in "cannot verify the bytes git would stage" is masked
+    and display-escaped like every name the group prints — git's stderr
+    can carry a configured marker, or a clean filter's output a newline,
+    and neither may reach the report."""
+    repo = _project(tmp_path, monkeypatch)
+    _configure_markers(repo, ["s3cr3t-marker"])
+    _conforming_draft(_outbox(repo))
+    run_git = outbox_module._git
+
+    def fail_hash_object(
+        project_root: Path, arguments: list[str], feed: bytes = b""
+    ) -> bytes:
+        if arguments[0] == "hash-object":
+            raise outbox_module._OutboxGitError(
+                "git hash-object failed: s3cr3t-marker\nforged line"
+            )
+        return run_git(project_root, arguments, feed)
+
+    monkeypatch.setattr(outbox_module, "_git", fail_hash_object)
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    assert main(["outbox", "check"]) == 1
+
+    captured = capsys.readouterr()
+    assert "s3cr3t-marker" not in captured.out
+    assert "<private marker #1>" in captured.out
+    # The escaped newline keeps the refusal to its one line.
+    assert "\\nforged line" in captured.out
+    assert "\nforged line" not in captured.out
+
+
+def test_a_transformation_with_no_known_cause_names_none(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A staged-byte difference none of the queried attributes explains —
+    a working-tree-encoding conversion — is refused without a named cause
+    or remedy: the bytes differ and no known cause was found."""
+    repo = _project(tmp_path, monkeypatch)
+    (repo / ".gitattributes").write_text(
+        ".agentmarshal/upstream/0*.md working-tree-encoding=UTF-16\n",
+        encoding="utf-8",
+    )
+    # Local, so a developer's global autocrlf cannot leak an eol cause in.
+    _git(repo, "config", "core.autocrlf", "false")
+    (_outbox(repo) / "0001-filled.md").write_bytes(_CONFORMING.encode("utf-16"))
+    capsys.readouterr()  # drain init's output — it names the project path
+
+    assert main(["outbox", "check"]) == 1
+
+    captured = capsys.readouterr()
+    assert "0001-filled.md: git would transform it on staging" in captured.out
+    assert "the bytes differ and no known cause was found" in captured.out
+    assert "a clean filter or eol conversion applies" not in captured.out
+    assert "the filter must not apply to the outbox" not in captured.out
+    assert "in .gitattributes" not in captured.out
+
+
+def test_init_names_the_linked_outbox_escaped(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The init half of "init never scaffolds through a linked outbox":
+    the refusal is printed masked and display-escaped like every outbox
+    path, so a control character on the path cannot add a line to the
+    warning."""
+    repo = tmp_path / "re\npo"
+    repo.mkdir()
+    _git(repo, "init", "--quiet", "-b", "master")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (repo / ".agentmarshal").mkdir()
+    (repo / ".agentmarshal" / "upstream").symlink_to(outside)
+    monkeypatch.chdir(repo)
+
+    assert main(["init"]) == 0
+
+    captured = capsys.readouterr()
+    # The warning is one line — the escaped name cannot add another.
+    assert captured.err.count("\n") == 1
+    warning = captured.err.strip()
+    assert "could not create" in warning
+    assert "refusing to write through a symlink" in warning
+    outbox = repo / ".agentmarshal" / "upstream"
+    assert str(outbox).replace("\n", "\\n") in warning
+    assert str(outbox) not in warning
+    assert list(outside.iterdir()) == []
+
+
+def test_init_names_the_linked_outbox_masked(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The init half of "the refusal line names the linked component
+    masked": the configured markers are empty at init — the file
+    carrying them is what init writes — so a directory on the path
+    matching a built-in signature is named by it instead."""
+    repo = tmp_path / _TOKEN
+    repo.mkdir()
+    _git(repo, "init", "--quiet", "-b", "master")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (repo / ".agentmarshal").mkdir()
+    (repo / ".agentmarshal" / "upstream").symlink_to(outside)
+    monkeypatch.chdir(repo)
+
+    assert main(["init"]) == 0
+
+    captured = capsys.readouterr()
+    assert "refusing to write through a symlink" in captured.err
+    assert "<github-token>" in captured.err
+    assert _TOKEN not in captured.err
+    assert list(outside.iterdir()) == []

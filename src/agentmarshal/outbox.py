@@ -23,7 +23,12 @@ The outbox is ``project_root/.agentmarshal/upstream`` — the directory
 ``init`` scaffolds beside ``project.json`` — which is the same expression
 in both placements: in an embedded project it is the host repository's
 ``.agentmarshal``, in a sidecar the journal repository's, so a batch
-commit lands in the journal repository and never touches the host.
+commit lands in the journal repository and never touches the host. Every
+subcommand refuses a symbolic link at ``.agentmarshal`` or ``upstream``
+before creating or writing anything — a linked outbox would write
+wherever the link points — and the check ``send`` runs first refuses a
+file git's attributes would transform on staging, so only the bytes the
+check vetted are ever committed.
 """
 
 from __future__ import annotations
@@ -167,6 +172,27 @@ def _locate(command: str, stderr: TextIO) -> tuple[Path, Path] | None:
         )
         return None
     outbox = project_root / PROJECT_DIR_NAME / _UPSTREAM_DIR
+    # Every component below the resolved project root is judged with
+    # lstat before anything is created, written or staged: a linked
+    # `.agentmarshal` or `upstream` would land the outbox's files
+    # wherever the link points — in a sidecar the host — which the
+    # threat model forbids. The same refusal `extension_trust` applies
+    # to the managed extensions directory.
+    for component in (outbox.parent, outbox):
+        if component.is_symlink():
+            # The line is masked like every path this group prints — a
+            # directory on the outbox's path can itself carry a marker —
+            # so the markers must load first; when they cannot, the
+            # refusal `_markers` already printed stands in for this one.
+            markers = _markers(command, project_root, stderr)
+            if markers is None:
+                return None
+            print(
+                f"outbox {command}: refusing a symbolic link: "
+                f"{_printable(component, markers)}",
+                file=stderr,
+            )
+            return None
     if not outbox.is_dir():
         print(
             f"outbox {command}: no outbox — init scaffolds "
@@ -452,10 +478,10 @@ def _is_regular(entry: Path) -> bool:
 class _CheckResult(NamedTuple):
     """What one check run leaves for its caller.
 
-    ``status`` is the command's exit status; ``pinned`` — filled only
-    when the run pinned — maps each repository-relative outbox path's
-    bytes to the blob id its checked content stages as, the sent
-    manifest's entry naming the blob of the manifest's next content.
+    ``status`` is the command's exit status; ``pinned`` maps each
+    repository-relative outbox path's bytes to the blob id its checked
+    content stages as, the sent manifest's entry naming the blob of the
+    manifest's next content.
     ``drafts`` is one ``(sha256, shown name)`` pair per draft in outbox
     order — the line each earns in the manifest. ``manifest_old`` is the
     sent manifest's bytes as found — ``None`` when there is none — and
@@ -502,20 +528,25 @@ def _manifest_next(
 
 
 def _run_check(index: Path | None, stderr: TextIO) -> int:
-    return _check(stderr, pin=False, index=index).status
+    return _check(stderr, index=index).status
 
 
-def _check(stderr: TextIO, *, pin: bool, index: Path | None) -> _CheckResult:
+def _check(stderr: TextIO, index: Path | None) -> _CheckResult:
     """The ``outbox check`` run: its status and what a send needs of it.
 
     A pin is the blob id the file stages as, computed by ``git
     hash-object --stdin --path`` from the very bytes this run read — the
     same clean filters the add applies, so the id is the one staging
-    writes. Pinning at the read leaves no second read for an edit to
-    slip through: a later send verifies it commits what was checked. The
-    manifest is pinned once, the same way, on the manifest's next
-    content — computed here, where the checked bytes are — so the
-    update lands in the batch commit pinned like every file.
+    writes. The same bytes hashed ``--no-filters`` are the blob of what
+    the scan saw: when the two ids differ, staging would commit content
+    nobody checked and the file is refused rather than pinned
+    (``_pinned_blob``) — the check's exit status is where a batch
+    wrapper refuses before sending (ADR-0020 decision 3). Pinning at
+    the read leaves no second read for an edit to slip through: a later
+    send verifies it commits what was checked. The manifest is pinned
+    once, the same way, on the manifest's next content — computed here,
+    where the checked bytes are — so the update lands in the batch
+    commit pinned like every file.
     """
     located = _locate("check", stderr)
     if located is None:
@@ -650,7 +681,7 @@ def _check(stderr: TextIO, *, pin: bool, index: Path | None) -> _CheckResult:
             if is_draft:
                 checked += 1
                 drafts.append((digest, name))
-            if pin and entry.name != _SENT:
+            if entry.name != _SENT:
                 # The key is the repository-relative path's real bytes —
                 # the form `ls-files` reports — so a non-UTF-8 name is
                 # pinned without ever becoming text. `SENT` is pinned
@@ -658,15 +689,25 @@ def _check(stderr: TextIO, *, pin: bool, index: Path | None) -> _CheckResult:
                 # bytes it found.
                 relative = f"{_OUTBOX_PREFIX}{entry.name}"
                 try:
-                    pinned[os.fsencode(relative)] = _git(
-                        project_root,
-                        ["hash-object", "--stdin", f"--path={relative}"],
-                        raw,
-                    ).strip()
+                    pinned_blob = _pinned_blob(project_root, relative, raw)
                 except _OutboxGitError as error:
+                    # Git could not say what the file stages as — a
+                    # refused check covers a missing verification, not
+                    # just a failed one. The reason is masked and
+                    # display-escaped like every name this group prints:
+                    # git's stderr can carry a filter's output.
                     problems.append(
-                        f"cannot be pinned: {safe_path(str(error), markers)}"
+                        "cannot verify the bytes git would stage: "
+                        f"{escape_for_display(safe_path(str(error), markers))}"
                     )
+                else:
+                    if pinned_blob is None:
+                        problems.append(
+                            "git would transform it on staging — "
+                            + _transform_cause(project_root, relative)
+                        )
+                    else:
+                        pinned[os.fsencode(relative)] = pinned_blob
             try:
                 text = raw.decode("utf-8")
             except UnicodeDecodeError:
@@ -704,21 +745,29 @@ def _check(stderr: TextIO, *, pin: bool, index: Path | None) -> _CheckResult:
     )
     # The manifest's one pin is the blob of the content send writes —
     # not of the bytes it found. A manifest that does not exist and has
-    # nothing to record stages nothing, so it takes no pin either.
-    if pin and (manifest_old is not None or manifest_new):
+    # nothing to record stages nothing, so it takes no pin either. It is
+    # held to the same checked-bytes rule as every file: a filter that
+    # would rewrite it on staging refuses the run.
+    if manifest_old is not None or manifest_new:
         relative = f"{_OUTBOX_PREFIX}{_SENT}"
         try:
-            pinned[os.fsencode(relative)] = _git(
-                project_root,
-                ["hash-object", "--stdin", f"--path={relative}"],
-                manifest_new,
-            ).strip()
+            manifest_blob = _pinned_blob(project_root, relative, manifest_new)
         except _OutboxGitError as error:
             refused = True
             print(
-                f"{_printable(_SENT, markers)}: cannot be pinned: "
-                f"{safe_path(str(error), markers)}"
+                f"{_printable(_SENT, markers)}: cannot verify the bytes git "
+                f"would stage: "
+                f"{escape_for_display(safe_path(str(error), markers))}"
             )
+        else:
+            if manifest_blob is None:
+                refused = True
+                print(
+                    f"{_printable(_SENT, markers)}: git would transform it "
+                    f"on staging — {_transform_cause(project_root, relative)}"
+                )
+            else:
+                pinned[os.fsencode(relative)] = manifest_blob
     if skipped:
         print(f"skipped as sent: {skipped}")
     if hits:
@@ -778,6 +827,106 @@ def _git(project_root: Path, arguments: list[str], feed: bytes = b"") -> bytes:
             f"git {arguments[0]} failed" + (f": {detail}" if detail else "")
         )
     return result.stdout
+
+
+def _pinned_blob(project_root: Path, relative: str, content: bytes) -> bytes | None:
+    """The blob id *content* stages as at *relative* — or ``None``.
+
+    ``--path`` applies the attributes the ``add`` will apply, so the id
+    is the one staging writes; ``--no-filters`` is the blob of the bytes
+    exactly as the check read them. A difference means a clean filter or
+    an end-of-line conversion would commit content the check never saw —
+    the caller refuses the file instead of pinning it, so only checked
+    bytes are ever committed.
+    """
+
+    staged = _git(
+        project_root,
+        ["hash-object", "--stdin", f"--path={relative}"],
+        content,
+    ).strip()
+    plain = _git(
+        project_root, ["hash-object", "--stdin", "--no-filters"], content
+    ).strip()
+    return staged if staged == plain else None
+
+
+def _autocrlf(project_root: Path) -> bool:
+    """Whether ``core.autocrlf`` is set to a value that converts.
+
+    Asked of git with its own ``--type=bool-or-str`` read, so every
+    spelling git takes for true — ``yes``, ``on``, ``1``, the key
+    without a value — lands as ``true`` beside the literal, and
+    ``input`` converts as well; ``false``'s spellings, an unset key —
+    ``config --get`` exits non-zero on it — and a value that is no
+    spelling of either do not.
+    """
+
+    try:
+        value = (
+            _git(
+                project_root,
+                ["config", "--type=bool-or-str", "--get", "core.autocrlf"],
+            )
+            .decode("ascii", errors="replace")
+            .strip()
+        )
+    except _OutboxGitError:
+        return False
+    return value in ("true", "input")
+
+
+def _transform_cause(project_root: Path, relative: str) -> str:
+    """Why git would rewrite the checked bytes on staging, and the remedy.
+
+    The attributes applying at *relative* name the conversion the
+    mismatched blob id came from: a set ``filter`` is a clean filter —
+    refused with the rule that it must not apply to the outbox. For
+    end-of-line conversion the attributes speak first: ``text`` or
+    ``eol`` applying is conversion, ``-text`` turns normalisation off
+    for good — neither ``eol`` nor ``core.autocrlf`` re-enables it —
+    and only where no attribute speaks does ``core.autocrlf`` decide,
+    so the ``-text`` remedy is named only where it would change
+    anything. Anything else — an encoding conversion, say — is refused
+    without a named remedy, exactly as before.
+    """
+
+    attributes: dict[str, str] = {}
+    try:
+        out = _git(
+            project_root,
+            ["check-attr", "-z", "filter", "text", "eol", "--", relative],
+        )
+    except _OutboxGitError:
+        out = b""
+    fields = out.split(b"\0")
+    for index in range(0, len(fields) - len(fields) % 3, 3):
+        attributes[fields[index + 1].decode("utf-8", "backslashreplace")] = fields[
+            index + 2
+        ].decode("utf-8", "backslashreplace")
+    causes: list[str] = []
+    if attributes.get("filter", "unspecified") not in ("unspecified", "unset"):
+        causes.append(
+            "a clean filter applies — the filter must not apply to the outbox"
+        )
+    text = attributes.get("text", "unspecified")
+    eol = attributes.get("eol", "unspecified")
+    if text != "unset" and (
+        text != "unspecified"
+        or eol not in ("unspecified", "unset")
+        or _autocrlf(project_root)
+    ):
+        causes.append(
+            "end-of-line conversion applies — "
+            f"`{_OUTBOX_DIR_SPEC}/** -text` in .gitattributes (or committing "
+            "the file with the bytes git stages) makes the bytes match"
+        )
+    if not causes:
+        # A difference none of the queried attributes explains — an
+        # encoding conversion, say — names no cause it was not checked
+        # for, and offers no remedy.
+        causes.append("the bytes differ and no known cause was found")
+    return "; ".join(causes)
 
 
 def _staged_name_status(project_root: Path) -> list[tuple[str, list[str]]]:
@@ -922,7 +1071,7 @@ def _run_send(index: Path | None, stderr: TextIO) -> int:
     # any refusal it voices refuses the send. The pins it brings back are
     # the blob ids of the very bytes it read — the manifest's update
     # pinned like every file — what the commit must show.
-    result = _check(stderr, pin=True, index=index)
+    result = _check(stderr, index=index)
     if result.status != 0:
         print("outbox send: refused — the check did not pass", file=stderr)
         return 1
@@ -1089,7 +1238,7 @@ def _run_status(index_path: Path, stderr: TextIO) -> int:
     except OSError as error:
         print(
             f"outbox status: cannot read the index "
-            f"{safe_path(_shown_name(index_path), markers)}: "
+            f"{_printable(index_path, markers)}: "
             f"{_os_error_text(error)}",
             file=stderr,
         )
@@ -1099,7 +1248,7 @@ def _run_status(index_path: Path, stderr: TextIO) -> int:
     except OSError as error:
         print(
             f"outbox status: cannot read the outbox at "
-            f"{safe_path(_shown_name(outbox), markers)}: {_os_error_text(error)}",
+            f"{_printable(outbox, markers)}: {_os_error_text(error)}",
             file=stderr,
         )
         return 1
@@ -1107,7 +1256,7 @@ def _run_status(index_path: Path, stderr: TextIO) -> int:
     refused = False
     claimed: set[str] = set()
     for entry in entries:
-        name = safe_path(_shown_name(entry.name), markers)
+        name = _printable(entry.name, markers)
         if not _is_regular(entry):
             # Not a file and not hashable — the check's "nothing passes in
             # silence" rule, applied to the channel's other direction.
