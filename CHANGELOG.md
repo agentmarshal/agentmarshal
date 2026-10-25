@@ -248,10 +248,10 @@ they always did, and an artifact reference it holds stays
 before its file is created, so a write that fails at that step — an
 encoding or serialization failure — leaves no record file behind; a
 failure while writing or closing the created file is not rolled back.
-And the reviewer output kept on a refused
-verdict is now the reviewer's bytes exactly — the preserved file
-holds what the reviewer printed, including bytes that are not valid
-UTF-8, while parsing still uses the decoded text.
+And the reviewer output kept on a refused verdict is now the
+reviewer's bytes exactly — the preserved file holds what the
+reviewer printed, including bytes that are not valid UTF-8, while
+parsing still uses the decoded text.
 
 ### What 0.6.0 leaves out
 

@@ -68,7 +68,9 @@ Before 0.4.0 was published, pinned prose became a choice rather than the
 default (CR-111). A journal in a public repository publishes whatever the
 reviewer wrote, so the project's capture policy now decides. By default its
 `reviews` level is `hash`: an accepted review's standard output stays out of
-the journal, in a local temporary file whose path the command prints — for an
+the journal — at the time in a local temporary file whose path the command
+prints; since 0.5.0 it is kept under the clone's local state, announced by a
+`review-prose` event, and the temporary file is only the fallback — for an
 approval too, which is the literal form of the third request above. The
 durable, pinned prose this disposition accepted is what
 `"capture": {"overrides": {"reviews": "commit"}}` gives.

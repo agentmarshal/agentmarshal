@@ -44,10 +44,12 @@ historical 0.1.0 boundary and note what has changed since:
   [ADR-0005](docs/adr/ADR-0005-evidence-capture-and-format.md) mark the
   supplementary-artifact capture policy, the private store, and the
   in-toto/attestation projection as roadmap. The capture policy's review
-  class has shipped: `capture.overrides.reviews` is read — `commit` pins
-  the reviewer's prose as a journal artifact, `hash` (the default) keeps
-  it under the clone's local state announced by a `review-prose` event,
-  and `off` keeps nothing. Still roadmap: the `economics` and `sessions`
+  class has shipped: the reviews level comes from the capture preset —
+  `attested` (the default) gives `hash`, `full` gives `commit` and
+  `minimal` gives `off`, and `capture.overrides.reviews` can override
+  it. `commit` pins the reviewer's prose as a journal artifact, `hash`
+  keeps it under the clone's local state announced by a `review-prose`
+  event, and `off` keeps nothing. Still roadmap: the `economics` and `sessions`
   classes are not read, the durable private store stays unbuilt (`hash`
   prose lives in the process-log area instead), and `attestation.py`
   emits no Statement. ADR-0005 separately records the advisory leak-scan
