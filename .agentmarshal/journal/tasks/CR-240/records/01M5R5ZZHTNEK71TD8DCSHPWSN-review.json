@@ -1,0 +1,73 @@
+{
+  "advisory_findings": [
+    "ADV-1",
+    "ADV-2"
+  ],
+  "artifacts": [
+    {
+      "hash": "82bc545b3c53e4e1b20b34b828fcb7eb8f6d053e72d8165ff3e82cb46430361e",
+      "ref": ".agentmarshal/journal/tasks/CR-240/artifacts/01M5R5ZZHTNEK71TD8DCSHPWSN-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-1": "claim-accuracy",
+    "ADV-2": "test-gap"
+  },
+  "created_at": "2026-10-25T00:05:01.626425Z",
+  "evidence": {
+    "ADV-1": "src/agentmarshal/journal/gate.py:1344-1349 comment claims the branch fires only when 'the candidate's own added paths explain why'; the condition at src/agentmarshal/journal/gate.py:1350-1352 is `sorted(path for path in added_records if _record_path_task(path) is None)` over all added records, including paths under another task, so a nested path under tasks/CR-002/records/ triggers the FAIL-and-return even when CR-001's unreadability is pre-existing (the contract's own non-goal case)",
+    "ADV-2": "src/agentmarshal/journal/gate.py:403-419 (_record_path_task) re-encodes the accepted shape that src/agentmarshal/journal/records.py:2745-2756 (read_records: is_file / filename pattern) enforces; grep of tests/test_gate.py for the four new tests shows they pin only the nested case, no test ties the two shapes together; ADR-0004 decision 6 (docs/adr/ADR-0004-journal-data-model.md, 'All journal I/O goes through the recorder (write) and loader (read/projection) APIs') places that knowledge behind the loader seam"
+  },
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "4f42123d08d85838af8aa11064ffc3c014a91b84",
+  "reviewed_contract": "79580e729d5b234fbbc7814674589149c59ec8f0876bf6aade2f734b326a2f0c",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-240",
+  "tool_version": "0.6.0",
+  "verdict": "approved",
+  "verification": {
+    "not_run": [
+      {
+        "what": "uv sync --locked; uv run agentmarshal validate; uv run pytest; uv run ruff check; uv run ruff format --check; uv run mypy",
+        "why": "command execution is not permitted in this review sandbox (every attempt, including `uv --version` and `python3 -c`, was refused as requiring approval); the CI result is taken from the coordinator's note on 4f42123d08d85838af8aa11064ffc3c014a91b84"
+      },
+      {
+        "what": "git inspection of the reviewed commit",
+        "why": "the supplied snapshot at /tmp/agentmarshal-review-k6dhzza5/snapshot is not a git repository, so only the file contents and the supplied diff could be read"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/journal/gate.py:83-200 (constants, GateError, GateReport, run_findings_gate)",
+      "src/agentmarshal/journal/gate.py:380-430 (_is_record_path, _record_type_from_record_path, _record_path_task, _is_append_only_evidence_path)",
+      "src/agentmarshal/journal/gate.py:1197-1470 (run_gate preamble, deferred load, empty-range raise, base_tree, record_changes, the new task-is-None branch, lane selection)",
+      "src/agentmarshal/journal/gate.py:1640-1700 (contract-from-base-tree raises)",
+      "src/agentmarshal/journal/gate.py:2135-2290 (added-records check, collisions, cross-task lifecycle loop)",
+      "src/agentmarshal/journal/gate.py:2410-2425 (final GateReport)",
+      "src/agentmarshal/journal/records.py:327-330, 2700-2778 (JournalRecordError, validate_record_content, read_records)",
+      "src/agentmarshal/journal/records.py:1898-1930 (forges_rendered_text, _reject_control_characters)",
+      "src/agentmarshal/journal/records.py:2330-2360 (create_session_record signature)",
+      "src/agentmarshal/journal/status.py:65-180 (TaskStatusError, load_task_status, load_task_for_record)",
+      "src/agentmarshal/journal/display.py:27-43 (escape_for_display)",
+      "src/agentmarshal/journal/gate_context.py:1-125 (derive_gate_context)",
+      "src/agentmarshal/journal/artifacts.py:1-78 (artifact path shape)",
+      "src/agentmarshal/journal/complete.py:50-110 (run_gate caller)",
+      "src/agentmarshal/cli.py:955-1010, 1075-1120 (gate CLI transcript printing and exit codes)",
+      "tests/test_gate.py:1-45, 87-200, 300-430, 1857-1900 (imports and real-git helpers)",
+      "tests/test_gate.py:2057-2200 (the four new tests and _add_nested_record)",
+      "tests/test_gate.py:2295-2325, 2495-2565 (existing GateError pins through the deferred load)",
+      "tests/fixtures/gate/ (listing: fixtures untouched by the diff)",
+      "docs/adr/ADR-0004-journal-data-model.md:1-90",
+      "pyproject.toml:47-69 (ruff and mypy configuration)"
+    ]
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "advisory_findings": [
+    "ADV-closed-at-base-admits-a-nested-record-path"
+  ],
+  "artifacts": [
+    {
+      "hash": "d0809491a511846cb4f1356cf091e0cf3282c1850601238493f0c789d16e635e",
+      "ref": ".agentmarshal/journal/tasks/CR-240/artifacts/01M5R84AGN8A5B7T81FM2VPVWQ-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-closed-at-base-admits-a-nested-record-path": "claim-accuracy"
+  },
+  "created_at": "2026-10-25T00:42:21.077612Z",
+  "evidence": {
+    "ADV-closed-at-base-admits-a-nested-record-path": "src/agentmarshal/journal/gate.py:1438-1452 — added_record_types = [_record_type_from_record_path(path) ...] и условие `path.startswith(task_records_prefix) and record_type_is_admitted_after_terminal(record_type, terminal_state_at_base)`; для 'tasks/CR-001/records/sub/<ULID>-session.json' префикс совпадает, тип из имени файла = 'session', а record_type_is_admitted_after_terminal('session','done') истинно (пин в tests/test_gate.py:2531), поэтому admitted_records_only истинно и печатается PASS-строка 1458-1465"
+  },
+  "findings": [],
+  "previous_review": "01M5R7NS0V4MN32RNH8WTNV2MK",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "396ff3c8d26fb3269c13827217adc4a5a4190e6e",
+  "reviewed_contract": "79580e729d5b234fbbc7814674589149c59ec8f0876bf6aade2f734b326a2f0c",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-240",
+  "tool_version": "0.6.0",
+  "verdict": "approved",
+  "verification": {
+    "not_run": [
+      {
+        "what": "uv sync --locked; uv run agentmarshal validate; uv run pytest; ruff check; ruff format --check; mypy",
+        "why": "в этой read-only песочнице запуск python/uv/git не разрешён; результат CI на 396ff3c взят из записки координатора"
+      },
+      {
+        "what": "git show/diff по ревьюируемому коммиту",
+        "why": "снапшот не является git-репозиторием (git status: not a git repository)"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/journal/gate.py (все изменённые места: 84-91, 390-425, 1240-1480, 2140-2330, 2424-2430)",
+      "src/agentmarshal/journal/records.py (read_records 2725-2778, validate_record_content 2696-2722, validate_task_id 331-335, _TASK_ID_PATTERN 35, JournalRecordError 327)",
+      "src/agentmarshal/journal/status.py (load_task_status 144-161, TaskStatusError 65)",
+      "src/agentmarshal/cli.py (_run_gate 910-1010, complete 1060-1140)",
+      "src/agentmarshal/journal/complete.py (complete_task 46-77)",
+      "tests/test_gate.py (импорты 1-43, хелперы 87-123, 178-200, 305-310, 416-427, 1857-1864, новые тесты 2060-2233, существующие GateError-тесты 2520-2600)",
+      "tests/fixtures/gate/ (список файлов)",
+      "docs/adr/ADR-0004-journal-data-model.md",
+      ".agentmarshal/journal/tasks/CR-240/contract.md"
+    ]
+  }
+}
