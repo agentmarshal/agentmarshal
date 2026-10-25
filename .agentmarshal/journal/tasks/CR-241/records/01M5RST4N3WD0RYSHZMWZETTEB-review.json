@@ -1,0 +1,98 @@
+{
+  "advisory_findings": [
+    "ADV-check-needs-git",
+    "ADV-exit-zero-scenario-unmodified",
+    "ADV-new-prints-raw-path",
+    "ADV-transform-cause-asserts-unverified",
+    "ADV-git-stderr-not-escaped",
+    "ADV-changelog-and-threat-model-stale"
+  ],
+  "artifacts": [
+    {
+      "hash": "1368cdc8b54072cf3c858217facd8d00ec59e3ef9ed28bc976061bfa341c7b3d",
+      "ref": ".agentmarshal/journal/tasks/CR-241/artifacts/01M5RST4N3WD0RYSHZMWZETTEB-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-changelog-and-threat-model-stale": "scope",
+    "ADV-check-needs-git": "contract-mismatch",
+    "ADV-exit-zero-scenario-unmodified": "contract-mismatch",
+    "ADV-git-stderr-not-escaped": "security",
+    "ADV-new-prints-raw-path": "claim-accuracy",
+    "ADV-transform-cause-asserts-unverified": "claim-accuracy"
+  },
+  "created_at": "2026-10-25T05:51:21.763154Z",
+  "evidence": {
+    "ADV-changelog-and-threat-model-stale": "grep -n outbox CHANGELOG.md shows an entry for CR-228 at CHANGELOG.md:186 but none for the new refusals; docs/threat-model.md:166-191 enumerates \"The symlink refusals the specifications state\" without the outbox path refusal, and docs/threat-model.md:522-537 still lists the outbox's only specified symlink statement as the non-regular-entry rule. Both paths are outside the contract's scope list.",
+    "ADV-check-needs-git": "src/agentmarshal/outbox.py:692 and 748 call _pinned_blob unconditionally; the diff removed the `if pin and` guards (old: `if pin and entry.name != _SENT:`, `if pin and (manifest_old is not None or manifest_new):`), and _git (outbox.py:792-820) raises _OutboxGitError on any non-zero git exit, which becomes `problems.append(f\"cannot be pinned: ...\")` -> refused. `outbox check` therefore now needs a working git repository where before it touched git not at all.",
+    "ADV-exit-zero-scenario-unmodified": "openspec/specs/outbox/spec.md:137-139 (`#### Scenario: conforming drafts with a clean scan exit 0` / WHEN every draft conforms and the scan finds nothing / THEN the command exits 0) versus the ADDED requirement at openspec/specs/outbox/spec.md:525 and the refusal at src/agentmarshal/outbox.py:697-703; the delta at openspec/changes/archive/2026-10-25-outbox-boundaries/specs/outbox/spec.md carries no MODIFIED entry for the exit-status requirement.",
+    "ADV-git-stderr-not-escaped": "src/agentmarshal/outbox.py:695 `f\"cannot be pinned: {safe_path(str(error), markers)}\"` and 752-753 use safe_path without escape_for_display, while _git (outbox.py:816) builds the error text from git's stderr decoded with backslashreplace; a clean filter invoked by `hash-object --path` contributes to that stderr. Contrast outbox.py:252 `_printable`, which masks then escapes.",
+    "ADV-new-prints-raw-path": "src/agentmarshal/outbox.py:380 `print(draft)` (a Path, neither masked nor display-escaped) against outbox.py:1230/1241/1248 where status now uses _printable; src/agentmarshal/cli.py:550 prints initialized.project_root raw while cli.py:555/560 print the now-escaped initialized.outbox. tests/test_outbox.py::test_init_names_the_linked_outbox_escaped only asserts on captured.err, so the raw stdout path is untested.",
+    "ADV-transform-cause-asserts-unverified": "src/agentmarshal/outbox.py:918 `causes.append(\"a clean filter or eol conversion applies\")` is reached for any blob mismatch whose cause is not in the queried attributes (outbox.py:898 queries only filter, text, eol), while the function's own docstring (outbox.py:860-872) says such a case is \"refused without a named remedy\"."
+  },
+  "findings": [],
+  "previous_review": "01M5RR6DZWWPC2F08HTM8QGYBZ",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "d9af69c5b10641e5ff1006b5ec7ad63e24c696f2",
+  "reviewed_contract": "4c9362979a6a092c83c79053a9bc68135fcd996602237f8bc80a1f51c724bc9a",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-241",
+  "tool_version": "0.6.0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "9 requirements, each heading once; the two ADDED ones at lines 495 and 525, the MODIFIED status one at 276",
+        "what": "grep -c '^### Requirement:' openspec/specs/outbox/spec.md and grep -n of the headings"
+      },
+      {
+        "result": "present in ~34 of 100 archived changes, so the new archive's .openspec.yaml is a normal artifact, not a hand-made one",
+        "what": "find openspec/changes -name .openspec.yaml"
+      },
+      {
+        "result": "docs/threat-model.md:192 — the quote the contract cites exists",
+        "what": "grep -rn 'sidecar never writes its host' docs/threat-model.md"
+      },
+      {
+        "result": "line 50 'current = start.resolve()' — the project root is resolved, so .agentmarshal and upstream are the only components that can be links",
+        "what": "grep -n '_ancestors_from' -A 20 src/agentmarshal/project.py"
+      },
+      {
+        "result": "380, 695, 752, 918 — the lines the advisory findings cite",
+        "what": "grep -n 'print(draft)|cannot be pinned|a clean filter or eol conversion applies' src/agentmarshal/outbox.py"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; uv run agentmarshal validate; uv run pytest; uv run ruff check; uv run ruff format --check; uv run mypy",
+        "why": "command execution (git, python, uv) is denied in this review session; the coordinator states the sequence passed on the reviewed commit"
+      },
+      {
+        "what": "a live check that `git hash-object --stdin --path=X` applies a clean filter and core.autocrlf while `--stdin --no-filters` does not",
+        "why": "no shell execution available; inferred from git's documented behaviour and from the four new tests that assert it"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/outbox.py (whole module: _locate, _printable, _markers, _run_new, _check, _pinned_blob, _autocrlf, _transform_cause, _git, _batch_mismatch, _run_send, _run_status)",
+      "src/agentmarshal/project.py (_ancestors_from, find_project_root, write_project_file, InitializedProject, _printable_path, _scaffold_outbox, initialize_project)",
+      "src/agentmarshal/cli.py:540-575 (_run_init output)",
+      "src/agentmarshal/journal/display.py",
+      "tests/test_outbox.py (header/helpers and every test added by the diff, plus test_the_sent_manifest_is_pinned_once_with_the_content_send_writes)",
+      "openspec/specs/outbox/spec.md",
+      "openspec/changes/archive/2026-10-25-outbox-boundaries/ (proposal.md, design.md, tasks.md, specs/outbox/spec.md, .openspec.yaml)",
+      "docs/adr/ADR-0020-the-outbox-command-group.md",
+      "docs/threat-model.md:160-200, 515-545",
+      "pyproject.toml (ruff/mypy/pytest config)",
+      "CHANGELOG.md:1-60, 183-191"
+    ]
+  }
+}

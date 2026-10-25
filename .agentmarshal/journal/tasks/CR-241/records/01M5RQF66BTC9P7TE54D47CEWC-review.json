@@ -1,0 +1,107 @@
+{
+  "advisory_findings": [
+    "advisory-check-requires-git",
+    "advisory-eol-remedy-misleading",
+    "advisory-init-refusal-unmasked"
+  ],
+  "artifacts": [
+    {
+      "hash": "28763f25e0afe32c3358e0ec7467d7e1b516b5965eb215b3e56613e938d6323d",
+      "ref": ".agentmarshal/journal/tasks/CR-241/artifacts/01M5RQF66BTC9P7TE54D47CEWC-review.md"
+    }
+  ],
+  "classes": {
+    "advisory-check-requires-git": "contract-mismatch",
+    "advisory-eol-remedy-misleading": "claim-accuracy",
+    "advisory-init-refusal-unmasked": "contract-mismatch"
+  },
+  "created_at": "2026-10-25T05:10:25.739071Z",
+  "evidence": {
+    "advisory-check-requires-git": "src/agentmarshal/outbox.py:684 ('if entry.name != _SENT:' — was 'if pin and entry.name != _SENT:') and :745 ('if manifest_old is not None or manifest_new:' — was 'if pin and (...)'), with _run_check calling _check(stderr, index=index) at :531; _pinned_blob (:836-843) runs two 'git hash-object' subprocesses whose _OutboxGitError becomes 'cannot be pinned' at :694-696 and sets refused, so check exits 1 where it previously ran no git at all and exited 0",
+    "advisory-eol-remedy-misleading": "src/agentmarshal/outbox.py:896-900 — 'attributes.get(\"text\", ...) not in (\"unspecified\", \"unset\") or attributes.get(\"eol\", ...) not in (...) or _autocrlf(project_root)'; git check-attr reports 'unset' for '-text', so the autocrlf disjunct still fires and :901-905 names the '-text' remedy, contradicting the docstring at :871-873 ('core.autocrlf where no attribute speaks')",
+    "advisory-init-refusal-unmasked": "src/agentmarshal/project.py:317-319 returns f\"refusing to write through a symlink: {component}\" with the raw path; src/agentmarshal/cli.py:556-560 prints it as 'warning: could not create {initialized.outbox}: {initialized.outbox_error}' with neither safe_path nor escape_for_display, against openspec/specs/outbox/spec.md:497-502 ('printed with the masking every outbox path gets ... init's outbox scaffold SHALL refuse the same'); cf. src/agentmarshal/cli.py:599 where outward error text is escaped"
+  },
+  "findings": [],
+  "previous_review": "01M5RNP1FC68ERA09XD1VDVDFR",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "3f57e02f29601ad6f103851b945c5f121a448719",
+  "reviewed_contract": "4c9362979a6a092c83c79053a9bc68135fcd996602237f8bc80a1f51c724bc9a",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-241",
+  "tool_version": "0.6.0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "identical apart from the '## ADDED Requirements' header",
+        "what": "diff of the archived delta's ADDED section against openspec/specs/outbox/spec.md:495-554"
+      },
+      {
+        "result": "identical apart from the '## MODIFIED Requirements' header; heading and all 11 scenarios present",
+        "what": "diff of the archived delta's MODIFIED requirement against openspec/specs/outbox/spec.md:276-349"
+      },
+      {
+        "result": "9 new scenarios at lines 504-553, each matched by a test docstring in tests/test_outbox.py",
+        "what": "grep -n '^### Requirement|^#### Scenario' openspec/specs/outbox/spec.md"
+      },
+      {
+        "result": "34 archived changes carry one; the new archive matches their 'schema: spec-driven' / 'created:' shape",
+        "what": "find openspec -name .openspec.yaml"
+      },
+      {
+        "result": "only 'archive' — no leftover active outbox-boundaries directory",
+        "what": "ls openspec/changes/"
+      },
+      {
+        "result": "525780eeb61ad1c70358fd9c2cf4d4a164ea1176948a3bd3fffc96c126464134 — contains 'a', so the sed-based SENT filter test is deterministic, not flaky",
+        "what": "printf <_CONFORMING> | sha256sum"
+      },
+      {
+        "result": "extension_trust.py:212-227 uses the same lstat loop and the same 'refusing a symbolic link:' wording, confirming the design.md claim",
+        "what": "grep -n '_managed_directory' -A 30 src/agentmarshal/extension_trust.py"
+      },
+      {
+        "result": "docs/threat-model.md:192 — the quoted threat-model line exists",
+        "what": "grep -n 'never writes its host' docs/threat-model.md"
+      },
+      {
+        "result": "only the change's own proposal and the task contracts; no audit document needed updating",
+        "what": "grep -rn 'AUD-commands' --include=*.md ."
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; uv run agentmarshal validate; uv run pytest; uv run ruff check; uv run ruff format --check; uv run mypy",
+        "why": "uv is not installed in this snapshot and running a Python interpreter was denied in this read-only session; the coordinator states the sequence passed on 3f57e02"
+      },
+      {
+        "what": "the new symlink, clean-filter and control-character tests individually",
+        "why": "same — the suite could not be executed here, so the tests were verified by reading them against the implementation"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/outbox.py",
+      "src/agentmarshal/project.py",
+      "src/agentmarshal/cli.py:530-605",
+      "src/agentmarshal/journal/display.py:27-43",
+      "tests/test_outbox.py",
+      "openspec/specs/outbox/spec.md",
+      "openspec/changes/archive/2026-10-25-outbox-boundaries/specs/outbox/spec.md",
+      "openspec/changes/archive/2026-10-25-outbox-boundaries/design.md",
+      "openspec/changes/archive/2026-10-25-outbox-boundaries/proposal.md",
+      "openspec/changes/archive/2026-10-25-outbox-boundaries/tasks.md",
+      "docs/adr/ADR-0020-the-outbox-command-group.md",
+      "docs/threat-model.md:192",
+      "CHANGELOG.md:1-40,227-260"
+    ]
+  }
+}

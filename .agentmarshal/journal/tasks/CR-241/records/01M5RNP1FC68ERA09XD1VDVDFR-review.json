@@ -1,0 +1,92 @@
+{
+  "advisory_findings": [
+    "locate-refusal-unmasked-path",
+    "eol-refusal-no-remedy",
+    "status-requirement-duplicated"
+  ],
+  "artifacts": [
+    {
+      "hash": "f1f116d7aab71e9996349d3617b36d34c9157e23068680d335bde3b08e53877f",
+      "ref": ".agentmarshal/journal/tasks/CR-241/artifacts/01M5RNP1FC68ERA09XD1VDVDFR-review.md"
+    }
+  ],
+  "classes": {
+    "eol-refusal-no-remedy": "style",
+    "locate-refusal-unmasked-path": "security",
+    "status-requirement-duplicated": "style"
+  },
+  "created_at": "2026-10-25T04:39:13.132770Z",
+  "evidence": {
+    "eol-refusal-no-remedy": "src/agentmarshal/outbox.py:690-694 and 748-753 (refusal text names no remedy); src/agentmarshal/outbox.py:817-837 (_pinned_blob compares the attribute-applied id with the raw id, so any eol normalisation refuses); README.md:118 'Windows is untested.'; docs/proposals/012-upstream-feedback-channel.md:3 names a Windows adopter as a reporter of this very channel",
+    "locate-refusal-unmasked-path": "src/agentmarshal/outbox.py:183-187 prints escape_for_display(_shown_name(component)) with no markers, while src/agentmarshal/outbox.py:1158 prints the same outbox path as _printable(outbox, markers); _markers() needs only project_root (src/agentmarshal/outbox.py:262-275); precedent src/agentmarshal/extension_trust.py:224-226",
+    "status-requirement-duplicated": "openspec/specs/outbox/spec.md:290-292 and :335-339 (pre-existing masking/escaping obligation for status) versus openspec/specs/outbox/spec.md:530-540 (the new ADDED requirement restating it)"
+  },
+  "findings": [],
+  "previous_review": "01M5RN5PH90SPVMVPVTGMBADBM",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "a16520d043f56b1e08536cec9ee972f40a6241b0",
+  "reviewed_contract": "4c9362979a6a092c83c79053a9bc68135fcd996602237f8bc80a1f51c724bc9a",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-241",
+  "tool_version": "0.6.0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "only the '## ADDED Requirements' heading line differs; the three requirement bodies and six scenarios are byte-identical",
+        "what": "diff of openspec/changes/archive/2026-10-25-outbox-boundaries/specs/outbox/spec.md (minus its '# Spec Delta' header) against the last 55 lines of openspec/specs/outbox/spec.md"
+      },
+      {
+        "result": "10 requirements, the three new ones once each at lines 489, 512, 530",
+        "what": "grep -n '^### Requirement:' openspec/specs/outbox/spec.md"
+      },
+      {
+        "result": "only 'archive' — the working change directory is gone",
+        "what": "ls openspec/changes/"
+      },
+      {
+        "result": "34 of 99 archived changes carry .openspec.yaml with the same 'schema: spec-driven' + 'created:' form; README.md inside a change directory exists only for this change",
+        "what": "find openspec/changes/archive -maxdepth 2 -name .openspec.yaml / -name README.md and grep of two .openspec.yaml files"
+      },
+      {
+        "result": "only project.py writes the outbox path, so _locate plus _scaffold_outbox cover every writer",
+        "what": "grep -rn 'upstream' over src/agentmarshal/*.py excluding outbox.py"
+      },
+      {
+        "result": "[tool.pytest.ini_options] testpaths only — no coverage gate, so the unreachable _scaffold_outbox branch cannot fail CI",
+        "what": "grep of pyproject.toml for pytest/coverage settings"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; uv run agentmarshal validate; uv run pytest; uv run ruff check; uv run ruff format --check; uv run mypy",
+        "why": "Bash approval was denied for every execution in this non-interactive session; the coordinator states the full sequence passed on the reviewed commit"
+      },
+      {
+        "what": "git hash-object --stdin --path=... vs --no-filters on a repository with a clean filter, and the sha256 of the conforming draft used by the manifest test",
+        "why": "no command execution available; reasoned from git's conversion behaviour and from the sed filter adding a trailing newline, which makes the mismatch independent of the digest's characters"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/outbox.py (module docstring, _locate, _shown_name, _printable, _markers, _run_new, _write_draft, _check, _git, _pinned_blob, _batch_mismatch, _run_send, _run_status)",
+      "src/agentmarshal/project.py (_ancestors_from, find_project_root, write_project_file, _scaffold_outbox, initialize_project tail)",
+      "src/agentmarshal/cli.py:538-561 (_run_init warning line)",
+      "src/agentmarshal/extension_trust.py:205-244 (_managed_directory precedent)",
+      "src/agentmarshal/journal/display.py (escape_for_display)",
+      "src/agentmarshal/journal/capture.py:312-331 (safe_path)",
+      "tests/test_outbox.py:1-95 (helpers, _CONFORMING) and 1923-2113 (the seven new tests)",
+      "openspec/specs/outbox/spec.md (Purpose, send and status requirements, the three appended requirements)",
+      "openspec/changes/archive/2026-10-25-outbox-boundaries/{proposal.md,design.md,tasks.md,README.md,specs/outbox/spec.md}",
+      "README.md:118, docs/proposals/012-upstream-feedback-channel.md:3, CONTRIBUTING.md:175-199"
+    ]
+  }
+}

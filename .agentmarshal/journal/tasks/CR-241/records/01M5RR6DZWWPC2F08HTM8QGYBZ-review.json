@@ -1,0 +1,106 @@
+{
+  "advisory_findings": [
+    "autocrlf-bool-spellings-lose-the-remedy",
+    "changelog-entry-outside-scope",
+    "threat-model-symlink-list-not-updated"
+  ],
+  "artifacts": [
+    {
+      "hash": "181d058f9e077ba8693393176c4dec59a8846dd538f8fcfca2b0b19baae1816d",
+      "ref": ".agentmarshal/journal/tasks/CR-241/artifacts/01M5RR6DZWWPC2F08HTM8QGYBZ-review.md"
+    }
+  ],
+  "classes": {
+    "autocrlf-bool-spellings-lose-the-remedy": "contract-mismatch",
+    "changelog-entry-outside-scope": "scope",
+    "threat-model-symlink-list-not-updated": "scope"
+  },
+  "created_at": "2026-10-25T05:23:07.388756Z",
+  "evidence": {
+    "autocrlf-bool-spellings-lose-the-remedy": "src/agentmarshal/outbox.py:863 `return value in (\"true\", \"input\")` versus git's git_config_bool spellings; the fallback it falls into is src/agentmarshal/outbox.py:906-907, and the scenario it must satisfy is openspec/specs/outbox/spec.md:541-546",
+    "changelog-entry-outside-scope": "CHANGELOG.md:11 (0.6.0 unreleased), :186 (CR-228 outbox entry), :227 (CR-235/236 release-audit fixes); contract scope lists only src/agentmarshal/outbox.py, src/agentmarshal/project.py, tests/ and three openspec paths, and the diff changes no CHANGELOG.md line",
+    "threat-model-symlink-list-not-updated": "docs/threat-model.md:166-190 and :522-537 cite only \"outbox specification, `outbox check` scans what would be sent and refuses by exit status\" for the outbox, while the new requirement sits at openspec/specs/outbox/spec.md:495"
+  },
+  "findings": [],
+  "previous_review": "01M5RQF66BTC9P7TE54D47CEWC",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "3f57e02f29601ad6f103851b945c5f121a448719",
+  "reviewed_contract": "4c9362979a6a092c83c79053a9bc68135fcd996602237f8bc80a1f51c724bc9a",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-241",
+  "tool_version": "0.6.0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "nine requirements; the two ADDED ones appear once each, at :495 and :525",
+        "what": "grep -n '^### Requirement' openspec/specs/outbox/spec.md"
+      },
+      {
+        "result": "no active change left; the new archive carries design.md, proposal.md, specs/outbox/spec.md, tasks.md plus .openspec.yaml, which the siblings predating the 1.15.0 pin lack",
+        "what": "ls -a openspec/changes/ openspec/changes/archive/2026-10-25-outbox-boundaries/ and three sibling archives"
+      },
+      {
+        "result": "identical heading and all twelve scenarios, including the new control-character one",
+        "what": "read openspec/specs/outbox/spec.md:276-349 against the delta's MODIFIED block"
+      },
+      {
+        "result": "nine new tests at :1923-:2186, one per new scenario, docstrings naming them",
+        "what": "grep -n 'def test_' tests/test_outbox.py | tail -16"
+      },
+      {
+        "result": "only project.py's _scaffold_outbox writes the outbox, so _locate plus _scaffold_outbox cover every writer",
+        "what": "grep -rn 'upstream' --include=*.py src/ outside outbox.py"
+      },
+      {
+        "result": "every name status prints now goes through _printable (:1222, :1230, :1238); remaining safe_path uses take error text, not names",
+        "what": "grep -n 'safe_path\\|_printable' src/agentmarshal/outbox.py"
+      },
+      {
+        "result": "0.6.0 unreleased documents each CR (CR-228 outbox, CR-235/236 release-audit fixes); no CR-241 entry",
+        "what": "grep -n 'outbox' CHANGELOG.md and grep -n '^### ' CHANGELOG.md"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "read-only review and this sandbox refused python3/uv/git invocations; the coordinator states the sequence passed on 3f57e02f"
+      },
+      {
+        "what": "probing git hash-object --stdin --no-filters and git check-attr -z directly",
+        "why": "git invocation required approval in this session; the flag combination is exercised by the suite the coordinator reports green"
+      },
+      {
+        "what": "openspec validate / openspec archive",
+        "why": "no network and no node toolchain available here; archive use inferred from .openspec.yaml and the archive skill's documented behaviour"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/outbox.py",
+      "src/agentmarshal/project.py (find_project_root, write_project_file, _scaffold_outbox)",
+      "src/agentmarshal/cli.py (init's outbox warning)",
+      "src/agentmarshal/journal/display.py",
+      "src/agentmarshal/journal/capture.py (safe_path)",
+      "src/agentmarshal/extension_trust.py (_managed_directory)",
+      "tests/test_outbox.py",
+      "openspec/specs/outbox/spec.md",
+      "openspec/changes/archive/2026-10-25-outbox-boundaries/ (proposal, design, tasks, specs/outbox/spec.md)",
+      "docs/adr/ADR-0020-the-outbox-command-group.md",
+      "docs/threat-model.md",
+      "docs/proposals/045-outbox-check-refuses-an-outbox-that-predates-it.md",
+      "CHANGELOG.md",
+      ".gitattributes",
+      "pyproject.toml",
+      "openspec/config.yaml"
+    ]
+  }
+}
