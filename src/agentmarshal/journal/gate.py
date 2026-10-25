@@ -61,6 +61,7 @@ from agentmarshal.journal.records import (
     JournalRecordError,
     read_records,
     validate_record_content,
+    validate_task_id,
 )
 from agentmarshal.journal.report import (
     SELF_ACCEPTED_MARK,
@@ -404,8 +405,9 @@ def _record_path_task(path: str) -> str | None:
     """Return the task a record path belongs to, or None when it is not one.
 
     Only ``tasks/<id>/records/<file>`` names a record — the one shape
-    ``read_records`` accepts. ``_is_record_path`` stays wider on purpose,
-    so a file nested deeper under ``records/`` is still held to the
+    ``read_records`` accepts, its task segment held to the reader's own
+    ``validate_task_id``. ``_is_record_path`` stays wider on purpose, so
+    a file nested deeper under ``records/`` is still held to the
     evidence checks instead of escaping them; the added-records check
     then refuses it by name (AUD-whole-project-1).
     """
@@ -414,7 +416,11 @@ def _record_path_task(path: str) -> str | None:
     if not path.startswith(tasks_prefix):
         return None
     parts = path.removeprefix(tasks_prefix).split("/")
-    if len(parts) != 3 or parts[1] != "records" or not parts[0] or not parts[2]:
+    if len(parts) != 3 or parts[1] != "records" or not parts[2]:
+        return None
+    try:
+        validate_task_id(parts[0])
+    except JournalRecordError:
         return None
     return parts[0]
 
@@ -1341,12 +1347,11 @@ def run_gate(
         added_records = []
         base_tree = {path for path in base_tree if not path.startswith(_JOURNAL_PREFIX)}
     if task is None:
-        # The judged task's records could not be read. When the
-        # candidate's own added paths explain why — a file nested under
-        # a records/ directory is a path read_records refuses — the
-        # refusal is the FAIL line naming each path, not the load's
-        # unlabelled error. Anything else raises as it did at the top of
-        # the gate.
+        # The judged task's records could not be read. Any added record
+        # path with no parseable task — under the judged task or under
+        # any other — produces the FAIL line naming each path instead of
+        # the load's unlabelled error. Anything else raises as it did at
+        # the top of the gate.
         non_record_paths = sorted(
             path for path in added_records if _record_path_task(path) is None
         )

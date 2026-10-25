@@ -2195,6 +2195,42 @@ def test_gate_refuses_the_judged_tasks_nested_record_on_the_implementation_lane(
     ) in output
 
 
+def test_gate_refuses_a_record_below_a_directory_that_is_not_a_task_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a record under a segment that is not a task id is refused.
+
+    ``tasks/cr-2/records/<file>`` spells the flat shape, yet ``cr-2`` is
+    no task id — read_records holds the segment to validate_task_id
+    before it ever reaches the file. The record's own ``task`` field is
+    set to match the directory on purpose, so only the path's task
+    segment can produce the refusal.
+    """
+
+    repo, base = _gate_repo(tmp_path, monkeypatch, ["src/"])
+    added: list[str] = []
+
+    def add_lowercase_task_record() -> None:
+        directory = repo / ".agentmarshal" / "journal" / "tasks" / "cr-2" / "records"
+        directory.mkdir(parents=True)
+        record = create_session_record(
+            "CR-001", "test", "role", "actor", "implementation", "done", 1, 2, 3
+        )
+        record["task"] = "cr-2"
+        path = directory / f"{generate_ulid()}-session.json"
+        path.write_text(json.dumps(record), encoding="utf-8")
+        added.append(path.relative_to(repo).as_posix())
+
+    head = _candidate_head(repo, "lowercase-task", base, add_lowercase_task_record)
+    passed, output = _run(repo, head, base, head)
+
+    assert not passed
+    assert (
+        f"FAIL: invalid added records: {added[0]}: "
+        "only tasks/<id>/records/<file> is a record path"
+    ) in output
+
+
 def test_gate_reports_malformed_base_contract_without_traceback(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
