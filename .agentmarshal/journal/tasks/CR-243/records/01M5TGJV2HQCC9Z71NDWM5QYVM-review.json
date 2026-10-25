@@ -1,0 +1,135 @@
+{
+  "advisory_findings": [
+    "AUD-REV-1",
+    "AUD-REV-2"
+  ],
+  "artifacts": [
+    {
+      "hash": "d35da8ab2c470d7ab274b4ead8d7a3602fb0137a608341c4cb011d5bfcbb860e",
+      "ref": ".agentmarshal/journal/tasks/CR-243/artifacts/01M5TGJV2HQCC9Z71NDWM5QYVM-review.md"
+    }
+  ],
+  "classes": {
+    "AUD-REV-1": "claim-accuracy",
+    "AUD-REV-2": "style"
+  },
+  "created_at": "2026-10-25T21:48:34.257485Z",
+  "evidence": {
+    "AUD-REV-1": "docs/proposals/009-lifecycle-extension-points.md:91 'nobody has asked for — new stages are added at an adopter's request' against the same file's line 19 'Defined lifecycle hooks (a `post-open` / `pre-complete` boundary)' and line 76 'waits on an adopter's request, and there is no `pre-complete`'",
+    "AUD-REV-2": "docs/proposals/016-reviewer-prose-not-durable-in-the-published-release.md:72 inserts 'since 0.5.0 it is kept under the clone's local state' inside the dated '## Later — 2026-09-18' note (line 65), and lines 78-84 restate the same fact in the new '## Where'; compare docs/proposals/019-journal-transactions-assume-direct-commits.md:60-66 and 035's dated bullet, where later facts are appended as dated entries instead"
+  },
+  "findings": [],
+  "previous_review": "01M5TFHBNGTH3HY0PTS9VE6A9N",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "4e1be0fbb5a04eb99229393d8d5002cf10047c63",
+  "reviewed_contract": "928d33f06659898372d4b983312ef2aab159aedb76c5aa4513b149efea930d08",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-243",
+  "tool_version": "0.6.0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "lines 2113-2125: json.dumps then .encode() before _create_exclusive(path); record_file.buffer.write(body) after creation is not rolled back — the narrowed CHANGELOG promise holds",
+        "what": "grep -n 'def write_record' -A 70 src/agentmarshal/journal/records.py"
+      },
+      {
+        "result": "_PRESETS: minimal→OFF, attested→HASH, full→COMMIT for CaptureClass.REVIEWS; DEFAULT_PRESET = 'attested'",
+        "what": "sed -n '1,130p' src/agentmarshal/journal/capture.py"
+      },
+      {
+        "result": "no hits — the economics and sessions classes are read nowhere else, as README now says",
+        "what": "grep -rn 'CaptureClass.ECONOMICS|CaptureClass.SESSIONS' src/ | grep -v capture.py"
+      },
+      {
+        "result": "1595 COMMIT→prose artifact, 1619 HASH→_keep_accepted_output, 1621 OFF→'reviewer prose was not kept'",
+        "what": "grep -n 'CaptureLevel' src/agentmarshal/journal/review.py"
+      },
+      {
+        "result": "review.py:715,727 — event written for the hash level; capture.py:251",
+        "what": "grep -rn 'review-prose' src/"
+      },
+      {
+        "result": "line 21: 'This module owns the declaration; it emits no Statement'",
+        "what": "grep -rn 'Statement|in-toto' src/agentmarshal/journal/attestation.py"
+      },
+      {
+        "result": "0.6.0 at 11, 0.5.0 at 280, 0.4.1 at 483, 0.4.0 at 519, 0.3.0 at 626, 0.2.0 at 713 — used to place every 'shipped in X' claim",
+        "what": "grep -n '^## ' CHANGELOG.md"
+      },
+      {
+        "result": "all in the 0.5.0 section (301-444); coordination at 601 → 0.4.0; init's .agentmarshal/upstream/ at 855 → 0.2.0",
+        "what": "grep -n 'coordination|advisory_dispositions|previous_review|changes_required|resets_at|report_ready|cli_session|started_at|independence|verification|acknowledgement' CHANGELOG.md"
+      },
+      {
+        "result": "15, 65 (_SENT = 'SENT'), 772 print('skipped as sent: {skipped}'); --index on check/send/status at 122-146",
+        "what": "grep -n 'SENT|skipped as sent' src/agentmarshal/outbox.py"
+      },
+      {
+        "result": "status_view.py:298 tokens=unmeasured; report.py:949,1005,1038 unmeasured= on Cost, task and Summary lines",
+        "what": "grep -rn 'tokens=unmeasured|unmeasured=' src/agentmarshal/journal/{status_view,report}.py"
+      },
+      {
+        "result": "cli.py:1530/1538, gate.py:2312, status_view.py:663-676 — 035 and 036 claims confirmed",
+        "what": "grep -rn 'Records absent from|records of other tasks|did not end' src/"
+      },
+      {
+        "result": "115-116 branch=journal/$task-$slug; git switch -c — branches per task and still switches the working tree (032 and 040)",
+        "what": "grep -n 'branch|checkout|switch' templates/journal-transaction.sh"
+      },
+      {
+        "result": "lines 181-182 inside '### 4. The session outcome vocabulary' — 034, 041, 042 citations correct",
+        "what": "grep -n 'output-limit|safety-limit|time-limit|stalled' docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md and its headings"
+      },
+      {
+        "result": "every ADR and proposal target the diff links to exists; no broken relative link among the added ones",
+        "what": "ls docs/adr/ | grep -E '0013|0015|0018|0021|0022' and ls docs/proposals/"
+      },
+      {
+        "result": "only 003, 004, 009:49, 019 (dated note followed by a current Where), 038 and 043 — each matching the status docs/proposals/README.md gives, so no stale status was left behind",
+        "what": "grep -n 'not shipped|not yet|undecided|to be written|pending|will say so in its changelog' over the proposals the diff did not touch"
+      },
+      {
+        "result": "test_a_failure_while_encoding_leaves_no_file asserts not journal_root.exists(); capture tests cover hash/commit/off and the sidecar project",
+        "what": "grep -rn 'def test' tests/test_review_capture.py; sed -n '440,470p' tests/test_record_text_safety.py"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "read-only review of a snapshot without a git repository or a provisioned uv environment; the coordinator states the sequence passed on this commit and the diff is documentation only"
+      },
+      {
+        "what": "a link checker script over all docs",
+        "why": "running a local python script was not permitted in this sandbox; the added links were instead checked by listing docs/adr/ and docs/proposals/"
+      }
+    ],
+    "read": [
+      "CHANGELOG.md (0.6.0 and 0.5.0 sections, lines 11-280 and 280-450)",
+      "README.md (the ADR-0004/0005 roadmap bullet)",
+      "docs/proposals/README.md (all batch tables)",
+      "docs/proposals/009-lifecycle-extension-points.md",
+      "docs/proposals/016-reviewer-prose-not-durable-in-the-published-release.md",
+      "docs/proposals/019-journal-transactions-assume-direct-commits.md",
+      "docs/proposals/043-review-before-integration-makes-every-merge-stale.md",
+      "src/agentmarshal/journal/records.py (write_record, _minimum_schema, contract field)",
+      "src/agentmarshal/journal/capture.py",
+      "src/agentmarshal/journal/review.py (prose capture branches)",
+      "src/agentmarshal/journal/submit_review.py (prose pin)",
+      "src/agentmarshal/journal/report.py, status_view.py, brief.py",
+      "src/agentmarshal/outbox.py, steps.py, stages.py",
+      "templates/journal-transaction.sh, templates/github/agentmarshal-governance.yml",
+      "docs/adr/ADR-0009-research-findings-lifecycle.md, ADR-0013, ADR-0015, ADR-0018, ADR-0021, ADR-0022",
+      "tests/test_record_text_safety.py, tests/test_review_capture.py"
+    ]
+  }
+}

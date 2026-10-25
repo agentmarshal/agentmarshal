@@ -1,0 +1,17 @@
+{
+  "advisory_dispositions": {
+    "ADV-readme-capture-off-1": {
+      "disposition": "deferred",
+      "reason": "README states off keeps nothing, while a refused verdict output is still preserved at any level; corrected in the closing release task (audit record), which edits README and the release notes"
+    }
+  },
+  "completed_commit": "5797c883853b3534cda3d42194f2b198d1a21637",
+  "created_at": "2026-10-25T22:21:33.079023Z",
+  "record_type": "completed",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "schema": 7,
+  "source": "live",
+  "task": "CR-243",
+  "tool_version": "0.6.0"
+}

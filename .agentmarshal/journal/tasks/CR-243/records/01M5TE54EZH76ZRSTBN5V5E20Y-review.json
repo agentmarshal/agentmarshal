@@ -1,0 +1,120 @@
+{
+  "advisory_findings": [
+    "ADV-016-hash-prose-stale",
+    "ADV-changelog-serialisation-spelling"
+  ],
+  "artifacts": [
+    {
+      "hash": "4b65d068c8d8ea4f2acfb20ccb7d9de22748531918d8b892a4c3197a2c003489",
+      "ref": ".agentmarshal/journal/tasks/CR-243/artifacts/01M5TE54EZH76ZRSTBN5V5E20Y-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-016-hash-prose-stale": "claim-accuracy",
+    "ADV-changelog-serialisation-spelling": "style"
+  },
+  "created_at": "2026-10-25T21:06:07.967156Z",
+  "evidence": {
+    "ADV-016-hash-prose-stale": "docs/proposals/016-reviewer-prose-not-durable-in-the-published-release.md, section 'Later — 2026-09-18': 'By default its reviews level is hash: an accepted review's standard output stays out of the journal, in a local temporary file whose path the command prints' vs src/agentmarshal/journal/review.py:710-742 (_keep_accepted_output → _local_state_output, 'The file lands in log/files/ under the clone's local state … and a review-prose event names the file and its sha256'; the temporary file is only the _LocalStateUnavailable fallback)",
+    "ADV-changelog-serialisation-spelling": "CHANGELOG.md:248 'an encoding or serialisation failure'; `grep -rc serialis CHANGELOG.md` → 1 (this line only), while the same file writes 'canonically serialized' in the 0.6.0 record-ext entry"
+  },
+  "findings": [],
+  "previous_review": "01M5TDN76F8QNB10DGCBQ28K0R",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "1952617a1386647ee04f46bd06b0fbce69eb3779",
+  "reviewed_contract": "928d33f06659898372d4b983312ef2aab159aedb76c5aa4513b149efea930d08",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-243",
+  "tool_version": "0.6.0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "encode at line 2117 precedes _prepare_record_directory/_create_exclusive (2118-2120); post-creation write at 2124 has no rollback — AC1 wording holds",
+        "what": "grep -n 'def write_record' -A 60 src/agentmarshal/journal/records.py"
+      },
+      {
+        "result": "only tests/test_capture.py matches; economics and sessions levels are read by no production code",
+        "what": "grep -rn 'CaptureClass\\.|resolve_session_disposition|level_for(' --include=*.py src/ tests/ | grep -v journal/capture.py"
+      },
+      {
+        "result": "DEFAULT_PRESET='attested' → CaptureClass.REVIEWS: CaptureLevel.HASH, confirming README's 'hash (the default)'",
+        "what": "sed -n 1,100p src/agentmarshal/journal/capture.py"
+      },
+      {
+        "result": "commit→write_artifact (submit_review.py:144), hash→_keep_accepted_output with 'review-prose' event in log/files/, off→'was not kept'",
+        "what": "grep -rn 'review-prose|CaptureLevel' --include=*.py src/ and sed -n 700,745p;1580,1635p src/agentmarshal/journal/review.py"
+      },
+      {
+        "result": "line 21: 'This module owns the declaration; it emits no Statement'",
+        "what": "grep -n 'Statement' src/agentmarshal/journal/attestation.py"
+      },
+      {
+        "result": "gate.py:2312, cli.py:1530, status_view.py:665/673/298, report.py:949/1005/1038, outbox.py:772 — all present as the proposals now state",
+        "what": "grep -rn 'opened/amendment records of other tasks|Records absent from|Reviewed commit|did not end|tokens=unmeasured|unmeasured=|skipped as sent' --include=*.py src/"
+      },
+      {
+        "result": "section 4 is 'The session outcome vocabulary' and lists provider-limit, output-limit, stalled, safety-limit, time-limit — citations in 034, 041, 042 are correct",
+        "what": "grep -n '^### ' docs/adr/ADR-0022-the-0-5-0-record-model-one-transition.md; sed -n 176,184p"
+      },
+      {
+        "result": "line 201 'the decision automates no per-finding status' — matches 026's new wording",
+        "what": "grep -n -i 'automat|per-finding' docs/adr/ADR-0016-the-lifecycle-of-review-findings.md"
+      },
+      {
+        "result": "'init creates .agentmarshal/upstream/ with a README' at line 855, inside the 0.2.0 section (713-876) — 012's '0.2.0' is right",
+        "what": "grep -n 'upstream' CHANGELOG.md; grep -n '^## ' CHANGELOG.md"
+      },
+      {
+        "result": "every ADR and proposal target newly linked by the diff exists (ADR-0013/0015/0018/0021/0022, 023-…, 029-…)",
+        "what": "ls docs/adr/ ; ls docs/proposals/"
+      },
+      {
+        "result": "remaining occurrences all sit in dated Disposition sections or in 038/043, whose index Where still says not shipped; no un-updated current-status line contradicts the index",
+        "what": "grep -rn -i 'not shipped|not yet shipped|not yet done|undecided|to be written' docs/proposals/*.md"
+      },
+      {
+        "result": "CHANGELOG.md:1 (the line this diff adds) against the file's own 'canonically serialized'",
+        "what": "grep -rc 'serialis' CHANGELOG.md ; grep -rl 'serializ' CHANGELOG.md"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "read-only review; the diff touches only Markdown under the contract's scope, and the coordinator states the full sequence passed on this commit"
+      }
+    ],
+    "read": [
+      "CHANGELOG.md (0.6.0 section, lines 11-252; 0.2.0/0.4.0/0.5.0 boundaries)",
+      "README.md lines 30-70",
+      "docs/proposals/README.md (full index, all Where columns)",
+      "docs/proposals/009, 012, 016, 019, 040, 042 bodies",
+      "src/agentmarshal/journal/records.py (write_record, schema-7 field sets, cost/resets_at/contract validation)",
+      "src/agentmarshal/journal/capture.py",
+      "src/agentmarshal/journal/review.py",
+      "src/agentmarshal/journal/submit_review.py",
+      "src/agentmarshal/journal/report.py",
+      "src/agentmarshal/journal/status_view.py",
+      "src/agentmarshal/journal/brief.py",
+      "src/agentmarshal/journal/attestation.py",
+      "src/agentmarshal/agree.py",
+      "src/agentmarshal/outbox.py",
+      "src/agentmarshal/steps.py",
+      "src/agentmarshal/stages.py",
+      "src/agentmarshal/cli.py (submit-review prose path, report/gate/complete parsers, status --base)",
+      "templates/journal-transaction.sh",
+      "templates/github/agentmarshal-governance.yml",
+      "docs/adr/ADR-0016, ADR-0022, ADR-0023",
+      "tests/test_record_text_safety.py (encode-failure test), tests/test_review_capture.py, tests/test_capture.py, tests/test_report_cost_checks_findings.py, tests/test_review_launcher.py"
+    ]
+  }
+}

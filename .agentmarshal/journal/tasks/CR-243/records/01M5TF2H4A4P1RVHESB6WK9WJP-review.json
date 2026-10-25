@@ -1,0 +1,132 @@
+{
+  "advisory_findings": [
+    "ADV-readme-capture-preset",
+    "ADV-045-index-command",
+    "ADV-changelog-wrap"
+  ],
+  "artifacts": [
+    {
+      "hash": "a8687dc14afdc4ebad24b247f1fc0feba8be6df7c90f5a4441e35da0604ad180",
+      "ref": ".agentmarshal/journal/tasks/CR-243/artifacts/01M5TF2H4A4P1RVHESB6WK9WJP-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-045-index-command": "claim-accuracy",
+    "ADV-changelog-wrap": "style",
+    "ADV-readme-capture-preset": "claim-accuracy"
+  },
+  "created_at": "2026-10-25T21:22:11.210446Z",
+  "evidence": {
+    "ADV-045-index-command": "docs/proposals/045-outbox-check-refuses-an-outbox-that-predates-it.md:107-109 ('or by the index `outbox status` takes') vs src/agentmarshal/outbox.py:122-137 (--index on `check` and `send`, which is where the skip is decided) and CHANGELOG.md:191-193 ('`outbox check --index <file>` treats the `Source:` digests ... the same way'); docs/proposals/README.md row 045 says 'an index passed to `check`, `send` or `status`'",
+    "ADV-changelog-wrap": "CHANGELOG.md:251 — `sed -n 240,258p CHANGELOG.md | cat -A` shows 'And the reviewer output kept on a refused$' (~41 chars) inside a paragraph wrapped at ~66 chars",
+    "ADV-readme-capture-preset": "README.md:44-47 names only `capture.overrides.reviews` and calls `hash` 'the default'; src/agentmarshal/journal/capture.py:68-87 (_PRESETS: attested->HASH, full->COMMIT, minimal->OFF), :88 DEFAULT_PRESET='attested', :140-151 level_for falls back to the preset when no override exists"
+  },
+  "findings": [],
+  "previous_review": "01M5TE54EZH76ZRSTBN5V5E20Y",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "d22abe79214e9480369dbab3eb51d89e7208b154",
+  "reviewed_contract": "928d33f06659898372d4b983312ef2aab159aedb76c5aa4513b149efea930d08",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-243",
+  "tool_version": "0.6.0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "lines 2107-2125: validate, json.dumps, f-string .encode() all precede _prepare_record_directory/_create_exclusive; the write inside `with record_file:` has no unlink on failure — CHANGELOG's narrowed promise matches",
+        "what": "grep -n 'def write_record' -A 80 src/agentmarshal/journal/records.py"
+      },
+      {
+        "result": "no hits — level_for is reached only through review_capture_level_from_journal(CaptureClass.REVIEWS); economics and sessions are not read",
+        "what": "grep -rn 'REVIEWS|level_for|ECONOMICS|SESSIONS' src/agentmarshal --include=*.py (excluding capture.py)"
+      },
+      {
+        "result": "no hits",
+        "what": "grep -rn 'resolve_session_disposition|may_commit_session_publicly|capture_policy_from_project|allow_public_sessions' src/agentmarshal --include=*.py (excluding journal/capture.py)"
+      },
+      {
+        "result": "1595 commit->prose artifact, 1619 hash->_keep_accepted_output (review-prose event, local state), 1621 off->'reviewer prose was not kept'",
+        "what": "grep -n 'CaptureLevel' src/agentmarshal/journal/review.py"
+      },
+      {
+        "result": "all present: cli.py:1530, gate.py:2312, outbox.py:772, status_view.py:298, session.py:124-129, complete.py:152, review.py:1404, steps.py:199",
+        "what": "grep -rn 'Records absent from|candidate adds opened/amendment|skipped as sent|tokens=unmeasured|cli_session|report_ready|advisory_dispositions|resets_at|previous_review|step-started' src/agentmarshal"
+      },
+      {
+        "result": "gate.py:2440-2452 and status_view.py:524-556 both print the count — 026 and 039 hold",
+        "what": "grep -n 'changes_required' src/agentmarshal/journal/gate.py src/agentmarshal/journal/status_view.py"
+      },
+      {
+        "result": "0.6.0=11-279, 0.5.0=280-482, 0.4.1=483-518, 0.4.0=519-625, 0.2.0=713-875; hits at 379/408/416/442/377 (0.5.0), 165/191/198 (0.6.0), 601 (0.4.0), 855 (0.2.0) — every release attribution in the diff lands in the right section",
+        "what": "grep -n '^## ' CHANGELOG.md plus greps for cli_session/report_ready/step start/undecodable/review-prose/resets_at/Reviewed commit/coordination/init creates .agentmarshal/upstream"
+      },
+      {
+        "result": "section 4 is 'The session outcome vocabulary' at line 176; 181-182 list the values and state outcome still accepts any non-empty string — the proposals' wording ('stands in the vocabulary the ADR documents') is exact",
+        "what": "grep -n '^### ' docs/adr/ADR-0022-...md; grep -n 'output-limit|stalled|safety-limit|time-limit' on it"
+      },
+      {
+        "result": "line 69 — proposal 028's claim confirmed",
+        "what": "grep -n 'The gate decides nothing from a `check` record' docs/adr/ADR-0017-...md"
+      },
+      {
+        "result": "line 201 — proposal 026's wording confirmed",
+        "what": "grep -n 'automates no per-finding status' docs/adr/ADR-0016-...md"
+      },
+      {
+        "result": "ADR A.2-A.4 give pre-gate/post-gate as stages and pre-gate-warn/pre-gate-stop as modes; stages.py:212-213 and the CLI choices (284) agree — 'after open' is a candidate awaiting an adopter, no pre-complete",
+        "what": "sed -n 60,82p docs/adr/ADR-0013-...md; grep -n 'pre-gate' src/agentmarshal/stages.py"
+      },
+      {
+        "result": "agree, acknowledge, outbox new/check/send/status, record-check, step start/end, stage run, extension ... — no `next` subcommand, matching proposal 041",
+        "what": "grep -n 'add_parser(' across src/agentmarshal"
+      },
+      {
+        "result": "git switch -c \"journal/$task-$slug\" at 115-116 — proposals 032 and 040 are both right (branches per task, still switches the tree)",
+        "what": "grep -n 'checkout|switch|branch' templates/journal-transaction.sh"
+      },
+      {
+        "result": "ADR-0013/0015/0018/0021/0022 and 023/029/033 proposal files all exist; no broken target among the diff's links",
+        "what": "ls docs/adr/ docs/proposals/ and matching of every relative link target in the diff"
+      },
+      {
+        "result": "tests/test_status_base.py, tests/test_outbox.py, tests/test_unmeasured_session_usage.py, tests/test_gate.py, tests/test_review_capture.py, tests/test_record_text_safety.py pin the behaviours the new prose describes",
+        "what": "grep -rln for the claimed output strings in tests/"
+      },
+      {
+        "result": "line 251 'And the reviewer output kept on a refused' is ~41 chars inside a ~66-char-wrapped paragraph — the orphan line of ADV-changelog-wrap",
+        "what": "sed -n 240,258p CHANGELOG.md | cat -A"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; uv run agentmarshal validate; uv run pytest; uv run ruff check; uv run ruff format --check; uv run mypy",
+        "why": "read-only review of a non-git snapshot; the coordinator states the full sequence passed on d22abe79214e9480369dbab3eb51d89e7208b154, and nothing in this docs-only diff touches code"
+      }
+    ],
+    "read": [
+      "CHANGELOG.md (0.6.0 and 0.5.0 sections, 0.4.0/0.2.0 attributions)",
+      "README.md (design-docs bullet list and Status section)",
+      "docs/proposals/README.md (full index, every Where column cited by the diff)",
+      "docs/proposals/009, 012, 016, 019, 023, 029, 042, 045 (full bodies)",
+      "src/agentmarshal/journal/records.py (write_record, _minimum_schema, verification/contract field rules)",
+      "src/agentmarshal/journal/capture.py (presets, CapturePolicy, review_capture_level_from_journal)",
+      "src/agentmarshal/journal/review.py (_keep_accepted_output, capture-level branching)",
+      "src/agentmarshal/journal/submit_review.py (prose artifact pin)",
+      "src/agentmarshal/journal/report.py (_cost_lines, findings report, lead time)",
+      "src/agentmarshal/journal/complete.py, status_view.py, brief.py, gate.py (cited lines)",
+      "src/agentmarshal/outbox.py (parser, SENT manifest), steps.py, stages.py, agree.py, cli.py",
+      "docs/adr/ADR-0009, ADR-0013, ADR-0015, ADR-0016, ADR-0017, ADR-0018, ADR-0022 (cited sections)",
+      "templates/journal-transaction.sh, templates/github/agentmarshal-governance.yml",
+      "tests/test_record_text_safety.py, tests/test_review_capture.py (test names and the encoding-failure test body)"
+    ]
+  }
+}

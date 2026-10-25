@@ -1,0 +1,111 @@
+{
+  "advisory_findings": [
+    "ADV-016-dated-note-postdated",
+    "ADV-023-release-attribution"
+  ],
+  "artifacts": [
+    {
+      "hash": "c7a73ba0339627301376ec6b9ba066b70ee29a7025ab1e09dd0b9858f0666d66",
+      "ref": ".agentmarshal/journal/tasks/CR-243/artifacts/01M5TH33BNAGQWR3ZBGX0F5SW1-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-016-dated-note-postdated": "style",
+    "ADV-023-release-attribution": "claim-accuracy"
+  },
+  "created_at": "2026-10-25T21:57:27.029634Z",
+  "evidence": {
+    "ADV-016-dated-note-postdated": "docs/proposals/016-reviewer-prose-not-durable-in-the-published-release.md:68-78 — the note headed '## Later — 2026-09-18' now reads 'since 0.5.0 it is kept under the clone's local state, announced by a review-prose event', post-dating a dated note with no amendment marker; contrast docs/proposals/035-journal-transactions-sweep-records-of-other-tasks.md:107 ('- 2026-10-26: the rest shipped in 0.6.0 …') and 042's pre-existing 'Amended the same day:' convention, and 016's own new '## Where' (lines 80-86) which already states the same move",
+    "ADV-023-release-attribution": "docs/proposals/023-upstream-outbox-has-no-transaction.md:71-72 attributes 'the README init writes into the outbox states the convention' to 0.4.0, but CHANGELOG.md:855 places it in 0.2.0 ('init creates .agentmarshal/upstream/ with a README stating the convention for sending findings upstream') while CHANGELOG.md:613 shows 0.4.0 added only 'the generated upstream outbox says it is not evidence'; docs/proposals/012-upstream-feedback-channel.md:39-40 in the same diff says 0.2.0 for the same artifact"
+  },
+  "findings": [],
+  "previous_review": "01M5TGJV2HQCC9Z71NDWM5QYVM",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "4e1be0fbb5a04eb99229393d8d5002cf10047c63",
+  "reviewed_contract": "928d33f06659898372d4b983312ef2aab159aedb76c5aa4513b149efea930d08",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-243",
+  "tool_version": "0.6.0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "records.py:2113-2124 — json.dumps + .encode() before _create_exclusive(path); the write/close after creation has no rollback, so CHANGELOG.md:247-253's narrowed promise holds",
+        "what": "grep -n 'def write_record' -A 60 src/agentmarshal/journal/records.py"
+      },
+      {
+        "result": "no hits — only capture.py:259 reads a level, and it reads CaptureClass.REVIEWS; README's 'economics and sessions classes are not read' confirmed",
+        "what": "grep -rn 'level_for|CaptureClass\\.|resolve_session_disposition|may_commit_session_publicly|allow_public_sessions' src/ excluding journal/capture.py"
+      },
+      {
+        "result": "_PRESETS: minimal→REVIEWS OFF, attested→REVIEWS HASH, full→REVIEWS COMMIT; DEFAULT_PRESET='attested' — matches README.md:46-49",
+        "what": "sed -n '69,88p' src/agentmarshal/journal/capture.py"
+      },
+      {
+        "result": "gate.py:2312, cli.py:1530, status_view.py:298/665/673, outbox.py:772, steps.py:199,230 — each string the updated Where sections name exists",
+        "what": "grep -rn 'records of other tasks|Records absent from|tokens=unmeasured|Reviewed commit|did not end|skipped as sent|step-started' src/"
+      },
+      {
+        "result": "complete.py:152,247; records.py:223,270,523-525; contracts.py:30-32,202-239 — the schema-7 fields 026/027/030/031/034 claim are present",
+        "what": "grep -n 'advisory_dispositions|previous_review|verification|evidence|contract|implementers|independence' src/agentmarshal/journal/complete.py src/agentmarshal/journal/records.py src/agentmarshal/journal/contracts.py"
+      },
+      {
+        "result": "report.py:949 (Cost line, unmeasured_without_cost), 1005 (task line), 1038 (Summary) — 044's three-line claim and the 'a cost still sums' clause hold",
+        "what": "grep -n 'unmeasured' src/agentmarshal/journal/report.py"
+      },
+      {
+        "result": "line 855 (inside 0.2.0, headings at 713/876): 'init creates .agentmarshal/upstream/ with a README stating the convention'; line 613 (inside 0.4.0): 'the generated upstream outbox says it is not evidence' — basis of ADV-023-release-attribution",
+        "what": "grep -n 'upstream' CHANGELOG.md"
+      },
+      {
+        "result": "every ADR and proposal file the new links name exists; all relative links in the diff resolve",
+        "what": "ls docs/adr/ | grep -E '0009|0013|0015|0018|0021|0022'; ls docs/proposals/"
+      },
+      {
+        "result": "only 043 (lines 99-127) and 038 — both of which docs/proposals/README.md:154 and :157 also record as not shipped; AC3's coverage is complete",
+        "what": "grep -rn 'not shipped|undecided|not yet shipped|to be written|pending' docs/proposals/*.md excluding the files the diff touches"
+      },
+      {
+        "result": "test_a_failure_while_encoding_leaves_no_file asserts UnicodeEncodeError and 'not journal_root.exists()' — the test behind AC1",
+        "what": "sed -n '443,470p' tests/test_record_text_safety.py"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; uv run agentmarshal validate; uv run pytest; uv run ruff check; uv run ruff format --check; uv run mypy",
+        "why": "this read-only review environment refused the tool invocations (command approval denied); the coordinator states the full sequence passed on 4e1be0fbb5a04eb99229393d8d5002cf10047c63, so AC4's 'the suite and the full CI sequence pass' is taken from that statement rather than from my own run"
+      }
+    ],
+    "read": [
+      ".agentmarshal/journal/tasks/CR-243/contract.md",
+      "CHANGELOG.md (0.6.0 section, 0.4.0 and 0.2.0 entries)",
+      "README.md:30-60",
+      "src/agentmarshal/journal/records.py (write_record, schema field sets)",
+      "src/agentmarshal/journal/capture.py",
+      "src/agentmarshal/journal/review.py (_keep_accepted_output, prose level handling)",
+      "src/agentmarshal/journal/submit_review.py",
+      "src/agentmarshal/journal/status_view.py",
+      "src/agentmarshal/journal/report.py",
+      "src/agentmarshal/journal/complete.py",
+      "src/agentmarshal/cli.py (complete's pre-gate-stop path, outbox/--index, --if-missing)",
+      "src/agentmarshal/stages.py",
+      "src/agentmarshal/steps.py",
+      "src/agentmarshal/outbox.py",
+      "templates/github/agentmarshal-governance.yml",
+      "templates/journal-transaction.sh",
+      "docs/proposals/README.md",
+      "docs/proposals/009, 016, 019, 023, 038, 042, 043",
+      "docs/adr/ADR-0009, ADR-0013, ADR-0015, ADR-0018, ADR-0022",
+      "tests/test_capture.py, tests/test_review_capture.py, tests/test_record_text_safety.py, tests/test_unmeasured_session_usage.py, tests/test_review_links_and_classes.py, tests/test_status_schema_7_lines.py"
+    ]
+  }
+}
