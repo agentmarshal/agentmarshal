@@ -1,0 +1,81 @@
+{
+  "advisory_findings": [
+    "ADV-1"
+  ],
+  "artifacts": [
+    {
+      "hash": "e5f1c489156f122a60034c4cbfdca24e6f656c78addedf844b630e260637c3e1",
+      "ref": ".agentmarshal/journal/tasks/CR-247/artifacts/01M5VTN9WBJCEHTT8S175R8DXZ-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-1": "test-gap"
+  },
+  "created_at": "2026-10-26T10:03:55.147548Z",
+  "evidence": {
+    "ADV-1": "tests/test_smoke.py:48 asserts agentmarshal.__version__ == \"0.7.0.dev0\" and no test reads pyproject.toml's [project] version; grep -rn 'pyproject' tests/*.py returns only tests/test_release_audit_check.py:64, which writes a synthetic pyproject for the release-gate fixture — the only real consistency check is .github/workflows/release.yml:32-42, which runs on tag push"
+  },
+  "findings": [],
+  "previous_review": "01M5VTGHZABAA335782VEQE63B",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "f8032168fbeaa21f2a55811c4718caf6039593e1",
+  "reviewed_contract": "24f7506c9dd53b53f8e26fd450c74176e14286e3901fe68db272dba76d4e1dde",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-247",
+  "tool_version": "0.6.0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "only agentmarshal's own version line in uv.lock:11 is 0.7.0.dev0; every other 0.6.0 is the ast_serialize dependency or a statement about the released 0.6.0",
+        "what": "grep -rn '0\\.6\\.0|0\\.7\\.0' across the tree (docs, README, CHANGELOG, UPGRADING, CONTRIBUTING, uv.lock, templates, .github, gitflic-ci.yaml)"
+      },
+      {
+        "result": "only tests/test_smoke.py pins a literal version; other tests compare against agentmarshal.__version__",
+        "what": "grep -rn '__version__|0\\.6\\.0|0\\.7\\.0|pyproject' tests/*.py"
+      },
+      {
+        "result": "release.yml:44-50 refuses a development version; CONTRIBUTING.md:130-137 states the .dev0 branch rule",
+        "what": "grep -rn 'dev0|development version' src .github docs CONTRIBUTING.md"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "the coordinator records the full sequence as passing at this commit; the snapshot is not a git repository, so journal- and git-dependent tests could not be reproduced here anyway"
+      },
+      {
+        "what": "PYTHONPATH=src python3 -I -m agentmarshal --version",
+        "why": "command execution was declined in this sandbox; the printed value was verified by reading cli.py:131-134 and the smoke test that asserts stdout equals __version__"
+      }
+    ],
+    "read": [
+      "pyproject.toml",
+      "src/agentmarshal/__init__.py",
+      "uv.lock (lines 1-20, plus every version hit)",
+      "tests/test_smoke.py",
+      "src/agentmarshal/cli.py:125-145",
+      "CONTRIBUTING.md:100-215 (Development, Versions, Releases)",
+      "CHANGELOG.md:1-30",
+      "docs/quickstart.md:1-40",
+      "tests/test_quickstart.py:1-60",
+      "docs/sidecar.md:110-145",
+      "docs/overview.md:155-175",
+      "release/audit-0.6.0.toml",
+      ".github/scripts/check_release_audit.py",
+      ".github/workflows/release.yml (version checks)",
+      ".agentmarshal/project.json",
+      ".agentmarshal/journal/tasks/CR-205/contract.md",
+      "docs/adr/ADR-0001-governance-plane.md"
+    ]
+  }
+}
