@@ -50,8 +50,8 @@ historical 0.1.0 boundary and note what has changed since:
   it. `commit` pins the reviewer's prose as a journal artifact, `hash`
   keeps it under the clone's local state announced by a `review-prose`
   event, and `off` keeps nothing of an accepted verdict — the level
-  governs a recorded verdict's prose; a verdict that is refused keeps
-  the reviewer's raw output at any level. Still roadmap: the
+  governs a recorded verdict's prose; a launcher's refusal of malformed
+  reviewer output keeps the raw output at any level. Still roadmap: the
   `economics` and `sessions` classes are not read, the durable private
   store stays unbuilt (`hash` prose lives in the process-log area
   instead), and `attestation.py` emits no Statement. ADR-0005
@@ -116,9 +116,10 @@ may not be the version described here — pin it if you share a journal, and see
 
 Requirements: **Python >= 3.12** and **git 2.31 or newer** on `PATH` —
 the gate, review, and completion commands shell out to git, and resolving
-local state — which `complete`, `status` and the stage runner all need —
-calls `git rev-parse --path-format=absolute`, a flag git learned at 2.31.
-No Python dependencies.
+local state calls `git rev-parse --path-format=absolute`, a flag git
+learned at 2.31: `complete` and the commands that write local state need
+it, while `status` still runs without it, showing the paths as
+unavailable. No Python dependencies.
 
 AgentMarshal is **model-agnostic** and bundles no reviewer. To review a task,
 either set `AGENTMARSHAL_REVIEWER_CMD` to any reviewer command (for example a

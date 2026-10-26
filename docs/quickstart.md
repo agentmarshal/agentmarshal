@@ -18,8 +18,9 @@ hands-on companion.
 
 Requirements: **Python ≥ 3.12** and **git ≥ 2.31** on your `PATH` —
 resolving the clone's local state calls `git rev-parse
---path-format=absolute`, a flag git learned at 2.31, and commands such as
-`complete` and `status` need it.
+--path-format=absolute`, a flag git learned at 2.31: `complete` and the
+commands that write local state need it, while `status` still runs
+without it, showing the paths as unavailable.
 
 ## Install
 

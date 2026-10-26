@@ -224,7 +224,7 @@ task whose last lifecycle record is `completed`, or `deferred` /
 but the fixes it named, the release notes and the version bump. It is a
 gate on this project's release process; the package gains no command.
 
-### Fixes from the release audit (CR-234, CR-235, CR-236, CR-237, CR-238, CR-239, CR-240, CR-241, CR-242, CR-243, CR-244)
+### Fixes from the release audit (CR-234, CR-235, CR-236, CR-237, CR-238, CR-239, CR-240, CR-241, CR-242, CR-243, CR-244, CR-246)
 
 The audit ran in areas — the gate's journal handling, the extension
 machinery, commands, the release documentation in two parts — beside a
@@ -302,7 +302,34 @@ protections, and the versions and quoted output the guides pin. One
 finding of the gate-journal area landed in the release task itself:
 the corrections the notes above carry to how the documentation
 describes the gate's lanes, the operator acceptance and the verdict
-check.
+check. A measurement audit with gpt-6.1-sol over the same areas and
+commits, run after the release audit, reported five more findings a
+verification run confirmed at master (the `SOL-*` entries of
+`release/audit-0.6.0.toml`). `stage run` — and `complete` through the
+shared runner — now reads every shared extension manifest at the merge
+base through the gate's base-tree reader, the single-file form
+included, so a file-form manifest the reader refuses fails the command
+naming the extension and its tree source rather than being passed over
+in silence; a well-formed file-form manifest still plans no stages.
+`leak-scan`'s `cannot read acknowledgements` diagnostic prints the
+path masked by the configured private markers and display-escaped, as
+every name the scan prints is. On the operational lane, `stage run
+--skip-ext` and `complete --skip-ext` naming a shared extension are
+refused before any stage is planned — judged on the extension names
+the base's `extensions/` enumerates, no manifest read — and the
+extension-stages specification's operational-lane exception now states
+that it follows this refusal. The runtime lookup at `stage run` the
+release does not carry is disclosed where it belongs: the threat model
+states beside the stage-isolation text, and the leaves-out section
+below repeats, that `stage run` neither looks up a wrapper's declared
+`[wraps].runtime` nor names its path and version — the lookup is
+`doctor`'s `extension runtime <name>` check — and that a stage's
+`PATH` is fixed at `/usr/bin:/bin`. And the git floor the guides never
+named is named: README, the quickstart and the sidecar guide state git
+2.31 or newer — local-state resolution calls `git rev-parse
+--path-format=absolute`, a flag git learned at 2.31, and `complete`
+and the commands that write local state need it, while `status` still
+runs on an older git, showing the paths as unavailable.
 
 ### What 0.6.0 leaves out
 

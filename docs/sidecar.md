@@ -82,8 +82,9 @@ journal should move when you decide it does, not when a container is rebuilt.
 
 Requirements are unchanged: **Python ≥ 3.12** and **git ≥ 2.31** on your
 `PATH` — resolving the clone's local state calls `git rev-parse
---path-format=absolute`, a flag git learned at 2.31, and commands such as
-`complete` and `status` need it. You
+--path-format=absolute`, a flag git learned at 2.31: `complete` and the
+commands that write local state need it, while `status` still runs
+without it, showing the paths as unavailable. You
 install it for yourself, not into the host repository, so a user-level install
 (`pipx`, `uv tool install`, a virtualenv you own) is the normal choice.
 

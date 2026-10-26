@@ -52,6 +52,17 @@ rule — upgrade each checkout, CI job and merge wrapper when it suits you.
   `check --index <file>` skips by the `Source:` digests an index
   claims. No action needed; a project listing the outbox's files should
   expect `SENT` among them.
+- **`outbox check` and `outbox send` refuse a file git would
+  transform.** A file whose bytes git would stage differently from the
+  bytes the check read — `core.autocrlf` converting line endings, a
+  `text` or `eol` attribute, or a clean filter applying to
+  `.agentmarshal/upstream/` — is refused, and `send` verifies the
+  staged blobs are what the check vetted before it commits the batch:
+  only the bytes the check vetted may leave. **Action:** where the
+  refusal names end-of-line conversion, add
+  `.agentmarshal/upstream/** -text` to `.gitattributes` (or commit the
+  file with the bytes git stages); a clean filter must not apply to
+  the outbox.
 - **A pinned product's version is the project's to raise.** A project
   that pins a product through an extension manifest — as this repository
   pins OpenSpec at `1.15.0` — raises the pin when it takes a new release

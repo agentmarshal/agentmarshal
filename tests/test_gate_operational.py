@@ -746,13 +746,13 @@ def test_a_broken_extension_cannot_block_the_operational_change(
 def test_a_shared_name_in_skip_ext_is_refused_on_the_operational_lane(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """`stage run --skip-ext` naming a shared extension is refused on the lane too.
+    """Scenario: a shared name in --skip-ext is refused before the operational-lane exception."""  # noqa: E501
 
-    The refusal precedes the lane's early return and is decided on the
-    base's extension names alone — no manifest is read for it: this
-    extension's manifest is broken on purpose, and the run still
-    refuses the shared name rather than reporting the manifest's error.
-    """
+    # The refusal precedes the lane's early return and is decided on the
+    # base's extension names alone — no manifest is read for it: this
+    # extension's manifest is broken on purpose, and the run still
+    # refuses the shared name rather than reporting the manifest's
+    # error.
 
     repo = _project(tmp_path, monkeypatch)
     _extension(repo, manifest="not a manifest [[[\n")
@@ -779,13 +779,13 @@ def test_a_shared_name_in_skip_ext_is_refused_on_the_operational_lane(
 def test_complete_skip_ext_naming_a_shared_extension_is_refused_on_the_lane(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """`complete --skip-ext` naming a shared extension is refused on the lane too.
+    """Scenario: a shared name in --skip-ext is refused before the operational-lane exception."""  # noqa: E501
 
-    The quiet invocation the shared runner gets on the operational
-    candidate refuses the same way — before the lane's early return and
-    before any stage is planned — and the completion is refused under
-    the calling command's prefix, nothing written.
-    """
+    # `complete --skip-ext` names the shared extension on the lane too:
+    # the quiet invocation the shared runner gets on the operational
+    # candidate refuses the same way — before the lane's early return
+    # and before any stage is planned — and the completion is refused
+    # under the calling command's prefix, nothing written.
 
     repo = _project(tmp_path, monkeypatch)
     _extension(repo, manifest="not a manifest [[[\n")
