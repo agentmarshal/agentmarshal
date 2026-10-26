@@ -1,0 +1,21 @@
+{
+  "advisory_dispositions": {
+    "ADV-dead-directory-names-return": {
+      "disposition": "deferred",
+      "reason": "_extension_names_at_tree second element is now unused by both callers; simplifying the return type is a refactor for 0.7.0"
+    },
+    "ADV-leak-scan-diff-diagnostic-unmasked": {
+      "disposition": "deferred",
+      "reason": "the git diff failure diagnostic prints raw git stderr; it fires only when git diff itself fails; masking every leak-scan diagnostic (not only the acknowledgement one fixed here) goes to 0.7.0"
+    }
+  },
+  "completed_commit": "8c6bffd5d35ac6d4d9e4b2da3baab52f4ff88cbf",
+  "created_at": "2026-10-26T09:43:14.476398Z",
+  "record_type": "completed",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "schema": 7,
+  "source": "live",
+  "task": "CR-246",
+  "tool_version": "0.6.0"
+}
