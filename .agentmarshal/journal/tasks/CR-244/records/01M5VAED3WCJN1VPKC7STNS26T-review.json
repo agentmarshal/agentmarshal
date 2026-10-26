@@ -1,0 +1,156 @@
+{
+  "advisory_findings": [
+    "A-HARNESS-EXTENSION-CLASSIFIED-LOCAL-STATE",
+    "A-SIDECAR-PUBLISHED-RELEASE-PIN",
+    "A-V1-ARCHIVE-UNCHECKABLE",
+    "A-WRAP-RAGGED-LINES"
+  ],
+  "artifacts": [
+    {
+      "hash": "92c97034c3a7c5776e5f3e24a0542fcf66eaa5f0f45416cb70da90ec97d02163",
+      "ref": ".agentmarshal/journal/tasks/CR-244/artifacts/01M5VAED3WCJN1VPKC7STNS26T-review.md"
+    }
+  ],
+  "classes": {
+    "A-HARNESS-EXTENSION-CLASSIFIED-LOCAL-STATE": "claim-accuracy",
+    "A-SIDECAR-PUBLISHED-RELEASE-PIN": "claim-accuracy",
+    "A-V1-ARCHIVE-UNCHECKABLE": "claim-accuracy",
+    "A-WRAP-RAGGED-LINES": "style",
+    "B-THREAT-FINDINGS-COMPLETION-LINE": "claim-accuracy"
+  },
+  "created_at": "2026-10-26T05:20:31.868350Z",
+  "evidence": {
+    "A-HARNESS-EXTENSION-CLASSIFIED-LOCAL-STATE": "docs/harness-setup.md:80-84 lists `extension` under 'the commands that write the local state'; src/agentmarshal/switch_off.py:1-11 — `agentmarshal extension switch off <name>` opens the task through open_task and rewrites the committed .agentmarshal/switches.toml (registered under `extension` at src/agentmarshal/extension_trust.py:135,168-174). The same list calls `init` and `outbox` journal writers though neither writes a record (project.py:125-137; outbox.py:22-30).",
+    "A-SIDECAR-PUBLISHED-RELEASE-PIN": "docs/sidecar.md:74-77 'The placement is in the published release ... pip install agentmarshal==0.6.0' vs CHANGELOG.md:11 '## 0.6.0 — unreleased'; docs/quickstart.md:26 pins the same version. PyPI itself unchecked (no network).",
+    "A-V1-ARCHIVE-UNCHECKABLE": ".gitmodules:1-3 gives only path=agentmarshal and url=https://github.com/AgentMarshal/agentmarshal-v1.git; `ls -a agentmarshal` shows an empty directory, so docs/self-hosting-workflow.md:98-100 ('read-only v1 archive', mr.sh living there) cannot be checked here. What is checkable holds: find . -name '*.sh' returns only ./templates/journal-transaction.sh.",
+    "A-WRAP-RAGGED-LINES": "docs/github-enforcement.md:8 is 38 characters mid-paragraph in a file wrapped at ~72; docs/self-hosting-workflow.md:101 (62), :105 (56) and :139-142 ('operations `mr.sh get`' on its own line) are the other insertions left unwrapped.",
+    "B-THREAT-FINDINGS-COMPLETION-LINE": "docs/threat-model.md:327-332 quotes 'gate: findings passed' as part of what a findings-lane completion prints; grep shows that string only at src/agentmarshal/cli.py:950 (the `gate --findings` branch), while `complete --findings` prints Placement: sidecar (cli.py:1076-1078), the report lines, the record path and 'completed through findings' (cli.py:1202-1206). tests/test_placement.py:785-799 asserts out.endswith('gate: findings passed') for gate --findings and only out.startswith('Placement: sidecar') for complete --findings."
+  },
+  "findings": [
+    "B-THREAT-FINDINGS-COMPLETION-LINE"
+  ],
+  "previous_review": "01M5V8XT8ZSPEGDGPC8MY0C362",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "079669130130e1fa8fb763bbe42af245092259e8",
+  "reviewed_contract": "f019026fb7b945c3efac6eb490b4035f726090c366e22ad1e38dfbb12051a976",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-244",
+  "tool_version": "0.6.0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "13",
+        "what": "grep -c '^    \"[a-z_]*\": RecordTypeSpec' src/agentmarshal/journal/attestation.py"
+      },
+      {
+        "result": "only project.py:440 and placement.py:53, both the sidecar host",
+        "what": "grep -rn 'XDG|\\.config/agentmarshal|local/share|APPDATA|expanduser|Path.home' src/"
+      },
+      {
+        "result": "only localstate.py:70-73; no reader or writer",
+        "what": "grep -rn 'plan.toml|plan_path' src/ tests/"
+      },
+      {
+        "result": "cli.py:950,993,1001,1005,1204,1206 and placement.py:45; 'gate: findings passed' only at cli.py:950 (the gate --findings path)",
+        "what": "grep -rn 'gate: findings passed|advisory checks passed|advisory checks refused|completed through findings|completed after advisory checks|Sidecar checks are advisory' src/"
+      },
+      {
+        "result": "368 (new), 551 (check), 1078 (send), 1229 (status) — all four subcommands",
+        "what": "grep -n '_locate(' src/agentmarshal/outbox.py"
+      },
+      {
+        "result": "outbox 181/502/532 and gate-lanes 170 match the cited headings verbatim",
+        "what": "grep -n '^### Requirement' openspec/specs/outbox/spec.md; grep -n '^### Requirement' openspec/specs/gate-lanes/spec.md"
+      },
+      {
+        "result": "./templates/journal-transaction.sh only",
+        "what": "find . -name '*.sh' -not -path './.git/*'"
+      },
+      {
+        "result": "docs prose only; no such file in the repository",
+        "what": "grep -rn 'am-merge|mr\\.sh|merge-policy\\.sh|task-lifecycle\\.sh' over tracked non-history files"
+      },
+      {
+        "result": "'## 0.6.0 — unreleased' at line 11",
+        "what": "grep -n '^## ' CHANGELOG.md"
+      },
+      {
+        "result": "both match the quickstart.md:470-481 and sidecar.md:225-237 transcripts line for line",
+        "what": "grep -n '' tests/fixtures/gate/embedded-implementation.stdout and sidecar-implementation.stdout"
+      },
+      {
+        "result": "all exist",
+        "what": "resolved every relative markdown link target in the changed files with ls"
+      },
+      {
+        "result": "github-enforcement 4, overview 1, threat-model 1 — all outside the diff's hunks; no new long line",
+        "what": "grep -cnE '.{81}' on each changed doc"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "the review snapshot is not a git repository and carries no environment; the coordinator states the sequence passed on this commit"
+      },
+      {
+        "what": "checking PyPI for a published 0.6.0 wheel",
+        "why": "no network access from this review; CHANGELOG.md:11 calls 0.6.0 unreleased"
+      },
+      {
+        "what": "inspecting the v1 archive for mr.sh and its read-only status",
+        "why": "the agentmarshal/ submodule is uninitialized in the snapshot"
+      }
+    ],
+    "read": [
+      "docs/harness-setup.md",
+      "docs/threat-model.md",
+      "docs/sidecar.md",
+      "docs/quickstart.md",
+      "docs/overview.md",
+      "docs/self-hosting-workflow.md",
+      "docs/github-enforcement.md",
+      "docs/known-defects.md",
+      "docs/templates/claude-code-settings.local.json",
+      "CONTRIBUTING.md",
+      "src/agentmarshal/journal/attestation.py",
+      "src/agentmarshal/journal/records.py",
+      "src/agentmarshal/journal/gate.py",
+      "src/agentmarshal/journal/report.py",
+      "src/agentmarshal/journal/status_view.py",
+      "src/agentmarshal/journal/placement.py",
+      "src/agentmarshal/localstate.py",
+      "src/agentmarshal/outbox.py",
+      "src/agentmarshal/switch_off.py",
+      "src/agentmarshal/project.py",
+      "src/agentmarshal/doctor.py",
+      "src/agentmarshal/cli.py",
+      "src/agentmarshal/__init__.py",
+      "tests/test_attestation.py",
+      "tests/test_gate_operational.py",
+      "tests/test_record_text_safety.py",
+      "tests/test_outbox.py",
+      "tests/test_placement.py",
+      "tests/test_status_steps.py",
+      "tests/test_doctor_steps_paths.py",
+      "tests/test_report_cost_checks_findings.py",
+      "tests/test_complete_stages.py",
+      "tests/fixtures/gate/",
+      "openspec/specs/gate-lanes/spec.md",
+      "openspec/specs/outbox/spec.md",
+      "docs/adr/ADR-0014-where-things-live.md",
+      "CHANGELOG.md",
+      ".gitmodules",
+      "pyproject.toml"
+    ]
+  }
+}

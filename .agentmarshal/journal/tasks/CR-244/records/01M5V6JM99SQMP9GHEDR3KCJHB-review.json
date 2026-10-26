@@ -1,0 +1,127 @@
+{
+  "advisory_findings": [
+    "harness-setup-plan-file-not-shipped",
+    "harness-setup-framework-scripts-stale",
+    "edits-left-unwrapped-prose"
+  ],
+  "artifacts": [
+    {
+      "hash": "0a8bea11e205a26b2ede711a28f1b06670ab0e241292a09545156b1e41f83fb3",
+      "ref": ".agentmarshal/journal/tasks/CR-244/artifacts/01M5V6JM99SQMP9GHEDR3KCJHB-review.md"
+    }
+  ],
+  "classes": {
+    "docs-base-read-exception-missing": "contract-mismatch",
+    "edits-left-unwrapped-prose": "style",
+    "harness-setup-framework-scripts-stale": "claim-accuracy",
+    "harness-setup-plan-file-not-shipped": "claim-accuracy",
+    "sidecar-status-transcript-stale": "contract-mismatch",
+    "threat-model-one-candidate-read-false": "claim-accuracy"
+  },
+  "created_at": "2026-10-26T04:12:55.977167Z",
+  "evidence": {
+    "docs-base-read-exception-missing": "docs/quickstart.md:323-324 'The gate always reads the contract from the committed base, never from the candidate, so a task can never widen its own scope'; docs/overview.md:75-77 'reads the contract ... at the base from the **base** side, never from the candidate'; the exception they omit is src/agentmarshal/journal/gate.py:1024-1027 (contract read at resolved_commit) with tests/test_gate_operational.py:119",
+    "edits-left-unwrapped-prose": "docs/github-enforcement.md:97 is the 24-character orphan 'that requirement on this'; same pattern at docs/self-hosting-workflow.md:99-100, :162-165 and docs/threat-model.md:255-256",
+    "harness-setup-framework-scripts-stale": "docs/harness-setup.md:12 'the framework scripts' and :73-75 'and the framework scripts' against docs/templates/claude-code-settings.local.json:16, where this diff replaced './agentmarshal/scripts/*' and './agentmarshal/bin/*' with 'Bash(agentmarshal *)'",
+    "harness-setup-plan-file-not-shipped": "docs/harness-setup.md:38-41 'That one place holds ... and the plan file' vs CHANGELOG.md:269-272 'there is no agentmarshal next and nothing reads plan.toml'; grep -rn 'plan_file|plan.toml' src/ returns only src/agentmarshal/localstate.py:70-73; ADR-0014's map (docs/adr/ADR-0014-where-things-live.md:160-166) does not list it",
+    "sidecar-status-transcript-stale": "docs/sidecar.md:316-329 shows 'Placement: sidecar' then stdout only; src/agentmarshal/cli.py:1474 calls print_paths on every status run and src/agentmarshal/journal/status_view.py:852-861 prints 'journal:', 'process log:', 'local state:' on stderr (described in docs/quickstart.md:588-591)",
+    "threat-model-one-candidate-read-false": "docs/threat-model.md:253-255 '(the one candidate-side read the gate makes is the operational lane's opening contract ...)' vs src/agentmarshal/journal/gate.py:1513-1518 (candidate's .agentmarshal/switches.toml), gate.py:1842-1847 (ls-tree -r resolved_commit), gate.py:2169 (git show resolved_commit:<record>), gate.py:2343-2350 + gate.py:1186-1198 (leak scan over merge_base..candidate)"
+  },
+  "findings": [
+    "docs-base-read-exception-missing",
+    "threat-model-one-candidate-read-false",
+    "sidecar-status-transcript-stale"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "8e5e62120c62c6ab683be13f000a71660f2f5b76",
+  "reviewed_contract": "571957307e714c9282857502f2c685383356f2e87328e4c688d692c53276107d",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-244",
+  "tool_version": "0.6.0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "hits only at docs/self-hosting-workflow.md:161, docs/threat-model.md:23, docs/threat-model.md:252, docs/quickstart.md:323 — the last one carries no exception",
+        "what": "grep -rn \"never from the candidate|from the committed base|never the candidate\" docs/"
+      },
+      {
+        "result": "docs/overview.md:77 states 'never from the candidate, so a change can never widen its own scope' with no exception",
+        "what": "grep -rn \"widen its own scope|cannot widen\" docs/"
+      },
+      {
+        "result": "13 entries: opened, review, acceptance, completed, abandoned, reopened, amendment, session, finding, check, agreement, acknowledgement, ext",
+        "what": "read src/agentmarshal/journal/attestation.py RECORD_TYPES"
+      },
+      {
+        "result": "only project.py:440 and placement.py:53, both the sidecar host — no user-scope directory is read or written",
+        "what": "grep -rn \"expanduser|Path.home()|XDG_|APPDATA\" --include=*.py src/"
+      },
+      {
+        "result": "identical line set, including 'gate: advisory checks passed; decides no merge'",
+        "what": "diff of docs/sidecar.md gate block against tests/fixtures/gate/sidecar-implementation.stdout"
+      },
+      {
+        "result": "src/agentmarshal/localstate.py:70-73 (path property) and two tests only — nothing reads or writes it",
+        "what": "grep -rn \"plan_file|plan.toml\" src/ tests/"
+      },
+      {
+        "result": "only docs/ and .agentmarshal/journal evidence — no am-merge or mr.sh file is shipped",
+        "what": "grep -rln am-merge over the repository"
+      },
+      {
+        "result": "all four quoted requirement titles exist verbatim (outbox:181, :502, :532; gate-lanes:170)",
+        "what": "grep -n '^### Requirement' openspec/specs/outbox/spec.md and gate-lanes/spec.md"
+      },
+      {
+        "result": "every target exists; the one anchor used (#research-findings-loop) matches a heading",
+        "what": "relative-link check over the changed docs (grep of link targets + ls of docs/adr, UPGRADING.md)"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "read-only review in a non-git snapshot; the coordinator states the full sequence passed on this commit and the diff touches only docs/"
+      },
+      {
+        "what": "an end-to-end sidecar run to capture the live status transcript",
+        "why": "no git repository in the snapshot; the stale lines were established from cli.py:1474 and status_view.py:852-861 instead"
+      }
+    ],
+    "read": [
+      "docs/github-enforcement.md",
+      "docs/harness-setup.md",
+      "docs/known-defects.md",
+      "docs/overview.md (lines 70-140)",
+      "docs/quickstart.md (lines 1-30, 240-340, 440-640)",
+      "docs/self-hosting-workflow.md",
+      "docs/sidecar.md",
+      "docs/threat-model.md (lines 15-50, 100-215, 240-340)",
+      "docs/templates/claude-code-settings.local.json",
+      "docs/adr/ADR-0014-where-things-live.md (section 12)",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md (scope table)",
+      "CHANGELOG.md (0.6.0 sections)",
+      "src/agentmarshal/journal/gate.py (950-1110, 1380-1580, 1838-1860, 2160-2175, 2320-2360)",
+      "src/agentmarshal/journal/records.py (580-700, 1405-1430)",
+      "src/agentmarshal/journal/placement.py",
+      "src/agentmarshal/journal/status_view.py (834-862)",
+      "src/agentmarshal/localstate.py",
+      "src/agentmarshal/outbox.py (1-60, 150-210, 680-720, 820-860, 930-1050)",
+      "src/agentmarshal/cli.py (905-1010, 1430-1480)",
+      "src/agentmarshal/doctor.py (870-905)",
+      "tests/test_gate.py (470-560, 925-975)",
+      "tests/fixtures/gate/sidecar-implementation.stdout",
+      "tests/fixtures/gate/embedded-implementation.stdout",
+      "templates/github/agentmarshal-governance.yml"
+    ]
+  }
+}

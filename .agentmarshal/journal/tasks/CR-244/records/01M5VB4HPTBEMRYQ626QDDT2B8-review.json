@@ -1,0 +1,144 @@
+{
+  "advisory_findings": [
+    "DOC-244-A",
+    "DOC-244-B",
+    "DOC-244-C"
+  ],
+  "artifacts": [
+    {
+      "hash": "af26f40e962e007bc289aed56f8aedce075bb16521f31646dd440f8375929ad1",
+      "ref": ".agentmarshal/journal/tasks/CR-244/artifacts/01M5VB4HPTBEMRYQ626QDDT2B8-review.md"
+    }
+  ],
+  "classes": {
+    "DOC-244-A": "claim-accuracy",
+    "DOC-244-B": "contract-mismatch",
+    "DOC-244-C": "claim-accuracy"
+  },
+  "created_at": "2026-10-26T05:32:37.466257Z",
+  "evidence": {
+    "DOC-244-A": "docs/quickstart.md:5-8 and :26 claim a 0.6.0 wheel run and pin pip install agentmarshal==0.6.0, while CHANGELOG.md:11 reads '## 0.6.0 — unreleased'; tests/test_quickstart.py replays the loop against the source tree only",
+    "DOC-244-B": "docs/self-hosting-workflow.md:37 'the diff is within the contract scope read from the base tree' — no operational-lane exception, unlike the same file's docs/self-hosting-workflow.md:166-171",
+    "DOC-244-C": "docs/harness-setup.md:78-80 lists 'init' and 'outbox' among 'journal writers'; src/agentmarshal/cli.py:136 (init writes .agentmarshal/project.json) and src/agentmarshal/outbox.py:22-31 (outbox writes .agentmarshal/upstream and a batch commit) write no journal record"
+  },
+  "findings": [],
+  "previous_review": "01M5VAED3WCJN1VPKC7STNS26T",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "079669130130e1fa8fb763bbe42af245092259e8",
+  "reviewed_contract": "f019026fb7b945c3efac6eb490b4035f726090c366e22ad1e38dfbb12051a976",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-244",
+  "tool_version": "0.6.0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "thirteen registered record types; docs/known-defects.md:13 'thirteen' correct",
+        "what": "grep -rn RECORD_TYPES src/ and read src/agentmarshal/journal/attestation.py:62-114"
+      },
+      {
+        "result": "no matches — the user scope is unimplemented, as harness-setup.md now says",
+        "what": "grep -rn 'XDG_CONFIG|\\.config/agentmarshal|local/share|APPDATA|user_config' src/"
+      },
+      {
+        "result": "only localstate.py:70 definition and tests/test_localstate.py:115,175 — nothing reads or writes it",
+        "what": "grep -rn 'plan_file|plan.toml' src/ tests/"
+      },
+      {
+        "result": "operational contract read from base when present, from candidate when the candidate opens the task, bounded by the switches-only predicate and absent in a sidecar",
+        "what": "read src/agentmarshal/journal/gate.py:1006-1105 and openspec/specs/gate-lanes/spec.md:171-215"
+      },
+      {
+        "result": "both rules bound at schema 8 and applied only for_write",
+        "what": "grep -n 'timestamp-text|artifact-ref-text' src/agentmarshal/journal/records.py and read _RULE_FROM_SCHEMA:1596-1600 plus validate loop:1631-1636"
+      },
+      {
+        "result": "symlink refusal in _locate used by new/check/send/status; transform refusal; staged-blob verification and index restore",
+        "what": "grep -n 'symlink|staged|autocrlf|restore' src/agentmarshal/outbox.py and read :165-200, :837-930, :981-1049"
+      },
+      {
+        "result": "every quoted line exists verbatim in cli.py:950,993,1005,1007,1204,1206 and placement.py:45",
+        "what": "grep -rn 'advisory checks passed|advisory checks refused|Sidecar checks are advisory|completed after advisory checks|findings passed|completed through findings|passed what it examined' src/"
+      },
+      {
+        "result": "identical line for line (SHA placeholder aside)",
+        "what": "cat tests/fixtures/gate/sidecar-implementation.stdout vs docs/sidecar.md:227-240"
+      },
+      {
+        "result": "Placement line then journal/process log/local state; Round, then Cost, then Checks + declaration — the order sidecar.md prints",
+        "what": "read src/agentmarshal/journal/report.py:936-1020 and status_view.py:834-861, cli.py:1453-1476"
+      },
+      {
+        "result": "doctor resolves the placement without require_host, so existence/worktree/reachability are never checked",
+        "what": "grep -n host src/agentmarshal/doctor.py and src/agentmarshal/journal/placement.py; read doctor.py:880-902"
+      },
+      {
+        "result": "no remaining place describes them as files this repository ships",
+        "what": "grep -rn 'am-merge|mr.sh|agentmarshal/scripts|agentmarshal/bin|framework script' docs/ CONTRIBUTING.md README.md"
+      },
+      {
+        "result": "templates/journal-transaction.sh is the only script; submodule agentmarshal -> agentmarshal-v1.git",
+        "what": "find . -name '*.sh' -not -path './.git/*' and cat .gitmodules"
+      },
+      {
+        "result": "only dated history notes remain ('new in 0.3.0', 'Since 0.5.0'), which AC6 asks to leave alone",
+        "what": "grep -rn '0\\.5\\.0|0\\.4\\.1' docs/*.md"
+      },
+      {
+        "result": "all unqualified occurrences carry the exception except docs/self-hosting-workflow.md:37 (DOC-244-B); README/UPGRADING make no such claim, so no out-of-scope departure was owed",
+        "what": "grep -rn 'never from the candidate|from the base side|base-only' docs/ CONTRIBUTING.md README.md UPGRADING.md"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "read-only review; the coordinator states the sequence passed on this commit"
+      },
+      {
+        "what": "pip install agentmarshal==0.6.0 and the quickstart wheel run",
+        "why": "no network and 0.6.0 is unreleased per CHANGELOG.md:11 — basis for marking DOC-244-A unconfirmed"
+      }
+    ],
+    "read": [
+      ".agentmarshal/journal/tasks/CR-244/contract.md",
+      "docs/harness-setup.md",
+      "docs/known-defects.md",
+      "docs/sidecar.md",
+      "docs/quickstart.md",
+      "docs/self-hosting-workflow.md",
+      "docs/threat-model.md",
+      "docs/overview.md",
+      "docs/github-enforcement.md",
+      "docs/templates/claude-code-settings.local.json",
+      "CONTRIBUTING.md",
+      "CHANGELOG.md (0.6.0 section and 'What 0.6.0 leaves out')",
+      "docs/adr/ADR-0014-where-things-live.md",
+      "src/agentmarshal/localstate.py",
+      "src/agentmarshal/journal/gate.py",
+      "src/agentmarshal/journal/records.py",
+      "src/agentmarshal/journal/report.py",
+      "src/agentmarshal/journal/status_view.py",
+      "src/agentmarshal/journal/placement.py",
+      "src/agentmarshal/journal/capture.py",
+      "src/agentmarshal/outbox.py",
+      "src/agentmarshal/cli.py",
+      "openspec/specs/outbox/spec.md",
+      "openspec/specs/gate-lanes/spec.md",
+      "tests/test_attestation.py",
+      "tests/test_gate.py",
+      "tests/test_gate_operational.py",
+      "tests/test_quickstart.py",
+      "tests/test_doctor_steps_paths.py",
+      "tests/fixtures/gate/sidecar-implementation.stdout"
+    ]
+  }
+}
