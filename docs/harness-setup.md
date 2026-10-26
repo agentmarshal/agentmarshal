@@ -99,7 +99,9 @@ Three practical rules learned from running the rails:
    `Bash(agentmarshal gate)` — beside `Bash(agentmarshal gate *)`
    with its arguments, as `status` and `report` are listed, and its
    `Bash(agentmarshal prune)` entry is an exact match, so `prune
-   --delete` still prompts.
+   --delete` still prompts. `outbox status`, whose `--index` is
+   required, gets only the `Bash(agentmarshal outbox status *)`
+   entry — the bare form cannot run.
 
 2. **Avoid command substitution `$(...)` in allowlisted commands.** In the
    Claude Code settings format against which the template was verified, the

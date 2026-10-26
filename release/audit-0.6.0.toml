@@ -4,15 +4,21 @@ model = "gpt-6-astra"
 audited_at = 2026-10-26T06:23:00+10:00
 
 # Areas: gate-journal ran at 15af26e before the freeze by operator
-# decision (its paths changed afterwards only by the fixes
-# CR-235/236/237); extensions, commands and docs-claims part 1 ran at
-# the freeze commit with gpt-6-astra.
+# decision. Its paths changed afterwards by the audit fix tasks
+# listed below as fixed — CR-235, CR-236, CR-237, CR-239, CR-240
+# and CR-242 touched gate.py, records.py, review.py or report.py —
+# and, before the freeze, by CR-229's session reporting on
+# report.py and status_view.py. Extensions, commands and
+# docs-claims part 1 ran at the freeze commit with gpt-6-astra.
 # docs-claims part 2 (docs/ and templates/): two gpt-6-astra runs hit
 # the 5-hour usage window with no result; by operator decision the
 # area was audited with claude-fable-5-1 at the freeze commit.
 # AUD-whole-project-1 comes from a comparison whole-project audit
 # with claude-fable-5-1 (measurement channel), fixed like any blocking
 # finding.
+# AUD-commands-4 and AUD-commands-5 repeat AUD-gate-journal-4 and
+# -5 — the same defects, found again at the freeze commit — and are
+# fixed by the same task CR-237.
 # Finding descriptions are withheld; the full audit text is kept
 # privately.
 

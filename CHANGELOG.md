@@ -270,7 +270,9 @@ task approved on that commit is reported as closed on approval even
 where an earlier commit was accepted over findings. The
 acknowledgement mark `leak-scan` and the gate print says
 `self-acknowledged` where the acknowledging party is a declared
-writer of the commit it scans, through the same writer comparison.
+writer, through the same writer comparison — the gate judging
+over the writers of the whole candidate range, `leak-scan` over
+the commit it scans.
 The manifest the gate reads from the base tree applies the
 working-tree reader's file-form rule — a single-file manifest that
 declares a stage `command` or a dependency lock is refused through

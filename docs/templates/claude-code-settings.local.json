@@ -25,7 +25,6 @@
       "Bash(agentmarshal leak-scan *)",
       "Bash(agentmarshal outbox check)",
       "Bash(agentmarshal outbox check *)",
-      "Bash(agentmarshal outbox status)",
       "Bash(agentmarshal outbox status *)",
       "Bash(agentmarshal extension list)",
       "Bash(agentmarshal prune)",
