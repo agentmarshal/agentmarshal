@@ -49,11 +49,13 @@ historical 0.1.0 boundary and note what has changed since:
   `minimal` gives `off`, and `capture.overrides.reviews` can override
   it. `commit` pins the reviewer's prose as a journal artifact, `hash`
   keeps it under the clone's local state announced by a `review-prose`
-  event, and `off` keeps nothing. Still roadmap: the `economics` and `sessions`
-  classes are not read, the durable private store stays unbuilt (`hash`
-  prose lives in the process-log area instead), and `attestation.py`
-  emits no Statement. ADR-0005 separately records the advisory leak-scan
-  that has shipped.
+  event, and `off` keeps nothing of an accepted verdict — the level
+  governs a recorded verdict's prose; a verdict that is refused keeps
+  the reviewer's raw output at any level. Still roadmap: the
+  `economics` and `sessions` classes are not read, the durable private
+  store stays unbuilt (`hash` prose lives in the process-log area
+  instead), and `attestation.py` emits no Statement. ADR-0005
+  separately records the advisory leak-scan that has shipped.
 - [docs/migration-v1-to-v2.md](docs/migration-v1-to-v2.md) records what the
   v1→v2 migration lost (contract prose) and that the machine-readable
   acceptance array was empty in every contract through CR-038 — without
