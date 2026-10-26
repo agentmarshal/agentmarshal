@@ -302,6 +302,32 @@ def test_a_journal_that_cannot_be_read_acknowledges_nothing(
     assert "acknowledged" not in captured.out
 
 
+def test_a_marker_in_a_task_directory_name_is_masked_in_the_diagnostic(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A path the read failure names is masked like every name the scan prints.
+
+    A task directory named after the configured marker fails the
+    acknowledgement read with ``invalid task directory: <path>`` — and
+    the diagnostic's path must be described by the marker's position,
+    the marker's value appearing nowhere, the same masking every path
+    the scan prints gets.
+    """
+
+    repo = _repo(tmp_path, monkeypatch, markers=(_MARKER,))
+    head = _head(repo)
+    (repo / ".agentmarshal" / "journal" / "tasks" / _MARKER).mkdir(parents=True)
+    capsys.readouterr()
+
+    assert main(["leak-scan", "--base", head, "--commit", head]) == 0
+
+    captured = capsys.readouterr()
+    assert "cannot read acknowledgements" in captured.err
+    assert "<private marker #1>" in captured.err
+    assert _MARKER not in captured.err
+    assert _MARKER not in captured.out
+
+
 def test_an_acknowledgement_on_a_closed_task_still_counts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

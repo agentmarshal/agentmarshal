@@ -358,6 +358,68 @@ def test_a_file_form_extension_has_no_stage_to_run(
     assert "no shared extension declares a pre-gate stage" in out
 
 
+def test_a_broken_file_form_manifest_at_the_base_fails_the_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A file-form manifest the base cannot parse fails the run too.
+
+    The scenario ``a manifest the base cannot parse fails the run
+    naming the extension`` binds the file form as well: the tree's
+    enumeration names ``openspec`` from its ``<name>.toml`` alone, so
+    the same reader weighs its text — and its refusal names the
+    extension's tree source.
+    """
+
+    repo = _project(tmp_path, monkeypatch)
+    manifest = repo / ".agentmarshal" / "extensions" / "openspec.toml"
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text("not a manifest [[[\n", encoding="utf-8")
+    base = _commit_all(repo, "base")
+    _git(repo, "checkout", "--quiet", "-b", "candidate")
+    (repo / "x.txt").write_text("x\n", encoding="utf-8")
+    _commit_all(repo, "candidate")
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 1
+
+    captured = capsys.readouterr()
+    assert "openspec" in captured.err
+    assert f"{base}:.agentmarshal/extensions/openspec.toml" in captured.err
+    assert "checked" not in captured.out
+
+
+def test_a_command_declaring_file_form_manifest_at_the_base_fails_the_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A file-form manifest declaring a stage's command fails the run too.
+
+    A single ``<name>.toml`` has no extension directory, so the
+    ``bin/`` path its ``[[stage]]`` names resolves in nothing — the
+    shared reader's own single-file refusal, failing the run naming the
+    extension and its tree source.
+    """
+
+    repo = _project(tmp_path, monkeypatch)
+    manifest = repo / ".agentmarshal" / "extensions" / "openspec.toml"
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text(_manifest(), encoding="utf-8")
+    base = _commit_all(repo, "base")
+    _git(repo, "checkout", "--quiet", "-b", "candidate")
+    (repo / "x.txt").write_text("x\n", encoding="utf-8")
+    _commit_all(repo, "candidate")
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _stage_run(commit="candidate", base="master") == 1
+
+    captured = capsys.readouterr()
+    assert "'openspec'" in captured.err
+    assert "bin/check.py" in captured.err
+    assert f"{base}:.agentmarshal/extensions/openspec.toml" in captured.err
+    assert "checked" not in captured.out
+
+
 def test_a_sidecar_runs_no_stages(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

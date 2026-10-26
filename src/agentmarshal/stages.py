@@ -332,27 +332,22 @@ def _resolve(stderr: TextIO) -> tuple[Placement, LocalState] | None:
         return None
 
 
-def _base_extensions(
-    project_root: Path, merge_base: str
-) -> tuple[frozenset[str], dict[str, ExtensionManifest]]:
-    """The base tree's shared extension names and directory-form manifests.
+def _base_manifests(
+    project_root: Path, merge_base: str, names: frozenset[str]
+) -> dict[str, ExtensionManifest]:
+    """Every shared extension's manifest at the base tree.
 
-    The enumeration itself — the tree counterpart of the working-tree
-    rule, refusing a symlink before existence is weighed, treating a
-    missing or non-tree ``extensions/`` as no extensions and naming a
-    ``<name>.toml`` file form — lives beside the gate's manifest-at-tree
-    helpers as ``_extension_names_at_tree``, so the gate's operational
-    lane can name the base's shared extensions without loading
-    manifests. Each directory-form name's manifest is then read with
-    the gate's own base-tree reader, so its file-and-directory-form,
-    link and schema refusals apply unchanged rather than being restated
-    here.
+    Each enumerated name — the file form included — is read with the
+    gate's own base-tree reader, so its file-and-directory-form, link
+    and schema refusals apply unchanged rather than being restated
+    here: a ``<name>.toml`` manifest the reader refuses fails the run
+    exactly the way a directory-form one does, and a well-formed
+    file-form manifest declares no stage to plan.
     """
 
-    names, directory_names = _extension_names_at_tree(project_root, merge_base)
-    return names, {
+    return {
         name: _manifest_from_tree(project_root, merge_base, name)
-        for name in sorted(directory_names)
+        for name in sorted(names)
     }
 
 
@@ -1014,8 +1009,10 @@ def run_stages(
     line for a collision, a disabled or skipped extension, or a
     manifest refusal. ``skip`` names personal extensions to pass over
     for this run; naming a shared extension is refused on one line
-    before anything is planned — the operational switch alone may hold
-    a shared extension off. In CI nothing personal is planned.
+    before anything is planned — ahead of the operational lane's early
+    return too, decided on the base's extension names alone — the
+    operational switch alone may hold a shared extension off. In CI
+    nothing personal is planned.
 
     ``quiet`` is ``complete``'s invocation: a plan matching no stage
     prints nothing at all — the no-stage line the caller already
@@ -1054,6 +1051,30 @@ def run_stages(
         merge_base = _run_git(
             project_root, ["merge-base", base_commit, resolved_commit]
         ).strip()
+        # The shared names come from the tree's listing alone —
+        # ``_extension_names_at_tree``, the enumeration the gate's
+        # operational lane shares — and they alone decide the
+        # ``--skip-ext`` refusal: reading no manifest is exactly what the
+        # lane's order then requires (ADR-0013 decision 17).
+        extension_names = _extension_names_at_tree(project_root, merge_base)[0]
+    except (GateError, ExtensionManifestError) as error:
+        print(f"{voice}: {escape_for_display(str(error))}", file=stderr)
+        return StageRunResult(1)
+    # A shared name is the operational task's alone to switch:
+    # ``--skip-ext`` naming one refuses the whole run before a stage is
+    # planned — the same line ``extension disable`` prints for it — and
+    # before the operational lane's early return too, so the lane the
+    # refusal could mask is never taken under it.
+    for skipped in skip:
+        if skipped in extension_names:
+            print(
+                f"{voice}: {escape_for_display(skipped)}: a shared "
+                "extension is switched off only by an operational task "
+                "(extension switch off)",
+                file=stderr,
+            )
+            return StageRunResult(1)
+    try:
         if (
             phase == "pre-gate"
             and operational_candidate(
@@ -1082,7 +1103,7 @@ def run_stages(
             # cannot block its own switching off, and the line then names
             # why nothing ran.
             try:
-                extension_names, declared = _base_extensions(project_root, merge_base)
+                declared = _base_manifests(project_root, merge_base, extension_names)
             except (GateError, ExtensionManifestError):
                 declared_any = True
             else:
@@ -1094,22 +1115,10 @@ def run_stages(
             if declared_any:
                 print("stage run: pre-gate stages do not run on an operational change")
             return StageRunResult(0, plan_empty=not declared_any)
-        extension_names, manifests = _base_extensions(project_root, merge_base)
+        manifests = _base_manifests(project_root, merge_base, extension_names)
     except (GateError, ExtensionManifestError) as error:
         print(f"{voice}: {escape_for_display(str(error))}", file=stderr)
         return StageRunResult(1)
-    # A shared name is the operational task's alone to switch:
-    # ``--skip-ext`` naming one refuses the whole run before a stage is
-    # planned — the same line ``extension disable`` prints for it.
-    for skipped in skip:
-        if skipped in extension_names:
-            print(
-                f"{voice}: {escape_for_display(skipped)}: a shared "
-                "extension is switched off only by an operational task "
-                "(extension switch off)",
-                file=stderr,
-            )
-            return StageRunResult(1)
     modes = _PHASE_MODES[phase]
     plan = [
         (name, manifests[name], stage)

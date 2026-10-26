@@ -112,8 +112,11 @@ Plain `pip install agentmarshal` installs the latest published release, which
 may not be the version described here — pin it if you share a journal, and see
 [UPGRADING.md](UPGRADING.md) for why.
 
-Requirements: **Python >= 3.12** and **git** on `PATH` — the gate, review,
-and completion commands shell out to git. No Python dependencies.
+Requirements: **Python >= 3.12** and **git 2.31 or newer** on `PATH` —
+the gate, review, and completion commands shell out to git, and resolving
+local state — which `complete`, `status` and the stage runner all need —
+calls `git rev-parse --path-format=absolute`, a flag git learned at 2.31.
+No Python dependencies.
 
 AgentMarshal is **model-agnostic** and bundles no reviewer. To review a task,
 either set `AGENTMARSHAL_REVIEWER_CMD` to any reviewer command (for example a

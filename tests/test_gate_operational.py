@@ -21,9 +21,11 @@ from agentmarshal.journal.gate import run_gate
 from agentmarshal.journal.records import (
     create_opened_record,
     create_session_record,
+    read_records,
     write_record,
 )
 from test_gate import _commit_all, _run, _write_extension_manifest
+from test_personal_extensions import _complete, _stage_run_skip
 from test_placement import _host_and_sidecar
 from test_stages import _ci, _events, _extension, _manifest, _project, _stage_run
 
@@ -739,6 +741,77 @@ def test_a_broken_extension_cannot_block_the_operational_change(
         captured.out
         == "stage run: pre-gate stages do not run on an operational change\n"
     )
+
+
+def test_a_shared_name_in_skip_ext_is_refused_on_the_operational_lane(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`stage run --skip-ext` naming a shared extension is refused on the lane too.
+
+    The refusal precedes the lane's early return and is decided on the
+    base's extension names alone — no manifest is read for it: this
+    extension's manifest is broken on purpose, and the run still
+    refuses the shared name rather than reporting the manifest's error.
+    """
+
+    repo = _project(tmp_path, monkeypatch)
+    _extension(repo, manifest="not a manifest [[[\n")
+    assert main(["open", "--title", "Switch off openspec", "--scope", _SWITCHES]) == 0
+    base = _commit_all(repo, "broken extension and task")
+    _write_switches(repo, _OFF_CR_001)
+    candidate = _commit_all(repo, "switch off openspec")
+    capsys.readouterr()
+
+    assert _stage_run_skip("openspec", commit=candidate, base=base) == 1
+
+    captured = capsys.readouterr()
+    assert (
+        "stage run: openspec: a shared extension is switched off only by "
+        "an operational task (extension switch off)" in captured.err
+    )
+    assert "invalid TOML" not in captured.err
+    assert captured.out == ""
+    assert [
+        event for event in _events(repo) if event["event"] == "extension-event"
+    ] == []
+
+
+def test_complete_skip_ext_naming_a_shared_extension_is_refused_on_the_lane(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`complete --skip-ext` naming a shared extension is refused on the lane too.
+
+    The quiet invocation the shared runner gets on the operational
+    candidate refuses the same way — before the lane's early return and
+    before any stage is planned — and the completion is refused under
+    the calling command's prefix, nothing written.
+    """
+
+    repo = _project(tmp_path, monkeypatch)
+    _extension(repo, manifest="not a manifest [[[\n")
+    assert main(["open", "--title", "Switch off openspec", "--scope", _SWITCHES]) == 0
+    base = _commit_all(repo, "broken extension and task")
+    _write_switches(repo, _OFF_CR_001)
+    candidate = _commit_all(repo, "switch off openspec")
+    capsys.readouterr()
+
+    assert _complete(candidate, base, skip=("openspec",)) == 1
+
+    captured = capsys.readouterr()
+    assert (
+        "complete: openspec: a shared extension is switched off only by "
+        "an operational task (extension switch off)" in captured.err
+    )
+    assert "complete: pre-gate stage run refused; task not completed" in captured.err
+    assert "operational change" not in captured.out
+    assert "PASS:" not in captured.out
+    assert all(
+        record["record_type"] != "completed"
+        for record in read_records(repo / ".agentmarshal" / "journal", "CR-001")
+    )
+    assert [
+        event for event in _events(repo) if event["event"] == "extension-event"
+    ] == []
 
 
 def test_other_phases_and_other_candidates_behave_as_today(

@@ -266,7 +266,13 @@ an explicit unmeasured marker — all arrive under a later record schema.
 `~/.config/agentmarshal/extensions/` (Windows: `%APPDATA%`) shared by all
 a developer's repositories — is decided but not implemented: ADR-0013
 reserves it for "when an adopter asks", and 0.6.0 ships the shared and
-personal-in-clone scopes only. **`next` and the plan file** stay decided
+personal-in-clone scopes only. **The runtime lookup at `stage run`** —
+the one `PATH` exception of ADR-0013 decision 13 as amended, the core
+finding a wrapped product's declared `[wraps].runtime` on `PATH` and the
+stage output naming the path and version found — is `doctor`'s
+`extension runtime <name>` check alone in this release: `stage run` does
+not yet look the runtime up or name it, and every stage runs with `PATH`
+fixed at `/usr/bin:/bin` (0.7.0). **`next` and the plan file** stay decided
 but unshipped while the queue model is under review (ADR-0023, ADR-0022
 section 7): there is no `agentmarshal next` and nothing reads
 `plan.toml`. **The watchdog and the monitor** (proposal 042 — supplied
