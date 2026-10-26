@@ -1,0 +1,127 @@
+version = "0.6.0"
+audited_commit = "dff244b2df8e8003dad6faa4f7aa2ddd2d25422a"
+model = "gpt-6-astra"
+audited_at = 2026-10-26T06:23:00+10:00
+
+# Areas: gate-journal ran at 15af26e before the freeze by operator
+# decision (its paths changed afterwards only by the fixes
+# CR-235/236/237); extensions, commands and docs-claims part 1 ran at
+# the freeze commit with gpt-6-astra.
+# docs-claims part 2 (docs/ and templates/): two gpt-6-astra runs hit
+# the 5-hour usage window with no result; by operator decision the
+# area was audited with claude-fable-5-1 at the freeze commit.
+# AUD-whole-project-1 comes from a comparison whole-project audit
+# with claude-fable-5-1 (measurement channel), fixed like any blocking
+# finding.
+# Finding descriptions are withheld; the full audit text is kept
+# privately.
+
+[[finding]]
+id = "AUD-gate-journal-1"
+disposition = "fixed"
+task = "CR-235"
+
+[[finding]]
+id = "AUD-gate-journal-2"
+disposition = "fixed"
+task = "CR-236"
+
+[[finding]]
+id = "AUD-gate-journal-3"
+disposition = "fixed"
+task = "CR-236"
+
+[[finding]]
+id = "AUD-gate-journal-4"
+disposition = "fixed"
+task = "CR-237"
+
+[[finding]]
+id = "AUD-gate-journal-5"
+disposition = "fixed"
+task = "CR-237"
+
+[[finding]]
+id = "AUD-gate-journal-5-residue"
+disposition = "deferred"
+reason = "report and status judge the accepted commit only, as the journal records no candidate base; marking a self-acceptance by a writer of an earlier commit of the range needs the base in the completed record, with the next record schema"
+
+[[finding]]
+id = "AUD-gate-journal-6"
+disposition = "fixed"
+task = "CR-236"
+
+[[finding]]
+id = "AUD-gate-journal-7"
+disposition = "fixed"
+task = "CR-234"
+
+[[finding]]
+id = "AUD-extensions-1"
+disposition = "fixed"
+task = "CR-238"
+
+[[finding]]
+id = "AUD-extensions-2"
+disposition = "fixed"
+task = "CR-239"
+
+[[finding]]
+id = "AUD-extensions-3"
+disposition = "fixed"
+task = "CR-239"
+
+[[finding]]
+id = "AUD-commands-1"
+disposition = "fixed"
+task = "CR-241"
+
+[[finding]]
+id = "AUD-commands-2"
+disposition = "fixed"
+task = "CR-241"
+
+[[finding]]
+id = "AUD-commands-3"
+disposition = "fixed"
+task = "CR-242"
+
+[[finding]]
+id = "AUD-commands-4"
+disposition = "fixed"
+task = "CR-237"
+
+[[finding]]
+id = "AUD-commands-5"
+disposition = "fixed"
+task = "CR-237"
+
+[[finding]]
+id = "AUD-docs-claims-1-1"
+disposition = "fixed"
+task = "CR-243"
+
+[[finding]]
+id = "AUD-docs-claims-1-2"
+disposition = "fixed"
+task = "CR-243"
+
+[[finding]]
+id = "AUD-docs-claims-1-3"
+disposition = "fixed"
+task = "CR-243"
+
+[[finding]]
+id = "AUD-docs-claims-2-1"
+disposition = "fixed"
+task = "CR-244"
+
+[[finding]]
+id = "AUD-docs-claims-2-2"
+disposition = "fixed"
+task = "CR-244"
+
+[[finding]]
+id = "AUD-whole-project-1"
+disposition = "fixed"
+task = "CR-240"

@@ -33,7 +33,8 @@ the original stays with the reporter.
 
 Not yet done: `agentmarshal init` does not scaffold the outbox directory or say
 anything about it, so a new adopter still has to read this to learn the
-convention. That is the remaining part of the fix.
+convention. That is the remaining part of the fix. *(Superseded 2026-10-26 by
+the Where section below: the scaffold shipped in 0.2.0.)*
 
 ## Where
 

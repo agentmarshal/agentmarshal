@@ -8,7 +8,7 @@ local timestamp that can read a day either side of it. The journal under
 This project describes what it does and not what it intends to do. Where a
 capability is partial, the entry says so.
 
-## 0.6.0 — unreleased
+## 0.6.0 — 2026-10-26
 
 The headline is the executing half of
 [ADR-0013](docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md)'s
@@ -224,9 +224,11 @@ task whose last lifecycle record is `completed`, or `deferred` /
 but the fixes it named, the release notes and the version bump. It is a
 gate on this project's release process; the package gains no command.
 
-### Fixes from the release audit (CR-235, CR-236)
+### Fixes from the release audit (CR-234, CR-235, CR-236, CR-237, CR-238, CR-239, CR-240, CR-241, CR-242, CR-243, CR-244)
 
-The audit filed findings against the gate's journal handling; the two
+The audit ran in areas — the gate's journal handling, the extension
+machinery, commands, the release documentation in two parts — beside a
+comparison whole-project pass, and filed findings against them; the
 tasks named here are its fixes that completed before these notes.
 Where the CR-210 warning ends, refusal begins: for every other task
 the candidate adds records to, the gate projects that task's merged
@@ -251,7 +253,54 @@ failure while writing or closing the created file is not rolled back.
 And the reviewer output kept on a refused verdict is now the
 reviewer's bytes exactly — the preserved file holds what the
 reviewer printed, including bytes that are not valid UTF-8, while
-parsing still uses the decoded text.
+parsing still uses the decoded text. The gate also refuses an added
+record at a nested path — an added path under any task's `records/`
+directory that is not `tasks/<id>/records/<file>`, the one shape
+`read_records` accepts, is refused by name whether the task is the
+judged one or another, so a candidate can no longer pass the gate and
+leave a task unreadable after the merge. Where an acceptance's
+accepting party is a declared writer of the candidate, the gate's
+acceptance line and `report`'s task line now say `self-accepted` in
+the terms status uses — the gate judging over every commit of the
+candidate range, `report` and `status` over the accepted commit, so a
+self-acceptance by a writer of an earlier commit of the range only is
+one the surfaces cannot yet mark — and `report`'s decision derives
+from the review and acceptance that apply to the completed commit: a
+task approved on that commit is reported as closed on approval even
+where an earlier commit was accepted over findings. The
+acknowledgement mark `leak-scan` and the gate print says
+`self-acknowledged` where the acknowledging party is a declared
+writer of the commit it scans, through the same writer comparison.
+The manifest the gate reads from the base tree applies the
+working-tree reader's file-form rule — a single-file manifest that
+declares a stage `command` or a dependency lock is refused through
+the same validation — and `extension switch off`, `extension disable`
+and `extension enable` verify a switches rewrite with a comparison
+under which an unchanged value compares equal to itself, `nan`
+included, so a switches file holding an untouched `nan` no longer
+fails every rewrite. The extension-stages requirement "a personal
+extension has no journal authority" — and these notes with it — now
+promises what the core enforces: no `ext` kind `record-ext` accepts,
+no footprint, documents or artifacts, and no effect on the gate,
+rather than a containment of the extension's process, which runs with
+the developer's rights. `outbox new`, `outbox send` and the outbox
+`init` scaffolds refuse a symlinked `.agentmarshal/upstream` or a
+symlinked path component before creating or writing anything — a
+sidecar's outbox cannot write its host through a link — `outbox send`
+refuses the batch when the blob git would stage for a checked file
+differs from the bytes the leak scan read, and `outbox status`
+escapes every name it prints. And the release documentation itself:
+this section's write-failure promise claims only what holds, README
+names the review-prose capture as shipped beside what stays roadmap,
+each proposal's status line matches its index, and the guides under
+`docs/` state what 0.6.0 does — the registry's thirteen record types,
+the decided but unimplemented user scope, the operational lane's
+contract source, the threat model's write-time and outbox
+protections, and the versions and quoted output the guides pin. One
+finding of the gate-journal area landed in the release task itself:
+the corrections the notes above carry to how the documentation
+describes the gate's lanes, the operator acceptance and the verdict
+check.
 
 ### What 0.6.0 leaves out
 
