@@ -130,7 +130,9 @@ rather than decides, the findings lane excepted.
   review records are roadmap (ADR-0006).
 - **Candidate / base / merge-base** — the commit being gated, the target it
   merges into, and their common ancestor. The gate diffs `merge-base..candidate`
-  and reads trusted inputs from the base side.
+  and reads trusted inputs from the base side — the one exception being an
+  operational lane's opening contract, read from the candidate when that lane
+  opens the task.
 - **Pipeline attestation** — the invoker's assertion that a green pipeline ran
   for the exact candidate commit (see `AGENTMARSHAL_PIPELINE_OK_SHA` and the
   `--attestation` modes in the [Quickstart](quickstart.md)).

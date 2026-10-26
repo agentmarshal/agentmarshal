@@ -3,7 +3,7 @@
 This walks through the whole AgentMarshal loop on a throwaway repository —
 from installing the package to a task that carries durable, SHA-bound
 evidence that its work was independently reviewed. Every command in "The
-governed loop" below was run against a wheel of `agentmarshal` 0.5.0 built
+governed loop" below was run against a wheel of `agentmarshal` 0.6.0 built
 before the release was published: the main path end to end in one pass, and
 the two branches that pass cannot reach — `accept`, which needs a non-approving
 review, and `reopen`, which undoes the state the run arrives at — separately.
@@ -23,7 +23,7 @@ Requirements: **Python ≥ 3.12** and **git** on your `PATH`.
 Install the release this guide describes:
 
 ```sh
-pip install agentmarshal==0.5.0
+pip install agentmarshal==0.6.0
 agentmarshal --version
 ```
 
@@ -247,7 +247,7 @@ second, explicit lie. See [ADR-0006](adr/ADR-0006-actors-and-identity.md).
 
 `agentmarshal init` writes a minimal `.agentmarshal/project.json`
 (`schema` + framework version); no hand-editing is needed for the loop. Of the
-`capture` policy's classes, 0.5.0 acts on `reviews` alone — what happens to a
+`capture` policy's classes, 0.6.0 acts on `reviews` alone — what happens to a
 review's prose, described under step 4. To keep that prose in the journal:
 
 ```json
@@ -256,7 +256,7 @@ review's prose, described under step 4. To keep that prose in the journal:
 
 The `economics` and `sessions` classes are parsed and not acted on, and there
 is no private store yet. The
-`leak_scan.private_markers` list is active in 0.5.0 and adds project-specific
+`leak_scan.private_markers` list is active in 0.6.0 and adds project-specific
 strings to the built-in advisory scan used by `leak-scan` and the gate.
 
 When a schema-2 contract names an extension, the gate reads that extension's
@@ -453,7 +453,7 @@ separate check:
 agentmarshal leak-scan --commit "$IMPL" --base "$BASE"
 ```
 
-The gate runs this scan too and warns on matches; in 0.5.0 a match does not
+The gate runs this scan too and warns on matches; in 0.6.0 a match does not
 block the gate. The `leak-scan` command itself exits 1 while a reported hit
 carries no acknowledgement; `agentmarshal acknowledge` records the
 verification of one. In an embedded journal, the gate is the merge

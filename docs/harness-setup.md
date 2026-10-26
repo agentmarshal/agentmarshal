@@ -34,15 +34,18 @@ configuration:
 4. **Give the implementer no write access to the local state.** The clone's
    local state lives at `.git/agentmarshal/` — the `agentmarshal` directory
    under the git common directory of the repository holding the journal,
-   shared by all worktrees (in a sidecar it is the journal repository's) —
-   and the user-level AgentMarshal directories live at
-   `~/.config/agentmarshal/` and `~/.local/share/agentmarshal/` (Windows:
-   `%APPDATA%\agentmarshal\` and `%LOCALAPPDATA%\agentmarshal\`). These
-   places hold what records point to — review prose and diagnostics, the
-   process log — and what decides trust and switches, extension code
-   included, so an implementer that can write them rewrites the ground its
-   own evidence stands on. A sandbox that leaves only the task worktree
-   writable satisfies the rule.
+   shared by all worktrees (in a sidecar it is the journal repository's,
+   never the host's). That one place holds the process log, this clone's
+   personal extensions and the dependencies installed for them, the trust
+   grants (`trust.toml`), the personal switches (`switches.toml`) and the
+   plan file — what records point to and what decides trust and switches,
+   extension code included, so an implementer that can write it rewrites the
+   ground its own evidence stands on. The user-scope directories
+   (`~/.config/agentmarshal/`, `~/.local/share/agentmarshal/`; Windows:
+   `%APPDATA%\agentmarshal\`, `%LOCALAPPDATA%\agentmarshal\`) are decided but
+   not implemented in 0.6.0 (ADR-0014; CHANGELOG, "What 0.6.0 leaves out") —
+   nothing in the tool reads or writes them. A sandbox that leaves only the
+   task worktree writable satisfies the rule.
 
 These hold whichever harness runs the agent and however that harness handles
 permissions.

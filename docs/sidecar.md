@@ -49,7 +49,9 @@ It does **not** establish that any of this was enforced:
   would otherwise be (ADR-0009, Decision 4).
 - **The contract is not pinned to a base commit.** Embedded, the gate reads a
   task's contract from the base side of the same history the candidate belongs
-  to, so a change cannot widen its own scope. A sidecar's contract is not in
+  to — the one exception is a switches-only operational task opened inside the
+  candidate, whose contract comes from the candidate's tree — so a change
+  cannot widen its own scope. A sidecar's contract is not in
   the host's history at all, so it is read from the sidecar working tree. The
   gate transcript says this on the scope line rather than leaving you to infer
   it. Scope discipline in a sidecar rests on the sidecar's own commit history,
@@ -72,7 +74,7 @@ schema. There is no "lite" build.
 The placement is in the published release, so an ordinary install has it:
 
 ```sh
-pip install agentmarshal==0.4.1
+pip install agentmarshal==0.6.0
 ```
 
 Pin it rather than taking the latest: this surface is experimental, and a shared
@@ -122,7 +124,7 @@ is `.agentmarshal/project.json`:
 ```json
 {
   "framework": {
-    "version": "0.4.1"
+    "version": "0.6.0"
   },
   "host": "/home/you/src/work-repo",
   "placement": "sidecar",
@@ -465,5 +467,7 @@ empty scope now briefs and gates as findings work. `open` still emits its
 conservative empty-scope warning; the findings command and briefing give that
 scope its governed landing path.
 
-**`doctor` does not know about placement.** It checks the sidecar repository
-and reports nothing about the configured host or whether it is reachable.
+**`doctor` resolves the placement but checks nothing about the host.** Run in
+a sidecar it reports on the sidecar's own repository; the configured `host` is
+resolved to a path — never checked for existence, for being a git worktree, or
+for reachability.

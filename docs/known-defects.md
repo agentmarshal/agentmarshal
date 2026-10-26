@@ -10,7 +10,7 @@ before you finish.
 
 1. **A claim about what the code or a document does, made from memory.**
    Shows up as: "the gate records the verdict" (it records nothing); "the
-   journal has five record types" (it has nine); "the tool has no outcome
+   journal has five record types" (it has thirteen); "the tool has no outcome
    value for a provider limit" (one has been documented since an earlier
    release); a mechanism called new that already exists. Avoid: for every
    sentence about present behaviour, open the file it rests on — grep the

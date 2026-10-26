@@ -13,8 +13,7 @@
       "Bash(mkdir *)",
       "Bash(cp *)",
       "Bash(mv *)",
-      "Bash(./agentmarshal/scripts/*)",
-      "Bash(./agentmarshal/bin/*)",
+      "Bash(agentmarshal *)",
       "Bash(<your-rails-wrapper> *)"
     ],
     "additionalDirectories": [
