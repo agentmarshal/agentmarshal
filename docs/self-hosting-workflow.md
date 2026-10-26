@@ -34,11 +34,14 @@ evidence in the journal (`.agentmarshal/journal/tasks/<id>/`).
    `agentmarshal gate --task <id> --commit <sha> --base <target>`
    (context can be derived from the branch when the flags are omitted).
    It passes only when the task is not closed at the base, the diff is
-   within the contract scope read from the base tree, the latest review
-   of the exact commit is approved by an independent reviewer — or is a
-   non-approving one whose blocking findings an operator `acceptance`
-   record for that commit covers exactly — the pipeline is attested for
-   that commit, and the evidence records are append-only and consistent.
+   within the contract scope read from the base tree — with one
+   exception: an operational task the candidate itself opens takes its
+   contract from the candidate's tree, bounded by that lane's own
+   rules — the latest review of the exact commit is approved by an
+   independent reviewer — or is a non-approving one whose blocking
+   findings an operator `acceptance` record for that commit covers
+   exactly — the pipeline is attested for that commit, and the
+   evidence records are append-only and consistent.
    The `am-merge` host wrapper runs `agentmarshal gate` and, on success,
    performs the merge by reusing the v1 provider operation `mr.sh merge`
    with the v1 merge policy skipped — `mr.sh` ships in the archived v1
@@ -98,13 +101,13 @@ use — `am-merge` — and the v1 provider operations it calls are operator
 tooling, not files this repository ships. The v1 scripts live in the
 archived v1 repository, which this repository carries as a submodule at
 `agentmarshal/` (`.gitmodules` points it at the read-only v1 archive);
-`am-merge` itself lives with the operator. The wrapper resolves
-the merge request's head and target with the v1 provider operation
-`mr.sh get`, runs `agentmarshal gate`, and on a pass invokes `mr.sh merge`
-with `AGENTMARSHAL_SKIP_MERGE_POLICY=1` — the v2 gate is the governance
-decision, so the v1 merge policy is not re-run.
-This keeps the governance decision vendor-neutral while reusing whatever
-merge transport the provider offers.
+`am-merge` itself lives with the operator. The wrapper resolves the
+merge request's head and target with the v1 provider operation
+`mr.sh get`, runs `agentmarshal gate`, and on a pass invokes `mr.sh
+merge` with `AGENTMARSHAL_SKIP_MERGE_POLICY=1` — the v2 gate is the
+governance decision, so the v1 merge policy is not re-run. This keeps
+the governance decision vendor-neutral while reusing whatever merge
+transport the provider offers.
 
 Pipeline attestation is explicit: the wrapper passes the green pipeline
 SHA (`AGENTMARSHAL_PIPELINE_OK_SHA`) that the gate checks against the
@@ -137,11 +140,10 @@ some v1 transport:
 - **Still in use** (all of it operator tooling — the v1 pieces in the
   archived v1 repository carried here as the `agentmarshal/` submodule,
   `am-merge` with the operator): the v1 provider merge-request
-  operations `mr.sh get`
-  and `mr.sh merge` (fetch head/target and perform the merge), invoked by
-  `am-merge`; and the read-only review launcher that produces an
-  independent reviewer verdict. These are transport and reviewer
-  integration, not governance decisions.
+  operations `mr.sh get` and `mr.sh merge` (fetch head/target and
+  perform the merge), invoked by `am-merge`; and the read-only review
+  launcher that produces an independent reviewer verdict. These are
+  transport and reviewer integration, not governance decisions.
 - **Superseded:** `merge-policy.sh` (the v1 merge policy),
   `task-lifecycle.sh` (the v1 completion/audit scripts), and the agmake
   managed implementation cycle — operator tooling in that same archived

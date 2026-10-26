@@ -77,14 +77,19 @@ Three practical rules learned from running the rails:
    with one caveat: `Bash(agentmarshal *)` also covers the write
    commands — journal writers (`open`, `amend`, `submit-review`,
    `review`, `accept`, `agree`, `acknowledge`, `record-*`, `finding`,
-   `complete`, `abandon`, `reopen`, `migrate-journal`, `init`, `outbox`),
-   the commands that write the local state (`step`, `extension`) or run
-   extension code (`stage`), and `prune --delete`, which removes local
-   branches and worktrees — all of which rules 3 and 4 above give to the
-   operator, not the implementer. Allowlist the read-only subcommands
-   one by one — `status`, `brief`, `validate`, `report`, `doctor`,
-   `gate`, `leak-scan`, `prune` — as the shipped template does, plus
-   `templates/journal-transaction.sh`. The template's
+   `complete`, `abandon`, `reopen`, `migrate-journal`, and `extension
+   switch off`, which opens a task and rewrites the committed
+   `.agentmarshal/switches.toml`), the writers of committed project
+   files (`init`, which writes `.agentmarshal/project.json` and the
+   outbox scaffold; `outbox`, which writes drafts, the sent manifest
+   and its batch commit), the writers of the local state (`step`;
+   `extension trust`, `untrust`, `disable` and `enable`) or the runner
+   of extension code (`stage`), and `prune --delete`, which removes
+   local branches and worktrees — all of which rules 3 and 4 above give
+   to the operator, not the implementer. Allowlist the read-only
+   subcommands one by one — `status`, `brief`, `validate`, `report`,
+   `doctor`, `gate`, `leak-scan`, `prune` — as the shipped template
+   does, plus `templates/journal-transaction.sh`. The template's
    `Bash(agentmarshal prune)` entry is an exact match, so `prune
    --delete` still prompts.
 

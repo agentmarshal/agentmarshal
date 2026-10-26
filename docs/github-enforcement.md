@@ -4,9 +4,9 @@ AgentMarshal's gate is provider-agnostic; how the gate *binds* to a merge
 is provider-specific. On GitHub the binding is **Variant 2**: the gate
 runs as a status check and branch protection blocks the merge until the
 required checks are green. This contrasts with the GitFlic **Variant 1**
-model, where a merge is invoked by operator tooling outside this repository
-(`am-merge`) and the gate is run inline
-with an explicit pipeline attestation (see `docs/self-hosting-workflow.md`).
+model, where a merge is invoked by operator tooling outside this
+repository (`am-merge`) and the gate is run inline with an explicit
+pipeline attestation (see `docs/self-hosting-workflow.md`).
 
 The workflow template is `templates/github/agentmarshal-governance.yml`.
 

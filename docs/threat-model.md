@@ -325,10 +325,11 @@ advisory pass never prints as the authority's pass — `gate: advisory
 checks passed; decides no merge`, never `gate: passed`, and
 `gate: advisory checks refused; decides no merge`, never `gate:
 refused` — and a sidecar completion states that its checks passed
-advisorily — `completed after advisory checks; decides no merge` — a
-findings-lane completion states instead that they passed on the
-sidecar's own evidence, naming the lane that produced it — `Placement:
-sidecar` ahead of `gate: findings passed` and `completed through
+advisorily — `completed after advisory checks; decides no merge` — and
+the findings lane states the placement its evidence stands on: `gate
+--findings` prints `Placement: sidecar` ahead of its checks and closes
+with `gate: findings passed`, while `complete --findings` prints the
+same placement line, the record's path and `completed through
 findings`.
 Asked to judge what does not depend on a review, the
 gate reports the review-bound checks as not examined, with the reason —
