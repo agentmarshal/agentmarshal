@@ -82,7 +82,10 @@ same gate the tool ships. This surprises people, so it is worth stating plainly:
   differ from the commit authors'. This is enforced, not assumed.
 - The candidate must carry a **pipeline attestation** for its exact commit.
 - Evidence records are **append-only**; the contract and prior task state are
-  read from the base side, so a change cannot widen its own scope.
+  read from the base side — with one exception: on the operational lane a
+  task the candidate itself opens takes its contract from the candidate's
+  tree, bounded by that lane's own rules — so a change cannot widen its own
+  scope.
 
 **If you contribute with an agent, have it declare itself.** Set
 `AGENTMARSHAL_ACTOR` in the agent's session environment, so the records it

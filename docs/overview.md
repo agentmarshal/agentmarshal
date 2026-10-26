@@ -74,11 +74,13 @@ Two properties make that trustworthy:
 
 The gate reads the contract, the extension manifests, the leak-scan markers
 and the lifecycle state at the base from the **base** side, never from the
-candidate, so a change can never widen its own scope or hide that its task
-is already closed; the journal's records it reads from the calling
-checkout's working tree. In a sidecar all of these come from the journal
-repository's working tree, pinned to no commit — and the gate there advises
-rather than decides, the findings lane excepted.
+candidate — with one exception: on the operational lane a task the
+candidate itself opens takes its contract from the candidate's tree,
+bounded by that lane's own rules — so a change can never widen its own
+scope or hide that its task is already closed; the journal's records it
+reads from the calling checkout's working tree. In a sidecar all of these
+come from the journal repository's working tree, pinned to no commit — and
+the gate there advises rather than decides, the findings lane excepted.
 
 ## Terminology
 
@@ -130,7 +132,9 @@ rather than decides, the findings lane excepted.
   review records are roadmap (ADR-0006).
 - **Candidate / base / merge-base** — the commit being gated, the target it
   merges into, and their common ancestor. The gate diffs `merge-base..candidate`
-  and reads trusted inputs from the base side.
+  and reads trusted inputs from the base side — the one exception being an
+  operational lane's opening contract, read from the candidate when that lane
+  opens the task.
 - **Pipeline attestation** — the invoker's assertion that a green pipeline ran
   for the exact candidate commit (see `AGENTMARSHAL_PIPELINE_OK_SHA` and the
   `--attestation` modes in the [Quickstart](quickstart.md)).

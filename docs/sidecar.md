@@ -49,7 +49,9 @@ It does **not** establish that any of this was enforced:
   would otherwise be (ADR-0009, Decision 4).
 - **The contract is not pinned to a base commit.** Embedded, the gate reads a
   task's contract from the base side of the same history the candidate belongs
-  to, so a change cannot widen its own scope. A sidecar's contract is not in
+  to — the one exception is a switches-only operational task opened inside the
+  candidate, whose contract comes from the candidate's tree — so a change
+  cannot widen its own scope. A sidecar's contract is not in
   the host's history at all, so it is read from the sidecar working tree. The
   gate transcript says this on the scope line rather than leaving you to infer
   it. Scope discipline in a sidecar rests on the sidecar's own commit history,
@@ -72,7 +74,7 @@ schema. There is no "lite" build.
 The placement is in the published release, so an ordinary install has it:
 
 ```sh
-pip install agentmarshal==0.4.1
+pip install agentmarshal==0.6.0
 ```
 
 Pin it rather than taking the latest: this surface is experimental, and a shared
@@ -122,7 +124,7 @@ is `.agentmarshal/project.json`:
 ```json
 {
   "framework": {
-    "version": "0.4.1"
+    "version": "0.6.0"
   },
   "host": "/home/you/src/work-repo",
   "placement": "sidecar",
@@ -313,6 +315,9 @@ agentmarshal status CR-001
 
 ```
 Placement: sidecar
+journal: /home/you/work-journal/.agentmarshal/journal
+process log: /home/you/work-journal/.git/agentmarshal/log
+local state: /home/you/work-journal/.git/agentmarshal
 ID: CR-001
 Status: done
 Title: Add a greeting helper
@@ -336,6 +341,9 @@ CR-001	done	reviews=1	tokens=1500	usage=reported	decision=approved
 Phases	opened=2026-09-01T11:21:00.426680Z	implementer=unknown	review=2026-09-01T11:21:00.574048Z	approval=2026-09-01T11:21:00.574048Z	completed=2026-09-01T11:21:00.831134Z
 Durations	opened->implementer=unknown	implementer->review=unknown	review->approval=0s	approval->completed=0s
 Round	1	verdict=approved	since=unknown
+Cost	sessions_without_cost=1
+Checks	rejected_commits=0
+A check record is the observer's declaration of what the pipeline found on the commit, not proof of it.
 ```
 
 ```sh
@@ -349,9 +357,11 @@ validate: passed
 
 `status` and `report` are the two commands that state the placement, and they
 state it on **stderr**, so the machine-readable stdout formats stay unchanged
-for anything that parses them. `validate` prints no placement line at all: it is
-the whole-journal integrity check, and in a sidecar it checks the sidecar's
-journal — the host has none to check.
+for anything that parses them. `status` adds three more stderr lines — the
+`journal:`, `process log:` and `local state:` paths shown above the transcript
+— all of them the sidecar repository's, never the host's. `validate` prints no
+placement line at all: it is the whole-journal integrity check, and in a
+sidecar it checks the sidecar's journal — the host has none to check.
 
 ## What the host never gets
 
@@ -407,7 +417,7 @@ projected across them — a projection with two sources would be a guess.
 | `gate` | **Advisory** on a merge candidate. Requires `--task`; reads the contract from the sidecar working tree, not from a pinned base. `gate --findings` is the exception (ADR-0009): no host candidate, so it decides over sidecar evidence, prints `Placement: sidecar` first and never the advisory notice |
 | `complete` | Same advisory checks on a candidate; writes `completed` only to the sidecar. `complete --findings` decides the same way and binds the completion to the finding |
 | `prune` | Reports; `--delete` is refused, because the host stays read-only |
-| `status`, `report` | Print `Placement: sidecar` on stderr; stdout unchanged |
+| `status`, `report` | Print `Placement: sidecar` on stderr — `status` also prints `journal:`, `process log:` and `local state:` there; stdout unchanged |
 | `leak-scan` | Scans the **host's** added content, with the private markers read from the sidecar's own `project.json` |
 | `finding` | Journal-owned: writes to the sidecar, and its artifacts must resolve under the sidecar repository, not the host |
 | `review` | A finding review (`--reviewed-finding`) decides sidecar evidence without requiring a reachable host; commit review behaviour is unchanged |
@@ -465,5 +475,7 @@ empty scope now briefs and gates as findings work. `open` still emits its
 conservative empty-scope warning; the findings command and briefing give that
 scope its governed landing path.
 
-**`doctor` does not know about placement.** It checks the sidecar repository
-and reports nothing about the configured host or whether it is reachable.
+**`doctor` resolves the placement but checks nothing about the host.** Run in
+a sidecar it reports on the sidecar's own repository; the configured `host` is
+resolved to a path — never checked for existence, for being a git worktree, or
+for reachability.

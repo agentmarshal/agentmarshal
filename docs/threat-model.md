@@ -20,7 +20,15 @@ own boundary the same way in their opening lines.
 **A candidate cannot widen its own scope.** In the embedded placement the
 gate reads the contract, the extension manifests, the leak-scan markers
 and the lifecycle state at the base from the base side of the history the
-candidate belongs to, never from the candidate; the journal's records it
+candidate belongs to, never from the candidate — with one exception: an
+operational candidate that opens its own task inside the diff reads its
+opening contract from the candidate's tree, under the conditions the
+operational lane checks — the embedded diff is `.agentmarshal/switches.toml`
+plus the task's own journal subtree, nothing else, and the contract it
+supplies must declare `scope` exactly `[".agentmarshal/switches.toml"]`, so
+the contract cannot widen what the lane's own predicate admits; a contract
+the base tree holds is always read there, and in a sidecar the lane is not
+offered; the journal's records it
 reads from the calling checkout's working tree, where the review attesting
 the candidate may still be uncommitted. A candidate therefore cannot widen
 its own scope, silence a documents check by rewriting the manifest it
@@ -34,7 +42,8 @@ rather than decides — the findings lane excepted. (ADR-0014, decision 3,
 as amended; ADR-0013, decision 6, as amended; ADR-0003, "Decision";
 ADR-0006, "Context"; ADR-0010, decision 2; ADR-0011, "Context"; ADR-0008,
 decision 5; scope-enforcement specification, "A candidate's change set
-names every path it touches".)
+names every path it touches"; gate-lanes specification, "an operational
+change takes its own gate lane".)
 
 **Records are append-only, collision-checked and fail-closed.** Evidence
 records are written exactly once, with exclusive-create semantics; a
@@ -119,7 +128,11 @@ the schema-7 fields the shared validators register: a session's
 `opened`, `amendment` or `agreement` record's `contract`, a `check`
 record's `name`, `failed_step`, `excerpt` and `run_url`, an
 acknowledgement's `file` and `reason`, a review's `previous_review`,
-and an `ext` record's `kind`, `commit` and `payload_sha256`. The
+and an `ext` record's `kind`, `commit` and `payload_sha256`. Four
+timestamps and one reference take the same refusal through the shared
+write path, bound past today's schemas so they reach no record a read
+can load: every record's `created_at`, a session's `started_at`,
+`ended_at` and `resets_at`, and a record's `artifacts` `ref`. The
 strings the schema-7 object fields nest take the same refusal inside
 each family's own rule instead of the shared registration: a review's
 `classes` values, `verification` strings and `evidence` references and
@@ -173,7 +186,15 @@ and never through `PATH` lookup — the wrapped product's declared runtime
 being the one exception. The process-log sweep never follows a symlink,
 and a local-state location that resolves outside the root after `..`
 segments or symlinks are resolved is refused. A non-regular file in the
-outbox is named as not checked rather than scanned or silently skipped.
+outbox is named as not checked rather than scanned or silently skipped,
+and every outbox subcommand refuses — before it creates or writes
+anything — a symbolic link at `.agentmarshal/upstream`, at `.agentmarshal`
+itself or at any component between them and the project root, so a
+sidecar's outbox linked into its host never writes the host; `check` and
+`send` refuse a file whose staged bytes would differ from the bytes the
+check read — a clean filter or an end-of-line conversion rewriting them —
+and `send`, staging only the outbox, verifies the staged blobs are what
+the check vetted and puts back what it staged when they are not.
 The stage runner these manifest rules serve exists: `stage run` and
 `complete` execute a stage's `command` as an argv path inside the
 extension's own materialized `bin/`, and a missing or symbolic-link
@@ -187,7 +208,10 @@ directory", "A stage entry declares a phase and a command under bin/" and
 runtime and license"; process-log specification, "The log directory is
 bounded as a whole" and "Creating a location is contained to the local
 state root"; outbox specification, "`outbox check` scans what would be
-sent and refuses by exit status"; ADR-0013, decision 13.)
+sent and refuses by exit status", "the outbox refuses a symbolic link in
+its path", "`outbox check` and `outbox send` refuse a file git would
+transform" and "`outbox send` commits the checked batch"; ADR-0013,
+decision 13.)
 
 **A sidecar never writes its host.** The host repository carries no
 reference to, and no marker of the existence of, any sidecar; a sidecar
@@ -226,9 +250,13 @@ registered like `step` and writes no journal"; process-log
 specification, "The gate never reads the log"). The manifests, the
 shared switches and the executable code of shared extensions are taken
 from the base commit — never the candidate's tree — so a pull request
-cannot weaken them for itself; on a workstation a stage runs only
-under a local grant whose per-file hashes match the base-materialized
-directory, in CI under none (extension-stages specification, "`stage
+cannot weaken them for itself. What the gate does read at the candidate is
+the material it judges — the candidate's records, its switches file and
+its diff — and the one trusted input it takes from that side is the
+operational lane's opening contract, stated in the scope paragraph above;
+on a workstation a stage runs only under a local grant whose per-file
+hashes match the base-materialized directory, in CI under none
+(extension-stages specification, "`stage
 run` reads the switches from the base and reports a switched-off
 extension" and "on a workstation a stage runs only under a matching
 grant"). A candidate the operational lane admits runs no `pre-gate`
@@ -291,10 +319,18 @@ reads the log"; ADR-0017, decision 2.)
 
 **The output claims only what was examined.** The gate's independence
 line names what is compared — a declared identity — so an unenforceable
-claim does not print as a `PASS`; a sidecar's advisory pass never prints
-as the authority's pass, and a sidecar completion states that its checks
-passed advisorily — a findings-lane completion states instead that they
-passed on the sidecar's own evidence, naming the lane that produced it.
+claim does not print as a `PASS`; a sidecar opens every candidate run
+with `Sidecar checks are advisory and decide no merge.`, a sidecar's
+advisory pass never prints as the authority's pass — `gate: advisory
+checks passed; decides no merge`, never `gate: passed`, and
+`gate: advisory checks refused; decides no merge`, never `gate:
+refused` — and a sidecar completion states that its checks passed
+advisorily — `completed after advisory checks; decides no merge` — and
+the findings lane states the placement its evidence stands on: `gate
+--findings` prints `Placement: sidecar` ahead of its checks and closes
+with `gate: findings passed`, while `complete --findings` prints the
+same placement line, the record's path and `completed through
+findings`.
 Asked to judge what does not depend on a review, the
 gate reports the review-bound checks as not examined, with the reason —
 and the mode never weakens a candidate that has been reviewed. The

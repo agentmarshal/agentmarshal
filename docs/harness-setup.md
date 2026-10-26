@@ -8,12 +8,13 @@ setting described here is required by AgentMarshal.
 
 ## Why this matters
 
-The rails are a sequence of ordinary commands: `git`, the framework
-scripts, your project's test and lint commands. If the harness prompts
-for each one, an unattended or fast interactive run stalls waiting for a
-human. The fix is a small, explicit allowlist of the command families
-the rails actually use — not blanket permission, which gives up the
-harness's safety.
+The rails are a sequence of ordinary commands: `git`, the `agentmarshal`
+CLI and your project's test and lint commands — plus
+`templates/journal-transaction.sh`, the one script this repository ships.
+If the harness prompts for each one, an unattended or fast interactive run
+stalls waiting for a human. The fix is a small, explicit allowlist of the
+command families the rails actually use — not blanket permission, which
+gives up the harness's safety.
 
 ## What does not depend on the harness
 
@@ -34,15 +35,19 @@ configuration:
 4. **Give the implementer no write access to the local state.** The clone's
    local state lives at `.git/agentmarshal/` — the `agentmarshal` directory
    under the git common directory of the repository holding the journal,
-   shared by all worktrees (in a sidecar it is the journal repository's) —
-   and the user-level AgentMarshal directories live at
-   `~/.config/agentmarshal/` and `~/.local/share/agentmarshal/` (Windows:
-   `%APPDATA%\agentmarshal\` and `%LOCALAPPDATA%\agentmarshal\`). These
-   places hold what records point to — review prose and diagnostics, the
-   process log — and what decides trust and switches, extension code
-   included, so an implementer that can write them rewrites the ground its
-   own evidence stands on. A sandbox that leaves only the task worktree
-   writable satisfies the rule.
+   shared by all worktrees (in a sidecar it is the journal repository's,
+   never the host's). That one place holds the process log, this clone's
+   personal extensions and the dependencies installed for them, the trust
+   grants (`trust.toml`) and the personal switches (`switches.toml`) — what
+   records point to and what decides trust and switches, extension code
+   included, so an implementer that can write it rewrites the ground its own
+   evidence stands on. A plan file (`plan.toml`) is reserved under it, but
+   nothing in 0.6.0 reads or writes one. The user-scope directories
+   (`~/.config/agentmarshal/`, `~/.local/share/agentmarshal/`; Windows:
+   `%APPDATA%\agentmarshal\`, `%LOCALAPPDATA%\agentmarshal\`) are decided but
+   not implemented in 0.6.0 (ADR-0014; CHANGELOG, "What 0.6.0 leaves out") —
+   nothing in the tool reads or writes them. A sandbox that leaves only the
+   task worktree writable satisfies the rule.
 
 These hold whichever harness runs the agent and however that harness handles
 permissions.
@@ -68,8 +73,25 @@ Three practical rules learned from running the rails:
 1. **Allowlist by command family, not by full command.** A rule like
    `Bash(git *)` covers `git status`, `git commit`, `git push`, and so
    on. Cover every family the rails touch: git verbs, your package's
-   check commands (test/lint/type-check runner), and the framework
-   scripts.
+   check commands (test/lint/type-check runner), and `agentmarshal` —
+   with one caveat: `Bash(agentmarshal *)` also covers the write
+   commands — journal writers (`open`, `amend`, `submit-review`,
+   `review`, `accept`, `agree`, `acknowledge`, `record-*`, `finding`,
+   `complete`, `abandon`, `reopen`, `migrate-journal`, and `extension
+   switch off`, which opens a task and rewrites the committed
+   `.agentmarshal/switches.toml`), the writers of committed project
+   files (`init`, which writes `.agentmarshal/project.json` and the
+   outbox scaffold; `outbox`, which writes drafts, the sent manifest
+   and its batch commit), the writers of the local state (`step`;
+   `extension trust`, `untrust`, `disable` and `enable`) or the runner
+   of extension code (`stage`), and `prune --delete`, which removes
+   local branches and worktrees — all of which rules 3 and 4 above give
+   to the operator, not the implementer. Allowlist the read-only
+   subcommands one by one — `status`, `brief`, `validate`, `report`,
+   `doctor`, `gate`, `leak-scan`, `prune` — as the shipped template
+   does, plus `templates/journal-transaction.sh`. The template's
+   `Bash(agentmarshal prune)` entry is an exact match, so `prune
+   --delete` still prompts.
 
 2. **Avoid command substitution `$(...)` in allowlisted commands.** In the
    Claude Code settings format against which the template was verified, the
