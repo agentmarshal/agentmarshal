@@ -42,21 +42,24 @@ not a tree SHALL mean no directory-form extensions. A `--phase
 pre-gate` invocation SHALL run each `[[stage]]` whose phase is
 `pre-gate-warn` or `pre-gate-stop`; a `--phase post-gate` invocation
 SHALL run each whose phase is `post-gate`. One exception precedes the
-manifest read for `--phase pre-gate`: on a candidate the gate's own
-operational-lane predicate qualifies — decided by the same function
-the gate uses, imported rather than copied — the invocation SHALL
-print one line saying pre-gate stages do not run on an operational
-change and SHALL run no stage, reading no extension manifest and
-consulting no switch to decide one — no extension event, no pause —
-returning success (ADR-0013 decision 17: otherwise a broken extension
-blocks its own switching off). Extensions SHALL run in the
-sorted order of their names, each extension's matching stages in the
-order its manifest declares. A manifest the base-tree reader refuses
-SHALL fail the command naming the extension and its tree source. A
-file-form extension SHALL have no stage to run — it declares no
-directory. A sidecar SHALL refuse: a stage's base is a property of the
-embedded placement. An invalid task identifier SHALL refuse before any
-manifest is read.
+manifest read for `--phase pre-gate` — and the `--skip-ext` refusal of
+a shared name precedes the exception, decided on the names the merge
+base's `.agentmarshal/extensions/` enumerates with no manifest read,
+as "a shared extension is never named in a personal switch" states: on
+a candidate the gate's own operational-lane predicate qualifies —
+decided by the same function the gate uses, imported rather than
+copied — the invocation SHALL print one line saying pre-gate stages do
+not run on an operational change and SHALL run no stage, reading no
+extension manifest and consulting no switch to decide one — no
+extension event, no pause — returning success (ADR-0013 decision 17:
+otherwise a broken extension blocks its own switching off). Extensions
+SHALL run in the sorted order of their names, each extension's
+matching stages in the order its manifest declares. A manifest the
+base-tree reader refuses SHALL fail the command naming the extension
+and its tree source. A file-form extension SHALL have no stage to run
+— it declares no directory. A sidecar SHALL refuse: a stage's base is
+a property of the embedded placement. An invalid task identifier SHALL
+refuse before any manifest is read.
 
 #### Scenario: pre-gate invokes the pre-gate-warn and pre-gate-stop stages
 - **WHEN** `stage run --phase pre-gate` runs against an extension whose
@@ -105,6 +108,13 @@ manifest is read.
 - **THEN** it prints one line saying pre-gate stages do not run on an
   operational change, reads no extension manifest, runs no stage and
   exits 0
+
+#### Scenario: a shared name in --skip-ext is refused before the operational-lane exception
+- **WHEN** `stage run --phase pre-gate --skip-ext <name>` names a
+  shared extension on a candidate the gate's operational lane admits
+- **THEN** the run refuses with the shared-name refusal line — the
+  operational line does not print, no manifest is read and no stage is
+  planned
 
 ### Requirement: the extension's code is the base's and the working directory the candidate's
 

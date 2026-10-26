@@ -503,7 +503,14 @@ weakened"). The floor reaches only the candidate: nothing outside it
 is made read-only, a `writes` declaration beyond the candidate has no
 enforcement behind it and is named as not enforced, and a process of
 the same OS user outside the stage is not contained — the restriction
-binds only the extension processes the core launches itself. The wider
+binds only the extension processes the core launches itself. One piece
+of the same launch is decided but not yet implemented at the stage
+runner: `stage run` does not yet look up a wrapper's declared
+`[wraps].runtime` or name its path and version — that lookup is
+`doctor`'s `extension runtime <name>` check — and a stage's `PATH` is
+fixed at `/usr/bin:/bin` (ADR-0013, decision 13 as amended;
+extension-stages specification, "the command runs as an argv process
+under the core's interpreter"). The wider
 local protection further rests on the executor sandbox the adopter
 kit's implementer-launch template is to provide — decided, not yet
 implemented. (ADR-0001, "Consequences"; ADR-0002, "Decision"; ADR-0010,

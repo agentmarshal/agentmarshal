@@ -37,6 +37,7 @@ from agentmarshal.journal.capture import (
     render_leak_hits,
     render_undecodable_files,
     review_capture_level_from_journal,
+    safe_path,
     scan_diff_for_leaks,
 )
 from agentmarshal.journal.complete import (
@@ -1783,10 +1784,11 @@ def _run_leak_scan(args: argparse.Namespace, stderr: TextIO) -> int:
             )
         except (_LeakScanGitError, OSError, ValueError) as error:
             # The message can carry a path or a record field the tool did
-            # not write — escaped the way every transcript value is.
+            # not write — masked the way every name the scan prints is,
+            # then escaped the way every transcript value is.
             print(
                 "leak-scan: cannot read acknowledgements: "
-                + escape_for_display(str(error)),
+                + escape_for_display(safe_path(str(error), markers)),
                 file=stderr,
             )
         else:

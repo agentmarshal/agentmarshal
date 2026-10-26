@@ -258,6 +258,45 @@ def test_a_run_whose_machinery_refused_refuses_the_completion(
     )
 
 
+def test_a_file_form_manifest_the_base_refuses_fails_the_completion(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A file-form manifest the base refuses fails the completion too.
+
+    ``complete`` shares the one runner, so the file form is weighed the
+    same way there: the pre-gate invocation fails before the gate check
+    on the reader's refusal naming the extension and its tree source —
+    under the calling command's prefix, not ``stage run``'s.
+    """
+
+    repo = stage_helpers._project(tmp_path, monkeypatch)
+    manifest = repo / ".agentmarshal" / "extensions" / "openspec.toml"
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text("not a manifest [[[\n", encoding="utf-8")
+    assert main(["open", "--title", "Loop task", "--scope", "src/"]) == 0
+    base = _commit_all(repo, "base")
+    _git(repo, "checkout", "--quiet", "-b", "candidate")
+    (repo / "src").mkdir()
+    (repo / "src" / "module.py").write_text("code\n", encoding="utf-8")
+    head = _commit_all(repo, "implement")
+    _ci(monkeypatch)
+    capsys.readouterr()
+
+    assert _complete(head, base) == 1
+
+    captured = capsys.readouterr()
+    assert (
+        "complete: invalid TOML extension manifest: "
+        f"{base}:.agentmarshal/extensions/openspec.toml" in captured.err
+    )
+    assert "complete: pre-gate stage run refused; task not completed" in captured.err
+    assert "PASS:" not in captured.out
+    assert all(
+        record["record_type"] != "completed"
+        for record in read_records(_journal(repo), "CR-001")
+    )
+
+
 def test_a_plan_matching_no_stage_prints_nothing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
