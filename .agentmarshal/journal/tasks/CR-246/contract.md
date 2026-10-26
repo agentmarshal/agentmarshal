@@ -16,6 +16,7 @@ scope = [
   "openspec/changes/operational-skip-ext-refusal/",
   "openspec/changes/archive/",
   "openspec/specs/extension-stages/",
+  "openspec/specs/gate-lanes/",
 ]
 acceptance = [
   "`stage run` (and `complete`, through the shared runner) reads every shared extension manifest at the base — file form included — through the base-tree reader, so a file-form manifest the reader refuses fails the command naming the extension and its tree source, as extension-stages requires; file-form extensions still plan no stages (comparison finding SOL-extensions-2); a test with a broken and a command-declaring file-form manifest at the base",
@@ -25,7 +26,7 @@ acceptance = [
   "README.md, docs/quickstart.md and docs/sidecar.md name git 2.31 or newer as a requirement (local-state resolution uses --path-format=absolute; complete needs it) (SOL-docs-claims-1-3)",
   "release/audit-0.6.0.toml gains one [[finding]] per finding above — SOL-extensions-1, SOL-extensions-2, SOL-commands-2, SOL-docs-claims-1-1, SOL-docs-claims-1-3 — disposition fixed, task CR-246, with a comment that they come from a gpt-6.1-sol measurement audit of the same commits run after the release audit; CHANGELOG's audit-fixes paragraph names CR-246; `python3 .github/scripts/check_release_audit.py v0.6.0` in a throwaway clone with a local tag prints `release audit: passed`",
   "UPGRADING.md's 0.5.0 -> 0.6.0 section says that `outbox check` and `outbox send` now refuse a file whose bytes git would stage differently from the checked bytes (core.autocrlf, a text/eol attribute or a clean filter on the outbox) and names the remedy (`.agentmarshal/upstream/** -text` in .gitattributes; no filter on the outbox); README.md's capture sentence says precisely that a launcher refusal of malformed reviewer output keeps the raw output at any capture level (CR-245 review advisories)",
-  "the change operational-skip-ext-refusal carries a MODIFIED block (full current text, heading byte for byte, every scenario) for the extension-stages requirement whose operational-lane exception says the run prints one line and returns success before any manifest is read: a shared name in --skip-ext is refused first, then the exception applies; a scenario demonstrated by the existing or a new test whose docstring names it; archived with OpenSpec 1.15.0",
+  "the change operational-skip-ext-refusal carries a MODIFIED block (full current text, heading byte for byte, every scenario) for the extension-stages requirement whose operational-lane exception says the run prints one line and returns success before any manifest is read: a shared name in --skip-ext is refused first, then the exception applies; the same change carries the matching MODIFIED block for the gate-lanes requirement that states the operational pre-gate stage run prints one line and returns success; a scenario demonstrated by the existing or a new test whose docstring names it; archived with OpenSpec 1.15.0",
   "no other behaviour changes; existing transcripts unchanged; the suite and the full CI sequence pass",
 ]
 documents = ["docs/threat-model.md", "README.md", "CHANGELOG.md", "release/"]
