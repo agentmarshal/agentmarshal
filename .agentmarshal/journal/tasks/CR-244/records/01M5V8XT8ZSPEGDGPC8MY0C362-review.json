@@ -1,0 +1,139 @@
+{
+  "advisory_findings": [
+    "DOC-HARNESS-MIGRATE-NAME",
+    "DOC-HARNESS-READONLY-LIST",
+    "DOC-CONTRIBUTING-RESIDUAL",
+    "DOC-V1-SUBMODULE-NUANCE"
+  ],
+  "artifacts": [
+    {
+      "hash": "c85c24464269f9a1f9a5633bc62b2d3c0312f819d81db85400e991fc8081e249",
+      "ref": ".agentmarshal/journal/tasks/CR-244/artifacts/01M5V8XT8ZSPEGDGPC8MY0C362-review.md"
+    }
+  ],
+  "classes": {
+    "DOC-CONTRIBUTING-RESIDUAL": "scope",
+    "DOC-HARNESS-MIGRATE-NAME": "claim-accuracy",
+    "DOC-HARNESS-READONLY-LIST": "claim-accuracy",
+    "DOC-SIDECAR-REPORT-STALE": "claim-accuracy",
+    "DOC-V1-SUBMODULE-NUANCE": "claim-accuracy"
+  },
+  "created_at": "2026-10-26T04:53:59.711330Z",
+  "evidence": {
+    "DOC-CONTRIBUTING-RESIDUAL": "CONTRIBUTING.md:83-84: 'Evidence records are append-only; the contract and prior task state are read from the base side, so a change cannot widen its own scope.' — unqualified, while the contract's scope is ['docs/'] only, so the path may not be changed and must be reported as a departure",
+    "DOC-HARNESS-MIGRATE-NAME": "docs/harness-setup.md:80 lists 'migrate'; docs/templates/claude-code-settings.local.json:4 repeats it in _comment; src/agentmarshal/cli.py:502 registers subparsers.add_parser('migrate-journal', ...) and cli.py:1898 dispatches on args.command == 'migrate-journal'; grep of every add_parser name in src/ returns no 'migrate'",
+    "DOC-HARNESS-READONLY-LIST": "docs/harness-setup.md:84-87 enumerates status, brief, validate, report, doctor, gate, leak-scan 'as the shipped template does'; docs/templates/claude-code-settings.local.json:16-25 also allowlists \"Bash(agentmarshal prune)\" (exact form, so prune --delete stays excluded)",
+    "DOC-SIDECAR-REPORT-STALE": "docs/sidecar.md:338-344 ends at 'Round\\t1\\tverdict=approved\\tsince=unknown'; src/agentmarshal/cli.py:1393-1396 passes include_summary=task_id is None, so --task takes include_summary=False; src/agentmarshal/journal/report.py:1007-1020 extends that branch with _cost_lines and _check_lines; report.py:961-963 prints 'Cost\\tsessions_without_cost=<n>' whenever sums.sessions is non-zero and report.py:972 prints 'Checks\\trejected_commits=<n>' plus _CHECK_DECLARATION (report.py:63-66); report.py:407-423 counts the example's measured, costless session as sessions=1, sessions_without_cost=1; tests/test_report_cost_checks_findings.py:261-266 asserts 'Cost\\tsessions_without_cost=1' in the output of main(['report','--task','CR-001']) and :494-495 asserts the declaration prints once for the same invocation",
+    "DOC-V1-SUBMODULE-NUANCE": "docs/self-hosting-workflow.md:95-101 and :133-142 say the v1 scripts are 'operator tooling outside this repository, not files it ships'; .gitmodules declares [submodule \"agentmarshal\"] path = agentmarshal, url = https://github.com/AgentMarshal/agentmarshal-v1.git and pyproject.toml extend-exclude = [\"./agentmarshal\"]  # v1 archive submodule at repo root; the removed template entries were Bash(./agentmarshal/scripts/*) and Bash(./agentmarshal/bin/*); the submodule directory is empty in this snapshot, so its contents are unconfirmed"
+  },
+  "findings": [
+    "DOC-SIDECAR-REPORT-STALE"
+  ],
+  "previous_review": "01M5V885D8876VASCKC9Q7X34R",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "12c59c49b836f280217d2d32ea73278225f35b96",
+  "reviewed_contract": "571957307e714c9282857502f2c685383356f2e87328e4c688d692c53276107d",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-244",
+  "tool_version": "0.6.0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "13 entries: opened, review, acceptance, completed, abandoned, reopened, amendment, session, finding, check, agreement, acknowledgement, ext",
+        "what": "count the entries of RECORD_TYPES in src/agentmarshal/journal/attestation.py:62-115"
+      },
+      {
+        "result": "no match; nothing in the tool reads or writes them",
+        "what": "grep -rn for the user-scope paths in src/ (.config/agentmarshal, XDG_CONFIG, APPDATA, LOCALAPPDATA, local/share)"
+      },
+      {
+        "result": "only localstate.py:70-73 declares it and tests/test_localstate.py:115 pins the path; no reader or writer",
+        "what": "grep -rn 'plan_file|plan.toml' src/ tests/"
+      },
+      {
+        "result": "top-level commands include 'migrate-journal'; no 'migrate' subcommand exists",
+        "what": "grep -n 'add_parser(' over src/agentmarshal/cli.py and the registering modules"
+      },
+      {
+        "result": "every remaining mention is qualified as operator tooling or as a host wrapper example (overview.md:157, github-enforcement.md:113)",
+        "what": "grep -rn 'am-merge|mr.sh|merge-policy.sh|task-lifecycle.sh|agmake|scripts/' docs/ (excluding adr/, incidents/, proposals/)"
+      },
+      {
+        "result": "templates/journal-transaction.sh is the only shell script; templates/ holds it plus github/agentmarshal-governance.yml",
+        "what": "find . -name '*.sh' and find templates -type f"
+      },
+      {
+        "result": "placement.py:45, cli.py:950, 993, 1005, 1204, 1206 and placement.py:37 match the threat-model quotes verbatim",
+        "what": "grep -rn the sidecar output strings in src/"
+      },
+      {
+        "result": "doc line 95-96 matches cli.py:1007 exactly",
+        "what": "grep -n 'passed what it examined' docs/github-enforcement.md src/agentmarshal/cli.py"
+      },
+      {
+        "result": "all four newly cited requirement names exist (gate-lanes:170; outbox:181, 502, 532)",
+        "what": "grep -n '^### Requirement' openspec/specs/gate-lanes/spec.md openspec/specs/outbox/spec.md"
+      },
+      {
+        "result": "all resolve, including the #research-findings-loop anchor at sidecar.md:424",
+        "what": "resolve every relative markdown link target in the eight touched docs files with ls"
+      },
+      {
+        "result": "identical line for line (SHAs aside)",
+        "what": "compare docs/sidecar.md:225-238 with tests/fixtures/gate/sidecar-implementation.stdout"
+      },
+      {
+        "result": "include_summary=False appends _cost_lines and _check_lines; with one costless measured session that is Cost sessions_without_cost=1, Checks rejected_commits=0 and the check declaration",
+        "what": "trace report --task through cli.py:1393-1396 and report.py:1007-1020, 961-972"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "read-only review in a non-git snapshot without the environment; the coordinator states the sequence passed at this commit, and no test reads docs/ content"
+      },
+      {
+        "what": "reading the v1 submodule at agentmarshal/",
+        "why": "the directory is empty in the snapshot, so the contents of agentmarshal-v1 could not be checked (DOC-V1-SUBMODULE-NUANCE stays unconfirmed)"
+      }
+    ],
+    "read": [
+      "docs/harness-setup.md",
+      "docs/sidecar.md",
+      "docs/threat-model.md (lines 20-45, 120-210, 236-280, 310-335)",
+      "docs/quickstart.md (lines 240-340, 450-640)",
+      "docs/self-hosting-workflow.md",
+      "docs/github-enforcement.md",
+      "docs/overview.md (lines 70-160)",
+      "docs/known-defects.md",
+      "docs/templates/claude-code-settings.local.json",
+      "docs/adr/ADR-0014-where-things-live.md (section 12)",
+      "CHANGELOG.md ('What 0.6.0 leaves out')",
+      "CONTRIBUTING.md (lines 78-92)",
+      "src/agentmarshal/journal/attestation.py",
+      "src/agentmarshal/localstate.py",
+      "src/agentmarshal/journal/placement.py",
+      "src/agentmarshal/journal/gate.py (1000-1120, 1375-1500, 1660-1800, 2150-2210)",
+      "src/agentmarshal/journal/records.py (580-640, 1410-1430, 1560-1610)",
+      "src/agentmarshal/journal/report.py (375-434, 660-760, 900-1060)",
+      "src/agentmarshal/journal/status_view.py (283-320, 753-862)",
+      "src/agentmarshal/outbox.py (100-200, 1078-1190)",
+      "src/agentmarshal/doctor.py (860-905)",
+      "src/agentmarshal/cli.py (240-540, 900-1010, 1065-1210, 1380-1500, 1870-1915)",
+      "src/agentmarshal/switches.py (SWITCHES_RELPATH)",
+      "tests/test_attestation.py, tests/test_gate_operational.py, tests/test_report_cost_checks_findings.py, tests/test_outbox.py, tests/test_record_text_safety.py, tests/test_localstate.py (test name listings and cited cases)",
+      "tests/fixtures/gate/sidecar-implementation.stdout",
+      "pyproject.toml, .gitmodules"
+    ]
+  }
+}

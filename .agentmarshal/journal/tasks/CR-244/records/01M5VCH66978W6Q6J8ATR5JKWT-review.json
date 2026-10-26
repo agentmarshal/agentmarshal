@@ -1,0 +1,146 @@
+{
+  "advisory_findings": [
+    "AUD-REV-1",
+    "AUD-REV-2",
+    "AUD-REV-3",
+    "AUD-REV-4"
+  ],
+  "artifacts": [
+    {
+      "hash": "5c69aaba04cf5b29eb85c9f6547eb006a1e8e2c7f2f0bfcbce9a62cedc715a63",
+      "ref": ".agentmarshal/journal/tasks/CR-244/artifacts/01M5VCH66978W6Q6J8ATR5JKWT-review.md"
+    }
+  ],
+  "classes": {
+    "AUD-REV-1": "claim-accuracy",
+    "AUD-REV-2": "claim-accuracy",
+    "AUD-REV-3": "claim-accuracy",
+    "AUD-REV-4": "claim-accuracy"
+  },
+  "created_at": "2026-10-26T05:57:00.233013Z",
+  "evidence": {
+    "AUD-REV-1": "docs/github-enforcement.md:94-97 vs src/agentmarshal/journal/gate.py:1480 (journal_only) and :1482 (operational), where review_not_examined is never set (only at gate.py:1963), so src/agentmarshal/cli.py:1008 prints 'gate: passed'; templates/github/agentmarshal-governance.yml:78 gates every branch with --without-review",
+    "AUD-REV-2": "docs/harness-setup.md:84 and :89-91, docs/templates/claude-code-settings.local.json:3 vs src/agentmarshal/outbox.py:1228-1270 (_run_status reads only) and src/agentmarshal/extension_trust.py:700-716 (_run_list reads only)",
+    "AUD-REV-3": "docs/harness-setup.md:13 vs `ls .github/scripts/` -> check_release_audit.py, invoked at CONTRIBUTING.md:188; `find . -name '*.sh'` -> only templates/journal-transaction.sh",
+    "AUD-REV-4": "docs/self-hosting-workflow.md:47-48,102-104,141 vs .gitmodules (only [submodule \"agentmarshal\"] path=agentmarshal url=https://github.com/AgentMarshal/agentmarshal-v1.git) and an empty agentmarshal/ directory in the snapshot"
+  },
+  "findings": [],
+  "previous_review": "01M5VB4HPTBEMRYQ626QDDT2B8",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "d6721724fde0e64a0685bd651ebab4391f0ab18c",
+  "reviewed_contract": "f019026fb7b945c3efac6eb490b4035f726090c366e22ad1e38dfbb12051a976",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-244",
+  "tool_version": "0.6.0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "thirteen record types registered; docs/known-defects.md:13 'thirteen' is correct",
+        "what": "grep -rn RECORD_TYPES src/ and read src/agentmarshal/journal/attestation.py:55-120"
+      },
+      {
+        "result": "only sidecar-host expanduser; nothing reads the user-scope directories",
+        "what": "grep -rn 'XDG|.config/agentmarshal|APPDATA|expanduser' src/"
+      },
+      {
+        "result": "operational contract read from base, else candidate; lane bounded by diff+scope predicate; not offered in a sidecar",
+        "what": "read src/agentmarshal/journal/gate.py:1006-1104, 1375-1393, 1480-1600"
+      },
+      {
+        "result": "only the four guides plus CONTRIBUTING.md, each now carrying the operational-lane exception; ADRs/proposals left as dated history",
+        "what": "grep -rn 'never from the candidate|from the base side|widen its own scope' docs/ CONTRIBUTING.md"
+      },
+      {
+        "result": "every line quoted in threat-model.md and github-enforcement.md exists verbatim (placement.py:45; cli.py:950,993,1001,1005,1007,1204,1206)",
+        "what": "grep -rn 'advisory checks passed|Sidecar checks are advisory|findings passed|completed through findings|passed what it examined' src/"
+      },
+      {
+        "result": "timestamp-text and artifact-ref-text bound to schema 8, write-time only; matches threat-model.md:131-136",
+        "what": "read src/agentmarshal/journal/records.py:575-700, 1405-1429, 1580-1636"
+      },
+      {
+        "result": "symlink refusal before any create/write in all four subcommands; staged-vs-checked blob verification and index restore; matches threat-model.md:186-214",
+        "what": "read src/agentmarshal/outbox.py:150-205, 837-851, 975-1046"
+      },
+      {
+        "result": "all five cited requirement titles exist exactly as quoted",
+        "what": "grep -n '^### Requirement' openspec/specs/outbox/spec.md and openspec/specs/gate-lanes/spec.md:170"
+      },
+      {
+        "result": "status prints Placement then the three paths; report prints only the placement line, then Cost/Checks/declaration; sidecar.md transcripts match",
+        "what": "read src/agentmarshal/cli.py:925-1008, 1070-1208, 1382-1386, 1453-1476 and journal/status_view.py:834-861, journal/report.py:935-1058"
+      },
+      {
+        "result": "doctor resolves the placement without require_host; host never checked for existence, worktree or reachability",
+        "what": "read src/agentmarshal/doctor.py:880-902 and journal/placement.py:48-98"
+      },
+      {
+        "result": "all targets exist (AGENTS.md, UPGRADING.md, adr/*, sidecar.md#research-findings-loop)",
+        "what": "resolved every relative markdown link and anchor in the changed files"
+      },
+      {
+        "result": "templates/journal-transaction.sh is the only shell script, but .github/scripts/check_release_audit.py also ships (AUD-REV-3)",
+        "what": "find . -name '*.sh' and ls .github/scripts/"
+      },
+      {
+        "result": "line 78 runs the gate with --without-review on every candidate, including journal-only branches (AUD-REV-1)",
+        "what": "grep -n 'without-review' templates/github/agentmarshal-governance.yml"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "read-only review of a non-git snapshot; the coordinator states the full sequence passed on d6721724fde0e64a0685bd651ebab4391f0ab18c"
+      },
+      {
+        "what": "inspecting the v1 submodule's contents for mr.sh, merge-policy.sh, task-lifecycle.sh",
+        "why": "the agentmarshal/ submodule directory is empty in this snapshot and no network access (AUD-REV-4)"
+      }
+    ],
+    "read": [
+      "docs/harness-setup.md",
+      "docs/threat-model.md",
+      "docs/sidecar.md",
+      "docs/self-hosting-workflow.md",
+      "docs/github-enforcement.md",
+      "docs/overview.md",
+      "docs/quickstart.md",
+      "docs/known-defects.md",
+      "docs/templates/claude-code-settings.local.json",
+      "CONTRIBUTING.md",
+      "CHANGELOG.md",
+      "docs/adr/ADR-0014-where-things-live.md",
+      "openspec/specs/gate-lanes/spec.md",
+      "src/agentmarshal/journal/gate.py",
+      "src/agentmarshal/journal/records.py",
+      "src/agentmarshal/journal/attestation.py",
+      "src/agentmarshal/journal/report.py",
+      "src/agentmarshal/journal/status_view.py",
+      "src/agentmarshal/journal/placement.py",
+      "src/agentmarshal/localstate.py",
+      "src/agentmarshal/outbox.py",
+      "src/agentmarshal/extension_trust.py",
+      "src/agentmarshal/cli.py",
+      "src/agentmarshal/doctor.py",
+      "src/agentmarshal/process_log.py",
+      "templates/journal-transaction.sh",
+      "tests/test_attestation.py",
+      "tests/test_gate_operational.py",
+      "tests/test_record_text_safety.py",
+      "tests/test_status_steps.py",
+      "tests/test_report_cost_checks_findings.py",
+      "tests/test_quickstart.py",
+      ".gitmodules"
+    ]
+  }
+}

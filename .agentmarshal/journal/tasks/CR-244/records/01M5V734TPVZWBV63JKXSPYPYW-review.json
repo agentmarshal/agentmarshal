@@ -1,0 +1,148 @@
+{
+  "advisory_findings": [
+    "A-plan-file-not-shipped",
+    "A-template-allows-journal-writes",
+    "A-framework-scripts-stale"
+  ],
+  "artifacts": [
+    {
+      "hash": "de8cb8a0594e51ee20dc465f8b0a5a1f536df9e2a63021f1d1344b24c0eb6948",
+      "ref": ".agentmarshal/journal/tasks/CR-244/artifacts/01M5V734TPVZWBV63JKXSPYPYW-review.md"
+    }
+  ],
+  "classes": {
+    "A-framework-scripts-stale": "claim-accuracy",
+    "A-plan-file-not-shipped": "claim-accuracy",
+    "A-template-allows-journal-writes": "security",
+    "F-base-only-exception-unstated": "contract-mismatch",
+    "F-sidecar-status-transcript-stale": "claim-accuracy"
+  },
+  "created_at": "2026-10-26T04:21:57.206955Z",
+  "evidence": {
+    "A-framework-scripts-stale": "docs/harness-setup.md:11 and :74 still name 'the framework scripts'; `ls agentmarshal` is empty and the only shipped script is templates/journal-transaction.sh, while the template in this same diff moved from './agentmarshal/scripts/*' to the 'agentmarshal' CLI",
+    "A-plan-file-not-shipped": "docs/harness-setup.md:38-41 'That one place holds ... and the plan file'; `grep -rn 'plan.toml' src/` returns only src/agentmarshal/localstate.py:70,73; CHANGELOG.md 'What 0.6.0 leaves out' — 'there is no `agentmarshal next` and nothing reads `plan.toml`'; docs/adr/ADR-0014-where-things-live.md:158-164 lists log/, extensions/, deps/, trust.toml, switches.toml only",
+    "A-template-allows-journal-writes": "docs/templates/claude-code-settings.local.json:16 '\"Bash(agentmarshal *)\"' against docs/harness-setup.md:31-32 'Never let the agent write the journal' and :34 'Give the implementer no write access to the local state'; journal-writing subcommands at src/agentmarshal/cli.py:146 (open), :204 (accept), :348 (complete), :393 (abandon), :398 (reopen), :401 (amend), :491 (prune), :502 (migrate)",
+    "F-base-only-exception-unstated": "docs/overview.md:75-77 'reads the contract ... at the base from the **base** side, never from the candidate' and docs/quickstart.md:323-324 'The gate always reads the contract from the committed base, never from the candidate' — both lack the operational-lane exception the diff adds at docs/overview.md:133, docs/threat-model.md:23, docs/self-hosting-workflow.md:161 and docs/sidecar.md:52; the exception is real at src/agentmarshal/journal/gate.py:1024-1030 and tests/test_gate_operational.py:119",
+    "F-sidecar-status-transcript-stale": "docs/sidecar.md:316-328 shows 'Placement: sidecar' immediately followed by 'ID: CR-001'; src/agentmarshal/cli.py:1459 then :1474 print the placement line and print_paths' three lines (src/agentmarshal/journal/status_view.py:852-861 'journal:', 'process log:', 'local state:') back to back on stderr; `grep -n 'process log|local state|journal:' docs/sidecar.md` returns nothing, and docs/sidecar.md:412 claims only the placement line is added"
+  },
+  "findings": [
+    "F-base-only-exception-unstated",
+    "F-sidecar-status-transcript-stale"
+  ],
+  "previous_review": "01M5V6JM99SQMP9GHEDR3KCJHB",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "8e5e62120c62c6ab683be13f000a71660f2f5b76",
+  "reviewed_contract": "571957307e714c9282857502f2c685383356f2e87328e4c688d692c53276107d",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-244",
+  "tool_version": "0.6.0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "thirteen record types declared; matches known-defects.md",
+        "what": "grep -rn RECORD_TYPES src/ and read src/agentmarshal/journal/attestation.py:62-114"
+      },
+      {
+        "result": "no user-scope directory is read or written; only placement host expanduser",
+        "what": "grep -rn 'XDG_CONFIG_HOME|APPDATA|.config/agentmarshal|expanduser|Path.home()' src/"
+      },
+      {
+        "result": "only src/agentmarshal/localstate.py:70,73 — nothing reads or writes it",
+        "what": "grep -rn 'plan.toml|plan_file' src/"
+      },
+      {
+        "result": "candidate-side contract read confirmed, bounded by the lane predicate; lane not offered in a sidecar",
+        "what": "read src/agentmarshal/journal/gate.py:1006-1101 and 1383-1392"
+      },
+      {
+        "result": "docs/overview.md:75-77 and docs/quickstart.md:323-324 still unqualified",
+        "what": "grep -rn 'never from the candidate|widen its own scope|from the committed base' docs/"
+      },
+      {
+        "result": "status prints Placement then journal:/process log:/local state: on stderr",
+        "what": "read src/agentmarshal/cli.py:1453-1476 and src/agentmarshal/journal/status_view.py:834-861"
+      },
+      {
+        "result": "no match — the three 0.6.0 status lines appear nowhere in sidecar.md",
+        "what": "grep -n 'process log|local state|journal:' docs/sidecar.md"
+      },
+      {
+        "result": "timestamp-text covers created_at/started_at/ended_at/resets_at; artifact-ref-text covers artifacts ref",
+        "what": "read src/agentmarshal/journal/records.py:618-635 and 1410-1429"
+      },
+      {
+        "result": "symlink refusal before any write in new/check/send/status; staged-byte verification with index restore",
+        "what": "read src/agentmarshal/outbox.py:164-196, 837-849, 1155-1180; grep _locate callers"
+      },
+      {
+        "result": "every line quoted by threat-model.md and github-enforcement.md found verbatim in cli.py and placement.py",
+        "what": "grep -rn quoted sidecar/gate output strings in src/"
+      },
+      {
+        "result": "all four cited requirement titles exist exactly",
+        "what": "grep -n '^### Requirement' openspec/specs/outbox/spec.md; grep -rn 'an operational change takes its own gate lane' openspec/"
+      },
+      {
+        "result": "supporting tests exist; test_quickstart.py executes the quickstart loop and compares the gate transcript",
+        "what": "grep -n 'def test_' tests/test_gate_operational.py, tests/test_outbox.py, tests/test_record_text_safety.py; read tests/test_quickstart.py:1-60"
+      },
+      {
+        "result": "only docs/ prose; no such files ship in the repository",
+        "what": "grep -rln 'am-merge|mr.sh' over the tree"
+      },
+      {
+        "result": "agentmarshal * covers open/accept/complete/abandon/reopen/amend/prune/migrate, all journal writers",
+        "what": "grep -n 'add_parser(' src/agentmarshal/cli.py"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "the snapshot is not a git repository and the toolchain is unavailable; the coordinator states the sequence passed on this commit"
+      },
+      {
+        "what": "a live sidecar gate/status run to diff the sidecar.md transcripts byte for byte",
+        "why": "requires a host/sidecar repository pair and a runnable install; compared against the printing code instead"
+      },
+      {
+        "what": "markdown link resolution script",
+        "why": "script execution was not approved; the diff adds no new markdown links, so resolution is unchanged"
+      }
+    ],
+    "read": [
+      "docs/harness-setup.md",
+      "docs/sidecar.md",
+      "docs/threat-model.md",
+      "docs/overview.md",
+      "docs/quickstart.md",
+      "docs/self-hosting-workflow.md",
+      "docs/github-enforcement.md",
+      "docs/known-defects.md",
+      "docs/templates/claude-code-settings.local.json",
+      "docs/adr/ADR-0014-where-things-live.md",
+      "CHANGELOG.md (What 0.6.0 leaves out)",
+      "src/agentmarshal/journal/gate.py",
+      "src/agentmarshal/journal/records.py",
+      "src/agentmarshal/journal/placement.py",
+      "src/agentmarshal/journal/status_view.py",
+      "src/agentmarshal/journal/attestation.py",
+      "src/agentmarshal/localstate.py",
+      "src/agentmarshal/outbox.py",
+      "src/agentmarshal/cli.py",
+      "src/agentmarshal/doctor.py",
+      "templates/github/agentmarshal-governance.yml",
+      "openspec/specs/outbox/spec.md",
+      "pyproject.toml"
+    ]
+  }
+}

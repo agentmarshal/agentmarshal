@@ -1,0 +1,155 @@
+{
+  "advisory_findings": [
+    "ADV-outbox-extension-group-granularity",
+    "ADV-template-bare-gate-not-allowlisted",
+    "ADV-v1-submodule-contents-unverified"
+  ],
+  "artifacts": [
+    {
+      "hash": "34af78fa7e67cbc293e6fa18b8d76dcc67cd45b96dfb934fba4caa7a26f67435",
+      "ref": ".agentmarshal/journal/tasks/CR-244/artifacts/01M5VD6AFK8HYFM8VXZDAYT980-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-outbox-extension-group-granularity": "claim-accuracy",
+    "ADV-template-bare-gate-not-allowlisted": "claim-accuracy",
+    "ADV-v1-submodule-contents-unverified": "claim-accuracy"
+  },
+  "created_at": "2026-10-26T06:08:32.755769Z",
+  "evidence": {
+    "ADV-outbox-extension-group-granularity": "docs/harness-setup.md:81-84 and docs/templates/claude-code-settings.local.json:3 vs src/agentmarshal/outbox.py:536-561 (outbox check hashes with 'git hash-object --stdin', no -w, and stages nothing), outbox.py:138-141 (outbox status reports), src/agentmarshal/extension_trust.py:131 ('list' shows grant state); extension list appears in neither the write list nor the read-only list",
+    "ADV-template-bare-gate-not-allowlisted": "docs/templates/claude-code-settings.local.json:23 has only 'Bash(agentmarshal gate *)' while status and report each carry a bare entry; docs/harness-setup.md:89-93 claims the template allowlists 'gate' and states that a non-wildcard entry is an exact match; docs/self-hosting-workflow.md:35 documents a bare 'agentmarshal gate' as supported",
+    "ADV-v1-submodule-contents-unverified": "docs/self-hosting-workflow.md:47-48 and :100-104; .gitmodules declares path = agentmarshal, url = https://github.com/AgentMarshal/agentmarshal-v1.git; 'ls -la agentmarshal/' shows an empty directory, so mr.sh's presence and the archive's read-only status cannot be checked here"
+  },
+  "findings": [],
+  "previous_review": "01M5VCH66978W6Q6J8ATR5JKWT",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "d6721724fde0e64a0685bd651ebab4391f0ab18c",
+  "reviewed_contract": "f019026fb7b945c3efac6eb490b4035f726090c366e22ad1e38dfbb12051a976",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-244",
+  "tool_version": "0.6.0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "thirteen registered record types: opened, review, acceptance, completed, abandoned, reopened, amendment, session, finding, check, agreement, acknowledgement, ext",
+        "what": "grep -rn RECORD_TYPES src/ and read src/agentmarshal/journal/attestation.py:62-114"
+      },
+      {
+        "result": "only project.py:440 and placement.py:53 (the sidecar host); no user-scope directory is read or written",
+        "what": "grep -rn 'XDG|APPDATA|expanduser|Path.home' src/"
+      },
+      {
+        "result": "declared in localstate.py:70-73 and asserted in tests/test_localstate.py only; nothing reads or writes it",
+        "what": "grep -rn 'plan_file|plan.toml' src/ tests/"
+      },
+      {
+        "result": "base tree first, candidate contract only when the base holds none; diff limited to switches.toml plus the task subtree; scope must equal ('.agentmarshal/switches.toml',); lane offered only when not sidecar and not journal_only",
+        "what": "read src/agentmarshal/journal/gate.py:1006-1101 and 1383-1392"
+      },
+      {
+        "result": "timestamp-text and artifact-ref-text are registered at schema 8, applied at write for every schema and skipped on read",
+        "what": "read src/agentmarshal/journal/records.py:618-636, 1414-1428, 1592-1599"
+      },
+      {
+        "result": "placement.py:45 and :37, cli.py:950, 993, 1005, 1007, 1204, 1206 match the doc quotes exactly",
+        "what": "grep -rn for the quoted output lines in src/"
+      },
+      {
+        "result": "identical apart from the SHA placeholders",
+        "what": "diff docs/sidecar.md gate block against tests/fixtures/gate/sidecar-implementation.stdout"
+      },
+      {
+        "result": "Cost/Checks line order and the check-declaration sentence match the sidecar report transcript",
+        "what": "read src/agentmarshal/journal/report.py:63-65, 962-972, 1014-1020"
+      },
+      {
+        "result": "doctor calls resolve_placement without require_host: the host is resolved to a path and never checked for existence, directory-ness or git worktree",
+        "what": "read src/agentmarshal/journal/placement.py:64-97 and src/agentmarshal/doctor.py:880-902"
+      },
+      {
+        "result": "all four exist verbatim (outbox/spec.md:181, 502, 532; gate-lanes/spec.md:170)",
+        "what": "grep -rn for cited spec requirement titles in openspec/specs/"
+      },
+      {
+        "result": "all resolve; templates/journal-transaction.sh and templates/github/agentmarshal-governance.yml exist; find -name '*.sh' returns that one script",
+        "what": "resolve every relative markdown link in the changed files; ls the targets"
+      },
+      {
+        "result": "every base-only contract statement in docs/ and CONTRIBUTING.md now carries the operational-lane exception",
+        "what": "grep -rn 'never from the candidate|base side|base tree' docs/ README.md CONTRIBUTING.md"
+      },
+      {
+        "result": "remaining mentions are dated history notes only; pyproject.toml and __init__.py are 0.6.0",
+        "what": "grep -rn '0.5.0|0.4.1' docs/*.md docs/templates/*"
+      },
+      {
+        "result": "pre-write lstat refusal on .agentmarshal and .agentmarshal/upstream; staged-vs-read blob comparison; send verifies and restores the index; check writes nothing",
+        "what": "read src/agentmarshal/outbox.py:164-196, 536-561, 837-851, 981-1046"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "the review snapshot is not a git repository and has no synced environment; the coordinator states the sequence passed on this commit"
+      },
+      {
+        "what": "inspecting the agentmarshal/ submodule for mr.sh",
+        "why": "the submodule is not checked out in the snapshot (the directory is empty)"
+      }
+    ],
+    "read": [
+      "docs/threat-model.md",
+      "docs/sidecar.md",
+      "docs/harness-setup.md",
+      "docs/quickstart.md",
+      "docs/self-hosting-workflow.md",
+      "docs/github-enforcement.md",
+      "docs/overview.md",
+      "docs/known-defects.md",
+      "docs/templates/claude-code-settings.local.json",
+      "CONTRIBUTING.md",
+      "CHANGELOG.md (0.6.0 sections and 'What 0.6.0 leaves out')",
+      "docs/adr/ADR-0013 (scope table)",
+      "docs/adr/ADR-0014 (the map of places, decision 13)",
+      "src/agentmarshal/journal/attestation.py",
+      "src/agentmarshal/journal/gate.py",
+      "src/agentmarshal/journal/records.py",
+      "src/agentmarshal/journal/placement.py",
+      "src/agentmarshal/journal/report.py",
+      "src/agentmarshal/journal/status_view.py",
+      "src/agentmarshal/journal/capture.py",
+      "src/agentmarshal/localstate.py",
+      "src/agentmarshal/outbox.py",
+      "src/agentmarshal/extension_trust.py",
+      "src/agentmarshal/switch_off.py",
+      "src/agentmarshal/project.py",
+      "src/agentmarshal/doctor.py",
+      "src/agentmarshal/cli.py",
+      "openspec/specs/outbox/spec.md",
+      "openspec/specs/gate-lanes/spec.md",
+      "openspec/specs/record-text-safety/spec.md",
+      "tests/test_attestation.py",
+      "tests/test_gate_operational.py",
+      "tests/test_record_text_safety.py",
+      "tests/test_outbox.py",
+      "tests/test_quickstart.py",
+      "tests/test_status_steps.py",
+      "tests/test_doctor_steps_paths.py",
+      "tests/test_doctor.py",
+      "tests/fixtures/gate/sidecar-implementation.stdout",
+      ".gitmodules",
+      "templates/github/agentmarshal-governance.yml"
+    ]
+  }
+}
