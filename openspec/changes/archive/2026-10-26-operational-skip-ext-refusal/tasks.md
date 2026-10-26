@@ -2,11 +2,11 @@
 
 ## 1. The change
 
-- [x] 1.1 proposal.md, design.md, tasks.md and the extension-stages
-      delta spec are written — the MODIFIED block carrying the
-      requirement's heading byte for byte, the `--skip-ext` refusal
-      ordered ahead of the operational-lane exception, every scenario
-      kept plus the new one — verify: openspec validate.
+- [x] 1.1 proposal.md, design.md, tasks.md and the delta specs are
+      written — each MODIFIED block carrying its requirement's heading
+      byte for byte, the `--skip-ext` refusal ordered ahead of the
+      operational-lane exception, every scenario kept plus the new one
+      — verify: openspec validate.
 
 ## 2. Checks and archive
 
@@ -18,6 +18,7 @@
       --check`, `uv run mypy` — verify: run them.
 - [x] 2.3 Archive with `OPENSPEC_TELEMETRY=0 npx -y
       @fission-ai/openspec@1.15.0 archive operational-skip-ext-refusal
-      --yes` — verify: the requirement's new text lands in
-      `openspec/specs/extension-stages/spec.md` and the change moves
-      under `openspec/changes/archive/`.
+      --yes` — verify: the requirements' new text lands in
+      `openspec/specs/extension-stages/spec.md` and
+      `openspec/specs/gate-lanes/spec.md` and the change moves under
+      `openspec/changes/archive/`.

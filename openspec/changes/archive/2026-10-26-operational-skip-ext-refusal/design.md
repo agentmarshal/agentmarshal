@@ -20,7 +20,9 @@ shared name precedes the exception, decided on the enumerated names
 alone, as "a shared extension is never named in a personal switch"
 states. One scenario records it: a shared name in `--skip-ext` on an
 operational candidate prints the refusal line — not the operational
-line — and no manifest is read and no stage is planned.
+line — and no manifest is read and no stage is planned. The gate-lanes
+requirement that states the same operational pre-gate line takes the
+matching MODIFIED block: the same ordering, the same added scenario.
 
 ## Risks / Trade-offs
 

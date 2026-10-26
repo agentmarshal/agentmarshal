@@ -22,13 +22,18 @@ that ordering in the spec.
   enumerated names alone, no manifest read — and only then does the
   exception apply. One scenario added; the heading and every other
   scenario are unchanged.
+- The gate-lanes requirement that states the same operational pre-gate
+  line takes the matching MODIFIED block: the refusal precedes the
+  exception there too, decided on the same enumerated names, with its
+  own added scenario.
 
 ## Capabilities
 
-- modified: `extension-stages`
+- modified: `extension-stages`, `gate-lanes`
 
 ## Impact
 
 Specification only — the code and tests landed with the fix.
-`openspec/changes/archive/` and `openspec/specs/extension-stages/spec.md`
-change only through the archive command.
+`openspec/changes/archive/`, `openspec/specs/extension-stages/spec.md`
+and `openspec/specs/gate-lanes/spec.md` change only through the archive
+command.
