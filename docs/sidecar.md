@@ -341,6 +341,9 @@ CR-001	done	reviews=1	tokens=1500	usage=reported	decision=approved
 Phases	opened=2026-09-01T11:21:00.426680Z	implementer=unknown	review=2026-09-01T11:21:00.574048Z	approval=2026-09-01T11:21:00.574048Z	completed=2026-09-01T11:21:00.831134Z
 Durations	opened->implementer=unknown	implementer->review=unknown	review->approval=0s	approval->completed=0s
 Round	1	verdict=approved	since=unknown
+Cost	sessions_without_cost=1
+Checks	rejected_commits=0
+A check record is the observer's declaration of what the pipeline found on the commit, not proof of it.
 ```
 
 ```sh

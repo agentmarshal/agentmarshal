@@ -41,8 +41,9 @@ evidence in the journal (`.agentmarshal/journal/tasks/<id>/`).
    that commit, and the evidence records are append-only and consistent.
    The `am-merge` host wrapper runs `agentmarshal gate` and, on success,
    performs the merge by reusing the v1 provider operation `mr.sh merge`
-   with the v1 merge policy skipped — like `am-merge` itself, an operator
-   script outside this repository.
+   with the v1 merge policy skipped — `mr.sh` ships in the archived v1
+   repository carried here as the `agentmarshal/` submodule; `am-merge`
+   itself is an operator script outside this repository.
 
 5. **Complete.** `agentmarshal complete --task <id> --commit <sha>
    --base <base>` re-runs the gate and, on pass, writes the `completed`
@@ -94,7 +95,10 @@ Authority lives in `agentmarshal gate`, which is provider-agnostic: it
 reads git and the journal only. The actual merge call is delegated to
 the hosting provider. The host-side wrapper this repository's operators
 use — `am-merge` — and the v1 provider operations it calls are operator
-tooling outside this repository, not files it ships: the wrapper resolves
+tooling, not files this repository ships. The v1 scripts live in the
+archived v1 repository, which this repository carries as a submodule at
+`agentmarshal/` (`.gitmodules` points it at the read-only v1 archive);
+`am-merge` itself lives with the operator. The wrapper resolves
 the merge request's head and target with the v1 provider operation
 `mr.sh get`, runs `agentmarshal gate`, and on a pass invokes `mr.sh merge`
 with `AGENTMARSHAL_SKIP_MERGE_POLICY=1` — the v2 gate is the governance
@@ -130,16 +134,18 @@ candidate can do, but they do not replace launcher/checkout trust.
 The self-hosting cut-over replaced the v1 governance authority but reuses
 some v1 transport:
 
-- **Still in use** (all of it operator tooling outside this repository):
-  the v1 provider merge-request operations `mr.sh get`
+- **Still in use** (all of it operator tooling — the v1 pieces in the
+  archived v1 repository carried here as the `agentmarshal/` submodule,
+  `am-merge` with the operator): the v1 provider merge-request
+  operations `mr.sh get`
   and `mr.sh merge` (fetch head/target and perform the merge), invoked by
   `am-merge`; and the read-only review launcher that produces an
   independent reviewer verdict. These are transport and reviewer
   integration, not governance decisions.
 - **Superseded:** `merge-policy.sh` (the v1 merge policy),
   `task-lifecycle.sh` (the v1 completion/audit scripts), and the agmake
-  managed implementation cycle — operator tooling outside this repository
-  too, and superseded there. Their roles are now held by
+  managed implementation cycle — operator tooling in that same archived
+  v1 repository, and superseded there. Their roles are now held by
   `agentmarshal gate`, `agentmarshal complete`/`validate`, and the task
   lifecycle projected from records. CI governance runs
   `agentmarshal validate` rather than the v1 validator.

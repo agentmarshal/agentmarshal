@@ -77,14 +77,16 @@ Three practical rules learned from running the rails:
    with one caveat: `Bash(agentmarshal *)` also covers the write
    commands — journal writers (`open`, `amend`, `submit-review`,
    `review`, `accept`, `agree`, `acknowledge`, `record-*`, `finding`,
-   `complete`, `abandon`, `reopen`, `migrate`, `init`, `outbox`), the
-   commands that write the local state (`step`, `extension`) or run
+   `complete`, `abandon`, `reopen`, `migrate-journal`, `init`, `outbox`),
+   the commands that write the local state (`step`, `extension`) or run
    extension code (`stage`), and `prune --delete`, which removes local
    branches and worktrees — all of which rules 3 and 4 above give to the
    operator, not the implementer. Allowlist the read-only subcommands
    one by one — `status`, `brief`, `validate`, `report`, `doctor`,
-   `gate`, `leak-scan` — as the shipped template does, plus
-   `templates/journal-transaction.sh`.
+   `gate`, `leak-scan`, `prune` — as the shipped template does, plus
+   `templates/journal-transaction.sh`. The template's
+   `Bash(agentmarshal prune)` entry is an exact match, so `prune
+   --delete` still prompts.
 
 2. **Avoid command substitution `$(...)` in allowlisted commands.** In the
    Claude Code settings format against which the template was verified, the
