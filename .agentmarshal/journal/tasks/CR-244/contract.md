@@ -4,6 +4,7 @@ id = "CR-244"
 title = "The guides under docs/ state what 0.6.0 does: record types, the user scope, versions, quoted output, the operational lane's contract source, and the threat model's write-time and outbox protections"
 scope = [
   "docs/",
+  "CONTRIBUTING.md",
 ]
 acceptance = [
   "docs/known-defects.md names the record types the 0.6.0 registry declares (attestation.py RECORD_TYPES; thirteen), not nine (release-audit finding AUD-docs-claims-2-1)",
@@ -11,7 +12,7 @@ acceptance = [
   "where docs/ says a contract is read only from the base and never from the candidate (threat-model ~23 and ~228, self-hosting-workflow ~155 and any other place), it also states the one exception the code and the gate-lanes spec make: a switches-only operational task's opening contract is read from the candidate, under the conditions gate.py checks (found by the interrupted docs-claims-2 run)",
   "docs/threat-model.md lists, among write-time protections, the timestamp fields and review artifact references CR-236 refuses, and, among the outbox's protections, the refusals CR-241 added (a symlinked outbox or path component; staged bytes that differ from the checked bytes); its sidecar paragraph quotes the lines the tool prints (AUD-docs-claims-2-7, -8)",
   "docs/quickstart.md and docs/sidecar.md pin and describe 0.6.0 where they pinned 0.5.0 or 0.4.1, sidecar's transcripts match what 0.6.0 prints and its doctor note says doctor resolves the placement but checks nothing about the host; docs/github-enforcement.md quotes the gate's closing line exactly; docs/self-hosting-workflow.md and docs/templates/ no longer describe am-merge, mr.sh or scripts as files in this repository (they are operator tooling outside it) (AUD-docs-claims-2-3 to -6, AUD-whole-project-3, -4)",
-  "every statement is checked against the code at master; dated history notes are not rewritten; every link resolves; no file outside docs/ changes; the suite and the full CI sequence pass",
+  "every statement is checked against the code at master; dated history notes are not rewritten; every link resolves; no file outside docs/ and CONTRIBUTING.md changes (CONTRIBUTING.md only for the base-only contract sentence, which gets the operational-lane exception); the suite and the full CI sequence pass",
 ]
 documents = ["docs/"]
 decisions = ["ADR-0013", "ADR-0014"]
