@@ -1,0 +1,110 @@
+{
+  "advisory_findings": [
+    "ADV-readme-refused-verdict-wording",
+    "ADV-upgrading-outbox-eol-refusal",
+    "ADV-audit-file-untested"
+  ],
+  "artifacts": [
+    {
+      "hash": "a6a7718e68ed5d22478ba43ebf7397499ace9d118e8fcd9fa4582a3541615270",
+      "ref": ".agentmarshal/journal/tasks/CR-245/artifacts/01M5VJ8K523FNPYN7JE5CNMDJS-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-audit-file-untested": "test-gap",
+    "ADV-readme-refused-verdict-wording": "claim-accuracy",
+    "ADV-upgrading-outbox-eol-refusal": "contract-mismatch"
+  },
+  "created_at": "2026-10-26T07:37:10.050645Z",
+  "evidence": {
+    "ADV-audit-file-untested": "tests/test_release_audit_check.py builds synthetic repositories only (no test reads release/audit-0.6.0.toml); .github/scripts/check_release_audit.py runs in the release job on the pushed tag",
+    "ADV-readme-refused-verdict-wording": "README.md:52-54 vs src/agentmarshal/journal/review.py:813-824 (_reject preserves output only on a launcher refusal of malformed reviewer output) and review.py:599-616 (_preserve_output, independent of capture level); 'rejected' is a valid verdict value, making the sentence ambiguous",
+    "ADV-upgrading-outbox-eol-refusal": "UPGRADING.md:50-54 unchanged; src/agentmarshal/outbox.py:832-851 (_pinned_blob compares --path against --no-filters) and outbox.py:912-920 (remedy: `.agentmarshal/upstream/** -text` in .gitattributes); tests/test_outbox.py:2166 test_an_autocrlf_refusal_names_the_same_remedy shows core.autocrlf alone triggers it"
+  },
+  "findings": [],
+  "previous_review": "01M5VHFGY3HPJMX6EZYJ9X77F7",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "b222d7e47ab43dc0effd66149fd56a96bdc32405",
+  "reviewed_contract": "0ed6448a312f480a70d737a594b73319bc907989d117f4b39f2f834446e5c977",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-245",
+  "tool_version": "0.6.0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "each task's last lifecycle record is 'completed'; CR-245 has only 'opened'",
+        "what": "listing lifecycle records of every task the audit file lists as fixed (CR-234..CR-244)"
+      },
+      {
+        "result": "every blocking id in the audit file maps to the task its contract names; AUD-commands-6, AUD-extensions-4/-5 and AUD-docs-claims-2-3.. are declared advisory in those contracts and are correctly absent",
+        "what": "grep of AUD- ids across the fix tasks' contracts"
+      },
+      {
+        "result": "13 — the 'thirteen record types' claim holds",
+        "what": "grep -c '\": RecordTypeSpec' src/agentmarshal/journal/attestation.py"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "python3 .github/scripts/check_release_audit.py v0.6.0",
+        "why": "the review snapshot is not a git repository and nothing is tagged; the implementer's report with the command output was not supplied"
+      },
+      {
+        "what": "a python run of the script's pure validators against release/audit-0.6.0.toml",
+        "why": "python execution was denied in this sandbox; the same checks were applied by reading the file against the validators"
+      },
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "read-only review; the coordinator states the sequence passed on b222d7e, and the diff touches only .md/.json/.toml files no test reads"
+      },
+      {
+        "what": "whether audited_at is the moment the last area ran, and whether 15af26e/dff244b are the stated commits",
+        "why": "operator facts outside the repository; ULID times of CR-243/CR-244's opened records are consistent with the value but cannot confirm it"
+      },
+      {
+        "what": "the diff between dff244b and the tag for fix-task paths outside their declared scopes (e.g. openspec extension footprint paths)",
+        "why": "no git history in the snapshot"
+      }
+    ],
+    "read": [
+      "release/audit-0.6.0.toml",
+      ".github/scripts/check_release_audit.py",
+      "CONTRIBUTING.md (Releases section, lines 140-196)",
+      "CHANGELOG.md (lines 1-12, 137-158, 200-330, 900-907)",
+      "README.md (lines 38-64)",
+      "UPGRADING.md (lines 3-62)",
+      "docs/harness-setup.md (lines 60-118)",
+      "docs/templates/claude-code-settings.local.json",
+      "docs/proposals/012-upstream-feedback-channel.md",
+      "docs/proposals/README.md (lines 238-249)",
+      "docs/known-defects.md (line 13)",
+      "docs/adr/ADR-0001-governance-plane.md",
+      "src/agentmarshal/journal/review.py (_reject, _preserve_output, dry-run branch)",
+      "src/agentmarshal/journal/gate.py (_manifest_from_tree, _record_path_task, added-records check, acceptance line)",
+      "src/agentmarshal/journal/report.py (SELF_ACCEPTED_MARK, decision derivation, task line)",
+      "src/agentmarshal/journal/capture.py (_acknowledgement_mark)",
+      "src/agentmarshal/journal/attestation.py (RECORD_TYPES)",
+      "src/agentmarshal/outbox.py (register, _locate, _check, _pinned_blob, remedy text)",
+      "src/agentmarshal/project.py (outbox scaffold symlink refusal)",
+      "src/agentmarshal/extension_trust.py (_run_list, parser, rewrite verification)",
+      "src/agentmarshal/switch_off.py (rewrite verification)",
+      "src/agentmarshal/switches.py (toml_values_equal)",
+      "src/agentmarshal/stages.py (register)",
+      "src/agentmarshal/cli.py (gate parser)",
+      "openspec/specs/extension-stages/spec.md (lines 1803-1827)",
+      ".agentmarshal/extensions/openspec.toml",
+      ".agentmarshal/journal/tasks/CR-234..CR-245/contract.md (scope, acceptance, context)",
+      ".agentmarshal/journal/tasks/CR-234..CR-245/records/ (lifecycle records)"
+    ]
+  }
+}
