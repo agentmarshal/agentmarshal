@@ -321,7 +321,10 @@ to fill in and pins that.)
 
 Commit the opening so the contract is in history before any work builds on it.
 The gate always reads the contract from the committed base, never from the
-candidate, so a task can never widen its own scope. A journal transaction
+candidate — the one exception is the operational lane, where a task the
+candidate itself opens supplies its opening contract from the candidate's
+tree, bounded by that lane's own rules — so a task can never widen its own
+scope. A journal transaction
 stages the one task's directory and nothing else under the journal — with
 several tasks in flight, a wider `git add` would take every task's
 uncommitted records into this one's commit. `.agentmarshal/project.json`

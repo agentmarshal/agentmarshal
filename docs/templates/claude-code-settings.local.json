@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "_comment": "Starting-point allowlist for Claude Code, verified against the settings format in use on 2026-08-31. This template will age as Claude Code changes; you own verifying and maintaining it. Copy it to .claude/settings.local.json, adapt paths and command families to your project, and keep that local file out of version control.",
+  "_comment": "Starting-point allowlist for Claude Code, verified against the settings format in use on 2026-08-31. This template will age as Claude Code changes; you own verifying and maintaining it. Copy it to .claude/settings.local.json, adapt paths and command families to your project, and keep that local file out of version control. The agentmarshal entries list only read-only subcommands; commands that write the journal or the local state, run extension code or delete branches (open, amend, submit-review, review, accept, agree, acknowledge, record-*, finding, complete, abandon, reopen, migrate, init, outbox, step, stage, extension, prune --delete) stay with the operator — see docs/harness-setup.md.",
   "permissions": {
     "allow": [
       "Bash(git *)",
@@ -13,7 +13,17 @@
       "Bash(mkdir *)",
       "Bash(cp *)",
       "Bash(mv *)",
-      "Bash(agentmarshal *)",
+      "Bash(agentmarshal brief *)",
+      "Bash(agentmarshal status *)",
+      "Bash(agentmarshal status)",
+      "Bash(agentmarshal validate)",
+      "Bash(agentmarshal report *)",
+      "Bash(agentmarshal report)",
+      "Bash(agentmarshal doctor)",
+      "Bash(agentmarshal gate *)",
+      "Bash(agentmarshal leak-scan *)",
+      "Bash(agentmarshal prune)",
+      "Bash(templates/journal-transaction.sh *)",
       "Bash(<your-rails-wrapper> *)"
     ],
     "additionalDirectories": [

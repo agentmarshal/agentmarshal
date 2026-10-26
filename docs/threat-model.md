@@ -250,11 +250,13 @@ registered like `step` and writes no journal"; process-log
 specification, "The gate never reads the log"). The manifests, the
 shared switches and the executable code of shared extensions are taken
 from the base commit — never the candidate's tree — so a pull request
-cannot weaken them for itself (the one candidate-side read the gate
-makes is the operational lane's opening contract, stated in the scope
-paragraph above); on a workstation a stage runs only
-under a local grant whose per-file hashes match the base-materialized
-directory, in CI under none (extension-stages specification, "`stage
+cannot weaken them for itself. What the gate does read at the candidate is
+the material it judges — the candidate's records, its switches file and
+its diff — and the one trusted input it takes from that side is the
+operational lane's opening contract, stated in the scope paragraph above;
+on a workstation a stage runs only under a local grant whose per-file
+hashes match the base-materialized directory, in CI under none
+(extension-stages specification, "`stage
 run` reads the switches from the base and reports a switched-off
 extension" and "on a workstation a stage runs only under a matching
 grant"). A candidate the operational lane admits runs no `pre-gate`

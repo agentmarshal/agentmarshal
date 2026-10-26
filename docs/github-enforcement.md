@@ -92,10 +92,10 @@ Until it lands, the `gate` check:
   checks on every candidate;
 - cannot enforce the **approved-independent-review** requirement, which is
   why the CI run asks the gate to judge without it and says so in its own
-  transcript, and closes with `gate: passed what it examined; the review was
-  not examined` rather than `gate: passed`. Nothing shipped here enforces
-  that requirement on this
-  provider; closing it is what this section is about.
+  transcript, and closes with `gate: passed what it examined; the review
+  was not examined` rather than `gate: passed`. Nothing shipped here
+  enforces that requirement on this provider; closing it is what this
+  section is about.
 
 This is tied to the gate's **record-provenance trust boundary** (see
 `docs/self-hosting-workflow.md`): the gate validates review *contents* and

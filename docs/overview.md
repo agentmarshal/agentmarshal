@@ -74,11 +74,13 @@ Two properties make that trustworthy:
 
 The gate reads the contract, the extension manifests, the leak-scan markers
 and the lifecycle state at the base from the **base** side, never from the
-candidate, so a change can never widen its own scope or hide that its task
-is already closed; the journal's records it reads from the calling
-checkout's working tree. In a sidecar all of these come from the journal
-repository's working tree, pinned to no commit — and the gate there advises
-rather than decides, the findings lane excepted.
+candidate — with one exception: on the operational lane a task the
+candidate itself opens takes its contract from the candidate's tree,
+bounded by that lane's own rules — so a change can never widen its own
+scope or hide that its task is already closed; the journal's records it
+reads from the calling checkout's working tree. In a sidecar all of these
+come from the journal repository's working tree, pinned to no commit — and
+the gate there advises rather than decides, the findings lane excepted.
 
 ## Terminology
 

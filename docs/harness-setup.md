@@ -8,12 +8,13 @@ setting described here is required by AgentMarshal.
 
 ## Why this matters
 
-The rails are a sequence of ordinary commands: `git`, the framework
-scripts, your project's test and lint commands. If the harness prompts
-for each one, an unattended or fast interactive run stalls waiting for a
-human. The fix is a small, explicit allowlist of the command families
-the rails actually use — not blanket permission, which gives up the
-harness's safety.
+The rails are a sequence of ordinary commands: `git`, the `agentmarshal`
+CLI and your project's test and lint commands — plus
+`templates/journal-transaction.sh`, the one script this repository ships.
+If the harness prompts for each one, an unattended or fast interactive run
+stalls waiting for a human. The fix is a small, explicit allowlist of the
+command families the rails actually use — not blanket permission, which
+gives up the harness's safety.
 
 ## What does not depend on the harness
 
@@ -37,10 +38,11 @@ configuration:
    shared by all worktrees (in a sidecar it is the journal repository's,
    never the host's). That one place holds the process log, this clone's
    personal extensions and the dependencies installed for them, the trust
-   grants (`trust.toml`), the personal switches (`switches.toml`) and the
-   plan file — what records point to and what decides trust and switches,
-   extension code included, so an implementer that can write it rewrites the
-   ground its own evidence stands on. The user-scope directories
+   grants (`trust.toml`) and the personal switches (`switches.toml`) — what
+   records point to and what decides trust and switches, extension code
+   included, so an implementer that can write it rewrites the ground its own
+   evidence stands on. A plan file (`plan.toml`) is reserved under it, but
+   nothing in 0.6.0 reads or writes one. The user-scope directories
    (`~/.config/agentmarshal/`, `~/.local/share/agentmarshal/`; Windows:
    `%APPDATA%\agentmarshal\`, `%LOCALAPPDATA%\agentmarshal\`) are decided but
    not implemented in 0.6.0 (ADR-0014; CHANGELOG, "What 0.6.0 leaves out") —
@@ -71,8 +73,18 @@ Three practical rules learned from running the rails:
 1. **Allowlist by command family, not by full command.** A rule like
    `Bash(git *)` covers `git status`, `git commit`, `git push`, and so
    on. Cover every family the rails touch: git verbs, your package's
-   check commands (test/lint/type-check runner), and the framework
-   scripts.
+   check commands (test/lint/type-check runner), and `agentmarshal` —
+   with one caveat: `Bash(agentmarshal *)` also covers the write
+   commands — journal writers (`open`, `amend`, `submit-review`,
+   `review`, `accept`, `agree`, `acknowledge`, `record-*`, `finding`,
+   `complete`, `abandon`, `reopen`, `migrate`, `init`, `outbox`), the
+   commands that write the local state (`step`, `extension`) or run
+   extension code (`stage`), and `prune --delete`, which removes local
+   branches and worktrees — all of which rules 3 and 4 above give to the
+   operator, not the implementer. Allowlist the read-only subcommands
+   one by one — `status`, `brief`, `validate`, `report`, `doctor`,
+   `gate`, `leak-scan` — as the shipped template does, plus
+   `templates/journal-transaction.sh`.
 
 2. **Avoid command substitution `$(...)` in allowlisted commands.** In the
    Claude Code settings format against which the template was verified, the

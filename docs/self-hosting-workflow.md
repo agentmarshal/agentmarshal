@@ -96,9 +96,9 @@ the hosting provider. The host-side wrapper this repository's operators
 use — `am-merge` — and the v1 provider operations it calls are operator
 tooling outside this repository, not files it ships: the wrapper resolves
 the merge request's head and target with the v1 provider operation
-`mr.sh get`, runs `agentmarshal gate`, and on a pass
-invokes `mr.sh merge` with `AGENTMARSHAL_SKIP_MERGE_POLICY=1` — the v2
-gate is the governance decision, so the v1 merge policy is not re-run.
+`mr.sh get`, runs `agentmarshal gate`, and on a pass invokes `mr.sh merge`
+with `AGENTMARSHAL_SKIP_MERGE_POLICY=1` — the v2 gate is the governance
+decision, so the v1 merge policy is not re-run.
 This keeps the governance decision vendor-neutral while reusing whatever
 merge transport the provider offers.
 
@@ -161,5 +161,5 @@ some v1 transport:
   / base tree, never from the candidate — with one exception: on the
   operational lane a task the candidate itself opens takes its contract
   from the candidate's tree, bounded by that lane's own rules — so a
-  candidate cannot widen its
-  own scope or hide that its task is already closed.
+  candidate cannot widen its own scope or hide that its task is already
+  closed.
