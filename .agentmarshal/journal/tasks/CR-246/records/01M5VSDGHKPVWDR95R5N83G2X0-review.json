@@ -1,0 +1,92 @@
+{
+  "advisory_findings": [
+    "ADV-leak-scan-diff-diagnostic-unmasked",
+    "ADV-dead-directory-names-return"
+  ],
+  "artifacts": [
+    {
+      "hash": "90b127c0fdfe67dc828395e573b99236564dd21ecdfa60b5bce135acdd3bbf47",
+      "ref": ".agentmarshal/journal/tasks/CR-246/artifacts/01M5VSDGHKPVWDR95R5N83G2X0-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-dead-directory-names-return": "style",
+    "ADV-leak-scan-diff-diagnostic-unmasked": "security"
+  },
+  "created_at": "2026-10-26T09:42:11.250989Z",
+  "evidence": {
+    "ADV-dead-directory-names-return": "src/agentmarshal/journal/gate.py:949-951 returns `tuple[frozenset[str], frozenset[str]]` documented as \"(every name, directory-form)\"; after this diff both callers discard the second element — src/agentmarshal/stages.py:1059 and src/agentmarshal/journal/gate.py:1095 each take `[0]` (grep -rn \"_extension_names_at_tree\" src/ tests/ shows no other use).",
+    "ADV-leak-scan-diff-diagnostic-unmasked": "src/agentmarshal/cli.py:1751 `print(f\"leak-scan: git diff failed: {error}\", file=stderr)` — no safe_path, no escape_for_display, while markers are already resolved at cli.py:1734-1743; the GateError text is raw git stderr (src/agentmarshal/journal/gate.py:312-316). Compare the fixed site at cli.py:1791 and the same idiom in src/agentmarshal/outbox.py:700-702."
+  },
+  "findings": [],
+  "previous_review": "01M5VRSVM7WQV77XEB8C5HVDZQ",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "8c6bffd5d35ac6d4d9e4b2da3baab52f4ff88cbf",
+  "reviewed_contract": "8623f5216eaeb36bdebc67996f907ff59f9825bdcdcf43b6ce3299ad2ec5143d",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-246",
+  "tool_version": "0.6.0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "only two production call sites, both taking [0] (stages.py:1059, gate.py:1095) — the tuple's directory-form half is unused",
+        "what": "grep -rn \"_extension_names_at_tree\" src/ tests/ openspec/ docs/"
+      },
+      {
+        "result": "no hit in stages.py; the check exists only at doctor.py:524,575 — the threat-model/CHANGELOG disclosure is accurate",
+        "what": "grep -rn \"runtime\" src/agentmarshal/stages.py; grep -rn \"extension runtime\" src/"
+      },
+      {
+        "result": "project.py:407 uses the flag; doctor.py:72 declares (2, 31) with the same rationale as the new doc text",
+        "what": "grep -rn \"path-format\" src/ docs/; grep -n MINIMUM_GIT_VERSION src/agentmarshal/doctor.py"
+      },
+      {
+        "result": "9 and 3 scenarios; the new scenario heading appears in both archived specs, both deltas and the two test docstrings",
+        "what": "grep -c \"^#### Scenario:\" on both delta spec files; grep -rn \"Scenario: a shared name in --skip-ext\" openspec/ tests/"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "no virtualenv in the snapshot and python/uv execution not permitted here; relying on the coordinator's statement that the sequence passed at this commit"
+      },
+      {
+        "what": "python3 .github/scripts/check_release_audit.py v0.6.0 in a throwaway clone",
+        "why": "the snapshot is not a git repository and has no tag; verified the audit file's shape and the script's diff-coverage rule by reading instead"
+      },
+      {
+        "what": "byte-for-byte diff of the delta MODIFIED blocks against the archived specs",
+        "why": "shell quoting/permissions blocked the extraction; compared line by line by reading both files"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/stages.py (module docstring, _base_manifests 335-350, run_stages 980-1230)",
+      "src/agentmarshal/journal/gate.py (_manifest_from_tree 661-728, _extension_names_at_tree 949-1002, operational_candidate 1054-1102, _run_git_bytes 302-317, leak_scan_diff 1161-1198, operational-lane manifest reads 1580-1715)",
+      "src/agentmarshal/journal/extensions.py (_manifest_directory_paths 514-545, invalid-TOML message 383)",
+      "src/agentmarshal/cli.py (_run_leak_scan 1677-1855, complete refusal 1156-1190, status local-state degradation 1460-1495)",
+      "src/agentmarshal/journal/capture.py (safe_path 312-331)",
+      "src/agentmarshal/journal/display.py (escape_for_display 27-43)",
+      "src/agentmarshal/journal/status.py (TaskStatusError 65, list_task_statuses 196-219)",
+      "src/agentmarshal/doctor.py (MINIMUM_GIT_VERSION 70-73, git check 130-158, extension runtime check 515-580)",
+      "src/agentmarshal/project.py (git_common_dir 390-425), src/agentmarshal/localstate.py (local_state 104-122)",
+      "src/agentmarshal/outbox.py (check refusals 690-770, _transform_cause 879-930, _OUTBOX_DIR_SPEC 75)",
+      "src/agentmarshal/journal/review.py (_preserve_output 599-616, _reject 814-825, launcher 1540-1625, dry run 1240-1300)",
+      "openspec/specs/extension-stages/spec.md (30-118, 174-215, 1695-1745), openspec/specs/gate-lanes/spec.md (343-379), openspec/specs/leak-scan/spec.md (1-60, 395-470)",
+      "openspec/changes/archive/2026-10-26-operational-skip-ext-refusal/ (proposal.md, design.md, tasks.md, specs/extension-stages/spec.md, specs/gate-lanes/spec.md)",
+      "docs/threat-model.md (255-270, 488-520, 605-620), docs/quickstart.md (16-24), docs/sidecar.md (78-90), README.md (40-70, 112-124), CHANGELOG.md (28-45, 224-230, 268-285, 300-356, 473-490), UPGRADING.md (1-75)",
+      "release/audit-0.6.0.toml, .github/scripts/check_release_audit.py",
+      "tests/test_stages.py (helpers 44-93, 330-420), tests/test_complete_stages.py (1-130, 258-300), tests/test_gate_operational.py (1-60, 743-815), tests/test_leak_scan_acknowledgements.py (1-95, 302-330), tests/test_personal_extensions.py (_stage_run_skip 98-119, _complete 144-169), tests/test_quickstart.py (13-40)",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md (decision 13, manifest example), .agentmarshal/extensions/openspec.toml"
+    ]
+  }
+}

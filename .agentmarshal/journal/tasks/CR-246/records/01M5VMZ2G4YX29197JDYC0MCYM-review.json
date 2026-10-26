@@ -1,0 +1,88 @@
+{
+  "advisory_findings": [
+    "SOL-docs-status-overstated",
+    "SOL-spec-lane-carve-out"
+  ],
+  "artifacts": [
+    {
+      "hash": "7e2f6e73cff2f34b5077cf4b1c7ed550b97747f83e524c7186933db2c3894842",
+      "ref": ".agentmarshal/journal/tasks/CR-246/artifacts/01M5VMZ2G4YX29197JDYC0MCYM-review.md"
+    }
+  ],
+  "classes": {
+    "SOL-audit-record-missing": "contract-mismatch",
+    "SOL-changelog-cr246-missing": "contract-mismatch",
+    "SOL-docs-status-overstated": "claim-accuracy",
+    "SOL-readme-refused-output": "claim-accuracy",
+    "SOL-spec-lane-carve-out": "scope",
+    "SOL-upgrading-outbox-missing": "contract-mismatch"
+  },
+  "created_at": "2026-10-26T08:24:23.812978Z",
+  "evidence": {
+    "SOL-audit-record-missing": "release/audit-0.6.0.toml: `grep -n 'SOL-' release/audit-0.6.0.toml` -> no output; `grep -c '^\\[\\[finding\\]\\]'` -> 22, all AUD-*; `grep -n '^task = '` lists only CR-234..CR-244. .github/scripts/check_release_audit.py:328-355 allows only ALWAYS_ALLOWED (lines 33-43) plus listed tasks' contract scopes; `grep -rn 'src/agentmarshal/stages.py' .agentmarshal/journal/tasks/CR-23*/contract.md CR-24*/contract.md` -> no match, so stages.py is uncovered",
+    "SOL-changelog-cr246-missing": "CHANGELOG.md:227 '### Fixes from the release audit (CR-234, … CR-244)'; `grep -n 'CR-246' CHANGELOG.md` -> no output",
+    "SOL-docs-status-overstated": "README.md:117-120, docs/quickstart.md:19-22, docs/sidecar.md:83-86 vs src/agentmarshal/cli.py:1469-1478 (LocalStateError caught, paths degrade to 'unavailable', comment: 'rather than failing a command that needed no git before') and src/agentmarshal/localstate.py:104-121",
+    "SOL-readme-refused-output": "README.md:53-54 'the level governs a recorded verdict's prose; a verdict that is refused keeps the reviewer's raw output at any level'; preservation is the launcher's malformed-output path: src/agentmarshal/journal/review.py:813-825 (_reject) -> 598-616 (_preserve_output)",
+    "SOL-spec-lane-carve-out": "openspec/specs/extension-stages/spec.md:44-52 ('SHALL print one line … returning success') vs src/agentmarshal/stages.py:1065-1077 (refusal with StageRunResult(1) ahead of the lane), demonstrated by tests/test_gate_operational.py:746-812; openspec/ is not in the contract's scope",
+    "SOL-upgrading-outbox-missing": "UPGRADING.md:3-62 (0.5.0 -> 0.6.0 section); `grep -n 'outbox\\|autocrlf\\|-text\\|gitattributes' UPGRADING.md` -> only lines 50-53 (SENT manifest) and 135; behaviour exists at src/agentmarshal/outbox.py:705-708 and 879-891"
+  },
+  "findings": [
+    "SOL-audit-record-missing",
+    "SOL-upgrading-outbox-missing",
+    "SOL-readme-refused-output",
+    "SOL-changelog-cr246-missing"
+  ],
+  "previous_review": "01M5VMF0DE4KEPHVXP720ZJW7W",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "c9ac48782a8a6a2db5692de04a8e783f64d6805f",
+  "reviewed_contract": "e642f0317d457f5524505c9a7facfb83e495d0e4b61aec00cfb03136c0b2f3d8",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-246",
+  "tool_version": "0.6.0",
+  "verdict": "changes_required",
+  "verification": {
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "read-only review; command execution beyond file reads is not permitted in this session, and the coordinator states the sequence passed at this commit"
+      },
+      {
+        "what": "python3 .github/scripts/check_release_audit.py v0.6.0 in a throwaway clone",
+        "why": "the snapshot is not a git repository and no tag exists; the refusal was derived by reading the script's path-coverage logic against release/audit-0.6.0.toml and the listed tasks' contract scopes"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/stages.py (300-360, 1000-1300)",
+      "src/agentmarshal/cli.py (1110-1130, 1462-1560, 1652-1800)",
+      "src/agentmarshal/journal/gate.py (600-720, 940-1140)",
+      "src/agentmarshal/journal/extensions.py (170-230, 505-560)",
+      "src/agentmarshal/journal/capture.py (312-331)",
+      "src/agentmarshal/journal/review.py (590-640, 805-840)",
+      "src/agentmarshal/journal/status.py (65, 212)",
+      "src/agentmarshal/localstate.py (104-120)",
+      "src/agentmarshal/doctor.py (60-160, 520-580)",
+      "src/agentmarshal/project.py (390-425)",
+      "src/agentmarshal/outbox.py (525-560, 690-770, 879-915)",
+      "docs/threat-model.md (485-525)",
+      "docs/quickstart.md, docs/sidecar.md (requirements lines)",
+      "README.md (40-60, 110-125)",
+      "CHANGELOG.md (215-345)",
+      "UPGRADING.md (1-62)",
+      "release/audit-0.6.0.toml (whole file, 133 lines)",
+      ".github/scripts/check_release_audit.py (1-80, 230-375)",
+      "openspec/specs/extension-stages/spec.md (30-100, 1700-1740)",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md (230-260, 405-425)",
+      ".agentmarshal/journal/tasks/CR-23*/contract.md and CR-24*/contract.md (scope lists)",
+      "tests/test_stages.py, tests/test_complete_stages.py, tests/test_gate_operational.py, tests/test_leak_scan_acknowledgements.py, tests/test_personal_extensions.py (new tests and helpers)"
+    ]
+  }
+}

@@ -1,0 +1,128 @@
+{
+  "advisory_findings": [
+    "SOL-docs-claims-1-1-gate-lanes"
+  ],
+  "artifacts": [
+    {
+      "hash": "f3fab483836abc78105cd60556f987fb8ec065060232990c871af9dd96a18c8b",
+      "ref": ".agentmarshal/journal/tasks/CR-246/artifacts/01M5VPQ8VTCD97BJ5DTW3RPA71-review.md"
+    }
+  ],
+  "classes": {
+    "SOL-docs-claims-1-1-gate-lanes": "claim-accuracy"
+  },
+  "created_at": "2026-10-26T08:55:05.338925Z",
+  "evidence": {
+    "SOL-docs-claims-1-1-gate-lanes": "openspec/specs/gate-lanes/spec.md:344-352 states that `stage run --phase pre-gate` on an operational candidate `SHALL print one line saying pre-gate stages do not run on an operational change and SHALL run no stage - no extension event, no pause - returning success`, with no exception for --skip-ext; src/agentmarshal/stages.py:1063-1076 now prints `<voice>: <name>: a shared extension is switched off only by an operational task (extension switch off)` and returns StageRunResult(1) before operational_candidate() at :1078 is consulted. tests/test_gate_operational.py:746-775 asserts exactly that exit 1 and that the operational line does not print. The parallel extension-stages requirement was amended (openspec/specs/extension-stages/spec.md:44-48); gate-lanes was not, and openspec/specs/gate-lanes/ is outside CR-246's scope."
+  },
+  "findings": [],
+  "previous_review": "01M5VMZ2G4YX29197JDYC0MCYM",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "7bf939b4d46a5743506029f7537e4956b05d9b63",
+  "reviewed_contract": "5f6e3bc6e13bbbb7bc21909545cfe6e50891441aae419fd924ce8db069cf4f4f",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-246",
+  "tool_version": "0.6.0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "only stages.py:335 definition and the two call sites at 1106 and 1118; no stale references",
+        "what": "grep -rn \"_base_extensions|_base_manifests\" src/ tests/ docs/"
+      },
+      {
+        "result": "_MINIMAL_PATH = \"/usr/bin:/bin\" at :180, used at :707 and :1183",
+        "what": "grep -rn \"_MINIMAL_PATH\" src/agentmarshal/stages.py"
+      },
+      {
+        "result": "no match — stage run performs no runtime lookup, as the threat model and CHANGELOG now state",
+        "what": "grep -n \"runtime\" src/agentmarshal/stages.py"
+      },
+      {
+        "result": "doctor.py:524,575 register the `extension runtime <name>` check; threat-model.md:510 cites it",
+        "what": "grep -rn \"extension runtime\" src/ docs/"
+      },
+      {
+        "result": "project.py:407 calls it; doctor.py:70-72,144,151 pins MINIMUM_GIT_VERSION=(2,31) with the same rationale; README.md:119, quickstart.md:21, sidecar.md:85 now name it",
+        "what": "grep -rn -- \"path-format\" src/ docs/ README.md"
+      },
+      {
+        "result": "cli.py:1467-1475 degrades the local-state lines rather than failing status, so the docs' `status still runs` claim holds",
+        "what": "grep -rn \"unavailable\" src/agentmarshal/cli.py"
+      },
+      {
+        "result": "resolves to .agentmarshal/upstream, so UPGRADING's `.agentmarshal/upstream/** -text` matches outbox.py:921 byte for byte",
+        "what": "grep -n \"_OUTBOX_DIR_SPEC|_UPSTREAM_DIR|PROJECT_DIR_NAME\" src/agentmarshal/outbox.py src/agentmarshal/project.py"
+      },
+      {
+        "result": "journal/extensions.py:383 produces `invalid TOML extension manifest: {source}`, the text the new complete test asserts under the `complete:` voice",
+        "what": "grep -rn \"invalid TOML\" src/agentmarshal/"
+      },
+      {
+        "result": "journal/status.py:212 raises TaskStatusError(ValueError) carrying the path — reached by the leak-scan except clause and now masked",
+        "what": "grep -rn \"invalid task directory\" src/"
+      },
+      {
+        "result": "only `archive`; 2026-10-26-operational-skip-ext-refusal present, no leftover live change directory",
+        "what": "ls openspec/changes/ and openspec/changes/archive/"
+      },
+      {
+        "result": "opened + two amendment records; no `completed` record yet, so check_release_audit.py would still refuse at this commit by design",
+        "what": "ls .agentmarshal/journal/tasks/CR-246/records/"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; uv run agentmarshal validate; uv run pytest; uv run ruff check; uv run ruff format --check; uv run mypy",
+        "why": "uv and pytest are not installed in this review sandbox and command execution is restricted; relying on the coordinator's statement that the sequence passed at this commit"
+      },
+      {
+        "what": "python3 .github/scripts/check_release_audit.py v0.6.0 in a throwaway clone with a local tag",
+        "why": "the snapshot is not a git repository, has no v0.6.0 tag, and CR-246 has no `completed` record yet; verified statically instead that every changed path is covered by ALWAYS_ALLOWED or CR-246's contract scope under _covered"
+      },
+      {
+        "what": "confirming the archive was produced by OpenSpec 1.15.0 specifically",
+        "why": "the tool version is not recorded in the tree; only the resulting file layout and the pinned version in .agentmarshal/extensions/openspec.toml are observable"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/stages.py:260-420,960-1230,1558-1600",
+      "src/agentmarshal/cli.py:28-45,1652-1856",
+      "src/agentmarshal/journal/gate.py:610-731,945-1103,1570-1610",
+      "src/agentmarshal/journal/extensions.py:495-575",
+      "src/agentmarshal/journal/capture.py:312-371",
+      "src/agentmarshal/journal/review.py:588-625,805-825,1255-1305",
+      "src/agentmarshal/journal/status.py:196-219",
+      "src/agentmarshal/localstate.py:100-123",
+      "src/agentmarshal/project.py:380-425",
+      "src/agentmarshal/doctor.py:60-158",
+      "src/agentmarshal/outbox.py:820-930,1023-1046",
+      ".github/scripts/check_release_audit.py",
+      "release/audit-0.6.0.toml",
+      "openspec/specs/extension-stages/spec.md:1-120",
+      "openspec/specs/gate-lanes/spec.md:336-368",
+      "openspec/specs/leak-scan/spec.md:1-60",
+      "openspec/changes/archive/2026-10-26-operational-skip-ext-refusal/specs/extension-stages/spec.md",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md:225-250",
+      "UPGRADING.md:1-70",
+      ".agentmarshal/extensions/openspec.toml",
+      "tests/test_stages.py:27-160,320-421",
+      "tests/test_complete_stages.py:1-60,225-298",
+      "tests/test_gate_operational.py:32-57,700-815",
+      "tests/test_leak_scan_acknowledgements.py:29-110,302-330",
+      "tests/test_personal_extensions.py:1-60,855-925",
+      "tests/test_gate.py:149-170",
+      "tests/test_pause_and_operational_acceptance.py:747-766",
+      "tests/test_extension_trust.py:290-335"
+    ]
+  }
+}

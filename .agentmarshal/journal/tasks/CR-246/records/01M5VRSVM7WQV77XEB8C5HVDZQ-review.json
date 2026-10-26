@@ -1,0 +1,63 @@
+{
+  "artifacts": [
+    {
+      "hash": "84bfbac8cb6643ceab647c16af2d16988623e2c2a0b0065f1d13243ebf6201f0",
+      "ref": ".agentmarshal/journal/tasks/CR-246/artifacts/01M5VRSVM7WQV77XEB8C5HVDZQ-review.md"
+    }
+  ],
+  "created_at": "2026-10-26T09:31:27.239422Z",
+  "findings": [],
+  "previous_review": "01M5VPQ8VTCD97BJ5DTW3RPA71",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "8c6bffd5d35ac6d4d9e4b2da3baab52f4ff88cbf",
+  "reviewed_contract": "8623f5216eaeb36bdebc67996f907ff59f9825bdcdcf43b6ce3299ad2ec5143d",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-246",
+  "tool_version": "0.6.0",
+  "verdict": "approved",
+  "verification": {
+    "not_run": [
+      {
+        "what": "uv sync --locked; uv run agentmarshal validate; uv run pytest; uv run ruff check; uv run ruff format --check; uv run mypy",
+        "why": "every uv/python invocation in this sandbox was refused by the permission policy; relied on the coordinator's note that the full CI sequence passed on 8c6bffd5"
+      },
+      {
+        "what": "OPENSPEC_TELEMETRY=0 npx @fission-ai/openspec@1.15.0 validate",
+        "why": "no node/npx execution available; the MODIFIED blocks were instead compared line by line against the archived specs by reading both files"
+      },
+      {
+        "what": "python3 .github/scripts/check_release_audit.py v0.6.0 in a throwaway clone with a local tag",
+        "why": "the snapshot is not a git repository and python3 execution was refused; the script's requirements were checked by reading it against release/audit-0.6.0.toml and CR-246's contract scope. CR-246's 'completed' record does not exist yet because the harness writes it after this review"
+      }
+    ],
+    "read": [
+      "src/agentmarshal/stages.py (_base_manifests, run_stages ordering, _MINIMAL_PATH, module docstring)",
+      "src/agentmarshal/cli.py (_run_leak_scan, _leak_scan_acknowledgements, complete pre-gate invocation, status local-state fallback)",
+      "src/agentmarshal/journal/gate.py (_manifest_from_tree, _manifest_blob_present, _extension_names_at_tree, operational_candidate, _switches_at_tree)",
+      "src/agentmarshal/journal/extensions.py (parse_extension_manifest_text, _manifest_directory_paths, _refuse_single_file_directory_paths)",
+      "src/agentmarshal/journal/capture.py (safe_path)",
+      "src/agentmarshal/journal/display.py (escape_for_display)",
+      "src/agentmarshal/journal/status.py (list_task_statuses, TaskStatusError)",
+      "src/agentmarshal/journal/review.py (_preserve_output, _reject, dry-run preservation)",
+      "src/agentmarshal/doctor.py (MINIMUM_GIT_VERSION, _check_git_available, _extension_checks)",
+      "src/agentmarshal/project.py (git_common_dir), src/agentmarshal/localstate.py (local_state)",
+      "src/agentmarshal/outbox.py (_transform_cause, _autocrlf, pinned-blob verification)",
+      "docs/adr/ADR-0013-extensions-stages-scopes-isolation-trust.md decision 13 as amended",
+      "docs/threat-model.md:475-518, README.md:38-62 and :114-125, CHANGELOG.md:300-355, UPGRADING.md:52-68, docs/quickstart.md:16-24, docs/sidecar.md:80-90",
+      "openspec/specs/extension-stages/spec.md and openspec/specs/gate-lanes/spec.md against the change's delta specs (requirement text and every scenario)",
+      "openspec/specs/leak-scan/spec.md (the standing 'masked the way every printed name is' rule)",
+      "release/audit-0.6.0.toml and .github/scripts/check_release_audit.py (ALWAYS_ALLOWED, _check_findings, _contract_scope, _last_lifecycle_record)",
+      "tests/test_stages.py:330-425, tests/test_complete_stages.py:261-298, tests/test_gate_operational.py:718-825, tests/test_leak_scan_acknowledgements.py:1-100 and :305-330, tests/test_personal_extensions.py:98-168 and :870-890",
+      ".agentmarshal/extensions/openspec.toml (this repo's own file-form manifest), .gitattributes, pyproject.toml ruff/mypy config"
+    ]
+  }
+}
