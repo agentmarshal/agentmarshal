@@ -1,0 +1,99 @@
+{
+  "advisory_findings": [
+    "ADV-template-bare-outbox-status-unrunnable",
+    "ADV-readme-capture-line-overlong"
+  ],
+  "artifacts": [
+    {
+      "hash": "7e521b17f118ba29d6dfe0fc74130afe2a784ff954ba92f5fdb516834beeeb32",
+      "ref": ".agentmarshal/journal/tasks/CR-245/artifacts/01M5VF6T14FT4BCA05QG3QMW3V-review.md"
+    }
+  ],
+  "classes": {
+    "ADV-readme-capture-line-overlong": "style",
+    "ADV-template-bare-outbox-status-unrunnable": "style",
+    "BLK-audit-comment-gate-paths-incomplete": "claim-accuracy",
+    "BLK-changelog-self-acknowledged-writer-set": "claim-accuracy"
+  },
+  "created_at": "2026-10-26T06:43:45.828448Z",
+  "evidence": {
+    "ADV-readme-capture-line-overlong": "README.md:54 is 87 columns ('  the reviewer's raw output at any level. Still roadmap: the `economics` and `sessions`') against ~70-75 for the rest of the bullet; the pre-diff line was 78",
+    "ADV-template-bare-outbox-status-unrunnable": "docs/templates/claude-code-settings.local.json:28 lists Bash(agentmarshal outbox status) while src/agentmarshal/outbox.py:137-144 declares status's --index as required=True, so the bare invocation always exits with an argparse error",
+    "BLK-audit-comment-gate-paths-incomplete": "release/audit-0.6.0.toml:6-8 claims the gate-journal area's paths changed after 15af26e only by CR-235/236/237; .agentmarshal/journal/tasks/CR-240/contract.md:5-8 and CR-239/contract.md:5-13 both scope src/agentmarshal/journal/gate.py, and the changes are present at gate.py:89-92 with 2159-2166 (CR-240, AUD-whole-project-1) and gate.py:662-680 (CR-239) — both are post-freeze fixes, hence after 15af26e",
+    "BLK-changelog-self-acknowledged-writer-set": "CHANGELOG.md:270-273 says the mark applies 'where the acknowledging party is a declared writer of the commit it scans'; src/agentmarshal/journal/gate.py:2374-2386 holds the comparison over the candidate range's writers ('`leak-scan` holds it over the scanned commit alone, so a writer of an earlier commit of the range marks here alone') and reads them with _range_writer_identities(project_root, merge_base, resolved_commit)"
+  },
+  "findings": [
+    "BLK-audit-comment-gate-paths-incomplete",
+    "BLK-changelog-self-acknowledged-writer-set"
+  ],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "b4ee38fa3e071e4b06118e562dab9dbec2e072ba",
+  "reviewed_contract": "0ed6448a312f480a70d737a594b73319bc907989d117f4b39f2f834446e5c977",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-245",
+  "tool_version": "0.6.0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "CR-234..CR-244 each have a -completed.json; no reopened or abandoned record exists in any task, so every task listed as 'fixed' has 'completed' as its last lifecycle record",
+        "what": "ls .agentmarshal/journal/tasks/CR-2*/records/*-completed.json and *-reopened.json / *-abandoned.json"
+      },
+      {
+        "result": "finding-to-task mapping in release/audit-0.6.0.toml matches every id the contracts name; ids absent from the file (AUD-extensions-4/5, AUD-commands-6, AUD-docs-claims-2-3..2-8, AUD-whole-project-3/-4) are the ones the contracts call advisory",
+        "what": "grep -o 'AUD-[A-Za-z0-9-]*' over .agentmarshal/journal/tasks/CR-23*/contract.md CR-24*/contract.md"
+      },
+      {
+        "result": "CR-239 and CR-240 both carry src/agentmarshal/journal/gate.py in scope, so the gate-journal area's paths changed after 15af26e by more than CR-235/236/237",
+        "what": "grep -n for the scope arrays of CR-235/236/237/239/240 contracts"
+      },
+      {
+        "result": "every new CHANGELOG, README and harness-setup claim reproduced in the code except the acknowledgement writer-set clause (gate.py:2374-2386)",
+        "what": "grep/sed over src/agentmarshal/journal/gate.py, review.py, extensions.py, switches.py, outbox.py, extension_trust.py, localstate.py, cli.py"
+      },
+      {
+        "result": "the suite covers the gate on synthetic repositories only; no test reads release/audit-0.6.0.toml",
+        "what": "grep -n 'def test' tests/test_release_audit_check.py; grep -rln 'release/audit' tests/"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "python3 .github/scripts/check_release_audit.py v0.6.0 against a merged and tagged repository (acceptance criterion 2)",
+        "why": "the review snapshot is not a git repository (no .git, no tag v0.6.0) and the implementer's report with the command output is not part of my material; every git-independent condition of the script was checked statically instead"
+      },
+      {
+        "what": "comparison of the finding ids and dispositions against the coordinator's disposition table",
+        "why": "the table is in the frame, which was not supplied; the set was cross-checked against the journal's contracts instead"
+      },
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "read-only review of a non-git snapshot; the coordinator states the full sequence passed on b4ee38fa3e071e4b06118e562dab9dbec2e072ba"
+      }
+    ],
+    "read": [
+      "release/audit-0.6.0.toml",
+      "CHANGELOG.md (0.6.0 section, lines 1-330; 0.5.0 closing line 527-531)",
+      "README.md:36-64",
+      "docs/harness-setup.md:55-115",
+      "docs/proposals/012-upstream-feedback-channel.md",
+      "docs/templates/claude-code-settings.local.json",
+      "CONTRIBUTING.md:130-203 (release workflow and audit-file format)",
+      ".github/scripts/check_release_audit.py",
+      ".agentmarshal/journal/tasks/CR-234/contract.md, CR-237/contract.md, CR-241/contract.md, CR-243/contract.md, CR-244/contract.md",
+      "src/agentmarshal/journal/review.py:595-620, 795-865, 1255-1305",
+      "src/agentmarshal/journal/gate.py:85-95, 655-700, 1900-1945, 2150-2245, 2370-2395",
+      "src/agentmarshal/extension_trust.py:110-210, 700-745",
+      "src/agentmarshal/outbox.py:109-200, 460-540, 830-880, 1040-1070",
+      "openspec/specs/extension-stages/spec.md:1803-1815"
+    ]
+  }
+}

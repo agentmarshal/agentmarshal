@@ -1,0 +1,137 @@
+{
+  "advisory_findings": [
+    "audit-model-key-covers-fable-audited-area",
+    "commands-4-5-disposition-uncorroborated",
+    "readme-capture-line-not-reflowed"
+  ],
+  "artifacts": [
+    {
+      "hash": "f7f0613a05315236806024c90ad0ed83eaf9042b0926b3f27ef74683b7c6eab1",
+      "ref": ".agentmarshal/journal/tasks/CR-245/artifacts/01M5VFWSDV7KQRZXN2ECSWGNDF-review.md"
+    }
+  ],
+  "classes": {
+    "audit-comment-gate-journal-paths-incomplete": "claim-accuracy",
+    "audit-model-key-covers-fable-audited-area": "claim-accuracy",
+    "commands-4-5-disposition-uncorroborated": "claim-accuracy",
+    "readme-capture-line-not-reflowed": "style"
+  },
+  "created_at": "2026-10-26T06:55:46.107373Z",
+  "evidence": {
+    "audit-comment-gate-journal-paths-incomplete": "release/audit-0.6.0.toml:6-8 '# Areas: gate-journal ran at 15af26e before the freeze by operator # decision (its paths changed afterwards only by the fixes # CR-235/236/237)'. Counter-examples: .agentmarshal/journal/tasks/CR-240/contract.md:5-8 scope = [src/agentmarshal/journal/gate.py, tests/] with records/01M5R85C731RJHFD9KN6ZEJK72-completed.json created_at 2026-10-25T00:42:55.587672Z, and .agentmarshal/journal/tasks/CR-242/contract.md:5-15 scope including src/agentmarshal/journal/gate.py, status_view.py, report.py with records/01M5RQX8JNS9H5WX3ZGA47J8VQ-completed.json created_at 2026-10-25T05:18:06.933820Z — both later than CR-237's completed created_at 2026-10-24T23:31:56.969397Z. Their edits are visible at src/agentmarshal/journal/gate.py:89,392-413,1263,2162 (CR-240) and src/agentmarshal/journal/gate.py:2381-2394 (CR-242). The 'between 15af26e and the freeze' reading is excluded because CR-238/CR-239 (extensions fixes, audited at the freeze) completed at ULIDs 01M5R37P/01M5R3D4, before CR-237's 01M5R43D",
+    "audit-model-key-covers-fable-audited-area": "release/audit-0.6.0.toml:3 'model = \"gpt-6-astra\"' versus :10-12 'docs-claims part 2 ... the area was audited with claude-fable-5-1 at the freeze commit', which sources the fixed findings at :106-114 (AUD-docs-claims-2-1, -2-2); .github/scripts/check_release_audit.py ALLOWED_MODELS = (\"gpt-6-astra\",) reads only the single key, and CONTRIBUTING.md:150-151 names gpt-6-astra as the auditing model. The contract's AC1 prescribes both the key and the disclosure, so this is a coordinator-level note",
+    "commands-4-5-disposition-uncorroborated": "release/audit-0.6.0.toml:84-94 maps AUD-commands-4 and AUD-commands-5 to CR-237; .agentmarshal/journal/tasks/CR-237/contract.md:15-16,28 names only AUD-gate-journal-5 and -4, and `grep -rn 'AUD-' src/ tests/` yields AUD-gate-journal-4 at src/agentmarshal/journal/report.py:641, AUD-gate-journal-5 at tests/test_self_acceptance_on_every_surface.py:5 and AUD-commands-3 at tests/test_self_acknowledgement_mark.py:3, with no AUD-commands-4 or -5 anywhere in the repository",
+    "readme-capture-line-not-reflowed": "README.md:54 '  reviewer's raw output at any level. Still roadmap: the `economics` and `sessions`' is 83 columns wide, against lines 43-58 of the same bullet which wrap at 78 or less"
+  },
+  "findings": [
+    "audit-comment-gate-journal-paths-incomplete"
+  ],
+  "previous_review": "01M5VF6T14FT4BCA05QG3QMW3V",
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "b4ee38fa3e071e4b06118e562dab9dbec2e072ba",
+  "reviewed_contract": "0ed6448a312f480a70d737a594b73319bc907989d117f4b39f2f834446e5c977",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-245",
+  "tool_version": "0.6.0",
+  "verdict": "changes_required",
+  "verification": {
+    "executed": [
+      {
+        "result": "one completed record for each of CR-234..CR-244; no reopened/abandoned record in any of those directories, so every 'fixed' task's last lifecycle record is 'completed'",
+        "what": "grep -l '\"record_type\": *\"completed\"' over .agentmarshal/journal/tasks/CR-23*/records/*.json and CR-24*/records/*.json"
+      },
+      {
+        "result": "CR-240 and CR-244 carry a session record after completed; session is not in _LIFECYCLE_RECORD_TYPES, so the projection still ends at completed",
+        "what": "ls of the records directories of CR-234, CR-235, CR-240, CR-244"
+      },
+      {
+        "result": "AUD-extensions-4/-5, AUD-commands-6, AUD-docs-claims-2-3/-7, AUD-whole-project-3 appear only as advisory/Non-Goal items; AUD-gate-journal-7, AUD-commands-4 and AUD-commands-5 appear in no contract",
+        "what": "grep -rno 'AUD-[A-Za-z0-9-]*' over the contracts of CR-23*/CR-24*"
+      },
+      {
+        "result": "AUD-whole-project-1 at gate.py:89,413,1266,2163 and test_gate.py:2066,2084; AUD-gate-journal-4 at report.py:641; AUD-gate-journal-5 at test_self_acceptance_on_every_surface.py:5; AUD-commands-3 at test_self_acknowledgement_mark.py:3; no AUD-commands-4/-5 anywhere",
+        "what": "grep -rn 'AUD-' src/ tests/"
+      },
+      {
+        "result": "CR-200..CR-244 all appear in the 0.6.0 section; CR-245 absent, matching the rule earlier CR-234 reviews applied to a task holding only an opened record",
+        "what": "sed -n '11,328p' CHANGELOG.md | grep -o 'CR-2[0-9][0-9]' | sort -u"
+      },
+      {
+        "result": "report.py:48,996-1003; status_view.py:151-157,259-262; capture.py:449-450; gate.py:2394; cli.py:1834 — both marks exist as the notes claim",
+        "what": "grep -n 'self-accepted|self-acknowledged' over gate.py, report.py, status_view.py, capture.py, cli.py"
+      },
+      {
+        "result": "review.py:599-616,813-824,1279-1288 — _preserve_output is unconditional; prose_capture_level is read only at review.py:1595,1619-1622, on the recorded-verdict path",
+        "what": "grep -n 'preserve_output' src/"
+      },
+      {
+        "result": "thirteen record-type keys, confirming the notes' 'thirteen record types'",
+        "what": "sed -n '62,140p' src/agentmarshal/journal/attestation.py | grep -n '^    \"'"
+      },
+      {
+        "result": "CR-237 2026-10-24T23:31:56.969397Z; CR-240 2026-10-25T00:42:55.587672Z; CR-242 2026-10-25T05:18:06.933820Z — CR-240 and CR-242 land after the gate-journal fixes and both carry src/agentmarshal/journal/gate.py in scope",
+        "what": "read created_at of the completed records of CR-237, CR-240, CR-242"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "python3 .github/scripts/check_release_audit.py v0.6.0",
+        "why": "the review snapshot is not a git repository and carries no v0.6.0 tag; the sandbox also refused python3 invocations. AC2 is the implementer's report to show"
+      },
+      {
+        "what": "git diff dff244b2df8e8003dad6faa4f7aa2ddd2d25422a <tag> --name-only, and git merge-base --is-ancestor 15af26e dff244b",
+        "why": "no git history in the snapshot; commit ordering was derived from the fix tasks' completed-record timestamps instead"
+      },
+      {
+        "what": "tomllib parse of release/audit-0.6.0.toml",
+        "why": "the sandbox refused python3; the file was validated by reading it against check_release_audit.py's rules"
+      },
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "read-only review and no runnable toolchain here; the coordinator states the sequence passed on b4ee38fa3e071e4b06118e562dab9dbec2e072ba"
+      }
+    ],
+    "read": [
+      "release/audit-0.6.0.toml",
+      "CHANGELOG.md (lines 200-330)",
+      "README.md (lines 40-65)",
+      "docs/harness-setup.md (lines 60-120)",
+      "docs/proposals/012-upstream-feedback-channel.md",
+      "docs/templates/claude-code-settings.local.json",
+      "CONTRIBUTING.md (Releases section, lines 135-203)",
+      ".github/scripts/check_release_audit.py",
+      "docs/adr/ADR-0001-governance-plane.md",
+      ".agentmarshal/journal/tasks/CR-234/contract.md",
+      ".agentmarshal/journal/tasks/CR-235/contract.md",
+      ".agentmarshal/journal/tasks/CR-236/contract.md",
+      ".agentmarshal/journal/tasks/CR-237/contract.md",
+      ".agentmarshal/journal/tasks/CR-238/contract.md",
+      ".agentmarshal/journal/tasks/CR-239/contract.md",
+      ".agentmarshal/journal/tasks/CR-240/contract.md",
+      ".agentmarshal/journal/tasks/CR-241/contract.md",
+      ".agentmarshal/journal/tasks/CR-242/contract.md",
+      ".agentmarshal/journal/tasks/CR-243/contract.md",
+      ".agentmarshal/journal/tasks/CR-244/contract.md",
+      ".agentmarshal/journal/tasks/CR-243/records/01M5TJF7GQ44BXHYJSAZ6ZHRS3-completed.json",
+      ".agentmarshal/journal/tasks/CR-244/records/01M5VD7YG8Z7SD0Y5HT544TCXD-completed.json",
+      ".agentmarshal/journal/tasks/CR-240/records/01M5R85C731RJHFD9KN6ZEJK72-completed.json",
+      ".agentmarshal/journal/tasks/CR-242/records/01M5RQX8JNS9H5WX3ZGA47J8VQ-completed.json",
+      "src/agentmarshal/outbox.py (register, _locate, _run_check, _check, _git, _pinned_blob, _run_status)",
+      "src/agentmarshal/project.py (_scaffold_outbox)",
+      "src/agentmarshal/extension_trust.py (register, _resolve, _run_list)",
+      "src/agentmarshal/journal/review.py (_preserve_output, _reject, _parse_verdict, dry-run path)",
+      "src/agentmarshal/journal/attestation.py (RECORD_TYPES)",
+      "UPGRADING.md (0.5.0 -> 0.6.0 section)",
+      "tests/test_release_audit_check.py (test name list)"
+    ]
+  }
+}

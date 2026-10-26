@@ -1,0 +1,25 @@
+{
+  "advisory_dispositions": {
+    "ADV-audit-file-untested": {
+      "disposition": "rejected",
+      "reason": "the audit file is checked by .github/scripts/check_release_audit.py in the release job on the tag, and the task ran the script in a throwaway clone with a local tag (release audit: passed); a unit test reading the real file would duplicate that run"
+    },
+    "ADV-readme-refused-verdict-wording": {
+      "disposition": "deferred",
+      "reason": "README wording about refused reviewer output (launcher refusal vs a rejected verdict) is clarified by CR-246, open on README"
+    },
+    "ADV-upgrading-outbox-eol-refusal": {
+      "disposition": "deferred",
+      "reason": "the UPGRADING note about outbox check and send refusing a git transformation (autocrlf, clean filter) with its remedy is added by CR-246, open on the release notes"
+    }
+  },
+  "completed_commit": "b222d7e47ab43dc0effd66149fd56a96bdc32405",
+  "created_at": "2026-10-26T07:38:12.391473Z",
+  "record_type": "completed",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "schema": 7,
+  "source": "live",
+  "task": "CR-245",
+  "tool_version": "0.6.0"
+}
