@@ -1,0 +1,78 @@
+{
+  "artifacts": [
+    {
+      "hash": "fa3f5d63b5bebd28e4bfdf02bbd4d992abfbe30255d36106b61da9a7b8498f53",
+      "ref": ".agentmarshal/journal/tasks/CR-247/artifacts/01M5VTGHZABAA335782VEQE63B-review.md"
+    }
+  ],
+  "created_at": "2026-10-26T10:01:19.594764Z",
+  "findings": [],
+  "record_type": "review",
+  "recorded_by": "agent-claude-code",
+  "recorded_by_source": "override",
+  "reviewed_commit": "f8032168fbeaa21f2a55811c4718caf6039593e1",
+  "reviewed_contract": "24f7506c9dd53b53f8e26fd450c74176e14286e3901fe68db272dba76d4e1dde",
+  "reviewer": {
+    "email": "auto-review-anthropic@agent.example.invalid",
+    "model": "claude-opus-5",
+    "role": "reviewer",
+    "vendor": "anthropic"
+  },
+  "schema": 7,
+  "source": "live",
+  "task": "CR-247",
+  "tool_version": "0.6.0",
+  "verdict": "approved",
+  "verification": {
+    "executed": [
+      {
+        "result": "own version is 0.7.0.dev0 in pyproject.toml:3, src/agentmarshal/__init__.py:3, uv.lock:11, tests/test_smoke.py:48; every remaining 0.6.0 is historical or install prose outside the scope (CHANGELOG, UPGRADING, README, docs/*, CONTRIBUTING:170, release/audit-0.6.0.toml) or the ast-serialize dependency in uv.lock",
+        "what": "grep -rn '0\\.6\\.0|0\\.7\\.0' over the whole tree, journal excluded"
+      },
+      {
+        "result": "single own-package entry at line 10; no self-referencing requires-dist carrying a version",
+        "what": "grep -n agentmarshal uv.lock"
+      },
+      {
+        "result": "all 30+ consumers import it from agentmarshal; no hardcoded version string anywhere in src besides __init__.py:3",
+        "what": "grep -rn '__version__' src/ tests/"
+      },
+      {
+        "result": "only tests/test_release_audit_check.py (synthetic repos at 1.0.0), .github/workflows/release.yml and .github/scripts/check_release_audit.py — none pinned to the branch version",
+        "what": "grep -rln pyproject tests/ .github/"
+      },
+      {
+        "result": "only /usr/bin/python3 present",
+        "what": "which uv python3 pytest ruff mypy"
+      }
+    ],
+    "not_run": [
+      {
+        "what": "uv sync --locked; agentmarshal validate; pytest; ruff check; ruff format --check; mypy",
+        "why": "uv, pytest, ruff and mypy are not installed in this snapshot and it is not a git repository; relying on the coordinator's statement that the sequence passed on f8032168"
+      },
+      {
+        "what": "existence of tag v0.6.0, the PyPI 0.6.0 upload and the GitHub Release",
+        "why": "no network access; corroborated indirectly by CHANGELOG.md:11 and release/audit-0.6.0.toml, and in any case a premise of the contract rather than a claim of the diff"
+      }
+    ],
+    "read": [
+      "pyproject.toml:1-6,33-40",
+      "src/agentmarshal/__init__.py",
+      "src/agentmarshal/cli.py:129-135",
+      "src/agentmarshal/__main__.py",
+      "src/agentmarshal/project.py:131",
+      "src/agentmarshal/journal/records.py:645-650",
+      "tests/test_smoke.py:1-80",
+      "tests/test_gate.py:1-110",
+      "uv.lock:1-30",
+      "docs/adr/ADR-0001-governance-plane.md",
+      "CONTRIBUTING.md:118-200",
+      "CHANGELOG.md:1-30",
+      "docs/sidecar.md:60-145",
+      ".agentmarshal/journal/tasks/CR-205/contract.md",
+      ".agentmarshal/project.json",
+      ".github/scripts/check_release_audit.py (version/path logic)"
+    ]
+  }
+}
